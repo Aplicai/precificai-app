@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Logo Test</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@800&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:40px;background:#f5f5f5">
+<div id="out"></div>
+<script>
+const PATHS = {
+  a: 'm1017.3,110.33l-4.61,39.66,4.61,39.75c.48,4.13-2.75,7.76-6.91,7.76h-9.94c-6.35,0-11.7-4.76-12.44-11.07l-1.21-10.31c-4.73,7.57-10.7,13.44-17.91,17.62s-15.21,6.26-24,6.26-17.36-2.09-24.54-6.26c-7.18-4.17-12.76-10.05-16.74-17.62-3.98-7.57-5.97-16.25-5.97-26.05s1.99-18.58,5.97-26.17c3.98-7.6,9.55-13.48,16.7-17.66,7.15-4.17,15.35-6.26,24.59-6.26s16.79,2.07,24,6.22c7.21,4.15,13.21,10,17.99,17.57l1.15-10.1c.72-6.33,6.08-11.1,12.44-11.1h9.9c4.16,0,7.39,3.63,6.91,7.76Zm-49.94,64.37c4.67-2.39,8.78-5.72,12.31-9.98,3.54-4.26,6.3-9.14,8.31-14.65-2-5.51-4.77-10.41-8.31-14.69-3.54-4.28-7.64-7.64-12.31-10.06-4.67-2.42-9.6-3.63-14.78-3.63s-9.7,1.21-13.73,3.63c-4.04,2.42-7.19,5.79-9.48,10.1-2.28,4.31-3.42,9.2-3.42,14.65s1.14,10.32,3.42,14.61c2.28,4.29,5.44,7.63,9.48,10.02,4.04,2.39,8.61,3.59,13.73,3.59s10.1-1.2,14.78-3.59Z',
+  iStem: 'm1034.96,190.54v-80.64c0-4.36,3.97-7.65,8.26-6.83l5.77,1.1,5.68-1.09c4.29-.82,8.27,2.47,8.27,6.83v80.64c0,3.84-3.11,6.96-6.96,6.96h-14.05c-3.84,0-6.96-3.11-6.96-6.96Z',
+  iLeaf: 'm1074.41,67.87l-26.95,8.63c-3.17,1.01-5.64,3.52-6.6,6.71l-1.49,4.92c-.76,2.52,1.4,4.96,4,4.49l19.24-3.45c5.5-.99,10.11-4.7,12.25-9.86l3.13-7.55c.95-2.29-1.21-4.64-3.57-3.88Z'
+};
+const AI_VB = { x: 893, y: 66, w: 188, h: 134 };
+
+function drawLogo(canvas, fontSize, textColor, leafColor, bgColor) {
+  const ctx = canvas.getContext('2d');
+  const padX = fontSize * 0.6;
+  const padY = fontSize * 0.5;
+  ctx.font = '800 ' + fontSize + 'px "DM Sans"';
+  const textW = ctx.measureText('Precific').width;
+  const xHeight = fontSize * 0.54;
+  const svgScale = xHeight / 99.7;
+  const aiW = AI_VB.w * svgScale;
+  const gap = fontSize * 0.005;
+  const totalW = padX + textW + gap + aiW + padX;
+  const totalH = padY + fontSize * 1.0 + padY;
+  canvas.width = Math.ceil(totalW);
+  canvas.height = Math.ceil(totalH);
+  const c = canvas.getContext('2d');
+  if (bgColor) { c.fillStyle = bgColor; c.fillRect(0, 0, canvas.width, canvas.height); }
+  const baseline = padY + fontSize * 0.77;
+  c.font = '800 ' + fontSize + 'px "DM Sans"';
+  c.fillStyle = textColor;
+  c.textBaseline = 'alphabetic';
+  c.fillText('Precific', padX, baseline);
+  const aBodyBottom = 197.5;
+  const aiX = padX + textW + gap;
+  const aiY = baseline - (aBodyBottom - AI_VB.y) * svgScale;
+  c.save();
+  c.translate(aiX, aiY);
+  c.scale(svgScale, svgScale);
+  c.translate(-AI_VB.x, -AI_VB.y);
+  c.fillStyle = textColor;
+  c.fill(new Path2D(PATHS.a), 'evenodd');
+  c.fill(new Path2D(PATHS.iStem));
+  c.fillStyle = leafColor;
+  c.fill(new Path2D(PATHS.iLeaf));
+  c.restore();
+}
+
+document.fonts.ready.then(() => {
+  setTimeout(() => {
+    const out = document.getElementById('out');
+
+    // Verde sobre branco
+    const label1 = document.createElement('p');
+    label1.textContent = 'VERDE SOBRE BRANCO — GRANDE';
+    label1.style.cssText = 'font-family:DM Sans;font-size:12px;color:#999;letter-spacing:2px;margin:0 0 8px';
+    out.appendChild(label1);
+    const c1 = document.createElement('canvas');
+    drawLogo(c1, 72, '#004d47', '#e3b842', '#FFFFFF');
+    out.appendChild(c1);
+
+    // Branco sobre verde
+    const label2 = document.createElement('p');
+    label2.textContent = 'BRANCO SOBRE VERDE — GRANDE';
+    label2.style.cssText = 'font-family:DM Sans;font-size:12px;color:#999;letter-spacing:2px;margin:30px 0 8px';
+    out.appendChild(label2);
+    const c2 = document.createElement('canvas');
+    drawLogo(c2, 72, '#FFFFFF', '#e3b842', '#004d47');
+    out.appendChild(c2);
+
+    // Smaller
+    const label3 = document.createElement('p');
+    label3.textContent = 'VERDE — MÉDIO';
+    label3.style.cssText = 'font-family:DM Sans;font-size:12px;color:#999;letter-spacing:2px;margin:30px 0 8px';
+    out.appendChild(label3);
+    const c3 = document.createElement('canvas');
+    drawLogo(c3, 40, '#004d47', '#e3b842', '#FFFFFF');
+    out.appendChild(c3);
+
+    // Small
+    const label4 = document.createElement('p');
+    label4.textContent = 'BRANCO — PEQUENO (HEADER APP)';
+    label4.style.cssText = 'font-family:DM Sans;font-size:12px;color:#999;letter-spacing:2px;margin:30px 0 8px';
+    out.appendChild(label4);
+    const c4 = document.createElement('canvas');
+    c4.style.borderRadius = '8px';
+    drawLogo(c4, 26, '#FFFFFF', '#e3b842', '#004d47');
+    out.appendChild(c4);
+  }, 500);
+});
+</script>
+</body>
+</html>

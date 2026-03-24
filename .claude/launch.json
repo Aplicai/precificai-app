@@ -1,0 +1,20 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "PrecificaApp",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["node_modules/expo/bin/cli", "start", "--web", "--port", "8083", "--clear"],
+      "port": 8083,
+      "autoPort": false,
+      "cwd": "PrecificaApp"
+    },
+    {
+      "name": "LogoPreview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["node_modules/serve/build/main.js", ".", "-l", "3333", "--no-clipboard"],
+      "port": 3333,
+      "cwd": "PrecificaApp"
+    }
+  ]
+}
