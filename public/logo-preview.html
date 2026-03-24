@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Precificaí - Logomarca Preview</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: #f0f0f0;
+      gap: 40px;
+      padding: 40px;
+    }
+    .preview-card {
+      background: white;
+      border-radius: 16px;
+      padding: 40px 60px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+    .preview-card.dark {
+      background: #004d47;
+    }
+    .label {
+      font-size: 11px;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      font-weight: 600;
+    }
+    .label.light { color: rgba(255,255,255,0.5); }
+
+    /* Logo container */
+    .logo {
+      display: flex;
+      align-items: flex-end;
+      line-height: 1;
+    }
+    .logo-text {
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      line-height: 1;
+    }
+    .logo-text.green { color: #004d47; }
+    .logo-text.white { color: #FFFFFF; }
+
+    .logo-ai {
+      display: inline-block;
+      line-height: 0;
+    }
+
+    /* Size variants */
+    .size-xl .logo-text { font-size: 72px; }
+    .size-lg .logo-text { font-size: 48px; }
+    .size-md .logo-text { font-size: 32px; }
+    .size-sm .logo-text { font-size: 22px; }
+
+    .sizes-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 30px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .reference {
+      margin-top: 20px;
+      padding: 20px;
+      background: #fafafa;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .reference img { max-height: 60px; }
+  </style>
+</head>
+<body>
+
+  <h2 style="color: #333; font-weight: 600;">Preview — Logomarca Precificaí</h2>
+
+  <!-- Large on white -->
+  <div class="preview-card">
+    <span class="label">Verde sobre branco — Grande</span>
+    <div class="logo size-xl" id="logo-xl-green"></div>
+  </div>
+
+  <!-- Large on dark -->
+  <div class="preview-card dark">
+    <span class="label light">Branco sobre verde — Grande</span>
+    <div class="logo size-xl" id="logo-xl-white"></div>
+  </div>
+
+  <!-- Multiple sizes -->
+  <div class="preview-card">
+    <span class="label">Tamanhos variados</span>
+    <div class="sizes-row">
+      <div class="logo size-lg" id="logo-lg"></div>
+      <div class="logo size-md" id="logo-md"></div>
+      <div class="logo size-sm" id="logo-sm"></div>
+    </div>
+  </div>
+
+  <!-- On dark, multiple sizes -->
+  <div class="preview-card dark">
+    <span class="label light">Tamanhos variados — fundo escuro</span>
+    <div class="sizes-row">
+      <div class="logo size-lg" id="logo-lg-w"></div>
+      <div class="logo size-md" id="logo-md-w"></div>
+      <div class="logo size-sm" id="logo-sm-w"></div>
+    </div>
+  </div>
+
+  <script>
+    // Exact "aí" SVG paths from aplicaí horizontal logo
+    const aiPaths = {
+      // "a" compound path (outer + counter hole)
+      a: 'm1017.3,110.33l-4.61,39.66,4.61,39.75c.48,4.13-2.75,7.76-6.91,7.76h-9.94c-6.35,0-11.7-4.76-12.44-11.07l-1.21-10.31c-4.73,7.57-10.7,13.44-17.91,17.62s-15.21,6.26-24,6.26-17.36-2.09-24.54-6.26c-7.18-4.17-12.76-10.05-16.74-17.62-3.98-7.57-5.97-16.25-5.97-26.05s1.99-18.58,5.97-26.17c3.98-7.6,9.55-13.48,16.7-17.66,7.15-4.17,15.35-6.26,24.59-6.26s16.79,2.07,24,6.22c7.21,4.15,13.21,10,17.99,17.57l1.15-10.1c.72-6.33,6.08-11.1,12.44-11.1h9.9c4.16,0,7.39,3.63,6.91,7.76Zm-49.94,64.37c4.67-2.39,8.78-5.72,12.31-9.98,3.54-4.26,6.3-9.14,8.31-14.65-2-5.51-4.77-10.41-8.31-14.69-3.54-4.28-7.64-7.64-12.31-10.06-4.67-2.42-9.6-3.63-14.78-3.63s-9.7,1.21-13.73,3.63c-4.04,2.42-7.19,5.79-9.48,10.1-2.28,4.31-3.42,9.2-3.42,14.65s1.14,10.32,3.42,14.61c2.28,4.29,5.44,7.63,9.48,10.02,4.04,2.39,8.61,3.59,13.73,3.59s10.1-1.2,14.78-3.59Z',
+      // í stem
+      iStem: 'm1034.96,190.54v-80.64c0-4.36,3.97-7.65,8.26-6.83l5.77,1.1,5.68-1.09c4.29-.82,8.27,2.47,8.27,6.83v80.64c0,3.84-3.11,6.96-6.96,6.96h-14.05c-3.84,0-6.96-3.11-6.96-6.96Z',
+      // í leaf
+      iLeaf: 'm1074.41,67.87l-26.95,8.63c-3.17,1.01-5.64,3.52-6.6,6.71l-1.49,4.92c-.76,2.52,1.4,4.96,4,4.49l19.24-3.45c5.5-.99,10.11-4.7,12.25-9.86l3.13-7.55c.95-2.29-1.21-4.64-3.57-3.88Z'
+    };
+
+    // Bounding box of "aí" in the original SVG
+    // "a" outer goes from about x=897 to x=1021, y=98 to y=198
+    // "í" stem goes from x=1035 to x=1063, y=103 to y=198
+    // "í" leaf goes from x=1039 to x=1078, y=68 to y=93
+    // Full: x=897..1078, y=68..198
+    const VB_X = 895;
+    const VB_Y = 66;
+    const VB_W = 185;
+    const VB_H = 134; // from y=66 to y=200
+
+    // The lowercase body (a, í stem) spans from about y=98 to y=198 = 100 units
+    // The total height including leaf = 134 units
+    // So lowercase body = 100/134 = 74.6% of total height
+
+    function createAiSvg(fontSize, textColor, leafColor) {
+      // We need the SVG "aí" lowercase body to match the font's x-height
+      // DM Sans 800 x-height is approximately 54% of fontSize
+      // So x-height in px = fontSize * 0.54
+      // SVG lowercase body = 74.6% of total SVG height
+      // Total SVG height = xHeight / 0.746
+      const xHeight = fontSize * 0.48;
+      const svgHeight = xHeight / 0.746;
+      const svgWidth = svgHeight * (VB_W / VB_H);
+
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('width', svgWidth);
+      svg.setAttribute('height', svgHeight);
+      svg.setAttribute('viewBox', `${VB_X} ${VB_Y} ${VB_W} ${VB_H}`);
+      svg.style.display = 'block';
+
+      // "a" path
+      const pathA = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathA.setAttribute('d', aiPaths.a);
+      pathA.setAttribute('fill', textColor);
+      pathA.setAttribute('fill-rule', 'evenodd');
+      svg.appendChild(pathA);
+
+      // í stem
+      const pathStem = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathStem.setAttribute('d', aiPaths.iStem);
+      pathStem.setAttribute('fill', textColor);
+      svg.appendChild(pathStem);
+
+      // í leaf
+      const pathLeaf = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathLeaf.setAttribute('d', aiPaths.iLeaf);
+      pathLeaf.setAttribute('fill', leafColor);
+      svg.appendChild(pathLeaf);
+
+      return svg;
+    }
+
+    function buildLogo(containerId, textColor, leafColor) {
+      const container = document.getElementById(containerId);
+      const computedStyle = window.getComputedStyle(container);
+
+      // Create text span
+      const textSpan = document.createElement('span');
+      textSpan.className = 'logo-text ' + (textColor === '#FFFFFF' ? 'white' : 'green');
+      textSpan.textContent = 'Precific';
+      container.appendChild(textSpan);
+
+      // Get font size after DOM update
+      requestAnimationFrame(() => {
+        const fontSize = parseFloat(window.getComputedStyle(textSpan).fontSize);
+
+        // Create SVG wrapper
+        const aiWrapper = document.createElement('span');
+        aiWrapper.className = 'logo-ai';
+
+        const svg = createAiSvg(fontSize, textColor, leafColor);
+
+        // Align baselines: the text element includes descender space below the baseline.
+        // We need to lift the SVG so the "a" bottom aligns with the text baseline,
+        // not the text element bottom. DM Sans descender ≈ 20% of fontSize.
+        // Also account for ~2 units of padding below letters in SVG viewBox.
+        const svgHeight = parseFloat(svg.getAttribute('height'));
+        const svgPaddingBelow = svgHeight * (2 / VB_H); // ~2 units below baseline in viewBox
+        const descender = fontSize * 0.19;
+        svg.style.marginBottom = (descender - svgPaddingBelow) + 'px';
+        svg.style.marginLeft = (-fontSize * 0.02) + 'px';
+
+        aiWrapper.appendChild(svg);
+        container.appendChild(aiWrapper);
+      });
+    }
+
+    // Build all logos
+    window.addEventListener('load', () => {
+      buildLogo('logo-xl-green', '#004d47', '#FFCA28');
+      buildLogo('logo-xl-white', '#FFFFFF', '#FFCA28');
+      buildLogo('logo-lg', '#004d47', '#FFCA28');
+      buildLogo('logo-md', '#004d47', '#FFCA28');
+      buildLogo('logo-sm', '#004d47', '#FFCA28');
+      buildLogo('logo-lg-w', '#FFFFFF', '#FFCA28');
+      buildLogo('logo-md-w', '#FFFFFF', '#FFCA28');
+      buildLogo('logo-sm-w', '#FFFFFF', '#FFCA28');
+    });
+  </script>
+</body>
+</html>
