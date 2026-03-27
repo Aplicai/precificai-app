@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -9,6 +10,7 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -61,14 +63,23 @@ export default function LoginScreen({ navigation }) {
           />
 
           <Text style={styles.label}>Senha</Text>
-          <TextInput
-            style={styles.input}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Sua senha"
-            secureTextEntry
-            placeholderTextColor={colors.disabled}
-          />
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Sua senha"
+              secureTextEntry={!showPassword}
+              placeholderTextColor={colors.disabled}
+            />
+            <TouchableOpacity
+              style={styles.eyeBtn}
+              onPress={() => setShowPassword(!showPassword)}
+              activeOpacity={0.7}
+            >
+              <Feather name={showPassword ? 'eye-off' : 'eye'} size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')} style={styles.forgotBtn}>
             <Text style={styles.forgotText}>Esqueci minha senha</Text>
@@ -106,6 +117,18 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: colors.surface, borderRadius: borderRadius.md, paddingHorizontal: 14, paddingVertical: 12,
     fontSize: 15, fontFamily: fontFamily.regular, color: colors.text, borderWidth: 1, borderColor: colors.border,
+  },
+  passwordContainer: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.surface, borderRadius: borderRadius.md,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  passwordInput: {
+    flex: 1, paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 15, fontFamily: fontFamily.regular, color: colors.text,
+  },
+  eyeBtn: {
+    paddingHorizontal: 12, paddingVertical: 12, justifyContent: 'center', alignItems: 'center',
   },
   forgotBtn: { alignSelf: 'flex-end', marginTop: 8, marginBottom: 20 },
   forgotText: { fontSize: 13, color: colors.info, fontFamily: fontFamily.medium },

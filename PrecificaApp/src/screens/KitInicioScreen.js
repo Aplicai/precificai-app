@@ -145,8 +145,8 @@ export default function KitInicioScreen({ navigation, route }) {
         console.log('[Kit] Phase 4 done (categories)');
       }
 
-      // Step 2: Insert categories
-      let firstCatId = null;
+      // Step 2: Insert categories and build name→id map
+      const catMap = {};
       if (categoriasTemplate.length > 0) {
         console.log('[Kit] Step 2: Inserting', categoriasTemplate.length, 'categories...');
         const catRows = categoriasTemplate.map(nome => ({
@@ -157,19 +157,20 @@ export default function KitInicioScreen({ navigation, route }) {
         const { data: catData, error: catErr } = await supabase
           .from('categorias_insumos')
           .insert(catRows)
-          .select('id');
+          .select('id, nome');
         if (catErr) {
           console.error('[Kit] categorias error:', catErr.message);
           throw new Error('Erro ao cadastrar categorias: ' + catErr.message);
         }
-        firstCatId = catData?.[0]?.id || null;
-        console.log('[Kit] Categories OK, firstCatId:', firstCatId);
+        (catData || []).forEach(cat => { catMap[cat.nome] = cat.id; });
+        console.log('[Kit] Categories OK, map:', Object.keys(catMap).length, 'entries');
       }
 
-      // Step 3: Insert insumos
+      // Step 3: Insert insumos with correct category mapping
       let criados = 0;
       if (insumosTemplate.length > 0) {
         console.log('[Kit] Step 3: Inserting', insumosTemplate.length, 'insumos...');
+        const firstCatId = Object.values(catMap)[0] || null;
         const insumoRows = insumosTemplate.map(insumo => {
           const fc = calcFatorCorrecao(insumo.quantidade_bruta, insumo.quantidade_liquida);
           const pb = calcPrecoBase(insumo.valor_pago, insumo.quantidade_liquida, insumo.unidade_medida);
@@ -177,7 +178,7 @@ export default function KitInicioScreen({ navigation, route }) {
             user_id: userId,
             nome: insumo.nome,
             marca: '',
-            categoria_id: firstCatId,
+            categoria_id: (insumo.categoria && catMap[insumo.categoria]) || firstCatId,
             quantidade_bruta: insumo.quantidade_bruta,
             quantidade_liquida: insumo.quantidade_liquida,
             fator_correcao: fc,
