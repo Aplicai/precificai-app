@@ -93,34 +93,58 @@ export default function KitInicioScreen({ navigation, route }) {
   async function executarKit(resetar) {
     setLoading(true);
     try {
-      // Get user ID for Supabase operations
-      const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id;
+      console.log('[Kit] Step 0: Getting user...');
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr) throw new Error('Erro de autenticação: ' + authErr.message);
+      const userId = authData?.user?.id;
       if (!userId) throw new Error('Usuário não autenticado');
+      console.log('[Kit] User OK:', userId.substring(0, 8));
 
       const insumosTemplate = INSUMOS_POR_SEGMENTO[selected] || [];
       const categoriasTemplate = CATEGORIAS_POR_SEGMENTO[selected] || [];
 
-      // Step 1: Clean existing data if needed (parallel deletes)
+      // Step 1: Clean existing data — sequential in FK-safe order
       if (resetar || isSetup) {
-        const tablesToClean = [
-          'produto_ingredientes', 'produto_preparos', 'produto_embalagens',
-          'preparo_ingredientes', 'delivery_combo_itens', 'delivery_produto_itens',
-          'delivery_combos', 'delivery_produtos', 'delivery_adicionais', 'delivery_config',
-          'produtos', 'preparos', 'embalagens', 'materias_primas',
-          'categorias_produtos', 'categorias_preparos', 'categorias_embalagens', 'categorias_insumos',
-        ];
-        // Delete in parallel — much faster than sequential
-        await Promise.all(
-          tablesToClean.map(table =>
-            supabase.from(table).delete().eq('user_id', userId).then(() => {}).catch(() => {})
-          )
-        );
+        console.log('[Kit] Step 1: Cleaning data...');
+        // Phase 1: Junction tables (no dependencies)
+        const phase1 = ['produto_ingredientes', 'produto_preparos', 'produto_embalagens',
+          'preparo_ingredientes', 'delivery_combo_itens', 'delivery_produto_itens'];
+        await Promise.all(phase1.map(t =>
+          supabase.from(t).delete().eq('user_id', userId).then(r => {
+            if (r.error) console.warn('[Kit] delete', t, r.error.message);
+          }).catch(() => {})
+        ));
+        console.log('[Kit] Phase 1 done (junction tables)');
+
+        // Phase 2: Main entity tables
+        const phase2 = ['delivery_combos', 'delivery_produtos', 'delivery_adicionais',
+          'delivery_config', 'produtos', 'preparos', 'embalagens'];
+        await Promise.all(phase2.map(t =>
+          supabase.from(t).delete().eq('user_id', userId).then(r => {
+            if (r.error) console.warn('[Kit] delete', t, r.error.message);
+          }).catch(() => {})
+        ));
+        console.log('[Kit] Phase 2 done (entity tables)');
+
+        // Phase 3: materias_primas (depends on preparo_ingredientes, produto_ingredientes)
+        const { error: mpErr } = await supabase.from('materias_primas').delete().eq('user_id', userId);
+        if (mpErr) console.warn('[Kit] delete materias_primas:', mpErr.message);
+        console.log('[Kit] Phase 3 done (materias_primas)');
+
+        // Phase 4: Category tables (materias_primas FK gone now)
+        const phase4 = ['categorias_produtos', 'categorias_preparos', 'categorias_embalagens', 'categorias_insumos'];
+        await Promise.all(phase4.map(t =>
+          supabase.from(t).delete().eq('user_id', userId).then(r => {
+            if (r.error) console.warn('[Kit] delete', t, r.error.message);
+          }).catch(() => {})
+        ));
+        console.log('[Kit] Phase 4 done (categories)');
       }
 
-      // Step 2: Insert categories in one batch call
+      // Step 2: Insert categories
       let firstCatId = null;
       if (categoriasTemplate.length > 0) {
+        console.log('[Kit] Step 2: Inserting', categoriasTemplate.length, 'categories...');
         const catRows = categoriasTemplate.map(nome => ({
           user_id: userId,
           nome,
@@ -130,13 +154,18 @@ export default function KitInicioScreen({ navigation, route }) {
           .from('categorias_insumos')
           .insert(catRows)
           .select('id');
-        if (catErr) console.warn('Kit categorias error:', catErr.message);
+        if (catErr) {
+          console.error('[Kit] categorias error:', catErr.message);
+          throw new Error('Erro ao cadastrar categorias: ' + catErr.message);
+        }
         firstCatId = catData?.[0]?.id || null;
+        console.log('[Kit] Categories OK, firstCatId:', firstCatId);
       }
 
-      // Step 3: Insert insumos in one batch call
+      // Step 3: Insert insumos
       let criados = 0;
       if (insumosTemplate.length > 0) {
+        console.log('[Kit] Step 3: Inserting', insumosTemplate.length, 'insumos...');
         const insumoRows = insumosTemplate.map(insumo => {
           const fc = calcFatorCorrecao(insumo.quantidade_bruta, insumo.quantidade_liquida);
           const pb = calcPrecoBase(insumo.valor_pago, insumo.quantidade_liquida, insumo.unidade_medida);
@@ -158,26 +187,26 @@ export default function KitInicioScreen({ navigation, route }) {
           .insert(insumoRows)
           .select('id');
         if (insErr) {
-          console.warn('Kit insumos error:', insErr.message);
+          console.error('[Kit] insumos error:', insErr.message);
           throw new Error('Erro ao cadastrar insumos: ' + insErr.message);
         }
         criados = insData?.length || 0;
+        console.log('[Kit] Insumos OK, criados:', criados);
       }
 
+      console.log('[Kit] SUCCESS — navigating...');
       setDone(true);
       setLoading(false);
-      // Navigate directly — avoid Alert callback issues on web
-      setTimeout(() => navegarAposKit(), 500);
+      setTimeout(() => navegarAposKit(), 300);
     } catch (e) {
-      console.error('KitInicio executarKit error:', e?.message || e);
+      console.error('[Kit] CATCH error:', e?.message || e);
+      setLoading(false);
       const errMsg = `Não foi possível aplicar o kit.\n\nDetalhes: ${e?.message || String(e)}`;
       if (Platform.OS === 'web') {
         window.alert(errMsg);
       } else {
         Alert.alert('Erro', errMsg);
       }
-    } finally {
-      setLoading(false);
     }
   }
 
