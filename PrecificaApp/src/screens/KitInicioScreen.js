@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
+import { supabase } from '../config/supabase';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { SEGMENTOS, INSUMOS_POR_SEGMENTO, CATEGORIAS_POR_SEGMENTO } from '../data/templates';
 import { calcPrecoBase, calcFatorCorrecao } from '../utils/calculations';
@@ -92,83 +93,80 @@ export default function KitInicioScreen({ navigation, route }) {
   async function executarKit(resetar) {
     setLoading(true);
     try {
-      const db = await getDatabase();
+      // Get user ID for Supabase operations
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id;
+      if (!userId) throw new Error('Usuário não autenticado');
 
-      // Sempre limpar insumos e categorias no setup (pode ter dados de tentativa anterior)
-      // Fora do setup, só limpa se resetar (trocar segmento)
+      const insumosTemplate = INSUMOS_POR_SEGMENTO[selected] || [];
+      const categoriasTemplate = CATEGORIAS_POR_SEGMENTO[selected] || [];
+
+      // Step 1: Clean existing data if needed (parallel deletes)
       if (resetar || isSetup) {
-        const tablesOrdered = [
+        const tablesToClean = [
           'produto_ingredientes', 'produto_preparos', 'produto_embalagens',
           'preparo_ingredientes', 'delivery_combo_itens', 'delivery_produto_itens',
           'delivery_combos', 'delivery_produtos', 'delivery_adicionais', 'delivery_config',
           'produtos', 'preparos', 'embalagens', 'materias_primas',
           'categorias_produtos', 'categorias_preparos', 'categorias_embalagens', 'categorias_insumos',
         ];
-        for (const table of tablesOrdered) {
-          try {
-            await db.runAsync(`DELETE FROM ${table} WHERE id > 0`);
-          } catch (e) { /* ignora se tabela não existe */ }
-        }
+        // Delete in parallel — much faster than sequential
+        await Promise.all(
+          tablesToClean.map(table =>
+            supabase.from(table).delete().eq('user_id', userId).then(() => {}).catch(() => {})
+          )
+        );
       }
 
-      const insumosTemplate = INSUMOS_POR_SEGMENTO[selected] || [];
-      const categoriasTemplate = CATEGORIAS_POR_SEGMENTO[selected] || [];
-
-      // Criar categorias em batch (uma transação)
-      const catIds = {};
-      await db.execAsync('BEGIN TRANSACTION');
-      try {
-        for (const catNome of categoriasTemplate) {
-          const existing = await db.getAllAsync('SELECT id FROM categorias_insumos WHERE nome = ?', [catNome]);
-          if (existing.length > 0) {
-            catIds[catNome] = existing[0].id;
-          } else {
-            const result = await db.runAsync(
-              'INSERT INTO categorias_insumos (nome, icone) VALUES (?, ?)',
-              [catNome, '📦']
-            );
-            catIds[catNome] = result?.lastInsertRowId;
-          }
-        }
-        await db.execAsync('COMMIT');
-      } catch (e) {
-        await db.execAsync('ROLLBACK');
-        throw e;
+      // Step 2: Insert categories in one batch call
+      let firstCatId = null;
+      if (categoriasTemplate.length > 0) {
+        const catRows = categoriasTemplate.map(nome => ({
+          user_id: userId,
+          nome,
+          icone: '📦',
+        }));
+        const { data: catData, error: catErr } = await supabase
+          .from('categorias_insumos')
+          .insert(catRows)
+          .select('id');
+        if (catErr) console.warn('Kit categorias error:', catErr.message);
+        firstCatId = catData?.[0]?.id || null;
       }
 
-      // Mapear categorias por nome para atribuição inteligente
-      const catIdsList = Object.values(catIds);
-      const firstCatId = catIdsList.length > 0 ? catIdsList[0] : null;
-
-      // Criar insumos em batch (uma transação para performance)
+      // Step 3: Insert insumos in one batch call
       let criados = 0;
-      await db.execAsync('BEGIN TRANSACTION');
-      try {
-        // Carregar insumos existentes de uma vez
-        const existingInsumos = await db.getAllAsync('SELECT nome FROM materias_primas');
-        const existingSet = new Set(existingInsumos.map(e => e.nome));
-
-        for (const insumo of insumosTemplate) {
-          if (existingSet.has(insumo.nome)) continue;
-
+      if (insumosTemplate.length > 0) {
+        const insumoRows = insumosTemplate.map(insumo => {
           const fc = calcFatorCorrecao(insumo.quantidade_bruta, insumo.quantidade_liquida);
           const pb = calcPrecoBase(insumo.valor_pago, insumo.quantidade_liquida, insumo.unidade_medida);
-
-          await db.runAsync(
-            'INSERT INTO materias_primas (nome, marca, categoria_id, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg) VALUES (?,?,?,?,?,?,?,?,?)',
-            [insumo.nome, '', firstCatId, insumo.quantidade_bruta, insumo.quantidade_liquida, fc, insumo.unidade_medida, insumo.valor_pago, pb]
-          );
-          criados++;
+          return {
+            user_id: userId,
+            nome: insumo.nome,
+            marca: '',
+            categoria_id: firstCatId,
+            quantidade_bruta: insumo.quantidade_bruta,
+            quantidade_liquida: insumo.quantidade_liquida,
+            fator_correcao: fc,
+            unidade_medida: insumo.unidade_medida,
+            valor_pago: insumo.valor_pago,
+            preco_por_kg: pb,
+          };
+        });
+        const { data: insData, error: insErr } = await supabase
+          .from('materias_primas')
+          .insert(insumoRows)
+          .select('id');
+        if (insErr) {
+          console.warn('Kit insumos error:', insErr.message);
+          throw new Error('Erro ao cadastrar insumos: ' + insErr.message);
         }
-        await db.execAsync('COMMIT');
-      } catch (e) {
-        await db.execAsync('ROLLBACK');
-        throw e;
+        criados = insData?.length || 0;
       }
 
       setDone(true);
       setLoading(false);
-      // Navigate directly after brief delay — avoid Alert callback issues on web
+      // Navigate directly — avoid Alert callback issues on web
       setTimeout(() => navegarAposKit(), 500);
     } catch (e) {
       console.error('KitInicio executarKit error:', e?.message || e);
