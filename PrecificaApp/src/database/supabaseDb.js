@@ -203,6 +203,11 @@ async function executeRun(sql, params = []) {
     const whereConditions = parseWhereSimple(whereClause, params, 0);
     for (const w of whereConditions) {
       if (w.op === '=') query = query.eq(w.col, w.val);
+      else if (w.op === '!=') query = query.neq(w.col, w.val);
+      else if (w.op === '>') query = query.gt(w.col, w.val);
+      else if (w.op === '<') query = query.lt(w.col, w.val);
+      else if (w.op === '>=') query = query.gte(w.col, w.val);
+      else if (w.op === '<=') query = query.lte(w.col, w.val);
     }
 
     const { error } = await query;
