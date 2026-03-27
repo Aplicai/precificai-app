@@ -36,12 +36,12 @@ export default function KitInicioScreen({ navigation, route }) {
         if (navigation.canGoBack()) {
           navigation.goBack();
         } else {
-          navigation.navigate('Home');
+          navigation.replace('MainTabs');
         }
       }
     } catch (e) {
       console.warn('navegarAposKit fallback:', e);
-      navigation.navigate('Onboarding');
+      navigation.replace('MainTabs');
     }
   }
 
@@ -53,14 +53,16 @@ export default function KitInicioScreen({ navigation, route }) {
       return;
     }
 
-    // Se não é setup (está nas configurações), avisar que vai resetar com dupla confirmação
+    // Fluxo com confirmação dupla (reset) quando vem das Configurações
     if (!isSetup) {
       if (Platform.OS === 'web') {
         const confirm1 = window.confirm('Atenção: Aplicar este kit vai substituir todos os dados atuais do app (insumos, categorias, etc). Deseja continuar?');
         if (!confirm1) return;
         const confirm2 = window.confirm('Confirmação Final: Tem certeza? Esta ação não pode ser desfeita.');
         if (!confirm2) return;
-        executarKit(true);
+        console.log('[Kit] Confirmações OK, chamando executarKit(true)...');
+        await executarKit(true);
+        return;
       } else {
         Alert.alert(
           'Atenção',
@@ -83,11 +85,13 @@ export default function KitInicioScreen({ navigation, route }) {
             },
           ]
         );
+        return;
       }
-      return;
     }
 
-    executarKit(false);
+    // Fluxo setup (primeiro uso) — sem confirmação
+    console.log('[Kit] Setup mode, chamando executarKit(false)...');
+    await executarKit(false);
   }
 
   async function executarKit(resetar) {
