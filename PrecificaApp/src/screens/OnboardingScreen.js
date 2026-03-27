@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts, borderRadius, fontFamily } from '../utils/theme';
 import { getSetupStatus } from '../utils/setupStatus';
 
@@ -23,7 +24,8 @@ export default function OnboardingScreen({ navigation }) {
     }
   }
 
-  function goToHome() {
+  async function goToHome() {
+    await AsyncStorage.setItem('onboarding_done', 'true');
     setShowCompleteModal(false);
     navigation.replace('MainTabs');
   }
@@ -38,7 +40,8 @@ export default function OnboardingScreen({ navigation }) {
     }
   }
 
-  function skipToHome() {
+  async function skipToHome() {
+    await AsyncStorage.setItem('onboarding_done', 'true');
     navigation.replace('MainTabs');
   }
 

@@ -10,6 +10,7 @@ import WebLayout from '../components/web/WebLayout';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { getSetupStatus } from '../utils/setupStatus';
 import { useAuth } from '../contexts/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
@@ -352,6 +353,10 @@ function AppContent() {
 
   async function checkInitialRoute() {
     try {
+      // If onboarding was already completed, always go to MainTabs
+      const onboardingDone = await AsyncStorage.getItem('onboarding_done');
+      if (onboardingDone === 'true') return 'MainTabs';
+
       const { getDatabase } = require('../database/database');
       const db = await getDatabase();
       // Check if profile is filled
@@ -359,11 +364,12 @@ function AppContent() {
       if (!perfil || !perfil.nome_negocio || perfil.nome_negocio.trim() === '') {
         return 'ProfileSetup';
       }
-      // If user already has data (insumos, produtos, etc.), go straight to app
-      const hasData = await db.getFirstAsync(
-        'SELECT id FROM materias_primas LIMIT 1'
-      );
-      if (hasData) return 'MainTabs';
+      // If user already has data, mark onboarding done and go to app
+      const insumos = await db.getAllAsync('SELECT id FROM materias_primas LIMIT 1');
+      if (insumos && insumos.length > 0) {
+        await AsyncStorage.setItem('onboarding_done', 'true');
+        return 'MainTabs';
+      }
       // First-time user: check financeiro setup
       const status = await getSetupStatus();
       return status.financeiroCompleto ? 'MainTabs' : 'Onboarding';

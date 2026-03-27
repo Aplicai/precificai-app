@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDatabase } from '../database/database';
 import { supabase } from '../config/supabase';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
@@ -28,8 +29,9 @@ export default function KitInicioScreen({ navigation, route }) {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
-  function navegarAposKit() {
+  async function navegarAposKit() {
     try {
+      await AsyncStorage.setItem('onboarding_done', 'true');
       if (isSetup) {
         navigation.replace('Onboarding');
       } else {
