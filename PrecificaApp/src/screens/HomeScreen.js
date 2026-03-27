@@ -58,7 +58,7 @@ export default function HomeScreen({ navigation }) {
       ]);
       // Compute financeiro + setup status inline (avoid separate queries)
       const config = configs?.[0];
-      const lucroOk = config != null;
+      const lucroOk = config != null && config.lucro_desejado > 0 && config.lucro_desejado !== 0.15;
       const faturamentoOk = fat.filter(f => f.valor > 0).length >= 1;
       const fixasOk = fixas.length > 0;
       const variaveisOk = variaveis.length > 0;

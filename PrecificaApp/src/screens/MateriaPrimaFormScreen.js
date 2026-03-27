@@ -787,7 +787,7 @@ const styles = StyleSheet.create({
 
   // Histórico de preços
   historicoSection: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
     backgroundColor: colors.surface,
     borderRadius: borderRadius.md,
     padding: spacing.md,
@@ -864,9 +864,9 @@ const styles = StyleSheet.create({
   // Resultado vazio
   resultEmpty: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: spacing.xs, marginTop: spacing.md,
+    gap: spacing.xs, marginTop: spacing.sm,
     backgroundColor: colors.inputBg, borderRadius: borderRadius.sm,
-    paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
   },
   resultEmptyText: {
     fontSize: fonts.tiny, color: colors.disabled, flex: 1,
@@ -903,11 +903,11 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     backgroundColor: colors.primary + '10', borderRadius: borderRadius.sm,
     borderWidth: 1, borderColor: colors.primary + '30',
-    paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, marginTop: spacing.md,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, marginTop: spacing.sm,
   },
   btnSaveEditText: { color: colors.primary, fontWeight: '600', fontSize: fonts.small },
   autoSaveInline: {
-    alignItems: 'center', marginTop: spacing.sm,
+    alignItems: 'center', marginTop: spacing.xs,
   },
   autoSaveInlineText: { fontSize: fonts.tiny, color: colors.textSecondary },
 
@@ -915,7 +915,7 @@ const styles = StyleSheet.create({
   btnDelete: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     backgroundColor: '#fff', borderWidth: 1, borderColor: colors.error + '40',
-    padding: spacing.xs + 4, borderRadius: borderRadius.sm, marginTop: spacing.md,
+    padding: spacing.xs + 4, borderRadius: borderRadius.sm, marginTop: spacing.sm,
   },
   btnDeleteText: { color: colors.error, fontWeight: '600', fontSize: fonts.small },
 

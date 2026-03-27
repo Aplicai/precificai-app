@@ -244,30 +244,82 @@ export default function ExportPDFScreen({ navigation }) {
         let ings, preps, embs, cmv, custoIng = 0, custoPrep = 0, custoEmb = 0;
 
         if (produto.isCombo) {
-          // For combos, calculate CMV from component products
+          // For combos, calculate CMV from component items based on tipo
           const comboItens = produto.comboItens || [];
           let comboCmv = 0;
           const comboIngs = [];
+          const comboPreps = [];
+          const comboEmbs = [];
           for (const ci of comboItens) {
-            const prodIngs = ingsByProd[ci.item_id] || [];
-            const prodPreps = prepsByProd[ci.item_id] || [];
-            const prodEmbs = embsByProd[ci.item_id] || [];
-            const prodObj = produtos.find(p => p.id === ci.item_id);
-            const rend = prodObj?.rendimento_unidades || 1;
+            const ciQty = ci.quantidade || 1;
+            if (ci.tipo === 'produto') {
+              // Product item → resolve its ingredients/preparos/embalagens
+              const prodIngs = ingsByProd[ci.item_id] || [];
+              const prodPreps = prepsByProd[ci.item_id] || [];
+              const prodEmbs = embsByProd[ci.item_id] || [];
+              const prodObj = produtos.find(p => p.id === ci.item_id);
+              const rend = prodObj?.rendimento_unidades || 1;
 
-            const ciIng = prodIngs.reduce((a, ing) => a + calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada, ing.unidade_medida || 'g', ing.unidade_medida || 'g'), 0);
-            const ciPrep = prodPreps.reduce((a, pp) => a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
-            const ciEmb = prodEmbs.reduce((a, pe) => a + (pe.preco_unitario || 0) * (pe.quantidade_utilizada || 1), 0);
-            const ciCmv = (ciIng + ciPrep + ciEmb) / rend;
-            comboCmv += ciCmv * (ci.quantidade || 1);
+              const ciIng = prodIngs.reduce((a, ing) => a + calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada, ing.unidade_medida || 'g', ing.unidade_medida || 'g'), 0);
+              const ciPrep = prodPreps.reduce((a, pp) => a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
+              const ciEmb = prodEmbs.reduce((a, pe) => a + (pe.preco_unitario || 0) * (pe.quantidade_utilizada || 1), 0);
+              const ciCmv = (ciIng + ciPrep + ciEmb) / rend;
+              comboCmv += ciCmv * ciQty;
 
-            // Collect ingredient names for display
-            prodIngs.forEach(ing => comboIngs.push({ ...ing, mp_nome: ing.mp_nome || `Insumo ${ing.materia_prima_id}` }));
+              prodIngs.forEach(ing => comboIngs.push({ ...ing, mp_nome: ing.mp_nome || `Insumo ${ing.materia_prima_id}` }));
+              prodPreps.forEach(pp => comboPreps.push({ ...pp }));
+              prodEmbs.forEach(pe => comboEmbs.push({ ...pe }));
+            } else if (ci.tipo === 'materia_prima') {
+              // Direct matéria-prima reference
+              const mp = mpMap[ci.item_id];
+              if (mp) {
+                const custo = calcCustoIngrediente(mp.preco_por_kg || 0, ciQty, mp.unidade_medida || 'g', mp.unidade_medida || 'g');
+                comboCmv += custo;
+                comboIngs.push({
+                  materia_prima_id: ci.item_id,
+                  mp_nome: mp.nome || '',
+                  quantidade_utilizada: ciQty,
+                  preco_por_kg: mp.preco_por_kg || 0,
+                  unidade_medida: mp.unidade_medida || 'Grama(s)',
+                });
+              }
+            } else if (ci.tipo === 'preparo') {
+              // Preparo reference
+              const prep = prepMap[ci.item_id];
+              if (prep) {
+                const custo = calcCustoPreparo(prep.custo_por_kg || 0, ciQty, prep.unidade_medida || 'g');
+                comboCmv += custo;
+                comboPreps.push({
+                  preparo_id: ci.item_id,
+                  pr_nome: prep.nome || '',
+                  quantidade_utilizada: ciQty,
+                  custo_por_kg: prep.custo_por_kg || 0,
+                  unidade_medida: prep.unidade_medida || 'Grama(s)',
+                });
+              }
+            } else if (ci.tipo === 'embalagem') {
+              // Embalagem reference
+              const emb = embMap[ci.item_id];
+              if (emb) {
+                const custo = (emb.preco_unitario || 0) * ciQty;
+                comboCmv += custo;
+                comboEmbs.push({
+                  embalagem_id: ci.item_id,
+                  emb_nome: emb.nome || '',
+                  quantidade_utilizada: ciQty,
+                  quantidade: ciQty,
+                  preco_unitario: emb.preco_unitario || 0,
+                });
+              }
+            }
           }
           ings = comboIngs;
-          preps = [];
-          embs = [];
+          preps = comboPreps;
+          embs = comboEmbs;
           cmv = comboCmv;
+          custoIng = comboIngs.reduce((a, ing) => a + calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada, ing.unidade_medida || 'g', ing.unidade_medida || 'g'), 0);
+          custoPrep = comboPreps.reduce((a, pp) => a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
+          custoEmb = comboEmbs.reduce((a, pe) => a + (pe.preco_unitario || 0) * (pe.quantidade || pe.quantidade_utilizada || 1), 0);
         } else {
           ings = ingsByProd[id] || [];
           preps = prepsByProd[id] || [];
@@ -316,9 +368,9 @@ export default function ExportPDFScreen({ navigation }) {
           ings: ings || [],
           preps: preps || [],
           embs: embs || [],
-          custoIng: produto.isCombo ? cmv : custoIng,
-          custoPrep: produto.isCombo ? 0 : custoPrep,
-          custoEmb: produto.isCombo ? 0 : custoEmb,
+          custoIng,
+          custoPrep,
+          custoEmb,
           cmv,
           precoSugerido, lucroVal, margemVal,
           cmvPerc, despFixasPerc, despVarPerc,

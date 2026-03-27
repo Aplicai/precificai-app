@@ -26,7 +26,7 @@ export default function PreparoFormScreen({ route, navigation }) {
   const editId = route.params?.id;
   const isFocused = useIsFocused();
   const [form, setForm] = useState({ nome: '', rendimento_total: '', unidade_medida: 'g', categoria_id: null, modo_preparo: '', observacoes: '', validade_dias: '', temp_congelado: '', tempo_congelado: '', temp_refrigerado: '', tempo_refrigerado: '', temp_ambiente: '', tempo_ambiente: '' });
-  const [showInfoAdicional, setShowInfoAdicional] = useState(false);
+  const [showInfoAdicional, setShowInfoAdicional] = useState(false); // collapsed by default for compactness
   const [ingredientes, setIngredientes] = useState([]);
   const [materiasPrimas, setMateriasPrimas] = useState([]);
   const [categorias, setCategorias] = useState([]);
@@ -347,7 +347,7 @@ export default function PreparoFormScreen({ route, navigation }) {
         </Card>
 
         {/* Bloco 2 — Ingredientes */}
-        <Card title="Ingredientes" style={{ marginTop: spacing.md }}>
+        <Card title="Ingredientes" style={{ marginTop: spacing.sm }}>
           {/* Adicionar ingrediente */}
           <View style={styles.addIngSection}>
             <PickerSelect
@@ -777,9 +777,9 @@ const styles = StyleSheet.create({
   },
   resultEmpty: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: spacing.xs, marginTop: spacing.md,
+    gap: spacing.xs, marginTop: spacing.sm,
     backgroundColor: colors.inputBg, borderRadius: borderRadius.sm,
-    paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
   },
   resultEmptyText: {
     fontSize: fonts.tiny, color: colors.disabled, flex: 1,
@@ -824,7 +824,7 @@ const styles = StyleSheet.create({
   // Excluir
   collapsibleHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingVertical: spacing.sm, marginTop: spacing.md,
+    paddingVertical: spacing.xs, marginTop: spacing.sm,
     borderTopWidth: 1, borderTopColor: colors.border + '40',
   },
   collapsibleText: { flex: 1, fontSize: 13, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text },
@@ -838,12 +838,12 @@ const styles = StyleSheet.create({
   btnDelete: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     backgroundColor: '#fff', borderWidth: 1, borderColor: colors.error + '40',
-    padding: spacing.xs + 4, borderRadius: borderRadius.sm, marginTop: spacing.lg,
+    padding: spacing.xs + 4, borderRadius: borderRadius.sm, marginTop: spacing.sm,
   },
   btnDeleteText: { color: colors.error, fontWeight: '600', fontSize: fonts.small },
 
   // Picker customizado
-  pickerContainer: { marginBottom: spacing.md },
+  pickerContainer: { marginBottom: spacing.sm },
   pickerLabel: { fontSize: fonts.small, color: colors.textSecondary, marginBottom: spacing.xs, fontWeight: '600' },
   pickerSelector: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',

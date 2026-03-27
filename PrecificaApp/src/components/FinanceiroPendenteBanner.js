@@ -14,8 +14,23 @@ export default function FinanceiroPendenteBanner() {
 
   if (!pendente) return null;
 
+  function goToFinanceiro() {
+    try {
+      // Cross-tab navigation: go up to tab navigator, then into Ferramentas > FinanceiroMain
+      const parent = navigation.getParent();
+      const tabNav = parent?.getParent?.() || parent;
+      if (tabNav) {
+        tabNav.navigate('Ferramentas', { screen: 'FinanceiroMain' });
+      } else {
+        navigation.navigate('FinanceiroMain');
+      }
+    } catch {
+      navigation.navigate('FinanceiroMain');
+    }
+  }
+
   return (
-    <TouchableOpacity style={styles.banner} activeOpacity={0.8} onPress={() => navigation.navigate('Financeiro')}>
+    <TouchableOpacity style={styles.banner} activeOpacity={0.8} onPress={goToFinanceiro}>
       <Text style={styles.icon}>⚠️</Text>
       <View style={styles.body}>
         <Text style={styles.title}>Configuração financeira pendente</Text>

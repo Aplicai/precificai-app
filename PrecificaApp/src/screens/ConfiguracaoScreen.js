@@ -35,7 +35,7 @@ const SUGESTOES_VARIAVEIS = [
 export default function ConfiguracaoScreen() {
   const { isDesktop } = useResponsiveLayout();
   const isFocused = useIsFocused();
-  const [lucroDesejado, setLucroDesejado] = useState('15');
+  const [lucroDesejado, setLucroDesejado] = useState('');
   const [despesasFixas, setDespesasFixas] = useState([]);
   const [despesasVariaveis, setDespesasVariaveis] = useState([]);
   const [faturamento, setFaturamento] = useState([]);
@@ -78,7 +78,14 @@ export default function ConfiguracaoScreen() {
     const config = configs?.[0];
     if (config) {
       setConfigId(config.id);
-      setLucroDesejado(String((config.lucro_desejado * 100).toFixed(1)));
+      // Treat the DB trigger default (0.15) as "not yet configured" so field starts empty
+      const lucro = config.lucro_desejado;
+      if (lucro && lucro !== 0.15) {
+        setLucroDesejado(String((lucro * 100).toFixed(1)));
+      } else if (lucro === 0.15) {
+        // Default from trigger — show empty to force user to explicitly set
+        setLucroDesejado('');
+      }
       setMargemSeguranca(String(((config.margem_seguranca || 0) * 100).toFixed(1)));
     }
 
@@ -405,7 +412,25 @@ export default function ConfiguracaoScreen() {
           <View style={s.stepHeader}>
             <StepNumber number={1} color={colors.success} />
             <View style={{ flex: 1 }}>
-              <Text style={s.stepTitle}>Margem de Lucro</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={s.stepTitle}>Margem de Lucro</Text>
+                <InfoTooltip
+                  title="Referências do mercado"
+                  text="Margens de lucro líquido típicas do mercado brasileiro de alimentação:"
+                  examples={[
+                    'Confeitaria artesanal: 15-30%',
+                    'Bolos e tortas: 20-35%',
+                    'Doces finos/gourmet: 25-40%',
+                    'Salgados e empadas: 15-25%',
+                    'Marmitas/refeições: 10-20%',
+                    'Food truck: 12-22%',
+                    'Pizzaria delivery: 15-25%',
+                    'Hamburgueria: 12-20%',
+                    'Padaria artesanal: 10-18%',
+                    'Alimentação geral: 10-20%',
+                  ]}
+                />
+              </View>
               <Text style={s.stepSubtitle}>Rentabilidade desejada por produto</Text>
             </View>
             {lucroPerc > 0 && (
@@ -438,7 +463,9 @@ export default function ConfiguracaoScreen() {
                 },
               })}
             >
-              <Text style={s.bigValueText}>{lucroDesejado}%</Text>
+              <Text style={[s.bigValueText, !lucroDesejado && { color: colors.disabled }]}>
+                {lucroDesejado ? `${lucroDesejado}%` : 'Toque para definir'}
+              </Text>
               <Feather name="edit-2" size={14} color={colors.primary} style={{ marginLeft: 8 }} />
             </TouchableOpacity>
 
@@ -450,25 +477,6 @@ export default function ConfiguracaoScreen() {
               </Text>
             </View>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: spacing.xs }}>
-              <Text style={s.benchmarkTitle}>Referências do mercado</Text>
-              <InfoTooltip
-                title="Margens por segmento"
-                text="Margens de lucro líquido típicas do mercado brasileiro de alimentação:"
-                examples={[
-                  'Confeitaria artesanal: 15-30%',
-                  'Bolos e tortas: 20-35%',
-                  'Doces finos/gourmet: 25-40%',
-                  'Salgados e empadas: 15-25%',
-                  'Marmitas/refeições: 10-20%',
-                  'Food truck: 12-22%',
-                  'Pizzaria delivery: 15-25%',
-                  'Hamburgueria: 12-20%',
-                  'Padaria artesanal: 10-18%',
-                  'Alimentação geral: 10-20%',
-                ]}
-              />
-            </View>
 
             {/* Margem de Segurança inline */}
             <View style={s.subSection}>
@@ -879,7 +887,7 @@ export default function ConfiguracaoScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView style={s.container} contentContainerStyle={s.content} onScrollBeginDrag={Keyboard.dismiss}>
+      <ScrollView style={s.container} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         {/* Page header */}
         <View style={s.pageHeader}>
           <View style={s.pageHeaderIcon}>

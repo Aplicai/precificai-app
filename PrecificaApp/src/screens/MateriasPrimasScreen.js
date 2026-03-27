@@ -220,6 +220,15 @@ export default function MateriasPrimasScreen({ navigation }) {
         <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar por nome ou marca..." />
       </View>
 
+      {/* Botão Adicionar */}
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '10', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14, marginHorizontal: 16, marginTop: 8, marginBottom: 4, borderWidth: 1, borderColor: colors.primary + '30', borderStyle: 'dashed' }}
+        onPress={() => navigation.navigate('MateriaPrimaForm', {})}
+      >
+        <Feather name="plus-circle" size={18} color={colors.primary} style={{ marginRight: 8 }} />
+        <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 14 }}>Novo Insumo</Text>
+      </TouchableOpacity>
+
       {/* Lista agrupada */}
       {isDesktop ? (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>

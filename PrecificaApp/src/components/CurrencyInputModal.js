@@ -1,21 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, StyleSheet, Modal, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Modal, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, borderRadius, fontFamily } from '../utils/theme';
 
 export default function CurrencyInputModal({ visible, title, value, prefix, suffix, placeholder, onConfirm, onCancel, keyboardType = 'numeric' }) {
   const [inputValue, setInputValue] = useState('');
+  const [saving, setSaving] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
     if (visible) {
       setInputValue(value || '');
+      setSaving(false);
       setTimeout(() => inputRef.current?.focus(), 200);
     }
   }, [visible, value]);
 
-  function handleConfirm() {
-    onConfirm(inputValue);
+  async function handleConfirm() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await onConfirm(inputValue);
+    } catch (e) {
+      console.warn('CurrencyInputModal save error:', e);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -59,9 +69,15 @@ export default function CurrencyInputModal({ visible, title, value, prefix, suff
             <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} activeOpacity={0.7}>
               <Text style={styles.cancelText}>Cancelar</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm} activeOpacity={0.7}>
-              <Feather name="check" size={18} color="#fff" />
-              <Text style={styles.confirmText}>OK</Text>
+            <TouchableOpacity style={[styles.confirmBtn, saving && { opacity: 0.6 }]} onPress={handleConfirm} activeOpacity={0.7} disabled={saving}>
+              {saving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Feather name="check" size={18} color="#fff" />
+                  <Text style={styles.confirmText}>OK</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>

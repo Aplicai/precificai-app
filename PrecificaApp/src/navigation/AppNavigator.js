@@ -45,6 +45,7 @@ import PerfilScreen from '../screens/PerfilScreen';
 import MargemBaixaScreen from '../screens/MargemBaixaScreen';
 import ExportPDFScreen from '../screens/ExportPDFScreen';
 import SuporteScreen from '../screens/SuporteScreen';
+import LandingScreen from '../screens/LandingScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -146,7 +147,7 @@ function HomeStack() {
 function ProdutosStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="ProdutosList" component={ProdutosListScreen} options={{ title: 'Produtos' }} />
+      <Stack.Screen name="ProdutosList" component={ProdutosListScreen} options={({ navigation }) => ({ title: 'Produtos', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="ProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
       <Stack.Screen name="CombosScreen" component={DeliveryCombosScreen} options={{ title: 'Combos' }} />
       <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo' }} />
@@ -156,10 +157,30 @@ function ProdutosStack() {
   );
 }
 
+// Back-to-home button for root screens of non-Home tabs
+function backToHomeOption(navigation) {
+  const isDesktopWeb = Platform.OS === 'web' && Dimensions.get('window').width >= 1024;
+  if (isDesktopWeb) return {};
+  return {
+    headerLeft: () => (
+      <TouchableOpacity
+        onPress={() => {
+          const parent = navigation.getParent();
+          if (parent) parent.navigate('Início');
+        }}
+        style={{ marginLeft: 8, padding: 6 }}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Feather name="chevron-left" size={20} color="#fff" />
+      </TouchableOpacity>
+    ),
+  };
+}
+
 function InsumosStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="MateriasPrimas" component={MateriasPrimasScreen} options={{ title: 'Insumos' }} />
+      <Stack.Screen name="MateriasPrimas" component={MateriasPrimasScreen} options={({ navigation }) => ({ title: 'Insumos', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Insumo' }} />
     </Stack.Navigator>
   );
@@ -168,7 +189,7 @@ function InsumosStack() {
 function EmbalagensStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Embalagens" component={EmbalagensScreen} options={{ title: 'Embalagens' }} />
+      <Stack.Screen name="Embalagens" component={EmbalagensScreen} options={({ navigation }) => ({ title: 'Embalagens', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="EmbalagemForm" component={EmbalagemFormScreen} options={{ title: 'Embalagem' }} />
     </Stack.Navigator>
   );
@@ -177,7 +198,7 @@ function EmbalagensStack() {
 function PreparosStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Preparos" component={PreparosScreen} options={{ title: 'Preparos' }} />
+      <Stack.Screen name="Preparos" component={PreparosScreen} options={({ navigation }) => ({ title: 'Preparos', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Preparo' }} />
       <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo' }} />
     </Stack.Navigator>
@@ -215,7 +236,7 @@ function FinanceiroStack() {
 function MaisStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="MaisMain" component={MaisScreen} options={{ title: 'Ferramentas' }} />
+      <Stack.Screen name="MaisMain" component={MaisScreen} options={({ navigation }) => ({ title: 'Ferramentas', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="FinanceiroMain" component={ConfiguracaoScreen} options={{ title: 'Financeiro' }} />
       <Stack.Screen name="MatrizBCG" component={MatrizBCGScreen} options={{ title: 'Engenharia de Cardápio' }} />
       <Stack.Screen name="BCGProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
@@ -306,6 +327,7 @@ const AuthStack = createNativeStackNavigator();
 function AuthNavigator() {
   return (
     <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+      <AuthStack.Screen name="Landing" component={LandingScreen} />
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="Register" component={RegisterScreen} />
       <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />

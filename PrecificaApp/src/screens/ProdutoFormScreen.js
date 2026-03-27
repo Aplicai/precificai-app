@@ -61,6 +61,10 @@ export default function ProdutoFormScreen({ route, navigation }) {
   const [novoPreparo, setNovoPreparo] = useState({ id: null, quantidade: '' });
   const [novaEmb, setNovaEmb] = useState({ id: null, quantidade: '' });
 
+  // Quantity prompt modal state: { type: 'ingrediente'|'preparo'|'embalagem', id, nome, unidade, detalhe, quantidade }
+  const [quantityPrompt, setQuantityPrompt] = useState(null);
+  const qtyInputRef = useRef(null);
+
   // Visual feedback states
   const [ingAdicionado, setIngAdicionado] = useState(false);
   const [prepAdicionado, setPrepAdicionado] = useState(false);
@@ -101,6 +105,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
   const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved'
   const [loaded, setLoaded] = useState(false);
   const saveTimerRef = useRef(null);
+  const scrollRef = useRef(null);
   const formRef = useRef(form);
   formRef.current = form;
   const allowExit = useRef(false);
@@ -238,9 +243,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
     const newId = result.lastInsertRowId;
     const updated = await db.getAllAsync('SELECT * FROM materias_primas ORDER BY nome');
     setMateriasPrimas(updated);
-    setNovoIng(p => ({ ...p, id: newId }));
     setNovoIngForm({ nome: '', unidade_medida: 'g', quantidade_bruta: '', quantidade_liquida: '', valor_pago: '' });
     setNovoIngModalVisible(false);
+    // Open quantity prompt for the newly created ingredient
+    const newItem = updated.find(m => m.id === newId);
+    if (newItem) openQuantityPrompt('ingrediente', newItem);
   }
 
   async function salvarNovaEmbalagem() {
@@ -258,9 +265,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
     const newId = result.lastInsertRowId;
     const updated = await db.getAllAsync('SELECT * FROM embalagens ORDER BY nome');
     setEmbalagensList(updated);
-    setNovaEmb(p => ({ ...p, id: newId }));
     setNovaEmbForm({ nome: '', quantidade: '', preco_embalagem: '' });
     setNovaEmbModalVisible(false);
+    // Open quantity prompt for the newly created embalagem
+    const newItem = updated.find(e => e.id === newId);
+    if (newItem) openQuantityPrompt('embalagem', newItem);
   }
 
   async function loadProduto() {
@@ -368,32 +377,69 @@ export default function ProdutoFormScreen({ route, navigation }) {
     setTimeout(() => setter(false), 1500);
   }
 
-  function addIngrediente() {
-    if (!novoIng.id) return Alert.alert('Erro', 'Selecione um insumo');
-    if (!novoIng.quantidade || parseNum(novoIng.quantidade) <= 0) return Alert.alert('Erro', 'Informe a quantidade');
-    const mp = materiasPrimas.find(m => m.id === novoIng.id);
+  function addIngrediente(overrideId, overrideQtd) {
+    const id = overrideId || novoIng.id;
+    const qtd = overrideQtd || novoIng.quantidade;
+    if (!id) return Alert.alert('Erro', 'Selecione um insumo');
+    if (!qtd || parseNum(qtd) <= 0) return Alert.alert('Erro', 'Informe a quantidade');
+    const mp = materiasPrimas.find(m => m.id === id);
     const unidade = mp?.unidade_medida || 'g';
-    setIngredientes(prev => [...prev, { materia_prima_id: novoIng.id, mp_nome: mp.nome, preco_por_kg: mp.preco_por_kg, quantidade_utilizada: parseNum(novoIng.quantidade), unidade }]);
+    setIngredientes(prev => [...prev, { materia_prima_id: id, mp_nome: mp.nome, preco_por_kg: mp.preco_por_kg, quantidade_utilizada: parseNum(qtd), unidade }]);
     setNovoIng({ id: null, quantidade: '' });
     showFeedback(setIngAdicionado);
   }
 
-  function addPreparo() {
-    if (!novoPreparo.id) return Alert.alert('Erro', 'Selecione um preparo');
-    if (!novoPreparo.quantidade || parseNum(novoPreparo.quantidade) <= 0) return Alert.alert('Erro', 'Informe a quantidade');
-    const pr = preparosList.find(p => p.id === novoPreparo.id);
-    setProdutoPreparos(prev => [...prev, { preparo_id: novoPreparo.id, pr_nome: pr.nome, custo_por_kg: pr.custo_por_kg, quantidade_utilizada: parseNum(novoPreparo.quantidade), unidade: pr.unidade_medida || 'g' }]);
+  function addPreparo(overrideId, overrideQtd) {
+    const id = overrideId || novoPreparo.id;
+    const qtd = overrideQtd || novoPreparo.quantidade;
+    if (!id) return Alert.alert('Erro', 'Selecione um preparo');
+    if (!qtd || parseNum(qtd) <= 0) return Alert.alert('Erro', 'Informe a quantidade');
+    const pr = preparosList.find(p => p.id === id);
+    setProdutoPreparos(prev => [...prev, { preparo_id: id, pr_nome: pr.nome, custo_por_kg: pr.custo_por_kg, quantidade_utilizada: parseNum(qtd), unidade: pr.unidade_medida || 'g' }]);
     setNovoPreparo({ id: null, quantidade: '' });
     showFeedback(setPrepAdicionado);
   }
 
-  function addEmbalagem() {
-    if (!novaEmb.id) return Alert.alert('Erro', 'Selecione uma embalagem');
-    if (!novaEmb.quantidade || parseNum(novaEmb.quantidade) <= 0) return Alert.alert('Erro', 'Informe a quantidade');
-    const em = embalagensList.find(e => e.id === novaEmb.id);
-    setProdutoEmbalagens(prev => [...prev, { embalagem_id: novaEmb.id, em_nome: em.nome, preco_unitario: em.preco_unitario, quantidade_utilizada: parseNum(novaEmb.quantidade) }]);
+  function addEmbalagem(overrideId, overrideQtd) {
+    const id = overrideId || novaEmb.id;
+    const qtd = overrideQtd || novaEmb.quantidade;
+    if (!id) return Alert.alert('Erro', 'Selecione uma embalagem');
+    if (!qtd || parseNum(qtd) <= 0) return Alert.alert('Erro', 'Informe a quantidade');
+    const em = embalagensList.find(e => e.id === id);
+    setProdutoEmbalagens(prev => [...prev, { embalagem_id: id, em_nome: em.nome, preco_unitario: em.preco_unitario, quantidade_utilizada: parseNum(qtd) }]);
     setNovaEmb({ id: null, quantidade: '' });
     showFeedback(setEmbAdicionado);
+  }
+
+  // Open quantity prompt when tapping an item in the search list
+  function openQuantityPrompt(type, item) {
+    let nome, unidade, detalhe;
+    if (type === 'ingrediente') {
+      nome = item.nome;
+      unidade = item.unidade_medida || 'g';
+      detalhe = `${formatCurrency(item.preco_por_kg)}/${getLabelPrecoBase(item.unidade_medida).replace('Preço por ', '')}`;
+    } else if (type === 'preparo') {
+      nome = item.nome;
+      unidade = item.unidade_medida || 'g';
+      detalhe = `${formatCurrency(item.custo_por_kg)}/kg`;
+    } else {
+      nome = item.nome;
+      unidade = 'un';
+      detalhe = `${formatCurrency(item.preco_unitario)}/un`;
+    }
+    setQuantityPrompt({ type, id: item.id, nome, unidade, detalhe, quantidade: '' });
+    setTimeout(() => qtyInputRef.current?.focus(), 200);
+  }
+
+  function confirmQuantityPrompt() {
+    if (!quantityPrompt || !quantityPrompt.quantidade || parseNum(quantityPrompt.quantidade) <= 0) {
+      return Alert.alert('Erro', 'Informe a quantidade');
+    }
+    const { type, id, quantidade } = quantityPrompt;
+    if (type === 'ingrediente') addIngrediente(id, quantidade);
+    else if (type === 'preparo') addPreparo(id, quantidade);
+    else addEmbalagem(id, quantidade);
+    setQuantityPrompt(null);
   }
 
   function getSelectedIngUnit() {
@@ -460,59 +506,66 @@ export default function ProdutoFormScreen({ route, navigation }) {
     const errs = validateForm(form);
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      return Alert.alert('Campos obrigatórios', 'Preencha todos os campos obrigatórios antes de salvar.');
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      return Alert.alert('Campos obrigatórios', 'Preencha o nome do produto e o preço de venda antes de salvar.');
     }
     setErrors({});
     allowExit.current = true;
-    const db = await getDatabase();
-    const margemSalvar = form.margem_lucro_produto.trim() !== '' ? parseNum(form.margem_lucro_produto) / 100 : null;
-    const params = [
-      form.nome, form.categoria_id, parseNum(form.rendimento_total), form.unidade_rendimento,
-      rendUn, parseNum(form.tempo_preparo), precoVenda, margemSalvar,
-      parseNum(form.validade_dias),
-      form.conserv_congelado ? form.temp_congelado : '', form.conserv_congelado ? form.tempo_congelado : '',
-      form.conserv_refrigerado ? form.temp_refrigerado : '', form.conserv_refrigerado ? form.tempo_refrigerado : '',
-      form.conserv_ambiente ? form.temp_ambiente : '', form.conserv_ambiente ? form.tempo_ambiente : '',
-      form.modo_preparo, form.observacoes,
-    ];
 
-    let produtoId = editId;
-    if (editId) {
-      await db.runAsync(
-        `UPDATE produtos SET nome=?, categoria_id=?, rendimento_total=?, unidade_rendimento=?, rendimento_unidades=?,
-         tempo_preparo=?, preco_venda=?, margem_lucro_produto=?, validade_dias=?, temp_congelado=?, tempo_congelado=?,
-         temp_refrigerado=?, tempo_refrigerado=?, temp_ambiente=?, tempo_ambiente=?,
-         modo_preparo=?, observacoes=? WHERE id=?`, [...params, editId]);
-      await db.runAsync('DELETE FROM produto_ingredientes WHERE produto_id = ?', [editId]);
-      await db.runAsync('DELETE FROM produto_preparos WHERE produto_id = ?', [editId]);
-      await db.runAsync('DELETE FROM produto_embalagens WHERE produto_id = ?', [editId]);
-    } else {
-      const result = await db.runAsync(
-        `INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades,
-         tempo_preparo, preco_venda, margem_lucro_produto, validade_dias, temp_congelado, tempo_congelado,
-         temp_refrigerado, tempo_refrigerado, temp_ambiente, tempo_ambiente,
-         modo_preparo, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, params);
-      produtoId = result.lastInsertRowId;
-    }
+    try {
+      const db = await getDatabase();
+      const margemSalvar = form.margem_lucro_produto.trim() !== '' ? parseNum(form.margem_lucro_produto) / 100 : null;
+      const params = [
+        form.nome, form.categoria_id, parseNum(form.rendimento_total), form.unidade_rendimento,
+        rendUn, parseNum(form.tempo_preparo), precoVenda, margemSalvar,
+        parseNum(form.validade_dias),
+        form.conserv_congelado ? form.temp_congelado : '', form.conserv_congelado ? form.tempo_congelado : '',
+        form.conserv_refrigerado ? form.temp_refrigerado : '', form.conserv_refrigerado ? form.tempo_refrigerado : '',
+        form.conserv_ambiente ? form.temp_ambiente : '', form.conserv_ambiente ? form.tempo_ambiente : '',
+        form.modo_preparo, form.observacoes,
+      ];
 
-    for (const ing of ingredientes) {
-      await db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)',
-        [produtoId, ing.materia_prima_id, ing.quantidade_utilizada]);
-    }
-    for (const pp of produtoPreparos) {
-      await db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)',
-        [produtoId, pp.preparo_id, pp.quantidade_utilizada]);
-    }
-    for (const pe of produtoEmbalagens) {
-      await db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
-        [produtoId, pe.embalagem_id, pe.quantidade_utilizada]);
-    }
+      let produtoId = editId;
+      if (editId) {
+        await db.runAsync(
+          `UPDATE produtos SET nome=?, categoria_id=?, rendimento_total=?, unidade_rendimento=?, rendimento_unidades=?,
+           tempo_preparo=?, preco_venda=?, margem_lucro_produto=?, validade_dias=?, temp_congelado=?, tempo_congelado=?,
+           temp_refrigerado=?, tempo_refrigerado=?, temp_ambiente=?, tempo_ambiente=?,
+           modo_preparo=?, observacoes=? WHERE id=?`, [...params, editId]);
+        await db.runAsync('DELETE FROM produto_ingredientes WHERE produto_id = ?', [editId]);
+        await db.runAsync('DELETE FROM produto_preparos WHERE produto_id = ?', [editId]);
+        await db.runAsync('DELETE FROM produto_embalagens WHERE produto_id = ?', [editId]);
+      } else {
+        const result = await db.runAsync(
+          `INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades,
+           tempo_preparo, preco_venda, margem_lucro_produto, validade_dias, temp_congelado, tempo_congelado,
+           temp_refrigerado, tempo_refrigerado, temp_ambiente, tempo_ambiente,
+           modo_preparo, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, params);
+        produtoId = result.lastInsertRowId;
+      }
 
-    const returnTo = route.params?.returnTo;
-    if (returnTo) {
-      navigation.navigate(returnTo);
-    } else {
-      navigation.goBack();
+      for (const ing of ingredientes) {
+        await db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)',
+          [produtoId, ing.materia_prima_id, ing.quantidade_utilizada]);
+      }
+      for (const pp of produtoPreparos) {
+        await db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)',
+          [produtoId, pp.preparo_id, pp.quantidade_utilizada]);
+      }
+      for (const pe of produtoEmbalagens) {
+        await db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
+          [produtoId, pe.embalagem_id, pe.quantidade_utilizada]);
+      }
+
+      const returnTo = route.params?.returnTo;
+      if (returnTo) {
+        navigation.navigate(returnTo);
+      } else {
+        navigation.goBack();
+      }
+    } catch (e) {
+      allowExit.current = false;
+      Alert.alert('Erro ao salvar', 'Ocorreu um erro ao salvar o produto. Tente novamente.');
     }
   }
 
@@ -560,12 +613,12 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 960, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}>
+      <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 960, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}>
         <View style={isDesktop ? styles.desktopRow : undefined}>
         <View style={isDesktop ? styles.desktopLeftCol : undefined}>
         {/* Bloco 1: Informações do Produto */}
         <Card title="Informações do Produto">
-          <InputField label="Nome do Produto" value={form.nome} onChangeText={(v) => { setForm(p => ({ ...p, nome: v })); setErrors(p => ({ ...p, nome: undefined })); }} placeholder="Ex: Hambúrguer Artesanal" error={errors.nome} />
+          <InputField label="Nome do Produto *" value={form.nome} onChangeText={(v) => { setForm(p => ({ ...p, nome: v })); setErrors(p => ({ ...p, nome: undefined })); }} placeholder="Ex: Hambúrguer Artesanal" error={errors.nome} errorText="Informe o nome do produto" />
 
           <View style={styles.pickerContainer}>
             <Text style={styles.pickerLabel}>Categoria</Text>
@@ -616,12 +669,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <InputField
-                        label="Preço de Venda /un (R$)"
+                        label="Preço de Venda /un (R$) *"
                         value={form.preco_venda}
                         onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
                         keyboardType="numeric"
                         placeholder={precoSugerido > 0 ? precoSugerido.toFixed(2) : '0,00'}
                         error={errors.preco_venda}
+                        errorText="Informe o preço de venda"
                       />
                     </View>
                   </View>
@@ -638,12 +692,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <InputField
-                        label={`Preço por ${tipoVenda === 'kg' ? 'kg' : 'litro'} (R$)`}
+                        label={`Preço por ${tipoVenda === 'kg' ? 'kg' : 'litro'} (R$) *`}
                         value={form.preco_venda}
                         onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
                         keyboardType="numeric"
                         placeholder={precoSugerido > 0 ? precoSugerido.toFixed(2) : '0,00'}
                         error={errors.preco_venda}
+                        errorText="Informe o preço de venda"
                       />
                     </View>
                   </View>
@@ -732,11 +787,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
               .map(p => (
                 <TouchableOpacity
                   key={p.id}
-                  style={[styles.selListItem, novoPreparo.id === p.id && styles.selListItemSelected]}
-                  onPress={() => setNovoPreparo(prev => ({ ...prev, id: p.id }))}
+                  style={[styles.selListItem]}
+                  onPress={() => openQuantityPrompt('preparo', p)}
                 >
-                  <Text style={[styles.selListItemName, novoPreparo.id === p.id && styles.selListItemNameSelected]}>{p.nome}</Text>
-                  <Text style={[styles.selListItemDetail, novoPreparo.id === p.id && styles.selListItemDetailSelected]}>
+                  <Text style={[styles.selListItemName]}>{p.nome}</Text>
+                  <Text style={[styles.selListItemDetail]}>
                     {p.unidade_medida || 'g'} - {formatCurrency(p.custo_por_kg)}/kg
                   </Text>
                 </TouchableOpacity>
@@ -745,11 +800,6 @@ export default function ProdutoFormScreen({ route, navigation }) {
               <Text style={styles.listEmpty}>Nenhum preparo encontrado</Text>
             )}
           </ScrollView>
-          <View style={styles.addRow}>
-            <InputField style={{ flex: 1, marginRight: spacing.sm, marginBottom: 0 }} label={novoPreparo.id ? `Quantidade (${getSelectedPrepUnit()})` : 'Quantidade'}
-              value={novoPreparo.quantidade} onChangeText={(v) => setNovoPreparo(p => ({ ...p, quantidade: v }))} keyboardType="numeric" />
-            <TouchableOpacity style={styles.addBtn} onPress={addPreparo}><Text style={styles.addBtnText}>+</Text></TouchableOpacity>
-          </View>
           {prepAdicionado && <Text style={styles.feedbackText}>Preparo adicionado!</Text>}
 
           {produtoPreparos.length > 0 && (
@@ -816,11 +866,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
               .map(m => (
                 <TouchableOpacity
                   key={m.id}
-                  style={[styles.selListItem, novoIng.id === m.id && styles.selListItemSelected]}
-                  onPress={() => setNovoIng(p => ({ ...p, id: m.id }))}
+                  style={[styles.selListItem]}
+                  onPress={() => openQuantityPrompt('ingrediente', m)}
                 >
-                  <Text style={[styles.selListItemName, novoIng.id === m.id && styles.selListItemNameSelected]}>{m.nome}</Text>
-                  <Text style={[styles.selListItemDetail, novoIng.id === m.id && styles.selListItemDetailSelected]}>
+                  <Text style={[styles.selListItemName]}>{m.nome}</Text>
+                  <Text style={[styles.selListItemDetail]}>
                     {formatCurrency(m.preco_por_kg)}/{getLabelPrecoBase(m.unidade_medida).replace('Preço por ', '')}
                   </Text>
                 </TouchableOpacity>
@@ -830,11 +880,6 @@ export default function ProdutoFormScreen({ route, navigation }) {
             )}
           </ScrollView>
           )}
-          <View style={styles.addRow}>
-            <InputField style={{ flex: 1, marginRight: spacing.sm, marginBottom: 0 }} label={novoIng.id ? `Quantidade (${getSelectedIngUnit()})` : 'Quantidade'}
-              value={novoIng.quantidade} onChangeText={(v) => setNovoIng(p => ({ ...p, quantidade: v }))} keyboardType="numeric" />
-            <TouchableOpacity style={styles.addBtn} onPress={addIngrediente}><Text style={styles.addBtnText}>+</Text></TouchableOpacity>
-          </View>
           {ingAdicionado && <Text style={styles.feedbackText}>Insumo adicionado!</Text>}
 
           {/* Table inline */}
@@ -888,11 +933,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
               .map(e => (
                 <TouchableOpacity
                   key={e.id}
-                  style={[styles.selListItem, novaEmb.id === e.id && styles.selListItemSelected]}
-                  onPress={() => setNovaEmb(p => ({ ...p, id: e.id }))}
+                  style={[styles.selListItem]}
+                  onPress={() => openQuantityPrompt('embalagem', e)}
                 >
-                  <Text style={[styles.selListItemName, novaEmb.id === e.id && styles.selListItemNameSelected]}>{e.nome}</Text>
-                  <Text style={[styles.selListItemDetail, novaEmb.id === e.id && styles.selListItemDetailSelected]}>
+                  <Text style={[styles.selListItemName]}>{e.nome}</Text>
+                  <Text style={[styles.selListItemDetail]}>
                     {formatCurrency(e.preco_unitario)}/un
                   </Text>
                 </TouchableOpacity>
@@ -902,11 +947,6 @@ export default function ProdutoFormScreen({ route, navigation }) {
             )}
           </ScrollView>
           )}
-          <View style={styles.addRow}>
-            <InputField style={{ flex: 1, marginRight: spacing.sm, marginBottom: 0 }} label="Quantidade"
-              value={novaEmb.quantidade} onChangeText={(v) => setNovaEmb(p => ({ ...p, quantidade: v }))} keyboardType="numeric" />
-            <TouchableOpacity style={styles.addBtn} onPress={addEmbalagem}><Text style={styles.addBtnText}>+</Text></TouchableOpacity>
-          </View>
           {embAdicionado && <Text style={styles.feedbackText}>Embalagem adicionada!</Text>}
 
           {produtoEmbalagens.length > 0 && (
@@ -1011,12 +1051,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </View>
 
               <InputField
-                label="Preço de Venda (R$)"
+                label="Preço de Venda (R$) *"
                 value={form.preco_venda}
                 onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
                 keyboardType="numeric"
                 placeholder={precoSugerido.toFixed(2)}
                 error={errors.preco_venda}
+                errorText="Informe o preço de venda"
               />
               {form.preco_venda && parseNum(form.preco_venda) !== precoSugerido && precoSugerido > 0 && (
                 <Text style={styles.precoHint}>
@@ -1450,6 +1491,43 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     loadCategorias();
                   }}>
                     <Text style={styles.modalSaveText}>Criar e Selecionar</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Modal Quantity Prompt (inline add) */}
+      <Modal visible={!!quantityPrompt} transparent animationType="fade" onRequestClose={() => setQuantityPrompt(null)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setQuantityPrompt(null)}>
+          <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { maxWidth: 360 }]} onPress={() => {}}>
+            {quantityPrompt && (
+              <>
+                <Text style={styles.modalTitle}>{quantityPrompt.nome}</Text>
+                <Text style={{ fontSize: fonts.small, color: colors.textSecondary, textAlign: 'center', marginTop: -spacing.sm, marginBottom: spacing.md }}>
+                  {quantityPrompt.detalhe}
+                </Text>
+                <Text style={styles.modalLabel}>Quantidade ({quantityPrompt.unidade})</Text>
+                <TextInput
+                  ref={qtyInputRef}
+                  style={styles.modalInput}
+                  value={quantityPrompt.quantidade}
+                  onChangeText={(v) => setQuantityPrompt(prev => prev ? { ...prev, quantidade: v } : null)}
+                  keyboardType="numeric"
+                  placeholder="Ex: 100"
+                  placeholderTextColor={colors.disabled}
+                  autoFocus
+                  onSubmitEditing={confirmQuantityPrompt}
+                  returnKeyType="done"
+                />
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setQuantityPrompt(null)}>
+                    <Text style={styles.modalCancelText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.modalSaveBtn} onPress={confirmQuantityPrompt}>
+                    <Text style={styles.modalSaveText}>Adicionar</Text>
                   </TouchableOpacity>
                 </View>
               </>

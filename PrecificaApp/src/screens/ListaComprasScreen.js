@@ -174,15 +174,45 @@ export default function ListaComprasScreen({ navigation }) {
       // Load raw products for combo ingredient lookup
       const allProdsRaw = await db.getAllAsync('SELECT id, rendimento_unidades FROM produtos');
 
+      // Load all embalagens for combo embalagem items (embalagens are not matérias-primas)
+      const allEmbalagens = await db.getAllAsync('SELECT * FROM embalagens');
+      const embMap = {};
+      allEmbalagens.forEach(e => { embMap[e.id] = e; });
+
       for (const prod of produtos) {
         const unidades = parseInt(quantidades[prod.id]) || 0;
         if (unidades <= 0) continue;
 
         if (prod.isCombo) {
-          // Combo: break down into component products
+          // Combo: break down into component items based on tipo
           const comboItens = prod.comboItens || [];
           for (const item of comboItens) {
-            addProdutoIngredientes(item.item_id, (item.quantidade || 1) * unidades);
+            const qty = (item.quantidade || 1) * unidades;
+            if (item.tipo === 'produto') {
+              // produto → resolve its ingredients recursively
+              addProdutoIngredientes(item.item_id, qty);
+            } else if (item.tipo === 'materia_prima') {
+              // Direct matéria-prima reference
+              const mp = mpMap[item.item_id];
+              if (mp) {
+                const qtGramas = converterParaBase(qty, mp.unidade_medida || 'g');
+                addToConsolidado(item.item_id, qtGramas);
+              }
+            } else if (item.tipo === 'preparo') {
+              // Preparo → resolve its ingredients
+              const prepIngs = prepIngsByPrep[item.item_id] || [];
+              const preparoInfo = preparoMap[item.item_id];
+              const rendPrep = preparoInfo?.rendimento_total || 1;
+              const proporcao = qty / rendPrep;
+              for (const pi of prepIngs) {
+                const mp = mpMap[pi.materia_prima_id];
+                if (!mp) continue;
+                const qtIngPrep = pi.quantidade_utilizada * proporcao;
+                const qtGramas = converterParaBase(qtIngPrep, mp.unidade_medida || 'g');
+                addToConsolidado(pi.materia_prima_id, qtGramas);
+              }
+            }
+            // Note: tipo === 'embalagem' items are packaging, not raw ingredients for shopping list
           }
         } else {
           addProdutoIngredientes(prod.id, unidades);
