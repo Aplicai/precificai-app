@@ -8,6 +8,7 @@ import PickerSelect from '../components/PickerSelect';
 import InfoTooltip from '../components/InfoTooltip';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useIsFocused } from '@react-navigation/native';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import {
   UNIDADES_MEDIDA,
@@ -25,6 +26,7 @@ const CATEGORY_COLORS = [
 export default function PreparoFormScreen({ route, navigation }) {
   const editId = route.params?.id;
   const isFocused = useIsFocused();
+  const { isDesktop } = useResponsiveLayout();
   const [form, setForm] = useState({ nome: '', rendimento_total: '', unidade_medida: 'g', categoria_id: null, modo_preparo: '', observacoes: '', validade_dias: '', temp_congelado: '', tempo_congelado: '', temp_refrigerado: '', tempo_refrigerado: '', temp_ambiente: '', tempo_ambiente: '' });
   const [showInfoAdicional, setShowInfoAdicional] = useState(false); // collapsed by default for compactness
   const [ingredientes, setIngredientes] = useState([]);
@@ -289,7 +291,7 @@ export default function PreparoFormScreen({ route, navigation }) {
 
   return (
     <View style={styles.wrapper}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}>
+      <ScrollView style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 600, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}>
 
         {/* Bloco 1 — Dados do Preparo */}
         <Card title="Dados do Preparo">

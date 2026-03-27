@@ -7,6 +7,7 @@ import PickerSelect from '../components/PickerSelect';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { useIsFocused } from '@react-navigation/native';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { calcPrecoUnitarioEmbalagem, formatCurrency } from '../utils/calculations';
 
 const UNIDADES_EMBALAGEM = [
@@ -18,6 +19,7 @@ const UNIDADES_EMBALAGEM = [
 export default function EmbalagemFormScreen({ route, navigation }) {
   const editId = route.params?.id;
   const isFocused = useIsFocused();
+  const { isDesktop } = useResponsiveLayout();
   const [form, setForm] = useState({
     nome: '', marca: '', categoria_id: null,
     quantidade: '', unidade_medida: 'Unidades', preco_embalagem: '',
@@ -217,7 +219,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={styles.wrapper}>
-      <View style={styles.content}>
+      <View style={[styles.content, isDesktop && { maxWidth: 600, alignSelf: 'center', width: '100%' }]}>
 
         {/* Nome da embalagem */}
         <InputField

@@ -78,13 +78,9 @@ export default function ConfiguracaoScreen() {
     const config = configs?.[0];
     if (config) {
       setConfigId(config.id);
-      // Treat the DB trigger default (0.15) as "not yet configured" so field starts empty
       const lucro = config.lucro_desejado;
-      if (lucro && lucro !== 0.15) {
+      if (lucro && lucro > 0) {
         setLucroDesejado(String((lucro * 100).toFixed(1)));
-      } else if (lucro === 0.15) {
-        // Default from trigger — show empty to force user to explicitly set
-        setLucroDesejado('');
       }
       setMargemSeguranca(String(((config.margem_seguranca || 0) * 100).toFixed(1)));
     }

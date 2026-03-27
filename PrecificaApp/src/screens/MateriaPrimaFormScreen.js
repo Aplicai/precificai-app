@@ -9,6 +9,7 @@ import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import InfoTooltip from '../components/InfoTooltip';
 import { useIsFocused } from '@react-navigation/native';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import {
   UNIDADES_MEDIDA,
   calcPrecoBase,
@@ -31,6 +32,7 @@ function getCategoryColor(index) {
 export default function MateriaPrimaFormScreen({ route, navigation }) {
   const editId = route.params?.id;
   const returnTo = route.params?.returnTo;
+  const { isDesktop } = useResponsiveLayout();
 
   function goBackSafe() {
     if (returnTo) {
@@ -331,7 +333,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
 
   return (
     <KeyboardAvoidingView style={styles.wrapper} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 600, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}>
       <View>
 
         {/* Nome do insumo */}

@@ -8,8 +8,7 @@ export async function getFinanceiroStatus() {
   try {
     const configs = await db.getAllAsync('SELECT * FROM configuracao');
     configData = configs?.[0];
-    // Lucro only counts as configured if user explicitly set it (0.15 is the trigger default)
-    lucroOk = configData != null && configData.lucro_desejado > 0 && configData.lucro_desejado !== 0.15;
+    lucroOk = configData != null && configData.lucro_desejado > 0;
   } catch (err) {
     console.warn('Error checking config:', err.message);
   }
