@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { supabase } from '../config/supabase';
+import { resetDatabase } from '../database/database';
 
 const AuthContext = createContext({});
 
@@ -39,6 +40,7 @@ export function AuthProvider({ children }) {
   };
 
   const signOut = async () => {
+    resetDatabase(); // Clear cached data to prevent cross-user leakage
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   };

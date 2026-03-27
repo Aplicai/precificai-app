@@ -111,7 +111,25 @@
       "Read(//c/Users/erick/.claude/skills/shield/**)",
       "Bash(gitleaks version:*)",
       "Bash(trivy --version)",
-      "Bash(winget install:*)"
+      "Bash(winget install:*)",
+      "Bash(findstr :8083)",
+      "Bash(taskkill /PID 16016 /F)",
+      "Bash(cmd.exe /c \"taskkill /PID 16016 /F\")",
+      "Bash(powershell -Command \"Stop-Process -Id 16016 -Force\")",
+      "Bash(powershell -Command \"Stop-Process -Id 25152 -Force -ErrorAction SilentlyContinue; Stop-Process -Id 16264 -Force -ErrorAction SilentlyContinue\")",
+      "Bash(powershell -Command \"Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force\")",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(taskkill /F /PID 21392 /PID 28656 /PID 22880 /PID 11344)",
+      "Bash(findstr :8084)",
+      "Bash(taskkill /F /PID 21392)",
+      "Bash(wmic process:*)",
+      "Bash(taskkill /F /T /PID 21392)",
+      "Bash(findstr LISTENING)",
+      "Bash(taskkill //F //PID 21392)",
+      "Bash(grep -oP \"unidade_medida: ''''[^'''']+''''\" templates.js)",
+      "Bash(taskkill //PID 31240 //F)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" auth status)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" repo create precificai-site --public --source=. --remote=origin --push)"
     ]
   }
 }

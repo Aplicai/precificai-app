@@ -8,20 +8,20 @@ const NAV_SECTIONS = [
   {
     items: [
       { key: 'home', label: 'Painel Geral', icon: 'home', iconSet: 'feather', tab: 'Início' },
-      { key: 'insumos', label: 'Insumos', icon: 'shopping-bag', iconSet: 'feather', tab: 'Insumos' },
-      { key: 'preparos', label: 'Preparos', icon: 'pot-steam-outline', iconSet: 'material', tab: 'Preparos' },
-      { key: 'embalagens', label: 'Embalagens', icon: 'package', iconSet: 'feather', tab: 'Embalagens' },
-      { key: 'produtos', label: 'Produtos', icon: 'tag', iconSet: 'feather', tab: 'Produtos' },
+      { key: 'insumos', label: 'Insumos', icon: 'shopping-bag', iconSet: 'feather', tab: 'Insumos', screen: 'MateriasPrimas' },
+      { key: 'preparos', label: 'Preparos', icon: 'pot-steam-outline', iconSet: 'material', tab: 'Preparos', screen: 'Preparos' },
+      { key: 'embalagens', label: 'Embalagens', icon: 'package', iconSet: 'feather', tab: 'Embalagens', screen: 'Embalagens' },
+      { key: 'produtos', label: 'Produtos', icon: 'tag', iconSet: 'feather', tab: 'Produtos', screen: 'ProdutosList' },
+      { key: 'combos', label: 'Combos', icon: 'layers', iconSet: 'feather', tab: 'Produtos', screen: 'CombosScreen' },
     ],
   },
   {
     items: [
       { key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign', iconSet: 'feather', tab: 'Ferramentas', screen: 'FinanceiroMain' },
       { key: 'delivery', label: 'Delivery', icon: 'truck', iconSet: 'feather', tab: 'Ferramentas', screen: 'DeliveryHub' },
-      { key: 'bcg', label: 'Engenharia de Cardápio', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Ferramentas', screen: 'MatrizBCG' },
+      { key: 'bcg', label: 'Eng. de Cardápio', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Ferramentas', screen: 'MatrizBCG' },
       { key: 'precos', label: 'Atualizar Preços', icon: 'refresh-cw', iconSet: 'feather', tab: 'Ferramentas', screen: 'AtualizarPrecos' },
-      { key: 'simulador', label: 'Simulador E se?', icon: 'zap', iconSet: 'feather', tab: 'Ferramentas', screen: 'Simulador' },
-      { key: 'metavendas', label: 'Meta de Vendas', icon: 'target', iconSet: 'feather', tab: 'Ferramentas', screen: 'MetaVendas' },
+      { key: 'simulador', label: 'Simulador', icon: 'zap', iconSet: 'feather', tab: 'Ferramentas', screen: 'Simulador' },
       { key: 'relatorio', label: 'Relatório Simples', icon: 'file-text', iconSet: 'feather', tab: 'Ferramentas', screen: 'RelatorioSimples' },
       { key: 'fornecedores', label: 'Fornecedores', icon: 'users', iconSet: 'feather', tab: 'Ferramentas', screen: 'Fornecedores' },
       { key: 'listacompras', label: 'Lista de Compras', icon: 'shopping-cart', iconSet: 'feather', tab: 'Ferramentas', screen: 'ListaCompras' },
@@ -31,6 +31,11 @@ const NAV_SECTIONS = [
   {
     items: [
       { key: 'config', label: 'Configurações', icon: 'settings', iconSet: 'feather', tab: 'Ferramentas', screen: 'Configuracoes' },
+    ],
+  },
+  {
+    items: [
+      { key: 'suporte', label: 'Suporte', icon: 'help-circle', iconSet: 'feather', tab: 'Ferramentas', screen: 'Suporte' },
     ],
   },
 ];
@@ -47,7 +52,13 @@ function getActiveKey(navState) {
   if (tabName === 'Insumos') return 'insumos';
   if (tabName === 'Preparos') return 'preparos';
   if (tabName === 'Embalagens') return 'embalagens';
-  if (tabName === 'Produtos') return 'produtos';
+  if (tabName === 'Produtos') {
+    const stackState = tabRoute.state;
+    const stackRoute = stackState?.routes?.[stackState.index];
+    const screenName = stackRoute?.name;
+    if (screenName === 'CombosScreen') return 'combos';
+    return 'produtos';
+  }
 
   // Ferramentas sub-screens
   if (tabName === 'Ferramentas') {
@@ -59,13 +70,13 @@ function getActiveKey(navState) {
     if (screenName === 'MatrizBCG' || screenName === 'BCGProdutoForm') return 'bcg';
     if (screenName === 'AtualizarPrecos') return 'precos';
     if (screenName === 'Simulador') return 'simulador';
-    if (screenName === 'MetaVendas') return 'metavendas';
     if (screenName === 'RelatorioSimples') return 'relatorio';
     if (screenName === 'Fornecedores') return 'fornecedores';
     if (screenName === 'ListaCompras') return 'listacompras';
     if (screenName === 'KitInicio') return 'kitinicio';
     if (screenName === 'ExportPDF') return 'exportpdf';
     if (screenName === 'Configuracoes' || screenName === 'Perfil') return 'config';
+    if (screenName === 'Suporte') return 'suporte';
     return 'home'; // default for MaisMain or unknown
   }
 
@@ -73,7 +84,7 @@ function getActiveKey(navState) {
 }
 
 // Web-native clickable button that works reliably with mouse clicks
-function SidebarButton({ onPress, style, children }) {
+function SidebarButton({ onPress, style, children, tooltip }) {
   if (Platform.OS === 'web') {
     const flat = StyleSheet.flatten(style) || {};
     // Convert React Native style to CSS-compatible style
@@ -104,7 +115,7 @@ function SidebarButton({ onPress, style, children }) {
       boxSizing: 'border-box',
     };
     return (
-      <div onClick={(e) => { e.stopPropagation(); onPress(); }} style={cssStyle}>
+      <div onClick={(e) => { e.stopPropagation(); onPress(); }} style={cssStyle} title={tooltip || undefined}>
         {children}
       </div>
     );
@@ -125,18 +136,20 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
         params: { _t: Date.now() },
       });
     } else {
-      // Reset the tab stack to its root screen
-      navigation.dispatch(
-        CommonActions.reset({
-          index: navState.index,
-          routes: navState.routes.map(route => {
-            if (route.name === item.tab) {
-              return { ...route, state: undefined }; // Reset stack
-            }
-            return route;
-          }),
-        })
-      );
+      // Navigate to tab root
+      try {
+        navigation.dispatch(
+          CommonActions.reset({
+            index: navState?.index || 0,
+            routes: (navState?.routes || []).map(route => {
+              if (route.name === item.tab) {
+                return { ...route, state: undefined };
+              }
+              return route;
+            }),
+          })
+        );
+      } catch(e) {}
       navigation.navigate(item.tab);
     }
   };
@@ -162,8 +175,8 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
         )}
       </View>
 
-      {/* Nav items */}
-      <ScrollView style={styles.nav} showsVerticalScrollIndicator={false}>
+      {/* Nav items - use div on web for visible scrollbar */}
+      <ScrollView style={[styles.nav, Platform.OS === 'web' && { overflowY: 'auto' }]} showsVerticalScrollIndicator={true}>
         {NAV_SECTIONS.map((section, sIdx) => (
           <View key={sIdx}>
             {sIdx > 0 && <View style={styles.divider} />}
@@ -175,6 +188,7 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
                 <SidebarButton
                   key={item.key}
                   onPress={() => handlePress(item)}
+                  tooltip={collapsed ? item.label : undefined}
                   style={[
                     styles.navItem,
                     isActive && styles.navItemActive,
@@ -210,6 +224,7 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
         <SidebarButton
           style={[styles.collapseBtn, collapsed && styles.navItemCollapsed]}
           onPress={onToggleCollapse}
+          tooltip={collapsed ? 'Expandir menu' : undefined}
         >
           <Feather
             name={collapsed ? 'chevrons-right' : 'chevrons-left'}

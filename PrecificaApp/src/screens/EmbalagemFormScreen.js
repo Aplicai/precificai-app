@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ScrollView, View, StyleSheet, TouchableOpacity, Text, Alert, Modal, TextInput, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { ScrollView, View, StyleSheet, TouchableOpacity, Text, Alert, Modal, TextInput, Keyboard, TouchableWithoutFeedback, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import InputField from '../components/InputField';
@@ -28,6 +28,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
   const [novaCatNome, setNovaCatNome] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [errors, setErrors] = useState({});
+  const [historicoPrecos, setHistoricoPrecos] = useState([]);
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
   const pendingNavAction = useRef(null);
 
@@ -66,12 +67,10 @@ export default function EmbalagemFormScreen({ route, navigation }) {
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (e) => {
       if (allowExit.current) return;
+      if (editId) return; // Auto-save handles edit mode
 
       const f = formRef.current;
-      // Se o form está totalmente vazio (novo sem preencher nada), deixa sair
-      if (!f.nome.trim() && !f.quantidade && !f.preco_embalagem) {
-        if (!editId) return;
-      }
+      if (!f.nome.trim() && !f.quantidade && !f.preco_embalagem) return;
 
       if (!isFormComplete(f)) {
         e.preventDefault();
@@ -122,6 +121,11 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         unidade_medida: item.unidade_medida || 'Unidades',
         preco_embalagem: String(item.preco_embalagem || ''),
       });
+      // Load price history
+      try {
+        const hist = await db.getAllAsync('SELECT * FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC LIMIT 10', [editId]);
+        setHistoricoPrecos((hist || []).reverse());
+      } catch(e) {}
       // Marca como carregado após setar o form para evitar auto-save imediato
       setTimeout(() => setLoaded(true), 100);
     } else {
@@ -311,12 +315,90 @@ export default function EmbalagemFormScreen({ route, navigation }) {
           </View>
         )}
 
+        {/* Histórico de Preço */}
+        {editId && historicoPrecos.length > 1 && (
+          <View style={styles.historicoCard}>
+            <Text style={styles.historicoTitle}>📈 Histórico de Preço</Text>
+            {(() => {
+              const sorted = [...historicoPrecos].reverse();
+              const prices = sorted.map(x => x.valor_pago);
+              const min = Math.min(...prices);
+              const max = Math.max(...prices);
+              const range = max - min || 1;
+              const ultimo = prices[prices.length - 1];
+              const penultimo = prices.length >= 2 ? prices[prices.length - 2] : ultimo;
+              const variacao = penultimo > 0 ? ((ultimo - penultimo) / penultimo * 100) : 0;
+              return (
+                <>
+                  <View style={styles.historicoBars}>
+                    {sorted.map((h, i) => {
+                      const p = h.valor_pago;
+                      const height = Math.max(12, ((p - min) / range) * 56 + 12);
+                      const isLast = i === sorted.length - 1;
+                      const data = h.data ? new Date(h.data).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit'}) : '';
+                      return (
+                        <View key={h.id || i} style={styles.historicoBarWrapper}>
+                          <Text style={styles.historicoBarPrice}>{formatCurrency(p)}</Text>
+                          <View style={[styles.historicoBar, { height, backgroundColor: isLast ? colors.primary : colors.primary+'30' }]} />
+                          {data ? <Text style={styles.historicoBarDate}>{data}</Text> : null}
+                          <TouchableOpacity
+                            style={styles.historicoDeleteBtn}
+                            onPress={async () => {
+                              if (Platform.OS === 'web') {
+                                const ok = window.confirm('Deseja excluir este registro de preço do histórico?');
+                                if (ok) {
+                                  try {
+                                    const db = await getDatabase();
+                                    await db.runAsync('DELETE FROM historico_precos WHERE id = ?', [h.id]);
+                                    setHistoricoPrecos(prev => prev.filter(x => x.id !== h.id));
+                                  } catch (e) {}
+                                }
+                              } else {
+                                Alert.alert('Excluir registro', 'Deseja excluir este registro de preço?', [
+                                  { text: 'Cancelar', style: 'cancel' },
+                                  { text: 'Excluir', style: 'destructive', onPress: async () => {
+                                    try { const db = await getDatabase(); await db.runAsync('DELETE FROM historico_precos WHERE id = ?', [h.id]); setHistoricoPrecos(prev => prev.filter(x => x.id !== h.id)); } catch(e) {}
+                                  }}
+                                ]);
+                              }
+                            }}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                            {...(Platform.OS === 'web' ? { title: 'Excluir este registro de preço' } : {})}
+                          >
+                            <Feather name="x" size={9} color={colors.error + '80'} />
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })}
+                  </View>
+                  <Text style={{ fontSize: 11, color: variacao > 0 ? colors.error : variacao < 0 ? colors.success : colors.textSecondary, fontFamily: fontFamily.semiBold, marginTop: 8 }}>
+                    {variacao > 0 ? '▲ Subiu' : variacao < 0 ? '▼ Caiu' : '= Estável'} {Math.abs(variacao).toFixed(1)}%
+                  </Text>
+                </>
+              );
+            })()}
+          </View>
+        )}
+
         {/* Excluir */}
         {editId && (
-          <TouchableOpacity style={styles.btnDelete} onPress={solicitarExclusao}>
-            <Feather name="trash-2" size={13} color={colors.error} style={{ marginRight: 5 }} />
-            <Text style={styles.btnDeleteText}>Excluir Embalagem</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.md, marginTop: spacing.sm }}>
+            {isFormComplete(form) && <TouchableOpacity style={[styles.btnDelete, { borderColor: colors.primary + '30' }]} onPress={async () => {
+              const f = formRef.current;
+              try { await autoSave(); } catch(e) {}
+              const db = await getDatabase();
+              const result = await db.runAsync('INSERT INTO embalagens (nome, marca, categoria_id, quantidade, unidade_medida, preco_embalagem, preco_unitario) VALUES (?,?,?,?,?,?,?)',
+                [f.nome.trim() + ' (cópia)', f.marca, f.categoria_id, parseFloat(f.quantidade) || 0, f.unidade_medida, parseFloat(String(f.preco_embalagem).replace(',','.')) || 0, parseFloat(f.preco_unitario) || 0]);
+              if (result?.lastInsertRowId) { allowExit.current = true; navigation.replace('EmbalagemForm', { id: result.lastInsertRowId }); }
+            }}>
+              <Feather name="copy" size={13} color={colors.primary} style={{ marginRight: 5 }} />
+              <Text style={[styles.btnDeleteText, { color: colors.primary }]}>Duplicar</Text>
+            </TouchableOpacity>}
+            <TouchableOpacity style={styles.btnDelete} onPress={solicitarExclusao}>
+              <Feather name="trash-2" size={13} color={colors.error} style={{ marginRight: 5 }} />
+              <Text style={styles.btnDeleteText}>Excluir</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
       </View>
@@ -339,7 +421,29 @@ export default function EmbalagemFormScreen({ route, navigation }) {
               )}
             </View>
           )}
-          <TouchableOpacity style={styles.saveBackBtn} onPress={() => { allowExit.current = true; triggerAutoSave(); setTimeout(() => navigation.goBack(), 200); }}>
+          <TouchableOpacity style={styles.saveBackBtn} onPress={async () => {
+            allowExit.current = true;
+            // Save price to history
+            const price = parseFloat(String(formRef.current.preco_embalagem).replace(',','.')) || 0;
+            if (price > 0 && editId) {
+              try {
+                const db = await getDatabase();
+                const lastHist = await db.getAllAsync('SELECT valor_pago FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC LIMIT 1', [editId]);
+                if (!lastHist?.[0] || Math.abs(lastHist[0].valor_pago - price) > 0.001) {
+                  await db.runAsync('INSERT INTO historico_precos (materia_prima_id, valor_pago, preco_por_kg) VALUES (?,?,?)', [editId, price, 0]);
+                }
+              } catch(e) {}
+            }
+            autoSave();
+            setTimeout(() => {
+              const returnTo = route.params?.returnTo;
+              if (returnTo) {
+                navigation.navigate(returnTo);
+              } else {
+                navigation.navigate('Embalagens');
+              }
+            }, 200);
+          }}>
             <Feather name="check" size={16} color="#fff" />
             <Text style={styles.saveBackBtnText}>Salvar e voltar</Text>
           </TouchableOpacity>
@@ -507,9 +611,10 @@ const styles = StyleSheet.create({
 
   // Edit footer with save+back
   editFooter: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
     backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border,
+    gap: spacing.sm,
   },
   saveBackBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -649,4 +754,14 @@ const styles = StyleSheet.create({
     color: colors.error, fontFamily: fontFamily.semiBold, fontWeight: '600',
     fontSize: fonts.regular,
   },
+
+  // Histórico de preço
+  historicoCard: { backgroundColor: colors.surface, borderRadius: borderRadius.md, padding: spacing.sm, marginTop: spacing.sm },
+  historicoTitle: { fontSize: 13, fontFamily: fontFamily.semiBold, color: colors.text, marginBottom: 8 },
+  historicoBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, minHeight: 100, paddingBottom: 4, backgroundColor: colors.background, borderRadius: borderRadius.sm, padding: spacing.sm },
+  historicoBarWrapper: { alignItems: 'center', flex: 1, maxWidth: 64 },
+  historicoBar: { width: '70%', maxWidth: 28, borderRadius: 4, minHeight: 8 },
+  historicoBarPrice: { fontSize: 10, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text, marginBottom: 4, textAlign: 'center' },
+  historicoBarDate: { fontSize: 9, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 3 },
+  historicoDeleteBtn: { width: 16, height: 16, borderRadius: 8, backgroundColor: colors.error + '12', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
 });

@@ -41,9 +41,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   title: {
-    fontSize: 17,
-    fontWeight: '700',
-    fontFamily: fontFamily.bold,
-    color: colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+    fontFamily: fontFamily.semiBold,
+    color: colors.text,
   },
 });

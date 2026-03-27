@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Modal } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -11,8 +12,15 @@ export default function RegisterScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(false);
 
   const handleRegister = async () => {
+    if (!acceptedTerms) {
+      setError('Você precisa aceitar os termos para criar sua conta.');
+      return;
+    }
     if (!email.trim() || !password.trim()) {
       setError('Preencha todos os campos');
       return;
@@ -101,7 +109,32 @@ export default function RegisterScreen({ navigation }) {
             placeholderTextColor={colors.disabled}
           />
 
-          <TouchableOpacity style={[styles.primaryBtn, { marginTop: 24 }]} onPress={handleRegister} disabled={loading} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'flex-start', marginTop: 12, marginBottom: 8 }}
+            onPress={() => setAcceptedTerms(!acceptedTerms)}
+            activeOpacity={0.7}
+          >
+            <View style={{
+              width: 20, height: 20, borderRadius: 4,
+              borderWidth: 2, borderColor: acceptedTerms ? colors.primary : colors.border,
+              backgroundColor: acceptedTerms ? colors.primary : 'transparent',
+              alignItems: 'center', justifyContent: 'center', marginRight: 10, marginTop: 2,
+            }}>
+              {acceptedTerms && <Feather name="check" size={14} color="#fff" />}
+            </View>
+            <Text style={{ flex: 1, fontSize: 12, color: colors.textSecondary, fontFamily: fontFamily.regular, lineHeight: 18 }}>
+              Li e aceito os{' '}
+              <Text style={{ color: colors.primary, textDecorationLine: 'underline' }} onPress={() => setShowTerms(true)}>
+                Termos de Uso
+              </Text>
+              {' '}e a{' '}
+              <Text style={{ color: colors.primary, textDecorationLine: 'underline' }} onPress={() => setShowPrivacy(true)}>
+                Política de Privacidade
+              </Text>
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.primaryBtn, { marginTop: 24, opacity: acceptedTerms ? 1 : 0.5 }]} onPress={handleRegister} disabled={loading || !acceptedTerms} activeOpacity={0.8}>
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
@@ -117,6 +150,58 @@ export default function RegisterScreen({ navigation }) {
           </View>
         </View>
       </ScrollView>
+
+      {/* Terms of Use Modal */}
+      <Modal visible={showTerms} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Termos de Uso</Text>
+            <ScrollView style={styles.modalScroll}>
+              <Text style={styles.modalText}>
+                {'TERMOS DE USO - PRECIFICAÍ\n\n' +
+                '1. ACEITAÇÃO DOS TERMOS\nAo utilizar o Precificaí, você concorda com estes termos.\n\n' +
+                '2. DESCRIÇÃO DO SERVIÇO\nO Precificaí é uma ferramenta de precificação para negócios de alimentação.\n\n' +
+                '3. CADASTRO\nVocê é responsável pela veracidade das informações cadastradas.\n\n' +
+                '4. USO DO SERVIÇO\nO serviço é destinado exclusivamente para fins de gestão e precificação.\n\n' +
+                '5. LIMITAÇÃO DE RESPONSABILIDADE\nO Precificaí não se responsabiliza por decisões comerciais tomadas com base nos cálculos.\n\n' +
+                '6. PROPRIEDADE INTELECTUAL\nTodo o conteúdo do app pertence à Precificaí.\n\n' +
+                '7. CANCELAMENTO E RETENÇÃO DE DADOS\nVocê pode cancelar sua conta a qualquer momento nas configurações. Após a exclusão, seus dados serão retidos por 30 (trinta) dias para fins de auditoria e cumprimento de obrigações legais, conforme previsto na LGPD (Lei 13.709/2018, Art. 16). Após esse período, todos os dados pessoais serão eliminados definitivamente dos nossos servidores.\n\n' +
+                '8. ALTERAÇÕES\nReservamo-nos o direito de alterar estes termos.\n\n' +
+                'Última atualização: Março 2026'}
+              </Text>
+            </ScrollView>
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowTerms(false)} activeOpacity={0.8}>
+              <Text style={styles.modalCloseBtnText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Privacy Policy Modal */}
+      <Modal visible={showPrivacy} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Política de Privacidade</Text>
+            <ScrollView style={styles.modalScroll}>
+              <Text style={styles.modalText}>
+                {'POLÍTICA DE PRIVACIDADE - PRECIFICAÍ\n\n' +
+                '1. DADOS COLETADOS\nColetamos: email, nome do negócio, dados financeiros inseridos por você.\n\n' +
+                '2. USO DOS DADOS\nSeus dados são usados exclusivamente para o funcionamento do app.\n\n' +
+                '3. ARMAZENAMENTO\nOs dados são armazenados de forma segura em servidores Supabase.\n\n' +
+                '4. COMPARTILHAMENTO\nNão compartilhamos seus dados com terceiros.\n\n' +
+                '5. LGPD\nEm conformidade com a Lei Geral de Proteção de Dados (Lei 13.709/2018), você tem direito a: acessar, corrigir, excluir e portar seus dados. A base legal para o tratamento dos dados é o consentimento do titular (Art. 7°, I) e a execução de contrato (Art. 7°, V).\n\n' +
+                '6. EXCLUSÃO E RETENÇÃO DE DADOS\nVocê pode solicitar a exclusão da sua conta a qualquer momento. Após a solicitação, os dados serão retidos por 30 (trinta) dias para fins de auditoria, cumprimento de obrigações legais e exercício regular de direitos (LGPD, Art. 16, I e II). Decorrido esse prazo, todos os dados pessoais serão eliminados definitivamente.\n\n' +
+                '7. COOKIES\nUtilizamos apenas cookies essenciais para funcionamento.\n\n' +
+                '8. CONTATO\nPara questões sobre privacidade: suporte@precificaiapp.com\n\n' +
+                'Última atualização: Março 2026'}
+              </Text>
+            </ScrollView>
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowPrivacy(false)} activeOpacity={0.8}>
+              <Text style={styles.modalCloseBtnText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -143,4 +228,11 @@ const styles = StyleSheet.create({
   errorText: { backgroundColor: '#fef2f2', color: '#dc2626', fontSize: 13, padding: 10, borderRadius: borderRadius.sm, textAlign: 'center', marginBottom: 8, marginTop: 8 },
   successIcon: { fontSize: 48, color: colors.success, textAlign: 'center', marginBottom: 12 },
   successText: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 24, fontFamily: fontFamily.regular },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContent: { backgroundColor: '#fff', borderRadius: borderRadius.xl, padding: spacing.lg, maxWidth: 500, width: '100%', maxHeight: '80%' },
+  modalTitle: { fontSize: 18, fontWeight: '700', fontFamily: fontFamily.bold, color: colors.text, textAlign: 'center', marginBottom: 16 },
+  modalScroll: { marginBottom: 16 },
+  modalText: { fontSize: 13, color: colors.textSecondary, fontFamily: fontFamily.regular, lineHeight: 20 },
+  modalCloseBtn: { backgroundColor: colors.primary, borderRadius: borderRadius.md, paddingVertical: 12, alignItems: 'center' },
+  modalCloseBtnText: { color: '#fff', fontSize: 15, fontWeight: '600', fontFamily: fontFamily.semiBold },
 });

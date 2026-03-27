@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
@@ -28,29 +28,57 @@ export default function KitInicioScreen({ navigation, route }) {
   const [done, setDone] = useState(false);
 
   function navegarAposKit() {
-    if (isSetup) {
-      navigation.replace('Onboarding');
-    } else {
-      navigation.goBack();
+    try {
+      if (isSetup) {
+        navigation.replace('Onboarding');
+      } else {
+        navigation.goBack();
+      }
+    } catch (e) {
+      // Fallback: se replace falhar, tentar navigate
+      navigation.navigate('Onboarding');
     }
   }
 
   async function aplicarKit() {
-    if (!selected || selected === 'outro') {
+    if (!selected) return;
+
+    if (selected === 'outro') {
       navegarAposKit();
       return;
     }
 
-    // Se não é setup (está nas configurações), avisar que vai resetar
+    // Se não é setup (está nas configurações), avisar que vai resetar com dupla confirmação
     if (!isSetup) {
-      Alert.alert(
-        '⚠️ Atenção',
-        'Ao trocar o kit de início, todos os insumos, categorias, preparos, produtos e embalagens atuais serão excluídos e o app será reiniciado com os dados do novo segmento.\n\nDeseja continuar?',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { text: 'Sim, resetar', style: 'destructive', onPress: () => executarKit(true) },
-        ]
-      );
+      if (Platform.OS === 'web') {
+        const confirm1 = window.confirm('Atenção: Aplicar este kit vai substituir todos os dados atuais do app (insumos, categorias, etc). Deseja continuar?');
+        if (!confirm1) return;
+        const confirm2 = window.confirm('Confirmação Final: Tem certeza? Esta ação não pode ser desfeita.');
+        if (!confirm2) return;
+        executarKit(true);
+      } else {
+        Alert.alert(
+          'Atenção',
+          'Aplicar este kit vai substituir todos os dados atuais do app (insumos, categorias, etc). Deseja continuar?',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+              text: 'Sim, continuar',
+              style: 'destructive',
+              onPress: () => {
+                Alert.alert(
+                  'Confirmação Final',
+                  'Tem certeza? Esta ação não pode ser desfeita.',
+                  [
+                    { text: 'Cancelar', style: 'cancel' },
+                    { text: 'Sim, tenho certeza', style: 'destructive', onPress: () => executarKit(true) },
+                  ]
+                );
+              },
+            },
+          ]
+        );
+      }
       return;
     }
 
@@ -58,7 +86,6 @@ export default function KitInicioScreen({ navigation, route }) {
   }
 
   async function executarKit(resetar) {
-
     setLoading(true);
     try {
       const db = await getDatabase();
@@ -82,54 +109,68 @@ export default function KitInicioScreen({ navigation, route }) {
       const insumosTemplate = INSUMOS_POR_SEGMENTO[selected] || [];
       const categoriasTemplate = CATEGORIAS_POR_SEGMENTO[selected] || [];
 
-      // Criar categorias
+      // Criar categorias em batch (uma transação)
       const catIds = {};
-      for (const catNome of categoriasTemplate) {
-        const existing = await db.getAllAsync('SELECT id FROM categorias_insumos WHERE nome = ?', [catNome]);
-        if (existing.length > 0) {
-          catIds[catNome] = existing[0].id;
-        } else {
-          const result = await db.runAsync(
-            'INSERT INTO categorias_insumos (nome, icone) VALUES (?, ?)',
-            [catNome, '📦']
-          );
-          catIds[catNome] = result?.lastInsertRowId;
+      await db.execAsync('BEGIN TRANSACTION');
+      try {
+        for (const catNome of categoriasTemplate) {
+          const existing = await db.getAllAsync('SELECT id FROM categorias_insumos WHERE nome = ?', [catNome]);
+          if (existing.length > 0) {
+            catIds[catNome] = existing[0].id;
+          } else {
+            const result = await db.runAsync(
+              'INSERT INTO categorias_insumos (nome, icone) VALUES (?, ?)',
+              [catNome, '📦']
+            );
+            catIds[catNome] = result?.lastInsertRowId;
+          }
         }
+        await db.execAsync('COMMIT');
+      } catch (e) {
+        await db.execAsync('ROLLBACK');
+        throw e;
       }
 
-      // Criar insumos
+      // Mapear categorias por nome para atribuição inteligente
+      const catIdsList = Object.values(catIds);
+      const firstCatId = catIdsList.length > 0 ? catIdsList[0] : null;
+
+      // Criar insumos em batch (uma transação para performance)
       let criados = 0;
-      for (const insumo of insumosTemplate) {
-        // Verificar se já existe
-        const existing = await db.getAllAsync('SELECT id FROM materias_primas WHERE nome = ?', [insumo.nome]);
-        if (existing.length > 0) continue;
+      await db.execAsync('BEGIN TRANSACTION');
+      try {
+        // Carregar insumos existentes de uma vez
+        const existingInsumos = await db.getAllAsync('SELECT nome FROM materias_primas');
+        const existingSet = new Set(existingInsumos.map(e => e.nome));
 
-        const fc = calcFatorCorrecao(insumo.quantidade_bruta, insumo.quantidade_liquida);
-        const pb = calcPrecoBase(insumo.valor_pago, insumo.quantidade_liquida, insumo.unidade_medida);
+        for (const insumo of insumosTemplate) {
+          if (existingSet.has(insumo.nome)) continue;
 
-        // Encontrar categoria
-        let catId = null;
-        for (const [catNome, id] of Object.entries(catIds)) {
-          catId = id; // default to first
-          break;
+          const fc = calcFatorCorrecao(insumo.quantidade_bruta, insumo.quantidade_liquida);
+          const pb = calcPrecoBase(insumo.valor_pago, insumo.quantidade_liquida, insumo.unidade_medida);
+
+          await db.runAsync(
+            'INSERT INTO materias_primas (nome, marca, categoria_id, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg) VALUES (?,?,?,?,?,?,?,?,?)',
+            [insumo.nome, '', firstCatId, insumo.quantidade_bruta, insumo.quantidade_liquida, fc, insumo.unidade_medida, insumo.valor_pago, pb]
+          );
+          criados++;
         }
-
-        await db.runAsync(
-          'INSERT INTO materias_primas (nome, marca, categoria_id, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg) VALUES (?,?,?,?,?,?,?,?,?)',
-          [insumo.nome, '', catId, insumo.quantidade_bruta, insumo.quantidade_liquida, fc, insumo.unidade_medida, insumo.valor_pago, pb]
-        );
-        criados++;
+        await db.execAsync('COMMIT');
+      } catch (e) {
+        await db.execAsync('ROLLBACK');
+        throw e;
       }
 
       setDone(true);
       setTimeout(() => {
         Alert.alert(
-          '✅ Kit aplicado!',
+          'Kit aplicado!',
           `${criados} insumos e ${categoriasTemplate.length} categorias foram cadastrados. Agora ajuste os preços conforme seus fornecedores.`,
           [{ text: 'Começar', onPress: navegarAposKit }]
         );
-      }, 500);
+      }, 300);
     } catch (e) {
+      console.error('KitInicio executarKit error:', e);
       Alert.alert('Erro', 'Não foi possível aplicar o kit. Tente novamente.');
     } finally {
       setLoading(false);
@@ -143,6 +184,18 @@ export default function KitInicioScreen({ navigation, route }) {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
+        {/* Botão Voltar */}
+        {isSetup && (
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.replace('ProfileSetup')}
+            activeOpacity={0.7}
+          >
+            <Feather name="arrow-left" size={18} color={colors.primary} />
+            <Text style={styles.backBtnText}>Voltar</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Header */}
         <View style={styles.headerCard}>
           <Feather name="zap" size={24} color={colors.primary} />
@@ -244,6 +297,12 @@ export default function KitInicioScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, maxWidth: 960, alignSelf: 'center', width: '100%', paddingBottom: 40 },
+  backBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: spacing.sm, paddingHorizontal: 2,
+    marginBottom: spacing.xs, alignSelf: 'flex-start',
+  },
+  backBtnText: { fontSize: fonts.regular, fontFamily: fontFamily.semiBold, color: colors.primary },
 
   headerCard: {
     alignItems: 'center', padding: spacing.lg,

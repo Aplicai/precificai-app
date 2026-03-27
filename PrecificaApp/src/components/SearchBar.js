@@ -46,6 +46,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     paddingVertical: 0,
     height: 38,
+    outlineStyle: 'none',
   },
   clearBtn: {
     padding: spacing.xs,

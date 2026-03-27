@@ -31,8 +31,17 @@ function setCache(key, data) {
   }
 }
 
-// Invalidate cache on writes
-function invalidateCache() {
+// Invalidate cache — table-aware: only clears entries that reference the affected table
+function invalidateCache(table) {
+  if (!table) { queryCache.clear(); return; }
+  const tbl = table.toLowerCase();
+  for (const key of queryCache.keys()) {
+    if (key.toLowerCase().includes(tbl)) queryCache.delete(key);
+  }
+}
+
+// Export for clearing on sign-out
+export function clearQueryCache() {
   queryCache.clear();
 }
 
@@ -51,7 +60,9 @@ export function createSupabaseDb(userId) {
     },
     getFirstAsync: (sql, params = []) => executeQuery(sql, params, 'first'),
     runAsync: (sql, params = []) => {
-      invalidateCache(); // Clear cache on any write
+      // Extract table name for targeted cache invalidation
+      const tblMatch = sql.match(/(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(\w+)/i);
+      invalidateCache(tblMatch ? tblMatch[1] : null);
       return executeRun(sql, params);
     },
     execAsync: (sql) => Promise.resolve(),

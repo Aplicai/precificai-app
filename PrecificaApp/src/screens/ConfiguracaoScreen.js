@@ -1,17 +1,36 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal, Animated, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal, Keyboard, TextInput, Switch } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import CurrencyInputModal from '../components/CurrencyInputModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
-import InputField from '../components/InputField';
-import Card from '../components/Card';
 import InfoTooltip from '../components/InfoTooltip';
 import { Feather } from '@expo/vector-icons';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, calcDespesasFixasPercentual, calcMarkup } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
+
+const SUGESTOES_FIXAS = [
+  'Aluguel', 'Energia elétrica', 'Água', 'Gás', 'Internet', 'Telefone',
+  'Funcionário CLT', 'Funcionário freelancer', 'Pró-labore', 'INSS/MEI', 'Contador',
+  'Seguro do imóvel', 'Seguro equipamentos', 'Alvará/Licenças', 'Vigilância sanitária',
+  'Limpeza', 'Manutenção equipamentos', 'Software/Sistema', 'Plataforma delivery',
+  'Marketing fixo', 'Publicidade', 'Material de escritório', 'Material de limpeza',
+  'Uniformes', 'Estacionamento', 'Combustível', 'Frete fixo', 'Armazenamento',
+  'Condomínio', 'IPTU', 'Taxa lixo', 'Depreciação equipamentos', 'Depreciação móveis',
+  'Assinatura delivery', 'Domínio/Hospedagem', 'Plano de saúde', 'Vale transporte',
+  'Vale refeição', 'Segurança', 'Dedetização', 'Jardinagem', 'Consultoria',
+  'Advocacia', 'Financiamento', 'Empréstimo', 'Leasing', 'Música ambiente',
+  'TV a cabo', 'Associação comercial', 'Sindicato',
+];
+const SUGESTOES_VARIAVEIS = [
+  'Impostos (Simples)', 'Taxa maquininha', 'Taxa PIX', 'Perdas e desperdícios',
+  'Comissão vendedores', 'Comissão garçom', 'Taxa marketplace', 'Embalagens delivery',
+  'Sacolas', 'Gorjeta', 'Frete por pedido', 'Taxa iFood', 'Taxa Rappi',
+  'Devoluções', 'Bonificações', 'Royalties', 'Taxa antecipação cartão',
+  'Imposto sobre serviço', 'ICMS', 'Contribuição sindical',
+];
 
 export default function ConfiguracaoScreen() {
   const { isDesktop } = useResponsiveLayout();
@@ -29,18 +48,12 @@ export default function ConfiguracaoScreen() {
   const [margemSeguranca, setMargemSeguranca] = useState('0');
   const [currencyModal, setCurrencyModal] = useState(null);
   const [configId, setConfigId] = useState(null);
-  const [expandedSections, setExpandedSections] = useState({
-    margem: true,
-    margemSeguranca: false,
-    faturamento: false,
-    fixas: false,
-    variaveis: false,
-  });
-
-  const meses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const [faturamentoMode, setFaturamentoMode] = useState('media'); // 'media' or 'mensal'
+  const [faturamentoMedioInput, setFaturamentoMedioInput] = useState('');
 
   const mesesCurtos = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+  const debounceRef = useRef(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -74,37 +87,35 @@ export default function ConfiguracaoScreen() {
 
     let fat = fatRaw;
     if (fat.length === 0) {
-      // Insert 12 months with short names
       for (const mes of mesesCurtos) {
         await db.runAsync('INSERT INTO faturamento_mensal (mes, valor) VALUES (?, ?)', [mes, 0]);
       }
       fat = await db.getAllAsync('SELECT * FROM faturamento_mensal ORDER BY id');
     } else if (fat.length > 12) {
-      // Duplicates detected — keep only first 12 and delete extras
       const extras = fat.slice(12);
       for (const e of extras) {
         await db.runAsync('DELETE FROM faturamento_mensal WHERE id = ?', [e.id]);
       }
       fat = fat.slice(0, 12);
     }
-    // Normalize month names to short format
     fat = fat.map((f, i) => ({ ...f, mes: mesesCurtos[i] || f.mes }));
     setFaturamento(fat);
 
+    // Detect if user filled month-by-month (different values) or single average
+    const filledMonths = fat.filter(f => f.valor > 0);
+    const uniqueValues = new Set(filledMonths.map(f => f.valor));
+    if (filledMonths.length > 1 && uniqueValues.size > 1) {
+      setFaturamentoMode('mensal');
+    }
+
+    // Set the media input from average
+    if (filledMonths.length > 0) {
+      const avg = filledMonths.reduce((a, f) => a + f.valor, 0) / filledMonths.length;
+      setFaturamentoMedioInput(String(avg).replace('.', ','));
+    }
+
     const status = await getFinanceiroStatus();
     setFinStatus(status);
-
-    // Auto-expand first incomplete section
-    if (status && !status.completo) {
-      const firstIncomplete = status.etapas.find(e => !e.done);
-      if (firstIncomplete) {
-        const sectionMap = { lucro: 'margem', faturamento: 'faturamento', fixas: 'fixas', variaveis: 'variaveis' };
-        const key = sectionMap[firstIncomplete.key];
-        if (key) {
-          setExpandedSections(prev => ({ ...prev, [key]: true }));
-        }
-      }
-    }
   }
 
   async function salvarLucro() {
@@ -201,8 +212,69 @@ export default function ConfiguracaoScreen() {
     setFinStatus(status);
   }
 
-  function toggleSection(key) {
-    setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
+  async function salvarFaturamentoMedio(valorStr) {
+    const valor = parseFloat(valorStr.replace(',', '.')) || 0;
+    if (valor <= 0) return;
+    const db = await getDatabase();
+    // Apply same value to all 12 months
+    for (const f of faturamento) {
+      await db.runAsync('UPDATE faturamento_mensal SET valor = ? WHERE id = ?', [valor, f.id]);
+    }
+    showSaved('Faturamento salvo');
+    loadData();
+  }
+
+  function debounceSave(fn, delay = 600) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(fn, delay);
+  }
+
+  async function adicionarSugestaoFixa(descricao) {
+    if (despesasFixas.some(d => d.descricao.toLowerCase() === descricao.toLowerCase())) return;
+    const db = await getDatabase();
+    const result = await db.runAsync('INSERT INTO despesas_fixas (descricao, valor) VALUES (?, ?)', [descricao, 0]);
+    await loadData();
+    // Auto-open value modal for the newly added item
+    const newId = result?.lastInsertRowId;
+    if (newId) {
+      setTimeout(() => {
+        setCurrencyModal({
+          title: descricao, value: '0', prefix: 'R$', placeholder: '0,00',
+          onConfirm: async (val) => {
+            const v = parseFloat(String(val).replace(',', '.')) || 0;
+            const dbx = await getDatabase();
+            await dbx.runAsync('UPDATE despesas_fixas SET valor = ? WHERE id = ?', [v, newId]);
+            setCurrencyModal(null);
+            showSaved();
+            loadData();
+          },
+        });
+      }, 300);
+    }
+  }
+
+  async function adicionarSugestaoVariavel(descricao) {
+    if (despesasVariaveis.some(d => d.descricao.toLowerCase() === descricao.toLowerCase())) return;
+    const db = await getDatabase();
+    const result = await db.runAsync('INSERT INTO despesas_variaveis (descricao, percentual) VALUES (?, ?)', [descricao, 0]);
+    await loadData();
+    // Auto-open value modal
+    const newId = result?.lastInsertRowId;
+    if (newId) {
+      setTimeout(() => {
+        setCurrencyModal({
+          title: descricao, value: '0', suffix: '%', placeholder: '0,0',
+          onConfirm: async (val) => {
+            const v = parseFloat(String(val).replace(',', '.')) / 100 || 0;
+            const dbx = await getDatabase();
+            await dbx.runAsync('UPDATE despesas_variaveis SET percentual = ? WHERE id = ?', [v, newId]);
+            setCurrencyModal(null);
+            showSaved();
+            loadData();
+          },
+        });
+      }, 300);
+    }
   }
 
   const totalFixas = despesasFixas.reduce((acc, d) => acc + (d.valor || 0), 0);
@@ -217,213 +289,201 @@ export default function ConfiguracaoScreen() {
 
   const faturamentoOrdenado = [...faturamento].sort((a, b) => mesesCurtos.indexOf(a.mes) - mesesCurtos.indexOf(b.mes));
 
-  function SectionHeader({ title, sectionKey, icon, badge, badgeColor, iconColor, tooltip }) {
-    const isOpen = expandedSections[sectionKey];
-    const sectionColor = iconColor || colors.primary;
+  // ===== STEP NUMBER CIRCLE =====
+  function StepNumber({ number, color }) {
     return (
-      <TouchableOpacity
-        style={styles.sectionHeader}
-        onPress={() => toggleSection(sectionKey)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.sectionHeaderLeft}>
-          <View style={[styles.sectionDot, { backgroundColor: sectionColor }]} />
-          <View style={[styles.sectionIconCircle, { backgroundColor: sectionColor + '15' }]}>
-            <Feather name={icon} size={15} color={sectionColor} />
-          </View>
-          <Text style={styles.sectionTitle}>{title}</Text>
-          {tooltip && <InfoTooltip {...tooltip} />}
-          <Feather name={isOpen ? 'chevron-down' : 'chevron-right'} size={16} color={colors.disabled} style={{ marginLeft: 4 }} />
-        </View>
-        {badge !== undefined && badge !== null && (
-          <View style={[styles.sectionBadge, badgeColor && { backgroundColor: badgeColor + '15' }]}>
-            <Text style={[styles.sectionBadgeText, badgeColor && { color: badgeColor }]}>{badge}</Text>
-          </View>
-        )}
-      </TouchableOpacity>
+      <View style={[s.stepCircle, { backgroundColor: color }]}>
+        <Text style={s.stepCircleText}>{number}</Text>
+      </View>
     );
   }
 
-  return (
-    <View style={{ flex: 1 }}>
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} onScrollBeginDrag={Keyboard.dismiss}>
+  // ===== SUMMARY PANEL =====
+  function SummaryPanel() {
+    const slices = [
+      { label: 'CMV', value: custoMaxPerc, color: colors.primary },
+      { label: 'Custos Fixos', value: despFixasPerc, color: colors.coral },
+      { label: 'Custos Variáveis', value: totalVariaveis, color: colors.purple },
+      { label: 'Margem de Lucro', value: lucroPerc, color: colors.success },
+    ].filter(sl => sl.value > 0);
+    const total = slices.reduce((a, sl) => a + sl.value, 0);
 
-      {/* Compact header */}
-      <View style={styles.topBar}>
-        <View style={styles.topBarLeft}>
-          <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary + '12', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}><Feather name="settings" size={16} color={colors.primary} /></View>
-          <View>
-            <Text style={styles.topBarTitle}>Configuração Central</Text>
-            <Text style={styles.topBarDesc}>Base de cálculo de preços e margens</Text>
+    return (
+      <View style={[s.summaryPanel, isDesktop && s.summaryPanelDesktop]}>
+        <Text style={s.summaryTitle}>Resumo Financeiro</Text>
+
+        {/* KPI Cards */}
+        <View style={s.kpiRow}>
+          <View style={s.kpiCard}>
+            <Text style={s.kpiValue}>{markup.toFixed(2)}x</Text>
+            <Text style={s.kpiLabel}>Mark-up</Text>
+          </View>
+          <View style={s.kpiCard}>
+            <Text style={s.kpiValue}>{formatPercent(despFixasPerc)}</Text>
+            <Text style={s.kpiLabel}>Custos Fixos</Text>
           </View>
         </View>
-        {finStatus && (
-          <View style={[styles.topBarStatus, finStatus.completo ? styles.topBarStatusOk : styles.topBarStatusPending]}>
-            {finStatus.completo ? (
-              <Feather name="check" size={14} color={colors.success} />
-            ) : (
-              <Text style={[styles.topBarStatusText, { color: '#E65100' }]}>
-                {finStatus.concluidas}/{finStatus.total}
-              </Text>
-            )}
+        <View style={s.kpiRow}>
+          <View style={s.kpiCard}>
+            <Text style={s.kpiValue}>{formatPercent(totalVariaveis)}</Text>
+            <Text style={s.kpiLabel}>Custos Variáveis</Text>
           </View>
-        )}
-      </View>
-
-      {/* Progress bar */}
-      {finStatus && !finStatus.completo && (
-        <View style={styles.progressRow}>
-          <View style={styles.progressBarBg}>
-            <View style={[styles.progressBarFill, { width: `${finStatus.progresso * 100}%` }]} />
-          </View>
-          <View style={styles.pendenciasRow}>
-            {finStatus.etapas.filter(e => !e.done).map(e => (
-              <Text key={e.key} style={styles.pendenciaText}>• {e.label}</Text>
-            ))}
+          <View style={s.kpiCard}>
+            <Text style={[s.kpiValue, custoMaxPerc < 0.2 && { color: colors.error }]}>
+              {formatPercent(custoMaxPerc)}
+            </Text>
+            <Text style={s.kpiLabel}>CMV Máximo</Text>
           </View>
         </View>
-      )}
 
-      {/* Resumo Financeiro - Painel */}
-      <View style={styles.painelResumo}>
-        <View style={styles.painelItem}>
-          <Text style={styles.painelValue}>{markup.toFixed(2)}x</Text>
-          <Text style={styles.painelLabel}>Mark-up</Text>
-        </View>
-        <View style={styles.painelDivider} />
-        <View style={styles.painelItem}>
-          <Text style={styles.painelValue}>{formatPercent(despFixasPerc)}</Text>
-          <Text style={styles.painelLabel}>Desp. Fixas</Text>
-        </View>
-        <View style={styles.painelDivider} />
-        <View style={styles.painelItem}>
-          <Text style={styles.painelValue}>{formatPercent(totalVariaveis)}</Text>
-          <Text style={styles.painelLabel}>Desp. Var.</Text>
-        </View>
-        <View style={styles.painelDivider} />
-        <View style={styles.painelItem}>
-          <Text style={[styles.painelValue, { color: custoMaxPerc < 0.2 ? colors.error : colors.primary }]}>
-            {formatPercent(custoMaxPerc)}
-          </Text>
-          <Text style={styles.painelLabel}>Custo Máx.</Text>
-        </View>
-      </View>
-      {finStatus && !finStatus.completo && (
-        <Text style={styles.painelWarning}>Valores preliminares. Complete a configuração</Text>
-      )}
-
-      {/* Composição do Preço - Barras */}
-      {(() => {
-        const slices = [
-          { label: 'CMV', value: custoMaxPerc, color: colors.primary },
-          { label: 'Custos Fixos', value: despFixasPerc, color: colors.coral },
-          { label: 'Custos Variáveis', value: totalVariaveis, color: colors.purple },
-          { label: 'Margem de Lucro', value: lucroPerc, color: colors.success },
-        ].filter(s => s.value > 0);
-        const total = slices.reduce((a, s) => a + s.value, 0);
-
-        return total > 0 ? (
-          <View style={styles.chartCard}>
-            <View style={styles.chartHeaderRow}>
-              <View style={[styles.sectionDot, { backgroundColor: colors.accent }]} />
-              <Text style={styles.chartTitle}>Composição do Preço</Text>
-            </View>
-            {/* Stacked bar */}
-            <View style={styles.stackedBar}>
-              {slices.map((s, i) => (
+        {/* Composition bar */}
+        {total > 0 && (
+          <View style={s.compositionSection}>
+            <Text style={s.compositionTitle}>Composição do Preço</Text>
+            <View style={s.stackedBar}>
+              {slices.map((sl, i) => (
                 <View key={i} style={{
-                  flex: s.value / total,
-                  height: 14,
-                  backgroundColor: s.color,
-                  borderTopLeftRadius: i === 0 ? 7 : 0,
-                  borderBottomLeftRadius: i === 0 ? 7 : 0,
-                  borderTopRightRadius: i === slices.length - 1 ? 7 : 0,
-                  borderBottomRightRadius: i === slices.length - 1 ? 7 : 0,
+                  flex: sl.value / total,
+                  height: 12,
+                  backgroundColor: sl.color,
+                  borderTopLeftRadius: i === 0 ? 6 : 0,
+                  borderBottomLeftRadius: i === 0 ? 6 : 0,
+                  borderTopRightRadius: i === slices.length - 1 ? 6 : 0,
+                  borderBottomRightRadius: i === slices.length - 1 ? 6 : 0,
                 }} />
               ))}
             </View>
-            {/* Legend */}
-            <View style={styles.chartLegend}>
-              {slices.map((s, i) => (
-                <View key={i} style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: s.color }]} />
-                  <Text style={styles.legendLabel}>{s.label}</Text>
-                  <Text style={[styles.legendValue, { color: s.color }]}>{(s.value * 100).toFixed(1)}%</Text>
+            <View style={s.legendRow}>
+              {slices.map((sl, i) => (
+                <View key={i} style={s.legendItem}>
+                  <View style={[s.legendDot, { backgroundColor: sl.color }]} />
+                  <Text style={s.legendLabel}>{sl.label}</Text>
+                  <Text style={[s.legendValue, { color: sl.color }]}>{(sl.value * 100).toFixed(1)}%</Text>
                 </View>
               ))}
             </View>
           </View>
-        ) : null;
-      })()}
+        )}
 
-      {/* ① Margem de Lucro */}
-      <View style={styles.sectionCard}>
-        <SectionHeader
-          title="Margem de Lucro"
-          sectionKey="margem"
-          icon="target"
-          iconColor={colors.success}
-          badge={lucroPerc > 0 ? `${(lucroPerc * 100).toFixed(0)}%` : null}
-          badgeColor={colors.success}
-        />
-        {expandedSections.margem && (
-          <View style={styles.sectionBody}>
-            <Text style={styles.sectionExplain}>
-              Rentabilidade desejada por produto. Impacta diretamente o preço sugerido.
-            </Text>
-            <View style={styles.margemRow}>
-              <TouchableOpacity
-                style={[styles.tapValueBtn, { flex: 1, marginRight: spacing.sm }]}
-                onPress={() => setCurrencyModal({
-                  title: 'Margem de Lucro',
-                  value: lucroDesejado,
-                  suffix: '%',
-                  placeholder: '15',
-                  onConfirm: (val) => {
-                    setLucroDesejado(val);
-                    setCurrencyModal(null);
-                    // Auto-save
-                    const db_val = parseFloat(val.replace(',', '.')) / 100;
-                    if (!isNaN(db_val) && db_val > 0 && configId) {
-                      getDatabase().then(db => {
-                        db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [db_val]);
-                        showSaved('Margem salva');
-                        loadData();
-                      });
-                    }
-                  },
-                })}
-              >
-                <Text style={[styles.tapValueText, styles.tapValueTextFilled, { fontSize: fonts.regular }]}>
-                  {lucroDesejado}%
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.margemHint}>
-              <Text style={styles.margemHintText}>Alimentação: 10-20%  ·  Confeitaria: 15-25%  ·  Marmitas: 10-15%</Text>
-            </View>
+        {finStatus && !finStatus.completo && (
+          <View style={s.summaryWarning}>
+            <Feather name="alert-circle" size={13} color="#E65100" style={{ marginRight: 4 }} />
+            <Text style={s.summaryWarningText}>Valores preliminares. Complete a configuração.</Text>
           </View>
         )}
       </View>
+    );
+  }
 
-      {/* ① ½ Margem de Segurança */}
-      <View style={styles.sectionCard}>
-        <SectionHeader
-          title="Margem de Segurança"
-          sectionKey="margemSeguranca"
-          icon="shield"
-          iconColor={colors.info}
-          badge={parseFloat(margemSeguranca.replace(',', '.')) > 0 ? `${parseFloat(margemSeguranca.replace(',', '.')).toFixed(0)}%` : null}
-          badgeColor={colors.info}
-        />
-        {expandedSections.margemSeguranca && (
-          <View style={styles.sectionBody}>
-            <Text style={styles.sectionExplain}>
-              Percentual adicionado ao custo dos insumos para cobrir variações de preço. Evita a necessidade de atualizar preços constantemente.
-            </Text>
-            <View style={styles.margemRow}>
+  // ===== FORM CONTENT (Steps) =====
+  function FormContent() {
+    return (
+      <View style={[s.formColumn, isDesktop && s.formColumnDesktop]}>
+        {/* Progress bar */}
+        {finStatus && !finStatus.completo && (
+          <View style={s.progressSection}>
+            <View style={s.progressHeader}>
+              <Text style={s.progressLabel}>Progresso</Text>
+              <Text style={s.progressCount}>{finStatus.concluidas}/{finStatus.total} etapas</Text>
+            </View>
+            <View style={s.progressBarBg}>
+              <View style={[s.progressBarFill, { width: `${finStatus.progresso * 100}%` }]} />
+            </View>
+            <View style={s.pendenciasRow}>
+              {finStatus.etapas.filter(e => !e.done).map(e => (
+                <View key={e.key} style={s.pendenciaChip}>
+                  <Feather name="circle" size={8} color="#E65100" style={{ marginRight: 4 }} />
+                  <Text style={s.pendenciaText}>{e.label}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* STEP 1: Margem de Lucro */}
+        <View style={s.stepCard}>
+          <View style={s.stepHeader}>
+            <StepNumber number={1} color={colors.success} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.stepTitle}>Margem de Lucro</Text>
+              <Text style={s.stepSubtitle}>Rentabilidade desejada por produto</Text>
+            </View>
+            {lucroPerc > 0 && (
+              <View style={[s.stepBadge, { backgroundColor: colors.success + '15' }]}>
+                <Text style={[s.stepBadgeText, { color: colors.success }]}>{(lucroPerc * 100).toFixed(0)}%</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={s.stepBody}>
+            <TouchableOpacity
+              style={s.bigValueBtn}
+              activeOpacity={0.7}
+              onPress={() => setCurrencyModal({
+                title: 'Margem de Lucro',
+                value: lucroDesejado,
+                suffix: '%',
+                placeholder: '15',
+                onConfirm: (val) => {
+                  setLucroDesejado(val);
+                  setCurrencyModal(null);
+                  const db_val = parseFloat(val.replace(',', '.')) / 100;
+                  if (!isNaN(db_val) && db_val > 0 && configId) {
+                    getDatabase().then(db => {
+                      db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [db_val]);
+                      showSaved('Margem salva');
+                      loadData();
+                    });
+                  }
+                },
+              })}
+            >
+              <Text style={s.bigValueText}>{lucroDesejado}%</Text>
+              <Feather name="edit-2" size={14} color={colors.primary} style={{ marginLeft: 8 }} />
+            </TouchableOpacity>
+
+            {/* Real-time markup preview */}
+            <View style={s.markupPreview}>
+              <Feather name="zap" size={13} color={colors.accent} />
+              <Text style={s.markupPreviewText}>
+                Mark-up resultante: <Text style={{ fontWeight: '800', color: colors.primary }}>{markup.toFixed(2)}x</Text>
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: spacing.xs }}>
+              <Text style={s.benchmarkTitle}>Referências do mercado</Text>
+              <InfoTooltip
+                title="Margens por segmento"
+                text="Margens de lucro líquido típicas do mercado brasileiro de alimentação:"
+                examples={[
+                  'Confeitaria artesanal: 15-30%',
+                  'Bolos e tortas: 20-35%',
+                  'Doces finos/gourmet: 25-40%',
+                  'Salgados e empadas: 15-25%',
+                  'Marmitas/refeições: 10-20%',
+                  'Food truck: 12-22%',
+                  'Pizzaria delivery: 15-25%',
+                  'Hamburgueria: 12-20%',
+                  'Padaria artesanal: 10-18%',
+                  'Alimentação geral: 10-20%',
+                ]}
+              />
+            </View>
+
+            {/* Margem de Segurança inline */}
+            <View style={s.subSection}>
+              <View style={s.subSectionHeader}>
+                <Feather name="shield" size={14} color={colors.info} />
+                <Text style={s.subSectionTitle}>Margem de Segurança</Text>
+                <InfoTooltip
+                  title="Margem de Segurança"
+                  text="Percentual adicionado ao custo dos insumos para cobrir variações de preço. Evita a necessidade de atualizar preços constantemente."
+                  examples={['Com 5%, um insumo de R$ 10 será calculado como R$ 10,50']}
+                />
+              </View>
               <TouchableOpacity
-                style={[styles.tapValueBtn, { flex: 1, marginRight: spacing.sm }]}
+                style={s.inlineValueBtn}
+                activeOpacity={0.7}
                 onPress={() => setCurrencyModal({
                   title: 'Margem de Segurança',
                   value: margemSeguranca,
@@ -443,107 +503,217 @@ export default function ConfiguracaoScreen() {
                   },
                 })}
               >
-                <Text style={[styles.tapValueText, parseFloat(margemSeguranca) > 0 ? styles.tapValueTextFilled : null, { fontSize: fonts.regular }]}>
+                <Text style={[s.inlineValueText, parseFloat(margemSeguranca) > 0 && s.inlineValueTextFilled]}>
                   {margemSeguranca}%
                 </Text>
+                <Feather name="edit-2" size={12} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
-            <View style={styles.margemHint}>
-              <Text style={styles.margemHintText}>
-                Ex: Com 5% de margem, um insumo de R$ 10,00 será calculado como R$ 10,50
-              </Text>
-            </View>
           </View>
-        )}
-      </View>
+        </View>
 
-      {/* ② Faturamento Mensal */}
-      <View style={styles.sectionCard}>
-        <SectionHeader
-          title="Faturamento Mensal"
-          sectionKey="faturamento"
-          icon="bar-chart-2"
-          iconColor={colors.accent}
-          badge={faturamentoMedio > 0 ? `${formatCurrency(faturamentoMedio)}/mês` : null}
-          badgeColor={colors.primary}
-        />
-        {expandedSections.faturamento && (
-          <View style={styles.sectionBody}>
-            <Text style={styles.sectionExplain}>
-              Calcula o peso das despesas fixas sobre cada produto. Use valores reais ou estimativas.
-            </Text>
-            <View style={styles.fatGrid}>
-              {faturamentoOrdenado.map((f, index) => (
+        {/* STEP 2: Faturamento Mensal */}
+        <View style={s.stepCard}>
+          <View style={s.stepHeader}>
+            <StepNumber number={2} color={colors.accent} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.stepTitle}>Faturamento Mensal</Text>
+              <Text style={s.stepSubtitle}>Peso das despesas fixas sobre cada produto</Text>
+            </View>
+            {faturamentoMedio > 0 && (
+              <View style={[s.stepBadge, { backgroundColor: colors.accent + '15' }]}>
+                <Text style={[s.stepBadgeText, { color: colors.accent }]}>{formatCurrency(faturamentoMedio)}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={s.stepBody}>
+            {/* Mode toggle */}
+            <View style={s.modeToggle}>
+              <TouchableOpacity
+                style={[s.modeBtn, faturamentoMode === 'media' && s.modeBtnActive]}
+                onPress={() => setFaturamentoMode('media')}
+              >
+                <Feather name="dollar-sign" size={14} color={faturamentoMode === 'media' ? '#fff' : colors.textSecondary} />
+                <Text style={[s.modeBtnText, faturamentoMode === 'media' && s.modeBtnTextActive]}>Média mensal</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.modeBtn, faturamentoMode === 'mensal' && s.modeBtnActive]}
+                onPress={() => setFaturamentoMode('mensal')}
+              >
+                <Feather name="calendar" size={14} color={faturamentoMode === 'mensal' ? '#fff' : colors.textSecondary} />
+                <Text style={[s.modeBtnText, faturamentoMode === 'mensal' && s.modeBtnTextActive]}>Mês a mês</Text>
+              </TouchableOpacity>
+            </View>
+
+            {faturamentoMode === 'media' ? (
+              <View>
+                <Text style={s.fieldHint}>Informe o faturamento médio mensal do seu negócio:</Text>
                 <TouchableOpacity
-                  key={f.id}
-                  style={[styles.fatItem, isDesktop && styles.fatItemDesktop]}
+                  style={s.bigValueBtn}
                   activeOpacity={0.7}
                   onPress={() => setCurrencyModal({
-                    title: `Faturamento - ${f.mes}`,
-                    value: f.valor > 0 ? String(f.valor).replace('.', ',') : '',
+                    title: 'Faturamento Médio Mensal',
+                    value: faturamentoMedioInput,
                     prefix: 'R$',
                     placeholder: '0,00',
                     onConfirm: (val) => {
-                      const clean = val.replace(/[^0-9,\.]/g, '');
-                      setFaturamento(prev => prev.map(item =>
-                        item.id === f.id ? { ...item, valor: parseFloat(clean.replace(',', '.')) || 0 } : item
-                      ));
-                      salvarFaturamento(f.id, clean);
+                      setFaturamentoMedioInput(val);
                       setCurrencyModal(null);
+                      salvarFaturamentoMedio(val);
                     },
                   })}
                 >
-                  <Text style={styles.fatLabel}>{f.mes}</Text>
-                  <View style={[styles.fatValueBox, f.valor > 0 && styles.fatValueBoxFilled]}>
-                    <Text style={[styles.fatValueText, f.valor > 0 && styles.fatValueTextFilled]}>
-                      {f.valor > 0 ? formatCurrency(f.valor) : '—'}
-                    </Text>
-                  </View>
+                  <Text style={s.bigValueText}>
+                    {faturamentoMedio > 0 ? formatCurrency(faturamentoMedio) : 'R$ 0,00'}
+                  </Text>
+                  <Feather name="edit-2" size={14} color={colors.primary} style={{ marginLeft: 8 }} />
                 </TouchableOpacity>
-              ))}
-            </View>
-            <View style={styles.fatMediaRow}>
-              <Text style={styles.fatMediaLabel}>Média mensal</Text>
-              <Text style={styles.fatMediaValue}>{formatCurrency(faturamentoMedio)}</Text>
-            </View>
-            {mesesComFat.length > 0 && (
-              <Text style={styles.fatMediaSub}>{mesesComFat.length} {mesesComFat.length === 1 ? 'mês preenchido' : 'meses preenchidos'}</Text>
+              </View>
+            ) : (
+              <View>
+                <Text style={s.fieldHint}>Preencha os meses com valores reais ou estimativas:</Text>
+                <View style={s.fatGrid}>
+                  {faturamentoOrdenado.map((f) => (
+                    <TouchableOpacity
+                      key={f.id}
+                      style={[s.fatItem, isDesktop && s.fatItemDesktop]}
+                      activeOpacity={0.7}
+                      onPress={() => setCurrencyModal({
+                        title: `Faturamento - ${f.mes}`,
+                        value: f.valor > 0 ? String(f.valor).replace('.', ',') : '',
+                        prefix: 'R$',
+                        placeholder: '0,00',
+                        onConfirm: (val) => {
+                          const clean = val.replace(/[^0-9,\.]/g, '');
+                          setFaturamento(prev => prev.map(item =>
+                            item.id === f.id ? { ...item, valor: parseFloat(clean.replace(',', '.')) || 0 } : item
+                          ));
+                          salvarFaturamento(f.id, clean);
+                          setCurrencyModal(null);
+                        },
+                      })}
+                    >
+                      <Text style={s.fatLabel}>{f.mes}</Text>
+                      <View style={[s.fatValueBox, f.valor > 0 && s.fatValueBoxFilled]}>
+                        <Text style={[s.fatValueText, f.valor > 0 && s.fatValueTextFilled]}>
+                          {f.valor > 0 ? formatCurrency(f.valor) : '---'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={s.avgRow}>
+                  <Text style={s.avgLabel}>Média mensal</Text>
+                  <Text style={s.avgValue}>{formatCurrency(faturamentoMedio)}</Text>
+                </View>
+                {mesesComFat.length > 0 && (
+                  <Text style={s.avgSub}>{mesesComFat.length} {mesesComFat.length === 1 ? 'mês preenchido' : 'meses preenchidos'}</Text>
+                )}
+              </View>
             )}
           </View>
-        )}
-      </View>
+        </View>
 
-      {/* ③ Despesas Fixas */}
-      <View style={styles.sectionCard}>
-        <SectionHeader
-          title="Despesas Fixas"
-          sectionKey="fixas"
-          icon="briefcase"
-          iconColor={colors.coral}
-          badge={totalFixas > 0 ? formatCurrency(totalFixas) : null}
-          badgeColor={colors.warning}
-          tooltip={{
-            title: 'O que são Despesas Fixas?',
-            text: 'São custos mensais que não mudam com a quantidade produzida. Você paga esses valores todo mês, independente de quanto vende.',
-            examples: ['Aluguel', 'Conta de luz', 'Internet', 'Salários fixos', 'Contador'],
-          }}
-        />
-        {expandedSections.fixas && (
-          <View style={styles.sectionBody}>
-            <Text style={styles.sectionExplain}>
-              Custos mensais independentes da produção. Diluídos no preço de cada produto.
-            </Text>
+        {/* STEP 3: Despesas Fixas */}
+        <View style={s.stepCard}>
+          <View style={s.stepHeader}>
+            <StepNumber number={3} color={colors.coral} />
+            <View style={[{ flex: 1, flexDirection: 'row', alignItems: 'center' }]}>
+              <Text style={s.stepTitle}>Despesas Fixas</Text>
+              <InfoTooltip
+                title="O que são Despesas Fixas?"
+                text="São custos mensais que não mudam com a quantidade produzida. Você paga esses valores todo mês, independente de quanto vende."
+                examples={['Aluguel', 'Conta de luz', 'Internet', 'Salários fixos', 'Contador']}
+              />
+            </View>
+            {totalFixas > 0 && (
+              <View style={[s.stepBadge, { backgroundColor: colors.coral + '15' }]}>
+                <Text style={[s.stepBadgeText, { color: colors.coral }]}>{formatCurrency(totalFixas)}</Text>
+              </View>
+            )}
+          </View>
 
-            {/* Add form */}
-            <View style={styles.addFormCompact}>
-              <InputField
-                style={{ flex: 1, marginBottom: 0, marginRight: spacing.xs }}
+          <View style={s.stepBody}>
+            <Text style={s.stepSubtitle}>Custos mensais independentes da produção</Text>
+
+            {/* Suggestions - always show 3, filtering already added */}
+            {(() => {
+              const existentes = despesasFixas.map(d => d.descricao?.toLowerCase());
+              const disponiveis = SUGESTOES_FIXAS.filter(s => !existentes.includes(s.toLowerCase()));
+              const mostrar = disponiveis.slice(0, 3);
+              if (mostrar.length === 0) return null;
+              return (
+                <View style={s.suggestionsRow}>
+                  {mostrar.map(sug => (
+                    <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoFixa(sug)}>
+                      <Feather name="plus" size={12} color={colors.primary} />
+                      <Text style={s.suggestionChipText}>{sug}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              );
+            })()}
+
+            {/* Clean table */}
+            {despesasFixas.length > 0 && (
+              <View style={s.despTable}>
+                {/* Header */}
+                <View style={s.despTableHeader}>
+                  <Text style={[s.despTableHeaderText, { flex: 1 }]}>Descrição</Text>
+                  <Text style={[s.despTableHeaderText, { width: 100, textAlign: 'right' }]}>Valor (R$)</Text>
+                  <View style={{ width: 32 }} />
+                </View>
+                {/* Rows */}
+                {despesasFixas.map((d, index) => (
+                  <View key={d.id} style={[s.despTableRow, index % 2 === 0 && s.despTableRowAlt]}>
+                    <TouchableOpacity style={{ flex: 1 }} onPress={() => editarDespesaFixa(d)}>
+                      <Text style={s.despTableName} numberOfLines={1}>{d.descricao}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={s.despTableValueBtn}
+                      onPress={() => setCurrencyModal({
+                        title: d.descricao,
+                        value: d.valor > 0 ? String(d.valor).replace('.', ',') : '',
+                        prefix: 'R$',
+                        placeholder: '0,00',
+                        onConfirm: async (val) => {
+                          const db = await getDatabase();
+                          await db.runAsync('UPDATE despesas_fixas SET valor = ? WHERE id = ?',
+                            [parseFloat(val.replace(',', '.')) || 0, d.id]);
+                          setCurrencyModal(null);
+                          showSaved('Salvo');
+                          loadData();
+                        },
+                      })}
+                    >
+                      <Text style={[s.despTableValue, d.valor > 0 && s.despTableValueFilled]}>
+                        {d.valor > 0 ? formatCurrency(d.valor) : 'R$ 0,00'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={s.despDeleteBtn}
+                      onPress={() => removerDespesaFixa(d.id, d.descricao)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Feather name="trash-2" size={14} color={colors.disabled} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Add inline */}
+            <View style={s.addRow}>
+              <TextInput
+                style={[s.addInput, { flex: 1 }]}
                 value={novaFixa.descricao}
                 onChangeText={(v) => setNovaFixa(prev => ({ ...prev, descricao: v }))}
                 placeholder="Descrição (ex: Aluguel)"
+                placeholderTextColor={colors.disabled}
               />
               <TouchableOpacity
-                style={styles.tapValueBtn}
+                style={s.addValueBtn}
                 onPress={() => setCurrencyModal({
                   title: 'Valor da Despesa Fixa',
                   value: novaFixa.valor,
@@ -555,94 +725,124 @@ export default function ConfiguracaoScreen() {
                   },
                 })}
               >
-                <Text style={[styles.tapValueText, novaFixa.valor ? styles.tapValueTextFilled : null]}>
+                <Text style={[s.addValueText, novaFixa.valor ? s.addValueTextFilled : null]}>
                   {novaFixa.valor ? `R$ ${novaFixa.valor}` : 'R$ 0,00'}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.addBtn} onPress={adicionarDespesaFixa}>
-                <Text style={styles.addBtnText}>+</Text>
+              <TouchableOpacity style={s.addCircleBtn} onPress={adicionarDespesaFixa}>
+                <Feather name="plus" size={18} color="#fff" />
               </TouchableOpacity>
             </View>
 
-            {/* List */}
-            {despesasFixas.length === 0 ? (
-              <Text style={styles.emptyListText}>Nenhuma despesa fixa cadastrada</Text>
-            ) : (
-              <View style={styles.despList}>
-                {despesasFixas.map((d, index) => {
-                  const inicial = (d.descricao || '?').charAt(0).toUpperCase();
-                  const isFirst = index === 0;
-                  const isLast = index === despesasFixas.length - 1;
-                  return (
-                    <View key={d.id} style={[
-                      styles.despItem,
-                      isFirst && styles.despItemFirst,
-                      isLast && styles.despItemLast,
-                      !isLast && styles.despItemBorder,
-                    ]}>
-                      <View style={[styles.despAvatar, { backgroundColor: colors.coral + '18' }]}>
-                        <Text style={[styles.despAvatarText, { color: colors.coral }]}>{inicial}</Text>
-                      </View>
-                      <View style={styles.despItemMain}>
-                        <Text style={styles.despItemName} numberOfLines={1}>{d.descricao}</Text>
-                        <Text style={styles.despItemValue}>{formatCurrency(d.valor)}</Text>
-                      </View>
-                      <View style={styles.despItemActions}>
-                        <TouchableOpacity onPress={() => editarDespesaFixa(d)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.despEditBtn}>
-                          <Feather name="edit-2" size={13} color={colors.accent} />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => removerDespesaFixa(d.id, d.descricao)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.despDeleteBtn}>
-                          <Feather name="trash-2" size={13} color={colors.disabled} />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  );
-                })}
+            {/* Total */}
+            <View style={s.totalRow}>
+              <Text style={s.totalLabel}>Total mensal</Text>
+              <Text style={s.totalValue}>{formatCurrency(totalFixas)}</Text>
+            </View>
+            {faturamentoMedio > 0 && (
+              <Text style={s.totalSub}>Representa {formatPercent(despFixasPerc)} do faturamento</Text>
+            )}
+
+          </View>
+        </View>
+
+        {/* STEP 4: Despesas Variáveis */}
+        <View style={s.stepCard}>
+          <View style={s.stepHeader}>
+            <StepNumber number={4} color={colors.purple} />
+            <View style={[{ flex: 1, flexDirection: 'row', alignItems: 'center' }]}>
+              <Text style={s.stepTitle}>Despesas Variáveis</Text>
+              <InfoTooltip
+                title="O que são Despesas Variáveis?"
+                text="São percentuais descontados sobre cada venda. Quanto mais você vende, mais paga. Inclua impostos, taxas de máquina de cartão e PIX. Dica: faça uma média das taxas das diferentes máquinas que utiliza, ou use a taxa da que mais vende."
+                examples={['Impostos (Simples Nacional)', 'Taxa do cartão de crédito', 'Taxa PIX', 'Comissão de vendedores', 'Taxa de marketplace']}
+              />
+            </View>
+            {totalVariaveis > 0 && (
+              <View style={[s.stepBadge, { backgroundColor: colors.purple + '15' }]}>
+                <Text style={[s.stepBadgeText, { color: colors.purple }]}>{formatPercent(totalVariaveis)}</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={s.stepBody}>
+            <Text style={s.stepSubtitle}>Percentuais descontados sobre cada venda</Text>
+
+            {/* Suggestions - always show 3, filtering already added */}
+            {(() => {
+              const existentes = despesasVariaveis.map(d => d.descricao?.toLowerCase());
+              const disponiveis = SUGESTOES_VARIAVEIS.filter(s => !existentes.includes(s.toLowerCase()));
+              const mostrar = disponiveis.slice(0, 3);
+              if (mostrar.length === 0) return null;
+              return (
+                <View style={s.suggestionsRow}>
+                  {mostrar.map(sug => (
+                    <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoVariavel(sug)}>
+                      <Feather name="plus" size={12} color={colors.primary} />
+                      <Text style={s.suggestionChipText}>{sug}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              );
+            })()}
+
+            {/* Clean table */}
+            {despesasVariaveis.length > 0 && (
+              <View style={s.despTable}>
+                <View style={s.despTableHeader}>
+                  <Text style={[s.despTableHeaderText, { flex: 1 }]}>Descrição</Text>
+                  <Text style={[s.despTableHeaderText, { width: 80, textAlign: 'right' }]}>Percentual</Text>
+                  <View style={{ width: 32 }} />
+                </View>
+                {despesasVariaveis.map((d, index) => (
+                  <View key={d.id} style={[s.despTableRow, index % 2 === 0 && s.despTableRowAlt]}>
+                    <TouchableOpacity style={{ flex: 1 }} onPress={() => editarDespesaVariavel(d)}>
+                      <Text style={s.despTableName} numberOfLines={1}>{d.descricao}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={s.despTableValueBtn}
+                      onPress={() => setCurrencyModal({
+                        title: d.descricao,
+                        value: String(((d.percentual || 0) * 100).toFixed(2)).replace('.', ','),
+                        suffix: '%',
+                        placeholder: '0,00',
+                        onConfirm: async (val) => {
+                          const db = await getDatabase();
+                          await db.runAsync('UPDATE despesas_variaveis SET percentual = ? WHERE id = ?',
+                            [parseFloat(val.replace(',', '.')) / 100 || 0, d.id]);
+                          setCurrencyModal(null);
+                          showSaved('Salvo');
+                          loadData();
+                        },
+                      })}
+                    >
+                      <Text style={[s.despTableValue, d.percentual > 0 && s.despTableValueFilled]}>
+                        {d.percentual > 0 ? formatPercent(d.percentual) : '0%'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={s.despDeleteBtn}
+                      onPress={() => removerDespesaVariavel(d.id, d.descricao)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Feather name="trash-2" size={14} color={colors.disabled} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
               </View>
             )}
 
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total mensal</Text>
-              <Text style={styles.totalValue}>{formatCurrency(totalFixas)}</Text>
-            </View>
-            {faturamentoMedio > 0 && (
-              <Text style={styles.totalSub}>Representa {formatPercent(despFixasPerc)} do faturamento</Text>
-            )}
-          </View>
-        )}
-      </View>
-
-      {/* ④ Despesas Variáveis */}
-      <View style={styles.sectionCard}>
-        <SectionHeader
-          title="Despesas Variáveis"
-          sectionKey="variaveis"
-          icon="percent"
-          iconColor={colors.purple}
-          badge={totalVariaveis > 0 ? formatPercent(totalVariaveis) : null}
-          badgeColor={colors.error}
-          tooltip={{
-            title: 'O que são Despesas Variáveis?',
-            text: 'São percentuais descontados sobre cada venda. Quanto mais você vende, mais paga. Geralmente são taxas e impostos.',
-            examples: ['Impostos (Simples Nacional)', 'Taxa do cartão de crédito', 'Comissão de vendedores', 'Taxa de marketplace'],
-          }}
-        />
-        {expandedSections.variaveis && (
-          <View style={styles.sectionBody}>
-            <Text style={styles.sectionExplain}>
-              Percentuais descontados sobre cada venda. Impactam a margem líquida.
-            </Text>
-
-            {/* Add form */}
-            <View style={styles.addFormCompact}>
-              <InputField
-                style={{ flex: 1, marginBottom: 0, marginRight: spacing.xs }}
+            {/* Add inline */}
+            <View style={s.addRow}>
+              <TextInput
+                style={[s.addInput, { flex: 1 }]}
                 value={novaVariavel.descricao}
                 onChangeText={(v) => setNovaVariavel(prev => ({ ...prev, descricao: v }))}
                 placeholder="Descrição (ex: Impostos)"
+                placeholderTextColor={colors.disabled}
               />
               <TouchableOpacity
-                style={styles.tapValueBtn}
+                style={s.addValueBtn}
                 onPress={() => setCurrencyModal({
                   title: 'Percentual da Despesa',
                   value: novaVariavel.percentual,
@@ -654,96 +854,105 @@ export default function ConfiguracaoScreen() {
                   },
                 })}
               >
-                <Text style={[styles.tapValueText, novaVariavel.percentual ? styles.tapValueTextFilled : null]}>
+                <Text style={[s.addValueText, novaVariavel.percentual ? s.addValueTextFilled : null]}>
                   {novaVariavel.percentual ? `${novaVariavel.percentual}%` : '0%'}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.addBtn} onPress={adicionarDespesaVariavel}>
-                <Text style={styles.addBtnText}>+</Text>
+              <TouchableOpacity style={s.addCircleBtn} onPress={adicionarDespesaVariavel}>
+                <Feather name="plus" size={18} color="#fff" />
               </TouchableOpacity>
             </View>
 
-            {/* List */}
-            {despesasVariaveis.length === 0 ? (
-              <Text style={styles.emptyListText}>Nenhuma despesa variável cadastrada</Text>
-            ) : (
-              <View style={styles.despList}>
-                {despesasVariaveis.map((d, index) => {
-                  const inicial = (d.descricao || '?').charAt(0).toUpperCase();
-                  const isFirst = index === 0;
-                  const isLast = index === despesasVariaveis.length - 1;
-                  return (
-                    <View key={d.id} style={[
-                      styles.despItem,
-                      isFirst && styles.despItemFirst,
-                      isLast && styles.despItemLast,
-                      !isLast && styles.despItemBorder,
-                    ]}>
-                      <View style={[styles.despAvatar, { backgroundColor: colors.purple + '18' }]}>
-                        <Text style={[styles.despAvatarText, { color: colors.purple }]}>{inicial}</Text>
-                      </View>
-                      <View style={styles.despItemMain}>
-                        <Text style={styles.despItemName} numberOfLines={1}>{d.descricao}</Text>
-                        <Text style={styles.despItemValue}>{formatPercent(d.percentual)}</Text>
-                      </View>
-                      <View style={styles.despItemActions}>
-                        <TouchableOpacity onPress={() => editarDespesaVariavel(d)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.despEditBtn}>
-                          <Feather name="edit-2" size={13} color={colors.accent} />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => removerDespesaVariavel(d.id, d.descricao)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.despDeleteBtn}>
-                          <Feather name="trash-2" size={13} color={colors.disabled} />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            )}
-
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total variável</Text>
-              <Text style={styles.totalValue}>{formatPercent(totalVariaveis)}</Text>
+            {/* Total */}
+            <View style={s.totalRow}>
+              <Text style={s.totalLabel}>Total variável</Text>
+              <Text style={s.totalValue}>{formatPercent(totalVariaveis)}</Text>
             </View>
+
+          </View>
+        </View>
+
+        <View style={{ height: 20 }} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1 }}>
+      <ScrollView style={s.container} contentContainerStyle={s.content} onScrollBeginDrag={Keyboard.dismiss}>
+        {/* Page header */}
+        <View style={s.pageHeader}>
+          <View style={s.pageHeaderIcon}>
+            <Feather name="settings" size={18} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.pageTitle}>Configuração Financeira</Text>
+            <Text style={s.pageSubtitle}>Base de cálculo de preços e margens</Text>
+          </View>
+          {finStatus && !finStatus.completo && (
+            <View style={[s.statusBadge, s.statusBadgePending]}>
+              <Text style={s.statusBadgeText}>{finStatus.concluidas}/{finStatus.total}</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Desktop: 2-column layout */}
+        {isDesktop ? (
+          <View style={s.desktopLayout}>
+            <FormContent />
+            <SummaryPanel />
+          </View>
+        ) : (
+          <View>
+            <SummaryPanel />
+            <FormContent />
           </View>
         )}
-      </View>
-
-      <View style={{ height: 20 }} />
-    </ScrollView>
+      </ScrollView>
 
       {/* Save feedback toast */}
       {savedFeedback && (
-        <View style={styles.toast}>
-          <Feather name="check-circle" size={14} color="#fff" style={{ marginRight: 6 }} /><Text style={styles.toastText}>{savedFeedback}</Text>
+        <View style={s.toast}>
+          <Feather name="check-circle" size={14} color="#fff" style={{ marginRight: 6 }} />
+          <Text style={s.toastText}>{savedFeedback}</Text>
         </View>
       )}
 
+      {/* Edit Despesa Modal */}
       <Modal visible={!!editModal && isFocused} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setEditModal(null)}>
-          <TouchableOpacity activeOpacity={1} style={styles.modalContent} onPress={() => {}}>
-            <Text style={styles.modalTitle}>
+        <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setEditModal(null)}>
+          <TouchableOpacity activeOpacity={1} style={s.modalContent} onPress={() => {}}>
+            <Text style={s.modalTitle}>
               {editModal?.tipo === 'fixa' ? 'Editar Despesa Fixa' : 'Editar Despesa Variável'}
             </Text>
-            <InputField
-              label="Descrição"
-              value={editModal?.descricao || ''}
-              onChangeText={(v) => setEditModal(prev => prev ? { ...prev, descricao: v } : null)}
-              placeholder="Descrição"
-            />
-            <InputField
-              label={editModal?.tipo === 'fixa' ? 'Valor (R$)' : 'Percentual (%)'}
-              value={editModal?.valor || ''}
-              onChangeText={(v) => setEditModal(prev => prev ? { ...prev, valor: v } : null)}
-              keyboardType="numeric"
-              placeholder="0,00"
-              suffix={editModal?.tipo === 'fixa' ? 'R$' : '%'}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setEditModal(null)}>
-                <Text style={styles.modalCancelText}>Cancelar</Text>
+            <View style={{ marginBottom: spacing.md }}>
+              <Text style={s.modalLabel}>Descrição</Text>
+              <TextInput
+                style={s.modalInput}
+                value={editModal?.descricao || ''}
+                onChangeText={(v) => setEditModal(prev => prev ? { ...prev, descricao: v } : null)}
+                placeholder="Descrição"
+                placeholderTextColor={colors.disabled}
+              />
+            </View>
+            <View style={{ marginBottom: spacing.md }}>
+              <Text style={s.modalLabel}>{editModal?.tipo === 'fixa' ? 'Valor (R$)' : 'Percentual (%)'}</Text>
+              <TextInput
+                style={s.modalInput}
+                value={editModal?.valor || ''}
+                onChangeText={(v) => setEditModal(prev => prev ? { ...prev, valor: v } : null)}
+                keyboardType="numeric"
+                placeholder="0,00"
+                placeholderTextColor={colors.disabled}
+              />
+            </View>
+            <View style={s.modalActions}>
+              <TouchableOpacity style={s.modalCancelBtn} onPress={() => setEditModal(null)}>
+                <Text style={s.modalCancelText}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalSaveBtn} onPress={salvarEdicao}>
-                <Text style={styles.modalSaveText}>Salvar</Text>
+              <TouchableOpacity style={s.modalSaveBtn} onPress={salvarEdicao}>
+                <Feather name="check" size={16} color="#fff" style={{ marginRight: 4 }} />
+                <Text style={s.modalSaveText}>Salvar</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -773,92 +982,101 @@ export default function ConfiguracaoScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, width: '100%' },
   content: { padding: spacing.md, width: '100%', paddingBottom: 40, maxWidth: 960, alignSelf: 'center' },
 
-  // Top bar
-  topBar: {
+  // Page header
+  pageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
   },
-  topBarLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  topBarIcon: { fontSize: 28, marginRight: spacing.sm },
-  topBarTitle: { fontSize: fonts.regular, fontWeight: '700', color: colors.text },
-  topBarDesc: { fontSize: fonts.tiny, color: colors.textSecondary },
-  topBarStatus: {
+  pageHeaderIcon: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: colors.primary + '12',
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: spacing.sm + 2,
+  },
+  pageTitle: {
+    fontSize: fonts.large, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.text,
+  },
+  pageSubtitle: {
+    fontSize: fonts.tiny, color: colors.textSecondary, marginTop: 1,
+  },
+  statusBadge: {
     width: 36, height: 36, borderRadius: 18,
     justifyContent: 'center', alignItems: 'center',
   },
-  topBarStatusOk: { backgroundColor: colors.success + '15' },
-  topBarStatusPending: { backgroundColor: '#FFF3E0' },
-  topBarStatusText: { fontSize: fonts.small, fontWeight: '800' },
+  statusBadgeOk: { backgroundColor: colors.success + '15' },
+  statusBadgePending: { backgroundColor: '#FFF3E0' },
+  statusBadgeText: { fontSize: fonts.small, fontWeight: '800', color: '#E65100' },
 
-  // Progress
-  progressRow: { marginBottom: spacing.md },
-  progressBarBg: {
-    height: 6, backgroundColor: colors.border, borderRadius: 3,
-    overflow: 'hidden', marginBottom: spacing.xs,
-  },
-  progressBarFill: { height: 6, borderRadius: 3, backgroundColor: '#FF8F00' },
-  pendenciasRow: { flexDirection: 'row', flexWrap: 'wrap' },
-  pendenciaText: { fontSize: 11, color: '#E65100', marginRight: spacing.sm },
-
-  // Painel resumo
-  painelResumo: {
+  // Desktop layout
+  desktopLayout: {
     flexDirection: 'row',
+    gap: spacing.md,
+  },
+
+  // Summary Panel
+  summaryPanel: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.sm + 4,
-    paddingHorizontal: spacing.sm,
-    marginBottom: spacing.xs,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
     shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  painelItem: { flex: 1, alignItems: 'center' },
-  painelValue: { fontSize: fonts.regular, fontWeight: '800', color: colors.primary, marginBottom: 1 },
-  painelLabel: { fontSize: 10, color: colors.textSecondary },
-  painelDivider: { width: 1, backgroundColor: colors.border, marginVertical: 4 },
-  painelWarning: {
-    fontSize: 10, color: '#E65100', textAlign: 'center',
-    marginBottom: spacing.md, marginTop: spacing.xs,
+  summaryPanelDesktop: {
+    width: 320,
+    alignSelf: 'flex-start',
+    position: 'sticky',
+    top: spacing.md,
+    marginBottom: 0,
   },
-
-  // Pie chart
-  chartCard: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.sm,
-    padding: spacing.md,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 1,
+  summaryTitle: {
+    fontSize: fonts.regular, fontFamily: fontFamily.bold, fontWeight: '700',
+    color: colors.text, marginBottom: spacing.sm + 2,
   },
-  chartHeaderRow: {
+  kpiRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    gap: spacing.sm,
     marginBottom: spacing.sm,
   },
-  chartTitle: {
-    fontSize: fonts.regular,
-    fontFamily: fontFamily.bold,
-    fontWeight: '700',
-    color: colors.text,
+  kpiCard: {
+    flex: 1,
+    backgroundColor: colors.primary + '08',
+    borderRadius: borderRadius.sm,
+    padding: spacing.sm + 2,
+    alignItems: 'center',
+  },
+  kpiValue: {
+    fontSize: fonts.large, fontFamily: fontFamily.bold, fontWeight: '800',
+    color: colors.primary, marginBottom: 2,
+  },
+  kpiLabel: {
+    fontSize: 10, color: colors.textSecondary, fontFamily: fontFamily.medium,
+  },
+  compositionSection: {
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  compositionTitle: {
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    color: colors.text, marginBottom: spacing.sm,
   },
   stackedBar: {
     flexDirection: 'row',
-    borderRadius: 7,
+    borderRadius: 6,
     overflow: 'hidden',
-    marginBottom: spacing.sm + 2,
+    marginBottom: spacing.sm,
   },
-  chartLegend: {
+  legendRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
@@ -870,81 +1088,240 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 5,
+    width: 8, height: 8, borderRadius: 4, marginRight: 5,
   },
   legendLabel: {
-    fontSize: fonts.tiny,
-    fontFamily: fontFamily.regular,
-    color: colors.textSecondary,
-    flex: 1,
+    fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary, flex: 1,
   },
   legendValue: {
-    fontSize: fonts.tiny,
-    fontFamily: fontFamily.bold,
-    fontWeight: '700',
+    fontSize: 11, fontFamily: fontFamily.bold, fontWeight: '700',
+  },
+  summaryWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  summaryWarningText: {
+    fontSize: 11, color: '#E65100', flex: 1,
   },
 
-  // Section cards (accordion)
-  sectionCard: {
+  // Progress
+  progressSection: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.md,
-    marginBottom: spacing.sm,
+    padding: spacing.md,
+    marginBottom: spacing.md,
     shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
     shadowRadius: 3,
     elevation: 1,
-    overflow: 'hidden',
   },
-  sectionHeader: {
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  progressLabel: {
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text,
+  },
+  progressCount: {
+    fontSize: fonts.tiny, fontFamily: fontFamily.medium, color: colors.textSecondary,
+  },
+  progressBarBg: {
+    height: 6, backgroundColor: colors.border, borderRadius: 3,
+    overflow: 'hidden', marginBottom: spacing.sm,
+  },
+  progressBarFill: { height: 6, borderRadius: 3, backgroundColor: '#FF8F00' },
+  pendenciasRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  pendenciaChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm + 4,
-    paddingHorizontal: spacing.md,
+    backgroundColor: '#FFF3E0',
+    borderRadius: 12,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
   },
-  sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  sectionDot: {
-    width: 8, height: 8, borderRadius: 4, marginRight: 8,
+  pendenciaText: { fontSize: 11, color: '#E65100' },
+
+  // Form column
+  formColumn: { flex: 1 },
+  formColumnDesktop: { flex: 1, marginRight: 0 },
+
+  // Step cards
+  stepCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.md,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2,
+    overflow: 'hidden',
   },
-  sectionIconCircle: {
-    width: 30, height: 30, borderRadius: 15,
+  stepHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    paddingBottom: 0,
+  },
+  stepCircle: {
+    width: 32, height: 32, borderRadius: 16,
     alignItems: 'center', justifyContent: 'center',
-    marginRight: 8,
+    marginRight: spacing.sm + 2,
   },
-  sectionTitle: { fontSize: fonts.regular, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.text, flex: 1 },
-  sectionBadge: {
+  stepCircleText: {
+    fontSize: fonts.regular, fontFamily: fontFamily.bold, fontWeight: '800', color: '#fff',
+  },
+  stepTitle: {
+    fontSize: fonts.regular, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.text,
+  },
+  stepSubtitle: {
+    fontSize: fonts.tiny, color: colors.textSecondary, marginTop: 1,
+  },
+  stepBadge: {
+    borderRadius: 12,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 3,
+  },
+  stepBadgeText: {
+    fontSize: fonts.tiny, fontFamily: fontFamily.bold, fontWeight: '700',
+  },
+  stepBody: {
+    padding: spacing.md,
+    paddingTop: spacing.sm + 2,
+  },
+
+  // Big value button (margem, faturamento)
+  bigValueBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary + '08',
+    borderWidth: 1.5,
+    borderColor: colors.primary + '25',
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  bigValueText: {
+    fontSize: fonts.title, fontFamily: fontFamily.bold, fontWeight: '800', color: colors.primary,
+  },
+
+  // Markup preview
+  markupPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.accent + '08',
+    borderRadius: borderRadius.sm,
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  markupPreviewText: {
+    fontSize: fonts.small, color: colors.text, marginLeft: spacing.xs,
+  },
+
+  // Benchmarks
+  benchmarkRow: {
+    marginBottom: spacing.sm,
+  },
+  benchmarkTitle: {
+    fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.medium,
+    marginBottom: spacing.xs,
+  },
+  benchmarkChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  benchmarkChip: {
     backgroundColor: colors.inputBg,
     borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
   },
-  sectionBadgeText: { fontSize: fonts.tiny, fontWeight: '700', color: colors.primary },
-  sectionBody: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
+  benchmarkChipText: {
+    fontSize: 11, color: colors.textSecondary,
+  },
+
+  // Sub section (margem seguranca inside step 1)
+  subSection: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
     paddingTop: spacing.sm,
-    backgroundColor: colors.surface,
+    marginTop: spacing.xs,
   },
-  sectionExplain: {
-    fontSize: fonts.tiny, color: colors.textSecondary,
-    marginBottom: spacing.sm, lineHeight: 17,
+  subSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  subSectionTitle: {
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    color: colors.text, marginLeft: spacing.xs + 2,
+  },
+  inlineValueBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.inputBg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.sm,
+    height: 40,
+    paddingHorizontal: spacing.md,
+    gap: spacing.xs,
+  },
+  inlineValueText: {
+    fontSize: fonts.regular, color: colors.disabled,
+  },
+  inlineValueTextFilled: {
+    color: colors.text, fontFamily: fontFamily.semiBold, fontWeight: '600',
   },
 
-  // Margem
-  margemRow: { flexDirection: 'row', alignItems: 'flex-end' },
-  margemHint: {
-    backgroundColor: colors.inputBg, borderRadius: borderRadius.sm,
-    padding: spacing.xs + 2, marginTop: spacing.sm,
+  // Mode toggle (faturamento)
+  modeToggle: {
+    flexDirection: 'row',
+    backgroundColor: colors.inputBg,
+    borderRadius: borderRadius.sm,
+    padding: 3,
+    marginBottom: spacing.md,
   },
-  margemHintText: { fontSize: 10, color: colors.textSecondary, textAlign: 'center' },
+  modeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.sm - 2,
+    gap: spacing.xs,
+  },
+  modeBtnActive: {
+    backgroundColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  modeBtnText: {
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.textSecondary,
+  },
+  modeBtnTextActive: {
+    color: '#fff',
+  },
+  fieldHint: {
+    fontSize: fonts.tiny, color: colors.textSecondary, marginBottom: spacing.sm,
+  },
 
-  // Faturamento grid (3 columns)
+  // Faturamento grid
   fatGrid: {
     flexDirection: 'row', flexWrap: 'wrap',
     marginHorizontal: -spacing.xs / 2,
@@ -954,29 +1331,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs / 2,
     marginBottom: spacing.sm,
   },
-  fatItemDesktop: {
-    width: '25%',
-  },
+  fatItemDesktop: { width: '25%' },
   fatLabel: {
     fontSize: 10, color: colors.textSecondary, fontWeight: '700',
     textAlign: 'center', marginBottom: 2,
   },
-  fatMediaRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: colors.primary + '10', borderRadius: borderRadius.sm,
-    paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  fatMediaLabel: { fontSize: fonts.small, fontWeight: '600', color: colors.text },
-  fatMediaValue: { fontSize: fonts.regular, fontWeight: '800', color: colors.primary },
-  fatMediaSub: { fontSize: 10, color: colors.textSecondary, textAlign: 'right', marginTop: 2 },
   fatValueBox: {
     backgroundColor: colors.inputBg, borderRadius: borderRadius.sm - 2,
     borderWidth: 1, borderColor: colors.border,
     paddingVertical: spacing.xs + 2, paddingHorizontal: 4,
-    alignItems: 'center',
-    minHeight: 36,
-    justifyContent: 'center',
+    alignItems: 'center', minHeight: 36, justifyContent: 'center',
   },
   fatValueBoxFilled: {
     backgroundColor: colors.primary + '08', borderColor: colors.primary + '30',
@@ -987,95 +1351,164 @@ const styles = StyleSheet.create({
   fatValueTextFilled: {
     color: colors.text, fontWeight: '600',
   },
-
-  // Tap value button
-  tapValueBtn: {
-    backgroundColor: colors.inputBg, borderRadius: borderRadius.sm,
-    borderWidth: 1, borderColor: colors.border,
-    height: 40, paddingHorizontal: spacing.sm,
-    minWidth: 100, alignItems: 'center', justifyContent: 'center',
-    marginRight: spacing.xs,
-  },
-  tapValueText: {
-    fontSize: fonts.small, color: colors.disabled,
-  },
-  tapValueTextFilled: {
-    color: colors.text, fontWeight: '600',
-  },
-
-  // Add form
-  addFormCompact: {
-    flexDirection: 'row', alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  addBtn: {
-    backgroundColor: colors.primary, width: 40, height: 40,
-    borderRadius: 20, justifyContent: 'center', alignItems: 'center',
-  },
-  addBtnText: { color: colors.textLight, fontSize: 22, fontWeight: '400', marginTop: -1 },
-
-  // Desp list
-  emptyListText: {
-    fontSize: fonts.small, fontFamily: fontFamily.regular, color: colors.textSecondary, textAlign: 'center',
-    paddingVertical: spacing.md,
-  },
-  despList: {
-    borderRadius: borderRadius.md,
-    overflow: 'hidden',
-  },
-  despItem: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.inputBg,
-    paddingVertical: spacing.sm + 2,
-    paddingLeft: spacing.sm + 2,
-    paddingRight: spacing.xs,
-    minHeight: 52,
-  },
-  despItemFirst: {
-    borderTopLeftRadius: borderRadius.md, borderTopRightRadius: borderRadius.md,
-  },
-  despItemLast: {
-    borderBottomLeftRadius: borderRadius.md, borderBottomRightRadius: borderRadius.md,
-  },
-  despItemBorder: {
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
-  },
-  despAvatar: {
-    width: 32, height: 32, borderRadius: 16,
-    alignItems: 'center', justifyContent: 'center',
-    marginRight: spacing.sm,
-  },
-  despAvatarText: {
-    fontSize: 13, fontFamily: fontFamily.bold, fontWeight: '700',
-  },
-  despItemMain: { flex: 1 },
-  despItemName: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text, marginBottom: 1 },
-  despItemValue: { fontSize: fonts.small, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.primary },
-  despItemActions: { flexDirection: 'row', alignItems: 'center', marginLeft: spacing.sm },
-  despEditBtn: { padding: spacing.xs + 2, marginRight: spacing.xs },
-  despDeleteBtn: { padding: spacing.xs + 2 },
-
-  // Total
-  totalRow: {
+  avgRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     backgroundColor: colors.primary + '10', borderRadius: borderRadius.sm,
     paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
     marginTop: spacing.sm,
   },
+  avgLabel: { fontSize: fonts.small, fontWeight: '600', color: colors.text },
+  avgValue: { fontSize: fonts.regular, fontWeight: '800', color: colors.primary },
+  avgSub: { fontSize: 10, color: colors.textSecondary, textAlign: 'right', marginTop: 2 },
+
+  // Despesas table
+  despTable: {
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  despTableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '08',
+    paddingVertical: spacing.xs + 2,
+    paddingHorizontal: spacing.sm + 2,
+  },
+  despTableHeaderText: {
+    fontSize: 11, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5,
+  },
+  despTableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm + 2,
+    paddingLeft: spacing.sm + 2,
+    paddingRight: spacing.xs,
+    minHeight: 44,
+  },
+  despTableRowAlt: {
+    backgroundColor: colors.inputBg + '80',
+  },
+  despTableName: {
+    fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.text,
+  },
+  despTableValueBtn: {
+    width: 100,
+    alignItems: 'flex-end',
+  },
+  despTableValue: {
+    fontSize: fonts.small, color: colors.disabled,
+  },
+  despTableValueFilled: {
+    color: colors.primary, fontFamily: fontFamily.bold, fontWeight: '700',
+  },
+  despDeleteBtn: {
+    padding: spacing.xs + 2,
+    marginLeft: spacing.xs,
+  },
+
+  // Add row
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  addInput: {
+    height: 40,
+    backgroundColor: colors.inputBg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    fontSize: fonts.small,
+    color: colors.text,
+  },
+  addValueBtn: {
+    height: 40,
+    backgroundColor: colors.inputBg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    minWidth: 90,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addValueText: {
+    fontSize: fonts.small, color: colors.disabled,
+  },
+  addValueTextFilled: {
+    color: colors.text, fontWeight: '600',
+  },
+  addCircleBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  // Suggestions
+  suggestionsSection: {
+    marginBottom: spacing.md,
+  },
+  suggestionsLabel: {
+    fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.medium,
+    marginBottom: spacing.xs,
+  },
+  suggestionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  suggestionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '08',
+    borderWidth: 1,
+    borderColor: colors.primary + '20',
+    borderRadius: 16,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs + 1,
+    gap: 4,
+  },
+  suggestionChipText: {
+    fontSize: fonts.tiny, color: colors.primary, fontFamily: fontFamily.medium,
+  },
+  inlineSuggestions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  miniSuggestionChip: {
+    backgroundColor: colors.inputBg,
+    borderRadius: 12,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+  },
+  miniSuggestionText: {
+    fontSize: 11, color: colors.primary, fontFamily: fontFamily.medium,
+  },
+
+  // Total row
+  totalRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: colors.primary + '10', borderRadius: borderRadius.sm,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
+    marginTop: spacing.xs,
+  },
   totalLabel: { fontSize: fonts.small, fontWeight: '600', color: colors.text },
   totalValue: { fontSize: fonts.regular, fontWeight: '800', color: colors.primary },
   totalSub: { fontSize: 10, color: colors.textSecondary, textAlign: 'right', marginTop: 2 },
 
-  // Save button
-  btnSave: {
-    backgroundColor: colors.primary, paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg, borderRadius: borderRadius.sm,
-  },
-  btnSaveText: { color: colors.textLight, fontWeight: '700', fontSize: fonts.small },
-
   // Toast
   toast: {
     position: 'absolute', bottom: 20, alignSelf: 'center',
+    flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.success, borderRadius: borderRadius.full,
     paddingVertical: spacing.xs + 2, paddingHorizontal: spacing.lg,
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
@@ -1083,13 +1516,49 @@ const styles = StyleSheet.create({
   },
   toastText: { color: colors.textLight, fontSize: fonts.small, fontWeight: '600' },
 
-  // Modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: spacing.lg },
-  modalContent: { backgroundColor: '#fff', borderRadius: borderRadius.md, padding: spacing.lg, width: '100%', maxWidth: 440 },
-  modalTitle: { fontSize: fonts.large, fontWeight: '700', color: colors.text, marginBottom: spacing.md, textAlign: 'center' },
-  modalActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
-  modalCancelBtn: { flex: 1, padding: spacing.sm + 2, borderRadius: borderRadius.sm, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
-  modalCancelText: { color: colors.textSecondary, fontWeight: '600', fontSize: fonts.regular },
-  modalSaveBtn: { flex: 1, padding: spacing.sm + 2, borderRadius: borderRadius.sm, backgroundColor: colors.primary, alignItems: 'center' },
+  // Edit Modal
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center', alignItems: 'center', padding: spacing.lg,
+  },
+  modalContent: {
+    backgroundColor: '#fff', borderRadius: borderRadius.lg,
+    padding: spacing.lg, width: '100%', maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: fonts.large, fontFamily: fontFamily.bold, fontWeight: '700',
+    color: colors.text, marginBottom: spacing.lg, textAlign: 'center',
+  },
+  modalLabel: {
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    color: colors.textSecondary, marginBottom: spacing.xs,
+  },
+  modalInput: {
+    height: 40,
+    backgroundColor: colors.inputBg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    fontSize: fonts.regular,
+    color: colors.text,
+  },
+  modalActions: {
+    flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm,
+  },
+  modalCancelBtn: {
+    flex: 1, paddingVertical: spacing.sm + 2,
+    borderRadius: borderRadius.sm, borderWidth: 1, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  modalCancelText: {
+    color: colors.textSecondary, fontWeight: '600', fontSize: fonts.regular,
+  },
+  modalSaveBtn: {
+    flex: 1, flexDirection: 'row',
+    paddingVertical: spacing.sm + 2,
+    borderRadius: borderRadius.sm, backgroundColor: colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
   modalSaveText: { color: '#fff', fontWeight: '700', fontSize: fonts.regular },
 });

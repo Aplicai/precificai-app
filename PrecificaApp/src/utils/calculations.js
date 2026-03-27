@@ -138,6 +138,51 @@ export function calcCustoUnitario(custoTotal, rendimentoUnidades) {
   return custoTotal / rendimentoUnidades;
 }
 
+// Determina o divisor correto para o custo unitário de um produto
+// Produtos vendidos por kg/litro usam rendimento_total; por unidade usam rendimento_unidades
+// Suporta valores novos ('por_kg', 'por_litro') E legados ('Grama(s)', 'Mililitro(s)').
+// Heurística legado: se unidade_rendimento contém 'grama'/'quilo'/'litro'/'ml'
+// E rendimento_total é pequeno (≤50), o produto foi cadastrado como "Por kg/litro".
+export function getDivisorRendimento(produto) {
+  const un = (produto.unidade_rendimento || '').toLowerCase();
+
+  // Novos valores explícitos
+  if (un === 'por_kg' || un === 'por_litro') {
+    return parseFloat(produto.rendimento_total) || 1;
+  }
+
+  // Heurística para valores legados: Grama(s)/Mililitro(s) com rt pequeno = venda por kg/litro
+  const rt = parseFloat(produto.rendimento_total) || 0;
+  const isLegacyKgLitro = (un.includes('grama') || un.includes('quilo') || un.includes('litro') || un.includes('ml'))
+    && rt > 0 && rt <= 50;
+
+  if (isLegacyKgLitro) {
+    return rt;
+  }
+
+  // Padrão: venda por unidade
+  return parseFloat(produto.rendimento_unidades) || 1;
+}
+
+// Retorna o tipo de venda do produto: 'kg', 'litro' ou 'unidade'
+// Suporta valores novos e legados com a mesma heurística de getDivisorRendimento.
+export function getTipoVenda(produto) {
+  const un = (produto.unidade_rendimento || '').toLowerCase();
+
+  // Novos valores explícitos
+  if (un === 'por_kg') return 'kg';
+  if (un === 'por_litro') return 'litro';
+
+  // Heurística para valores legados
+  const rt = parseFloat(produto.rendimento_total) || 0;
+  if (rt > 0 && rt <= 50) {
+    if (un.includes('grama') || un.includes('quilo')) return 'kg';
+    if (un.includes('litro') || un.includes('ml')) return 'litro';
+  }
+
+  return 'unidade';
+}
+
 // Calcula % de CMV
 export function calcCMVPercentual(custoInsumos, precoVenda) {
   if (!precoVenda || precoVenda === 0) return 0;

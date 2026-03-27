@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase } from '../utils/calculations';
+import { formatCurrency, formatPercent, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 
 export default function MetaVendasScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
@@ -12,6 +12,7 @@ export default function MetaVendasScreen({ navigation }) {
   const [produtos, setProdutos] = useState([]);
   const [custoFixoMensal, setCustoFixoMensal] = useState(0);
   const [totalVarDecimal, setTotalVarDecimal] = useState(0);
+  const [cmvMedioPercent, setCmvMedioPercent] = useState(0);
   const [resultado, setResultado] = useState(null);
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
@@ -32,7 +33,7 @@ export default function MetaVendasScreen({ navigation }) {
       ]);
 
       const totalFixas = fixas.reduce((a, d) => a + (d.valor || 0), 0);
-      const totalVar = variaveis.reduce((a, d) => a + ((d.percentual || 0) / 100), 0);
+      const totalVar = variaveis.reduce((a, d) => a + (d.percentual || 0), 0); // percentual already decimal (0.06 = 6%)
 
       setCustoFixoMensal(totalFixas);
       setTotalVarDecimal(totalVar);
@@ -45,31 +46,23 @@ export default function MetaVendasScreen({ navigation }) {
       const embsByProd = {};
       allEmbs.forEach(e => { (embsByProd[e.produto_id] = embsByProd[e.produto_id] || []).push(e); });
 
-      const prodData = [];
+      // Calculate average CMV% across all products
+      let somaCmvPerc = 0;
+      let countCmv = 0;
       for (const p of prodsR) {
-        const custoIng = (ingsByProd[p.id] || []).reduce((a, ing) => {
-          if (ing.unidade_medida === 'un') return a + ing.quantidade_utilizada * (ing.preco_por_kg || 0);
-          return a + (converterParaBase(ing.quantidade_utilizada, ing.unidade_medida || 'g') / 1000) * (ing.preco_por_kg || 0);
-        }, 0);
-        const custoPr = (prepsByProd[p.id] || []).reduce((a, pp) => a + (converterParaBase(pp.quantidade_utilizada, pp.unidade_medida || 'g') / 1000) * (pp.custo_por_kg || 0), 0);
+        const custoIng = (ingsByProd[p.id] || []).reduce((a, ing) => a + calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada, ing.unidade_medida, ing.unidade_medida || 'g'), 0);
+        const custoPr = (prepsByProd[p.id] || []).reduce((a, pp) => a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
         const custoEmb = (embsByProd[p.id] || []).reduce((a, e) => a + (e.preco_unitario || 0) * (e.quantidade_utilizada || 0), 0);
-
-        const custoUnit = (custoIng + custoPr + custoEmb) / (p.rendimento_unidades || 1);
-        const margemContrib = p.preco_venda - custoUnit - (p.preco_venda * totalVar);
-        const margemPercent = p.preco_venda > 0 ? margemContrib / p.preco_venda : 0;
-
-        prodData.push({
-          id: p.id,
-          nome: p.nome,
-          preco_venda: p.preco_venda,
-          custoUnit,
-          margemContrib,
-          margemPercent,
-          ativo: true,
-        });
+        const custoUnit = (custoIng + custoPr + custoEmb) / getDivisorRendimento(p);
+        if (p.preco_venda > 0) {
+          somaCmvPerc += custoUnit / p.preco_venda;
+          countCmv++;
+        }
       }
+      const cmvPerc = countCmv > 0 ? somaCmvPerc / countCmv : 0;
+      setCmvMedioPercent(cmvPerc);
 
-      setProdutos(prodData);
+      setProdutos(prodsR); // keep for empty state check
     } catch (e) {
       console.error('MetaVendasScreen loadData error:', e);
     } finally {
@@ -77,40 +70,28 @@ export default function MetaVendasScreen({ navigation }) {
     }
   }
 
-  function calcular(valor, prods) {
+  // Fórmula simplificada: Faturamento = (Fixos + Lucro) / (1 - CMV% - Var%)
+  function calcular(valor) {
     const lucro = parseFloat(valor) || 0;
     if (lucro <= 0) {
       setResultado(null);
       return;
     }
 
-    const ativos = prods.filter(p => p.ativo && p.margemContrib > 0);
-    if (ativos.length === 0) {
+    const margemDisponivel = 1 - cmvMedioPercent - totalVarDecimal;
+    if (margemDisponivel <= 0) {
       setResultado(null);
       return;
     }
 
-    // Margem de contribuicao media ponderada (por preco)
-    const somaPrecos = ativos.reduce((a, p) => a + p.preco_venda, 0);
-    const mcMedia = ativos.reduce((a, p) => a + (p.margemContrib / p.preco_venda) * (p.preco_venda / somaPrecos), 0);
-
-    // Faturamento necessario: (custos fixos + lucro desejado) / margem contribuicao media %
-    const faturamentoMensal = mcMedia > 0 ? (custoFixoMensal + lucro) / mcMedia : 0;
+    const faturamentoMensal = (custoFixoMensal + lucro) / margemDisponivel;
     const faturamentoDiario = faturamentoMensal / 30;
-
-    // Distribuir proporcionalmente entre produtos ativos
-    const produtosComMeta = ativos.map(p => {
-      const peso = p.preco_venda / somaPrecos;
-      const faturamentoProdMensal = faturamentoMensal * peso;
-      const unidadesMes = p.preco_venda > 0 ? faturamentoProdMensal / p.preco_venda : 0;
-      const unidadesDia = unidadesMes / 30;
-      return { ...p, unidadesDia, unidadesMes };
-    });
 
     setResultado({
       faturamentoMensal,
       faturamentoDiario,
-      produtos: produtosComMeta,
+      cmvValor: faturamentoMensal * cmvMedioPercent,
+      varValor: faturamentoMensal * totalVarDecimal,
     });
   }
 
@@ -118,19 +99,13 @@ export default function MetaVendasScreen({ navigation }) {
     // Allow only numbers
     const numericOnly = text.replace(/[^0-9]/g, '');
     setMetaLucro(numericOnly);
-    calcular(numericOnly, produtos);
+    calcular(numericOnly);
   }
 
   function onQuickValue(valor) {
     const str = String(valor);
     setMetaLucro(str);
-    calcular(str, produtos);
-  }
-
-  function toggleProduto(id) {
-    const updated = produtos.map(p => p.id === id ? { ...p, ativo: !p.ativo } : p);
-    setProdutos(updated);
-    calcular(metaLucro, updated);
+    calcular(str);
   }
 
   if (loading) {
@@ -190,70 +165,40 @@ export default function MetaVendasScreen({ navigation }) {
 
         {/* Resultado */}
         {resultado && (
-          <>
-            <View style={styles.resultCard}>
-              <Text style={styles.resultLabel}>Você precisa faturar</Text>
-              <Text style={styles.resultBig}>{formatCurrency(resultado.faturamentoMensal)}<Text style={styles.resultSuffix}>/mês</Text></Text>
-              <Text style={styles.resultDaily}>{formatCurrency(resultado.faturamentoDiario)} por dia</Text>
-              <View style={styles.resultDivider} />
-              <Text style={styles.resultDetail}>
-                Considerando {formatCurrency(custoFixoMensal)} de custos fixos + {formatPercent(totalVarDecimal)} de custos variáveis
-              </Text>
-            </View>
+          <View style={styles.resultCard}>
+            <Text style={styles.resultLabel}>Você precisa faturar</Text>
+            <Text style={styles.resultBig}>{formatCurrency(resultado.faturamentoMensal)}<Text style={styles.resultSuffix}>/mês</Text></Text>
+            <Text style={styles.resultDaily}>{formatCurrency(resultado.faturamentoDiario)} por dia</Text>
+            <View style={styles.resultDivider} />
 
-            {/* Product mix table */}
-            <View style={styles.card}>
-              <Text style={styles.tableTitle}>Mix de produtos</Text>
-              <Text style={styles.tableSubtitle}>Ative/desative produtos para ajustar a distribuição</Text>
+            {/* Decomposição clara do cálculo */}
+            <View style={{ gap: 6 }}>
+              <Text style={{ fontSize: 12, fontFamily: fontFamily.bold, color: colors.text, marginBottom: 2 }}>Como chegamos nesse valor:</Text>
 
-              {/* Table header */}
-              <View style={styles.tableHeader}>
-                <Text style={[styles.thText, { flex: 1 }]}>Produto</Text>
-                <Text style={[styles.thText, { width: 70, textAlign: 'right' }]}>Preço</Text>
-                <Text style={[styles.thText, { width: 60, textAlign: 'right' }]}>Margem</Text>
-                <Text style={[styles.thText, { width: 60, textAlign: 'right' }]}>Un/dia</Text>
-                <View style={{ width: 44 }} />
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary }}>Faturamento necessário</Text>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.bold, color: colors.text }}>{formatCurrency(resultado.faturamentoMensal)}</Text>
               </View>
 
-              {/* Product rows */}
-              {produtos.map(p => {
-                const metaProd = resultado.produtos.find(rp => rp.id === p.id);
-                const margemColor = p.margemPercent >= 0.15 ? colors.success : p.margemPercent >= 0.05 ? colors.warning : colors.error;
-                return (
-                  <View key={p.id} style={[styles.tableRow, !p.ativo && styles.tableRowInactive]}>
-                    <Text style={[styles.tdNome, !p.ativo && styles.tdInactive]} numberOfLines={1}>{p.nome}</Text>
-                    <Text style={[styles.tdText, { width: 70, textAlign: 'right' }, !p.ativo && styles.tdInactive]}>
-                      {formatCurrency(p.preco_venda)}
-                    </Text>
-                    <Text style={[styles.tdText, { width: 60, textAlign: 'right', color: p.ativo ? margemColor : colors.disabled }]}>
-                      {formatPercent(p.margemPercent)}
-                    </Text>
-                    <Text style={[styles.tdUnidades, { width: 60, textAlign: 'right' }, !p.ativo && styles.tdInactive]}>
-                      {metaProd ? metaProd.unidadesDia.toFixed(1) : '—'}
-                    </Text>
-                    <View style={{ width: 44, alignItems: 'center' }}>
-                      <Switch
-                        value={p.ativo}
-                        onValueChange={() => toggleProduto(p.id)}
-                        trackColor={{ false: colors.border, true: colors.primarySoft }}
-                        thumbColor={p.ativo ? colors.primary : colors.disabled}
-                      />
-                    </View>
-                  </View>
-                );
-              })}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.error }}>− CMV médio ({formatPercent(cmvMedioPercent)})</Text>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.error }}>-{formatCurrency(resultado.cmvValor)}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.error }}>− Custos variáveis ({formatPercent(totalVarDecimal)})</Text>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.error }}>-{formatCurrency(resultado.varValor)}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.error }}>− Custos fixos mensais</Text>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.error }}>-{formatCurrency(custoFixoMensal)}</Text>
+              </View>
 
-              {/* Total row */}
-              {resultado.produtos.length > 0 && (
-                <View style={styles.totalRow}>
-                  <Text style={styles.totalLabel}>Total</Text>
-                  <Text style={styles.totalValue}>
-                    {resultado.produtos.reduce((a, p) => a + p.unidadesDia, 0).toFixed(1)} un/dia
-                  </Text>
-                </View>
-              )}
+              <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 4, marginTop: 2, flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 12, fontFamily: fontFamily.bold, color: colors.success }}>= Lucro líquido</Text>
+                <Text style={{ fontSize: 12, fontFamily: fontFamily.bold, color: colors.success }}>{formatCurrency(parseFloat(metaLucro) || 0)}/mês</Text>
+              </View>
             </View>
-          </>
+          </View>
         )}
 
         {/* Empty state */}

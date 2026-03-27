@@ -16,6 +16,8 @@ import {
   getLabelPrecoBase,
   formatCurrency,
   converterParaBase,
+  calcCustoIngrediente,
+  calcCustoPreparo,
 } from '../utils/calculations';
 
 const CATEGORY_COLORS = [
@@ -28,6 +30,15 @@ function getCategoryColor(index) {
 
 export default function MateriaPrimaFormScreen({ route, navigation }) {
   const editId = route.params?.id;
+  const returnTo = route.params?.returnTo;
+
+  function goBackSafe() {
+    if (returnTo) {
+      navigation.navigate(returnTo);
+    } else {
+      navigation.navigate('MateriasPrimas');
+    }
+  }
   const isFocused = useIsFocused();
   const [form, setForm] = useState({
     nome: '', marca: '', categoria_id: null,
@@ -82,13 +93,11 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (e) => {
       if (allowExit.current) return; // permite sair
+      if (editId) return; // Auto-save handles edit mode — always allow exit
 
       const f = formRef.current;
       // Se o form está totalmente vazio (novo sem preencher nada), deixa sair
-      if (!f.nome.trim() && !f.quantidade_bruta && !f.quantidade_liquida && !f.valor_pago) {
-        // Novo insumo sem nada preenchido — se existir no DB (editId), valida
-        if (!editId) return;
-      }
+      if (!f.nome.trim() && !f.quantidade_bruta && !f.quantidade_liquida && !f.valor_pago) return;
 
       if (!isFormComplete(f)) {
         e.preventDefault();
@@ -124,6 +133,20 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     };
   }, []);
 
+  // Dedicated historico load — ensures history is fetched even if loadItem races
+  useEffect(() => {
+    if (!editId) return;
+    (async () => {
+      const db = await getDatabase();
+      try {
+        const hist = await db.getAllAsync('SELECT * FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC LIMIT 10', [editId]);
+        const reversed = (hist || []).reverse();
+        const filtered = reversed.filter((h, i) => i === 0 || h.valor_pago !== reversed[i - 1].valor_pago);
+        setHistoricoPrecos(filtered);
+      } catch(e) {}
+    })();
+  }, [editId]);
+
   async function loadCategorias() {
     const db = await getDatabase();
     setCategorias(await db.getAllAsync('SELECT * FROM categorias_insumos ORDER BY nome'));
@@ -145,10 +168,13 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
       // Carregar histórico de preços
       try {
         const hist = await db.getAllAsync(
-          'SELECT * FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC',
+          'SELECT * FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC LIMIT 10',
           [editId]
         );
-        setHistoricoPrecos(hist.slice(0, 10).reverse()); // últimos 10, ordem cronológica
+        // Filtrar apenas mudanças de preço (remover duplicatas consecutivas)
+        const reversed = hist.reverse(); // cronológico (oldest first for chart)
+        const filtered = reversed.filter((h, i) => i === 0 || h.valor_pago !== reversed[i - 1].valor_pago);
+        setHistoricoPrecos(filtered);
       } catch (e) { /* tabela pode não existir */ }
       // Marca como carregado após setar o form para evitar auto-save imediato
       setTimeout(() => setLoaded(true), 100);
@@ -194,15 +220,8 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         'UPDATE materias_primas SET nome=?, marca=?, categoria_id=?, quantidade_bruta=?, quantidade_liquida=?, fator_correcao=?, unidade_medida=?, valor_pago=?, preco_por_kg=? WHERE id=?',
         [f.nome, f.marca, f.categoria_id, qb, ql, fc, f.unidade_medida, vp, pb, editId]
       );
-      // Registrar histórico de preço
-      if (vp > 0) {
-        try {
-          await db.runAsync(
-            'INSERT INTO historico_precos (materia_prima_id, valor_pago, preco_por_kg) VALUES (?,?,?)',
-            [editId, vp, pb]
-          );
-        } catch (e) { /* ignora se tabela não existe ainda */ }
-      }
+      // Histórico de preço NÃO é registrado no auto-save
+      // Apenas no "Salvar e voltar" para evitar erros de digitação
       // Check margin erosion
       try {
         const affected = await db.getAllAsync(
@@ -214,13 +233,11 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
           for (const prod of affected) {
             const ings = await db.getAllAsync('SELECT pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id WHERE pi.produto_id = ?', [prod.id]);
             const custoIng = ings.reduce((a, ing) => {
-              const qtBase = converterParaBase(ing.quantidade_utilizada, ing.unidade_medida || 'g');
-              return a + (qtBase / 1000) * (ing.preco_por_kg || 0);
+              return a + calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada, ing.unidade_medida || 'g', ing.unidade_medida || 'g');
             }, 0);
             const preps = await db.getAllAsync('SELECT pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id WHERE pp.produto_id = ?', [prod.id]);
             const custoPr = preps.reduce((a, pp) => {
-              const qtBase = converterParaBase(pp.quantidade_utilizada, pp.unidade_medida || 'g');
-              return a + (qtBase / 1000) * (pp.custo_por_kg || 0);
+              return a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g');
             }, 0);
             const embs = await db.getAllAsync('SELECT pe.quantidade_utilizada, e.preco_unitario FROM produto_embalagens pe JOIN embalagens e ON e.id = pe.embalagem_id WHERE pe.produto_id = ?', [prod.id]);
             const custoEmb = embs.reduce((a, pe) => a + (pe.quantidade_utilizada || 0) * (pe.preco_unitario || 0), 0);
@@ -474,7 +491,9 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             </View>
             <View style={styles.historicoChart}>
               {(() => {
-                const precos = historicoPrecos.map(h => h.valor_pago);
+                // Inverter para exibir do mais antigo (esquerda) ao mais recente (direita)
+                const sorted = [...historicoPrecos].reverse();
+                const precos = sorted.map(h => h.valor_pago);
                 const max = Math.max(...precos);
                 const min = Math.min(...precos);
                 const range = max - min || 1;
@@ -484,27 +503,55 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                 return (
                   <>
                     <View style={styles.historicoBarContainer}>
-                      {precos.map((p, i) => {
-                        const height = Math.max(8, ((p - min) / range) * 40 + 8);
-                        const isLast = i === precos.length - 1;
+                      {sorted.map((h, i) => {
+                        const p = h.valor_pago;
+                        const heightPct = ((p - min) / range);
+                        const height = Math.max(12, heightPct * 56 + 12);
+                        const isLast = i === sorted.length - 1;
+                        const data = h.data ? new Date(h.data).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
                         return (
-                          <View key={i} style={styles.historicoBarWrapper}>
+                          <View key={h.id || i} style={styles.historicoBarWrapper}>
+                            <Text style={styles.historicoBarPrice}>{formatCurrency(p)}</Text>
                             <View style={[styles.historicoBar, {
                               height,
-                              backgroundColor: isLast ? colors.primary : colors.primary + '40',
+                              backgroundColor: isLast ? colors.primary : colors.primary + '30',
                             }]} />
+                            {data ? <Text style={styles.historicoBarDate}>{data}</Text> : null}
+                            <TouchableOpacity
+                              style={styles.historicoDeleteBtn}
+                              onPress={async () => {
+                                if (Platform.OS === 'web') {
+                                  const ok = window.confirm('Deseja excluir este registro de preço do histórico?');
+                                  if (ok) {
+                                    try {
+                                      const db = await getDatabase();
+                                      await db.runAsync('DELETE FROM historico_precos WHERE id = ?', [h.id]);
+                                      setHistoricoPrecos(prev => prev.filter(x => x.id !== h.id));
+                                    } catch (e) {}
+                                  }
+                                } else {
+                                  Alert.alert('Excluir registro', 'Deseja excluir este registro de preço?', [
+                                    { text: 'Cancelar', style: 'cancel' },
+                                    { text: 'Excluir', style: 'destructive', onPress: async () => {
+                                      try { const db = await getDatabase(); await db.runAsync('DELETE FROM historico_precos WHERE id = ?', [h.id]); setHistoricoPrecos(prev => prev.filter(x => x.id !== h.id)); } catch(e) {}
+                                    }}
+                                  ]);
+                                }
+                              }}
+                              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                              {...(Platform.OS === 'web' ? { title: 'Excluir este registro de preço' } : {})}
+                            >
+                              <Feather name="x" size={9} color={colors.error + '80'} />
+                            </TouchableOpacity>
                           </View>
                         );
                       })}
                     </View>
                     <View style={styles.historicoInfo}>
-                      <Text style={styles.historicoInfoText}>
-                        Último: {formatCurrency(ultimo)}
-                      </Text>
                       <Text style={[styles.historicoInfoText, {
                         color: variacao > 0 ? colors.error : variacao < 0 ? colors.success : colors.textSecondary
                       }]}>
-                        {variacao > 0 ? '▲' : variacao < 0 ? '▼' : '='} {Math.abs(variacao).toFixed(1)}%
+                        {variacao > 0 ? '▲ Subiu' : variacao < 0 ? '▼ Caiu' : '= Estável'} {Math.abs(variacao).toFixed(1)}%
                       </Text>
                     </View>
                   </>
@@ -516,18 +563,51 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
 
         {/* Salvar (edição) */}
         {editId && (
-          <TouchableOpacity style={styles.btnSaveEdit} onPress={() => { allowExit.current = true; navigation.goBack(); }}>
+          <TouchableOpacity style={styles.btnSaveEdit} onPress={async () => {
+            // Registrar histórico de preço ao salvar
+            const vp = parseFloat(String(formRef.current.valor_pago).replace(',', '.')) || 0;
+            if (vp > 0) {
+              try {
+                const db = await getDatabase();
+                const f = formRef.current;
+                const qb = parseFloat(String(f.quantidade_bruta).replace(',', '.')) || 0;
+                const ql = parseFloat(String(f.quantidade_liquida).replace(',', '.')) || qb;
+                const pb = ql > 0 ? vp / (ql / 1000) : 0;
+                const lastHist = await db.getAllAsync('SELECT valor_pago FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC LIMIT 1', [editId]);
+                const lastPrice = lastHist?.[0]?.valor_pago;
+                if (lastPrice === undefined || lastPrice === null || Math.abs(lastPrice - vp) > 0.001) {
+                  await db.runAsync('INSERT INTO historico_precos (materia_prima_id, valor_pago, preco_por_kg) VALUES (?,?,?)', [editId, vp, pb]);
+                }
+              } catch (e) {}
+            }
+            allowExit.current = true;
+            goBackSafe();
+          }}>
             <Feather name="check" size={14} color={colors.primary} style={{ marginRight: 5 }} />
             <Text style={styles.btnSaveEditText}>Salvar e voltar</Text>
           </TouchableOpacity>
         )}
 
-        {/* Excluir */}
+        {/* Duplicar + Excluir */}
         {editId && (
-          <TouchableOpacity style={styles.btnDelete} onPress={solicitarExclusao}>
-            <Feather name="trash-2" size={13} color={colors.error} style={{ marginRight: 5 }} />
-            <Text style={styles.btnDeleteText}>Excluir Insumo</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.md, marginTop: spacing.sm }}>
+            {isFormComplete(form) && <TouchableOpacity style={[styles.btnDelete, { borderColor: colors.primary + '30' }]} onPress={async () => {
+              const f = formRef.current;
+              // Salva o item atual antes de duplicar
+              try { await autoSave(); } catch(e) {}
+              const db = await getDatabase();
+              const result = await db.runAsync('INSERT INTO materias_primas (nome, marca, categoria_id, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg) VALUES (?,?,?,?,?,?,?,?,?)',
+                [f.nome.trim() + ' (cópia)', f.marca, f.categoria_id, parseFloat(f.quantidade_bruta) || 0, parseFloat(f.quantidade_liquida) || 0, parseFloat(f.fator_correcao) || 1, f.unidade_medida, parseFloat(String(f.valor_pago).replace(',','.')) || 0, parseFloat(f.preco_por_kg) || 0]);
+              if (result?.lastInsertRowId) { allowExit.current = true; navigation.replace('MateriaPrimaForm', { id: result.lastInsertRowId }); }
+            }}>
+              <Feather name="copy" size={13} color={colors.primary} style={{ marginRight: 5 }} />
+              <Text style={[styles.btnDeleteText, { color: colors.primary }]}>Duplicar</Text>
+            </TouchableOpacity>}
+            <TouchableOpacity style={styles.btnDelete} onPress={solicitarExclusao}>
+              <Feather name="trash-2" size={13} color={colors.error} style={{ marginRight: 5 }} />
+              <Text style={styles.btnDeleteText}>Excluir</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {/* Auto-save status (edição) */}
@@ -725,30 +805,55 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.semiBold,
     color: colors.textSecondary,
   },
-  historicoChart: {},
+  historicoChart: {
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.sm,
+    padding: spacing.sm,
+  },
   historicoBarContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 4,
-    height: 52,
+    gap: 6,
+    minHeight: 100,
     paddingBottom: 4,
   },
   historicoBarWrapper: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'flex-end',
-    height: '100%',
+    maxWidth: 64,
   },
   historicoBar: {
-    width: '80%',
-    maxWidth: 20,
-    borderRadius: 3,
-    minHeight: 4,
+    width: '70%',
+    maxWidth: 28,
+    borderRadius: 4,
+    minHeight: 8,
+  },
+  historicoDeleteBtn: {
+    width: 16, height: 16, borderRadius: 8,
+    backgroundColor: colors.error + '12',
+    alignItems: 'center', justifyContent: 'center',
+    marginTop: 4,
+  },
+  historicoBarPrice: {
+    fontSize: 10,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  historicoBarDate: {
+    fontSize: 9,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+    marginTop: 3,
+    textAlign: 'center',
   },
   historicoInfo: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 6,
+    marginTop: 8,
   },
   historicoInfoText: {
     fontSize: 11,
@@ -795,9 +900,10 @@ const styles = StyleSheet.create({
   // Salvar e voltar (edição - sutil)
   btnSaveEdit: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    alignSelf: 'center',
     backgroundColor: colors.primary + '10', borderRadius: borderRadius.sm,
     borderWidth: 1, borderColor: colors.primary + '30',
-    paddingVertical: spacing.sm, marginTop: spacing.md,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, marginTop: spacing.md,
   },
   btnSaveEditText: { color: colors.primary, fontWeight: '600', fontSize: fonts.small },
   autoSaveInline: {

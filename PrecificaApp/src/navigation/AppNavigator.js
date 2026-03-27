@@ -32,19 +32,19 @@ import DeliveryPlataformasScreen from '../screens/DeliveryPlataformasScreen';
 import DeliveryPrecosScreen from '../screens/DeliveryPrecosScreen';
 import DeliveryProdutosScreen from '../screens/DeliveryProdutosScreen';
 import DeliveryCombosScreen from '../screens/DeliveryCombosScreen';
-import DeliveryAdicionaisScreen from '../screens/DeliveryAdicionaisScreen';
 import MaisScreen from '../screens/MaisScreen';
 import AtualizarPrecosScreen from '../screens/AtualizarPrecosScreen';
 import SimuladorScreen from '../screens/SimuladorScreen';
-import MetaVendasScreen from '../screens/MetaVendasScreen';
 import RelatorioSimplesScreen from '../screens/RelatorioSimplesScreen';
 import FornecedoresScreen from '../screens/FornecedoresScreen';
 import ListaComprasScreen from '../screens/ListaComprasScreen';
 import KitInicioScreen from '../screens/KitInicioScreen';
 import SobreScreen from '../screens/SobreScreen';
+import ContaSegurancaScreen from '../screens/ContaSegurancaScreen';
 import PerfilScreen from '../screens/PerfilScreen';
 import MargemBaixaScreen from '../screens/MargemBaixaScreen';
 import ExportPDFScreen from '../screens/ExportPDFScreen';
+import SuporteScreen from '../screens/SuporteScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -200,7 +200,6 @@ function DeliveryStack() {
       <Stack.Screen name="DeliveryPlataformas" component={DeliveryPlataformasScreen} options={{ title: 'Plataformas' }} />
       <Stack.Screen name="DeliveryPrecos" component={DeliveryPrecosScreen} options={{ title: 'Precificação' }} />
       <Stack.Screen name="DeliveryProdutosScreen" component={DeliveryProdutosScreen} options={{ title: 'Produtos Delivery' }} />
-      <Stack.Screen name="DeliveryAdicionaisScreen" component={DeliveryAdicionaisScreen} options={{ title: 'Adicionais' }} />
     </Stack.Navigator>
   );
 }
@@ -224,18 +223,18 @@ function MaisStack() {
       <Stack.Screen name="DeliveryPlataformas" component={DeliveryPlataformasScreen} options={{ title: 'Plataformas' }} />
       <Stack.Screen name="DeliveryPrecos" component={DeliveryPrecosScreen} options={{ title: 'Precificação' }} />
       <Stack.Screen name="DeliveryProdutosScreen" component={DeliveryProdutosScreen} options={{ title: 'Produtos Delivery' }} />
-      <Stack.Screen name="DeliveryAdicionaisScreen" component={DeliveryAdicionaisScreen} options={{ title: 'Adicionais' }} />
       <Stack.Screen name="Configuracoes" component={ConfiguracoesScreen} options={{ title: 'Configurações' }} />
       <Stack.Screen name="Perfil" component={PerfilScreen} options={{ title: 'Meu Perfil' }} />
       <Stack.Screen name="AtualizarPrecos" component={AtualizarPrecosScreen} options={{ title: 'Atualizar Preços' }} />
       <Stack.Screen name="Simulador" component={SimuladorScreen} options={{ title: 'Simulador E se?' }} />
-      <Stack.Screen name="MetaVendas" component={MetaVendasScreen} options={{ title: 'Quanto Preciso Vender?' }} />
       <Stack.Screen name="RelatorioSimples" component={RelatorioSimplesScreen} options={{ title: 'Relatório Simplificado' }} />
       <Stack.Screen name="Fornecedores" component={FornecedoresScreen} options={{ title: 'Comparar Fornecedores' }} />
       <Stack.Screen name="ListaCompras" component={ListaComprasScreen} options={{ title: 'Lista de Compras' }} />
       <Stack.Screen name="KitInicio" component={KitInicioScreen} options={{ title: 'Kit de Início' }} />
       <Stack.Screen name="Sobre" component={SobreScreen} options={{ title: 'Sobre o App' }} />
+      <Stack.Screen name="ContaSeguranca" component={ContaSegurancaScreen} options={{ title: 'Conta e Segurança' }} />
       <Stack.Screen name="ExportPDF" component={ExportPDFScreen} options={{ title: 'Exportar PDF' }} />
+      <Stack.Screen name="Suporte" component={SuporteScreen} options={{ title: 'Suporte' }} />
     </Stack.Navigator>
   );
 }

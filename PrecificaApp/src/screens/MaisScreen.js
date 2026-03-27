@@ -50,15 +50,6 @@ const MENU_ITEMS = [
     screen: 'Simulador',
   },
   {
-    key: 'metavendas',
-    title: 'Quanto Preciso Vender?',
-    desc: 'Calcule quantas unidades vender para atingir sua meta',
-    icon: 'target',
-    set: 'feather',
-    color: colors.info,
-    screen: 'MetaVendas',
-  },
-  {
     key: 'relatorio',
     title: 'Relatório Simplificado',
     desc: 'Seus números traduzidos em linguagem simples',
@@ -102,6 +93,15 @@ const MENU_ITEMS = [
     set: 'feather',
     color: colors.textSecondary,
     screen: 'Configuracoes',
+  },
+  {
+    key: 'suporte',
+    title: 'Suporte',
+    desc: 'Perguntas frequentes e contato',
+    icon: 'help-circle',
+    set: 'feather',
+    color: colors.primary,
+    screen: 'Suporte',
   },
 ];
 

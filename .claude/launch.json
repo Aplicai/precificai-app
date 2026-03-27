@@ -15,6 +15,12 @@
       "runtimeArgs": ["node_modules/serve/build/main.js", ".", "-l", "3333", "--no-clipboard"],
       "port": 3333,
       "cwd": "PrecificaApp"
+    },
+    {
+      "name": "LandingPage",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["PrecificaApp/node_modules/serve/build/main.js", "../Landing Page", "-l", "3000", "--no-clipboard"],
+      "port": 3000
     }
   ]
 }

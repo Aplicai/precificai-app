@@ -3,19 +3,28 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking, Image } 
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 
-const VERSION = '1.0.0';
+const VERSION = '2.0.0';
 
 const FEATURES = [
-  { icon: 'file-text', label: 'Ficha técnica completa', desc: 'Ingredientes, preparos e embalagens' },
-  { icon: 'dollar-sign', label: 'Precificação inteligente', desc: 'CMV, markup, margem e preço sugerido' },
-  { icon: 'bar-chart-2', label: 'Engenharia de Cardápio', desc: 'Análise de portfólio de produtos' },
-  { icon: 'zap', label: 'Simulador "E se?"', desc: 'Impacto de variações de preço' },
-  { icon: 'target', label: 'Meta de vendas', desc: 'Quanto vender para atingir seu objetivo' },
-  { icon: 'shopping-cart', label: 'Lista de compras', desc: 'Geração automática de ingredientes' },
-  { icon: 'truck', label: 'Delivery', desc: 'Precificação com taxas de plataformas' },
-  { icon: 'printer', label: 'Exportar PDF', desc: 'Fichas técnicas para impressão' },
-  { icon: 'trending-up', label: 'Histórico de preços', desc: 'Acompanhe a evolução dos custos' },
-  { icon: 'users', label: 'Comparar fornecedores', desc: 'Encontre economia nos insumos' },
+  { icon: 'file-text', label: 'Cadastro completo', desc: 'Insumos, preparos, embalagens e produtos' },
+  { icon: 'dollar-sign', label: 'Cálculo automático de CMV', desc: 'CMV e preço sugerido com markup e margem' },
+  { icon: 'sliders', label: 'Configuração financeira completa', desc: 'Margem, despesas fixas e variáveis, faturamento' },
+  { icon: 'bar-chart-2', label: 'Engenharia de Cardápio', desc: 'Análise de portfólio com vendas mensais' },
+  { icon: 'zap', label: 'Simulador de Impacto', desc: 'Variação de preços e cenários' },
+  { icon: 'target', label: 'Meta de Faturamento', desc: 'Ponto de equilíbrio e metas diárias' },
+  { icon: 'truck', label: 'Precificação para Delivery', desc: 'iFood, Rappi e outras plataformas' },
+  { icon: 'users', label: 'Comparador de Fornecedores', desc: 'Encontre economia nos insumos' },
+  { icon: 'shopping-cart', label: 'Lista de Compras automática', desc: 'Consolidação de ingredientes por produção' },
+  { icon: 'printer', label: 'Exportar Fichas Técnicas em PDF', desc: 'Produtos e preparos para impressão' },
+  { icon: 'book-open', label: 'Relatório Simplificado', desc: 'Explica aí - seus números em linguagem simples' },
+  { icon: 'trending-up', label: 'Histórico de preços com gráfico', desc: 'Acompanhe a evolução dos custos' },
+  { icon: 'alert-triangle', label: 'Alerta de erosão de margem', desc: 'Notificação quando margens caem' },
+  { icon: 'activity', label: 'Semáforo de saúde por produto', desc: 'Visual rápido da saúde financeira' },
+  { icon: 'copy', label: 'Duplicar receitas e produtos', desc: 'Clone e adapte rapidamente' },
+  { icon: 'database', label: 'Backup e restauração de dados', desc: 'Segurança dos seus cadastros' },
+  { icon: 'package', label: 'Kit de Início por segmento', desc: 'Modelos prontos para seu tipo de negócio' },
+  { icon: 'cpu', label: 'Insights automáticos no Painel', desc: 'Dicas inteligentes baseadas nos seus dados' },
+  { icon: 'layers', label: 'Gestão de combos', desc: 'Monte e precifique combos facilmente' },
 ];
 
 export default function SobreScreen() {

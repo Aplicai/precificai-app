@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { View, Text, FlatList, StyleSheet, TextInput, TouchableOpacity, Modal, Keyboard, Platform } from 'react-native';
+import { View, Text, FlatList, ScrollView, StyleSheet, TextInput, TouchableOpacity, Modal, Keyboard, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import { Feather } from '@expo/vector-icons';
@@ -8,6 +8,12 @@ import { formatCurrency, normalizeSearch } from '../utils/calculations';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+
+const CATEGORY_COLORS = [
+  colors.primary, colors.accent, colors.coral, colors.purple,
+  colors.yellow, colors.success, colors.info, colors.red,
+  colors.primaryLight, colors.accentLight, colors.coralLight, colors.purpleLight,
+];
 
 const TABS = [
   { key: 'insumos', label: 'Insumos', icon: 'package' },
@@ -25,7 +31,10 @@ export default function AtualizarPrecosScreen() {
   // Modal state
   const [editModal, setEditModal] = useState(null); // { item, value }
   const [recentSaved, setRecentSaved] = useState({}); // { id: true }
+  const [collapsedDesktop, setCollapsedDesktop] = useState({});
   const inputRef = useRef(null);
+
+  function toggleDesktopSection(key) { setCollapsedDesktop(prev => ({...prev, [key]: !prev[key]})); }
 
   useFocusEffect(useCallback(() => {
     loadData();
@@ -36,22 +45,28 @@ export default function AtualizarPrecosScreen() {
     let rows = [];
 
     if (activeTab === 'insumos') {
-      rows = await db.getAllAsync('SELECT id, nome, valor_pago FROM materias_primas ORDER BY nome');
-      rows = rows.map(r => ({ ...r, priceField: 'valor_pago', price: r.valor_pago }));
+      rows = await db.getAllAsync('SELECT id, nome, marca, valor_pago, categoria_id FROM materias_primas ORDER BY nome');
+      const cats = await db.getAllAsync('SELECT id, nome FROM categorias_insumos');
+      const catMap = Object.fromEntries(cats.map(c => [c.id, c.nome]));
+      rows = rows.map(r => ({ ...r, displayName: r.marca ? `${r.nome} (${r.marca})` : r.nome, priceField: 'valor_pago', price: r.valor_pago, categoria: catMap[r.categoria_id] || 'Sem categoria' }));
     } else if (activeTab === 'embalagens') {
-      rows = await db.getAllAsync('SELECT id, nome, preco_embalagem FROM embalagens ORDER BY nome');
-      rows = rows.map(r => ({ ...r, priceField: 'preco_embalagem', price: r.preco_embalagem }));
+      rows = await db.getAllAsync('SELECT id, nome, marca, preco_embalagem, categoria_id FROM embalagens ORDER BY nome');
+      const cats = await db.getAllAsync('SELECT id, nome FROM categorias_embalagens');
+      const catMap = Object.fromEntries(cats.map(c => [c.id, c.nome]));
+      rows = rows.map(r => ({ ...r, displayName: r.marca ? `${r.nome} (${r.marca})` : r.nome, priceField: 'preco_embalagem', price: r.preco_embalagem, categoria: catMap[r.categoria_id] || 'Sem categoria' }));
     } else if (activeTab === 'produtos') {
-      rows = await db.getAllAsync('SELECT id, nome, preco_venda FROM produtos ORDER BY nome');
-      rows = rows.map(r => ({ ...r, priceField: 'preco_venda', price: r.preco_venda }));
+      rows = await db.getAllAsync('SELECT id, nome, preco_venda, categoria_id FROM produtos ORDER BY nome');
+      const cats = await db.getAllAsync('SELECT id, nome FROM categorias_produtos');
+      const catMap = Object.fromEntries(cats.map(c => [c.id, c.nome]));
+      rows = rows.map(r => ({ ...r, priceField: 'preco_venda', price: r.preco_venda, categoria: catMap[r.categoria_id] || 'Sem categoria' }));
     } else if (activeTab === 'combos') {
       rows = await db.getAllAsync('SELECT id, nome, preco_venda FROM delivery_combos ORDER BY nome');
-      rows = rows.map(r => ({ ...r, priceField: 'preco_venda', price: r.preco_venda }));
+      rows = rows.map(r => ({ ...r, priceField: 'preco_venda', price: r.preco_venda, categoria: 'Combos' }));
     }
 
     if (busca.trim()) {
       const termo = normalizeSearch(busca);
-      rows = rows.filter(r => normalizeSearch(r.nome).includes(termo));
+      rows = rows.filter(r => normalizeSearch(r.displayName || r.nome).includes(termo));
     }
 
     setItems(rows);
@@ -128,7 +143,7 @@ export default function AtualizarPrecosScreen() {
       >
         <View style={styles.rowInner}>
           <Text style={[styles.rowNome, isDesktop && styles.rowNomeDesktop]} numberOfLines={2}>
-            {item.nome}
+            {item.displayName || item.nome}
           </Text>
           <View style={styles.rowRight}>
             {isSaved && (
@@ -149,49 +164,51 @@ export default function AtualizarPrecosScreen() {
     );
   }
 
-  // For desktop 2-column layout
+  // For desktop multi-column grid layout
   function renderDesktopGrid() {
     if (!isDesktop || items.length === 0) return null;
 
     return (
       <View style={styles.desktopGrid}>
-        {/* Table header */}
-        <View style={styles.tableHeader}>
-          <Text style={styles.tableHeaderText}>Nome</Text>
-          <Text style={[styles.tableHeaderText, styles.tableHeaderPrice]}>{getPriceLabel()}</Text>
-          <View style={{ width: 36 }} />
-        </View>
-        {/* Table rows */}
-        {items.map((item, index) => {
-          const isSaved = recentSaved[item.id];
-          return (
-            <TouchableOpacity
-              key={item.id}
-              style={[
-                styles.tableRow,
-                index % 2 === 0 && styles.tableRowEven,
-                isWeb && { cursor: 'pointer' },
-              ]}
-              activeOpacity={0.7}
-              onPress={() => openEditModal(item)}
-            >
-              <Text style={styles.tableCellName} numberOfLines={2}>{item.nome}</Text>
-              <View style={styles.tableCellPriceWrap}>
-                {isSaved && (
-                  <View style={styles.savedBadgeInline}>
-                    <Feather name="check" size={11} color={colors.success} />
-                  </View>
-                )}
-                <Text style={[styles.tableCellPrice, isSaved && { color: colors.success }]}>
-                  {formatCurrency(item.price || 0)}
-                </Text>
-              </View>
-              <View style={styles.tableCellAction}>
-                <Feather name="edit-2" size={13} color={colors.primaryLight} />
-              </View>
-            </TouchableOpacity>
-          );
-        })}
+        {(() => {
+          const grouped = {};
+          items.forEach(item => {
+            const cat = item.categoria || 'Sem categoria';
+            if (!grouped[cat]) grouped[cat] = [];
+            grouped[cat].push(item);
+          });
+          return Object.entries(grouped).map(([cat, catItems], catIdx) => (
+            <View key={cat} style={{ marginBottom: spacing.md }}>
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, marginTop: catIdx > 0 ? 16 : 0 }}
+                onPress={() => toggleDesktopSection(cat)}
+              >
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: CATEGORY_COLORS[catIdx % CATEGORY_COLORS.length] }} />
+                <Text style={styles.gridCatTitle}>{cat}</Text>
+                <Text style={{ fontSize: 12, color: colors.textSecondary }}>({catItems.length})</Text>
+                <Feather name={collapsedDesktop[cat] ? 'chevron-right' : 'chevron-down'} size={14} color={colors.disabled} />
+              </TouchableOpacity>
+              {!collapsedDesktop[cat] && (<View style={styles.gridContainer}>
+                {catItems.map((item) => {
+                  const isSaved = recentSaved[item.id];
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[styles.gridCard, isSaved && { borderColor: colors.success + '40', backgroundColor: colors.success + '04' }, isWeb && { cursor: 'pointer' }]}
+                      activeOpacity={0.7}
+                      onPress={() => openEditModal(item)}
+                    >
+                      <Text style={styles.gridCardName} numberOfLines={1}>{item.displayName || item.nome}</Text>
+                      <Text style={[styles.gridCardPrice, isSaved && { color: colors.success }]}>
+                        {formatCurrency(item.price || 0)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>)}
+            </View>
+          ));
+        })()}
       </View>
     );
   }
@@ -257,21 +274,23 @@ export default function AtualizarPrecosScreen() {
 
       {/* Content */}
       {isDesktop ? (
-        <View style={styles.desktopContentWrap}>
-          <View style={styles.desktopContentInner}>
-            {items.length === 0 ? (
-              <EmptyState
-                icon={busca.trim() ? 'search' : 'dollar-sign'}
-                title={busca.trim() ? 'Nenhum item encontrado' : 'Nenhum item cadastrado'}
-                description={busca.trim()
-                  ? `Nenhum resultado para "${busca}".`
-                  : `Cadastre itens na aba de ${activeTab} para atualizar preços aqui.`}
-              />
-            ) : (
-              renderDesktopGrid()
-            )}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
+          <View style={styles.desktopContentWrap}>
+            <View style={styles.desktopContentInner}>
+              {items.length === 0 ? (
+                <EmptyState
+                  icon={busca.trim() ? 'search' : 'dollar-sign'}
+                  title={busca.trim() ? 'Nenhum item encontrado' : 'Nenhum item cadastrado'}
+                  description={busca.trim()
+                    ? `Nenhum resultado para "${busca}".`
+                    : `Cadastre itens na aba de ${activeTab} para atualizar preços aqui.`}
+                />
+              ) : (
+                renderDesktopGrid()
+              )}
+            </View>
           </View>
-        </View>
+        </ScrollView>
       ) : (
         <FlatList
           data={items}
@@ -356,8 +375,7 @@ const styles = StyleSheet.create({
   },
   headerInner: {},
   headerInnerDesktop: {
-    maxWidth: 960,
-    alignSelf: 'center',
+    maxWidth: 1200,
     width: '100%',
   },
 
@@ -365,18 +383,20 @@ const styles = StyleSheet.create({
   tabsRow: {
     flexDirection: 'row',
     paddingHorizontal: spacing.md,
-    gap: 4,
+    gap: 6,
     marginBottom: 0,
+    flexWrap: 'wrap',
   },
   tabsRowDesktop: {
-    gap: 8,
+    gap: 0,
     paddingHorizontal: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    flexWrap: 'nowrap',
   },
   tab: {
-    flex: 1,
     paddingVertical: 7,
+    paddingHorizontal: 14,
     borderRadius: borderRadius.sm,
     backgroundColor: colors.inputBg,
     alignItems: 'center',
@@ -385,7 +405,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   tabDesktop: {
-    flex: 0,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'transparent',
@@ -393,6 +412,7 @@ const styles = StyleSheet.create({
     borderRadius: 0,
     paddingVertical: 10,
     paddingHorizontal: spacing.lg,
+    marginRight: spacing.sm,
     marginBottom: 0,
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
@@ -432,7 +452,7 @@ const styles = StyleSheet.create({
   searchWrapDesktop: {
     marginTop: spacing.sm,
     marginBottom: spacing.sm,
-    maxWidth: 360,
+    maxWidth: 500,
   },
 
   // ── Count bar ──
@@ -441,8 +461,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs + 2,
   },
   countBarDesktop: {
-    maxWidth: 960,
-    alignSelf: 'center',
+    maxWidth: 1200,
     width: '100%',
   },
   countText: {
@@ -491,8 +510,8 @@ const styles = StyleSheet.create({
   },
   rowNome: {
     fontSize: 13,
-    fontFamily: fontFamily.semiBold,
-    fontWeight: '600',
+    fontFamily: fontFamily.medium,
+    fontWeight: '500',
     color: colors.text,
     flex: 1,
     marginRight: spacing.sm,
@@ -542,21 +561,57 @@ const styles = StyleSheet.create({
   // ── Desktop table layout ──
   desktopContentWrap: {
     flex: 1,
-    alignItems: 'center',
   },
   desktopContentInner: {
-    maxWidth: 960,
+    maxWidth: 1200,
     width: '100%',
     flex: 1,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.lg,
   },
   desktopGrid: {
+    marginTop: spacing.xs,
+  },
+  gridCatTitle: {
+    fontSize: 14,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'flex-start',
+  },
+  gridCard: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    overflow: 'hidden',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    width: '23.5%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  gridCardName: {
+    fontSize: 12,
+    fontFamily: fontFamily.medium,
+    fontWeight: '500',
+    color: colors.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  gridCardPrice: {
+    fontSize: 13,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.primary,
+    flexShrink: 0,
   },
   tableHeader: {
     flexDirection: 'row',
@@ -596,8 +651,8 @@ const styles = StyleSheet.create({
   tableCellName: {
     flex: 1,
     fontSize: 14,
-    fontFamily: fontFamily.semiBold,
-    fontWeight: '600',
+    fontFamily: fontFamily.medium,
+    fontWeight: '500',
     color: colors.text,
     marginRight: spacing.md,
   },
@@ -678,28 +733,28 @@ const styles = StyleSheet.create({
   modalInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.inputBg,
-    borderWidth: 1.5,
-    borderColor: colors.primary + '40',
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary + '30',
     marginBottom: spacing.sm,
+    paddingBottom: 4,
   },
   modalPrefix: {
-    fontSize: fonts.large,
+    fontSize: 20,
     fontFamily: fontFamily.bold,
     fontWeight: '700',
     color: colors.textSecondary,
-    marginRight: spacing.xs,
+    marginRight: 6,
   },
   modalInput: {
     flex: 1,
-    fontSize: fonts.xlarge,
+    fontSize: 22,
     fontFamily: fontFamily.bold,
     fontWeight: '700',
     color: colors.primary,
-    paddingVertical: spacing.md,
+    paddingVertical: 8,
     textAlign: 'left',
+    outlineStyle: 'none',
+    borderWidth: 0,
   },
   modalOldPrice: {
     fontSize: fonts.tiny,

@@ -5,6 +5,17 @@ import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, converterParaBase } from '../utils/calculations';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
+
+const CATEGORY_COLORS = [
+  '#004d47', '#265bb0', '#e3b842', '#e3704d', '#6a4fb0',
+  '#2d9a8c', '#c4532d', '#8b6cc1', '#d4a843', '#3d7ab5',
+  '#5c8a4f', '#b84c65',
+];
+
+function normalizeStr(str) {
+  return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -12,6 +23,7 @@ function escapeHtml(str) {
 }
 
 export default function ListaComprasScreen({ navigation }) {
+  const { isDesktop } = useResponsiveLayout();
   const [produtos, setProdutos] = useState([]);
   const [quantidades, setQuantidades] = useState({});
   const [lista, setLista] = useState(null);
@@ -27,10 +39,37 @@ export default function ListaComprasScreen({ navigation }) {
   async function loadProdutos() {
     setLoading(true);
     const db = await getDatabase();
-    const prods = await db.getAllAsync('SELECT * FROM produtos ORDER BY nome');
-    setProdutos(prods);
+    const [rawProds, cats, comboRows, comboItensRows] = await Promise.all([
+      db.getAllAsync('SELECT * FROM produtos ORDER BY nome'),
+      db.getAllAsync('SELECT * FROM categorias_produtos'),
+      db.getAllAsync('SELECT * FROM delivery_combos ORDER BY nome'),
+      db.getAllAsync('SELECT * FROM delivery_combo_itens'),
+    ]);
+    const catMap = {};
+    (cats || []).forEach(c => { catMap[c.id] = c.nome; });
+
+    // Build combo items lookup
+    const itensByCombo = {};
+    (comboItensRows || []).forEach(ci => { (itensByCombo[ci.combo_id] = itensByCombo[ci.combo_id] || []).push(ci); });
+
+    const prods = rawProds.map(p => ({ ...p, categoria_nome: catMap[p.categoria_id] || null, isCombo: false }))
+      .sort((a, b) => (a.categoria_nome || 'zzz').localeCompare(b.categoria_nome || 'zzz') || a.nome.localeCompare(b.nome));
+
+    // Add combos as items with categoria_nome "Combos Delivery"
+    const comboItems = (comboRows || []).filter(c => c.preco_venda > 0).map(c => ({
+      ...c,
+      id: 'combo_' + c.id,
+      comboId: c.id,
+      nome: c.nome,
+      categoria_nome: 'Combos Delivery',
+      isCombo: true,
+      comboItens: itensByCombo[c.id] || [],
+    }));
+
+    const allItems = [...prods, ...comboItems];
+    setProdutos(allItems);
     const qtds = {};
-    prods.forEach(p => { qtds[p.id] = '0'; });
+    allItems.forEach(p => { qtds[p.id] = '0'; });
     setQuantidades(qtds);
     setLoading(false);
   }
@@ -53,8 +92,6 @@ export default function ListaComprasScreen({ navigation }) {
         db.getAllAsync('SELECT * FROM materias_primas'),
         db.getAllAsync('SELECT * FROM categorias_insumos'),
       ]);
-
-      console.log('[ListaCompras] prodIngs:', allProdIngs.length, 'prodPreps:', allProdPreps.length, 'prepIngs:', allPrepIngs.length, 'mps:', allMPs.length);
 
       // Build preparo lookup for rendimento
       const preparoMap = {};
@@ -97,35 +134,31 @@ export default function ListaComprasScreen({ navigation }) {
         consolidado[mpId].totalGramas += qtGramas;
       }
 
-      for (const prod of produtos) {
-        const unidades = parseInt(quantidades[prod.id]) || 0;
-        if (unidades <= 0) continue;
-
-        const rendUnidades = prod.rendimento_unidades || 1;
+      // Helper to add a product's ingredients to consolidado
+      function addProdutoIngredientes(prodId, multiplicador) {
+        const prodRow = allProdsRaw.find(p => p.id === prodId);
+        if (!prodRow) return;
+        const rendUnidades = prodRow.rendimento_unidades || 1;
 
         // Ingredientes diretos do produto
-        const ings = prodIngsByProd[prod.id] || [];
+        const ings = prodIngsByProd[prodId] || [];
         for (const ing of ings) {
           const mp = mpMap[ing.materia_prima_id];
           if (!mp) continue;
-          // quantidade_utilizada é por receita inteira, dividir por rendimento para ter por unidade
           const qtPorUnidade = ing.quantidade_utilizada / rendUnidades;
-          const qtTotal = qtPorUnidade * unidades;
-          // Converter para gramas para consolidar
+          const qtTotal = qtPorUnidade * multiplicador;
           const qtGramas = converterParaBase(qtTotal, mp.unidade_medida || 'g');
           addToConsolidado(ing.materia_prima_id, qtGramas);
         }
 
         // Preparos do produto → ingredientes do preparo
-        const preps = prodPrepsByProd[prod.id] || [];
+        const preps = prodPrepsByProd[prodId] || [];
         for (const prep of preps) {
           const prepIngs = prepIngsByPrep[prep.preparo_id] || [];
           const preparoInfo = preparoMap[prep.preparo_id];
           const rendPrep = preparoInfo?.rendimento_total || 1;
-          // prep.quantidade_utilizada é quanto do preparo o produto usa (em gramas)
           const qtPrepPorUnidade = prep.quantidade_utilizada / rendUnidades;
-          const qtPrepTotal = qtPrepPorUnidade * unidades;
-          // Proporção do preparo usada
+          const qtPrepTotal = qtPrepPorUnidade * multiplicador;
           const proporcao = qtPrepTotal / rendPrep;
 
           for (const pi of prepIngs) {
@@ -135,6 +168,24 @@ export default function ListaComprasScreen({ navigation }) {
             const qtGramas = converterParaBase(qtIngPrep, mp.unidade_medida || 'g');
             addToConsolidado(pi.materia_prima_id, qtGramas);
           }
+        }
+      }
+
+      // Load raw products for combo ingredient lookup
+      const allProdsRaw = await db.getAllAsync('SELECT id, rendimento_unidades FROM produtos');
+
+      for (const prod of produtos) {
+        const unidades = parseInt(quantidades[prod.id]) || 0;
+        if (unidades <= 0) continue;
+
+        if (prod.isCombo) {
+          // Combo: break down into component products
+          const comboItens = prod.comboItens || [];
+          for (const item of comboItens) {
+            addProdutoIngredientes(item.item_id, (item.quantidade || 1) * unidades);
+          }
+        } else {
+          addProdutoIngredientes(prod.id, unidades);
         }
       }
 
@@ -192,7 +243,7 @@ export default function ListaComprasScreen({ navigation }) {
     if (!lista || Platform.OS !== 'web') return;
 
     const prodsSelecionados = produtos.filter(p => parseInt(quantidades[p.id]) > 0)
-      .map(p => `<li>${escapeHtml(p.nome)} — ${quantidades[p.id]} un</li>`).join('');
+      .map(p => `<li>${escapeHtml(p.nome)}${p.isCombo ? ' (Combo)' : ''} — ${quantidades[p.id]} un</li>`).join('');
 
     let html = `<!DOCTYPE html><html><head><meta charset="utf-8">
     <title>Lista de Compras - PrecificaÍ</title>
@@ -291,38 +342,67 @@ export default function ListaComprasScreen({ navigation }) {
           ) : produtos.length === 0 ? (
             <Text style={styles.emptyText}>Nenhum produto cadastrado.</Text>
           ) : (
-            produtos.filter(p => !busca.trim() || p.nome.toLowerCase().includes(busca.toLowerCase())).map(p => (
-              <View key={p.id} style={styles.produtoRow}>
-                <Text style={styles.produtoNome} numberOfLines={1}>{p.nome}</Text>
-                <View style={styles.qtyGroup}>
-                  <TouchableOpacity
-                    style={styles.qtyBtn}
-                    onPress={() => {
-                      const cur = parseInt(quantidades[p.id]) || 0;
-                      if (cur > 0) setQtd(p.id, String(cur - 1));
-                    }}
-                  >
-                    <Feather name="minus" size={14} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                  <TextInput
-                    style={styles.qtyInput}
-                    value={quantidades[p.id] || '0'}
-                    onChangeText={v => setQtd(p.id, v.replace(/[^0-9]/g, ''))}
-                    keyboardType="numeric"
-                    selectTextOnFocus
-                  />
-                  <TouchableOpacity
-                    style={styles.qtyBtn}
-                    onPress={() => {
-                      const cur = parseInt(quantidades[p.id]) || 0;
-                      setQtd(p.id, String(cur + 1));
-                    }}
-                  >
-                    <Feather name="plus" size={14} color={colors.primary} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))
+            <View>
+              {(() => {
+                const groups = {};
+                const filteredProds = produtos.filter(p => !busca.trim() || normalizeStr(p.nome).includes(normalizeStr(busca)));
+                filteredProds.forEach(p => {
+                  const cat = p.categoria_nome || 'Sem categoria';
+                  if (!groups[cat]) groups[cat] = [];
+                  groups[cat].push(p);
+                });
+
+                return Object.entries(groups).map(([catName, items], ci) => (
+                  <View key={catName}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, marginTop: ci > 0 ? 12 : 0 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: CATEGORY_COLORS[ci % CATEGORY_COLORS.length] }} />
+                      <Text style={{ fontSize: 13, fontFamily: fontFamily.semiBold, color: colors.text }}>{catName}</Text>
+                      <Text style={{ fontSize: 11, color: colors.textSecondary }}>({items.length})</Text>
+                    </View>
+                    <View style={isDesktop ? styles.gridContainer : undefined}>
+                      {items.map(p => (
+                        <View key={p.id} style={isDesktop ? styles.gridCardProduto : styles.produtoRow}>
+                          {Platform.OS === 'web' ? (
+                            <div title={p.nome} style={{ flex: 1, overflow: 'hidden' }}>
+                              <Text style={isDesktop ? styles.gridCardName : styles.produtoNome} numberOfLines={1}>{p.nome}</Text>
+                            </div>
+                          ) : (
+                            <Text style={isDesktop ? styles.gridCardName : styles.produtoNome} numberOfLines={1}>{p.nome}</Text>
+                          )}
+                          <View style={styles.qtyGroup}>
+                            <TouchableOpacity
+                              style={isDesktop ? styles.qtyBtnSm : styles.qtyBtn}
+                              onPress={() => {
+                                const cur = parseInt(quantidades[p.id]) || 0;
+                                if (cur > 0) setQtd(p.id, String(cur - 1));
+                              }}
+                            >
+                              <Feather name="minus" size={isDesktop ? 12 : 14} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                            <TextInput
+                              style={isDesktop ? styles.qtyInputSm : styles.qtyInput}
+                              value={quantidades[p.id] || '0'}
+                              onChangeText={v => setQtd(p.id, v.replace(/[^0-9]/g, ''))}
+                              keyboardType="numeric"
+                              selectTextOnFocus
+                            />
+                            <TouchableOpacity
+                              style={isDesktop ? styles.qtyBtnSm : styles.qtyBtn}
+                              onPress={() => {
+                                const cur = parseInt(quantidades[p.id]) || 0;
+                                setQtd(p.id, String(cur + 1));
+                              }}
+                            >
+                              <Feather name="plus" size={isDesktop ? 12 : 14} color={colors.primary} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ));
+              })()}
+            </View>
           )}
         </View>
 
@@ -355,20 +435,39 @@ export default function ListaComprasScreen({ navigation }) {
             {lista.categorias.map(cat => (
               <View key={cat} style={styles.categorySection}>
                 <View style={styles.categoryHeader}>
-                  <Feather name="folder" size={14} color={colors.primary} />
+                  <View style={[styles.categoryDot, { backgroundColor: colors.primary }]} />
                   <Text style={styles.categoryTitle}>{cat}</Text>
                 </View>
-                {lista.grouped[cat].map(item => (
-                  <View key={item.mp_id} style={styles.itemRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.itemNome}>{item.nome}</Text>
-                      <Text style={styles.itemQty}>
-                        {item.displayQty % 1 === 0 ? item.displayQty : item.displayQty.toFixed(2)} {item.displayUnit}
-                      </Text>
-                    </View>
-                    <Text style={styles.itemCusto}>{formatCurrency(item.custoEstimado)}</Text>
+                {isDesktop ? (
+                  <View style={styles.gridContainer}>
+                    {lista.grouped[cat].map(item => (
+                      <View key={item.mp_id} style={styles.gridCardItem}>
+                        {Platform.OS === 'web' ? (
+                          <div title={item.nome} style={{ overflow: 'hidden' }}>
+                            <Text style={styles.gridCardName} numberOfLines={1}>{item.nome}</Text>
+                          </div>
+                        ) : (
+                          <Text style={styles.gridCardName} numberOfLines={1}>{item.nome}</Text>
+                        )}
+                        <Text style={styles.gridCardPrice}>
+                          {item.displayQty % 1 === 0 ? item.displayQty : item.displayQty.toFixed(2)} {item.displayUnit} &middot; {formatCurrency(item.custoEstimado)}
+                        </Text>
+                      </View>
+                    ))}
                   </View>
-                ))}
+                ) : (
+                  lista.grouped[cat].map(item => (
+                    <View key={item.mp_id} style={styles.itemRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.itemNome}>{item.nome}</Text>
+                        <Text style={styles.itemQty}>
+                          {item.displayQty % 1 === 0 ? item.displayQty : item.displayQty.toFixed(2)} {item.displayUnit}
+                        </Text>
+                      </View>
+                      <Text style={styles.itemCusto}>{formatCurrency(item.custoEstimado)}</Text>
+                    </View>
+                  ))
+                )}
               </View>
             ))}
 
@@ -392,7 +491,7 @@ export default function ListaComprasScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, maxWidth: 960, alignSelf: 'center', width: '100%', paddingBottom: 40 },
+  content: { padding: spacing.md, maxWidth: 1200, width: '100%', paddingBottom: 40, alignSelf: 'center' },
 
   infoCard: {
     flexDirection: 'row', alignItems: 'flex-start',
@@ -469,7 +568,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8, paddingLeft: 20,
     borderBottomWidth: 1, borderBottomColor: colors.border + '40',
   },
-  itemNome: { fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.text },
+  itemNome: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text },
   itemQty: { fontSize: fonts.tiny, color: colors.textSecondary, marginTop: 2 },
   itemCusto: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, color: colors.primary },
 
@@ -480,6 +579,34 @@ const styles = StyleSheet.create({
   },
   totalLabel: { fontSize: fonts.regular, fontFamily: fontFamily.semiBold, color: colors.text },
   totalValue: { fontSize: fonts.large, fontFamily: fontFamily.bold, color: colors.primary },
+
+  // Desktop grid styles
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-start' },
+  gridCardProduto: {
+    backgroundColor: colors.surface, borderRadius: borderRadius.sm,
+    borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: spacing.sm, paddingVertical: 8,
+    width: '23.5%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  gridCardItem: {
+    backgroundColor: colors.surface, borderRadius: borderRadius.sm,
+    borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: spacing.sm, paddingVertical: 8,
+    width: '23.5%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  gridCardName: { fontSize: 12, fontFamily: fontFamily.medium, fontWeight: '500', color: colors.text, flex: 1, marginRight: 8 },
+  gridCardPrice: { fontSize: 13, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.primary, flexShrink: 0 },
+  qtyBtnSm: {
+    width: 26, height: 26, borderRadius: 13,
+    backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  qtyInputSm: {
+    width: 38, height: 26, borderWidth: 1, borderColor: colors.border,
+    borderRadius: borderRadius.sm, textAlign: 'center',
+    fontSize: 11, fontFamily: fontFamily.semiBold, backgroundColor: '#fff',
+  },
+  categoryDot: { width: 8, height: 8, borderRadius: 4 },
 
   exportBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
