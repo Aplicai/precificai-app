@@ -94,8 +94,9 @@ export default function KitInicioScreen({ navigation, route }) {
     try {
       const db = await getDatabase();
 
-      // Se resetar, limpar todos os dados do usuário
-      if (resetar) {
+      // Sempre limpar insumos e categorias no setup (pode ter dados de tentativa anterior)
+      // Fora do setup, só limpa se resetar (trocar segmento)
+      if (resetar || isSetup) {
         const tablesOrdered = [
           'produto_ingredientes', 'produto_preparos', 'produto_embalagens',
           'preparo_ingredientes', 'delivery_combo_itens', 'delivery_produto_itens',
