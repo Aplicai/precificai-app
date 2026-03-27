@@ -50,6 +50,16 @@ export default function OnboardingScreen({ navigation }) {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
 
+        {/* Botão Voltar ao Kit */}
+        <TouchableOpacity
+          style={styles.backToKit}
+          onPress={() => navigation.navigate('KitInicio', { setup: true })}
+          activeOpacity={0.7}
+        >
+          <Feather name="arrow-left" size={18} color={colors.primary} />
+          <Text style={styles.backToKitText}>Voltar ao Kit de Início</Text>
+        </TouchableOpacity>
+
         {/* Header */}
         <View style={styles.header}>
           <Image source={require('../../assets/images/logo-header-green.png')} style={{ width: 160, height: 34 }} resizeMode="contain" />
@@ -193,6 +203,14 @@ export default function OnboardingScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, maxWidth: 520, alignSelf: 'center', width: '100%' },
+
+  // Back to Kit
+  backToKit: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: spacing.sm, paddingHorizontal: 2,
+    marginBottom: spacing.xs, alignSelf: 'flex-start',
+  },
+  backToKitText: { fontSize: fonts.regular, fontFamily: fontFamily.semiBold, color: colors.primary },
 
   // Header
   header: { alignItems: 'center', paddingVertical: spacing.lg, paddingBottom: spacing.md },

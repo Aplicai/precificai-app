@@ -166,18 +166,9 @@ export default function KitInicioScreen({ navigation, route }) {
       }
 
       setDone(true);
-      setTimeout(() => {
-        if (Platform.OS === 'web') {
-          window.alert(`Kit aplicado! ${criados} insumos e ${categoriasTemplate.length} categorias foram cadastrados. Agora ajuste os preços conforme seus fornecedores.`);
-          navegarAposKit();
-        } else {
-          Alert.alert(
-            'Kit aplicado!',
-            `${criados} insumos e ${categoriasTemplate.length} categorias foram cadastrados. Agora ajuste os preços conforme seus fornecedores.`,
-            [{ text: 'Começar', onPress: navegarAposKit }]
-          );
-        }
-      }, 300);
+      setLoading(false);
+      // Navigate directly after brief delay — avoid Alert callback issues on web
+      setTimeout(() => navegarAposKit(), 500);
     } catch (e) {
       console.error('KitInicio executarKit error:', e?.message || e);
       const errMsg = `Não foi possível aplicar o kit.\n\nDetalhes: ${e?.message || String(e)}`;
