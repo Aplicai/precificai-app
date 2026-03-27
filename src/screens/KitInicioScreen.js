@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
+import { supabase } from '../config/supabase';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { SEGMENTOS, INSUMOS_POR_SEGMENTO, CATEGORIAS_POR_SEGMENTO } from '../data/templates';
 import { calcPrecoBase, calcFatorCorrecao } from '../utils/calculations';
@@ -28,29 +29,61 @@ export default function KitInicioScreen({ navigation, route }) {
   const [done, setDone] = useState(false);
 
   function navegarAposKit() {
-    if (isSetup) {
-      navigation.replace('Onboarding');
-    } else {
-      navigation.goBack();
+    try {
+      if (isSetup) {
+        navigation.replace('Onboarding');
+      } else {
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+        } else {
+          navigation.navigate('Home');
+        }
+      }
+    } catch (e) {
+      console.warn('navegarAposKit fallback:', e);
+      navigation.navigate('Onboarding');
     }
   }
 
   async function aplicarKit() {
-    if (!selected || selected === 'outro') {
+    if (!selected) return;
+
+    if (selected === 'outro') {
       navegarAposKit();
       return;
     }
 
-    // Se não é setup (está nas configurações), avisar que vai resetar
+    // Se não é setup (está nas configurações), avisar que vai resetar com dupla confirmação
     if (!isSetup) {
-      Alert.alert(
-        '⚠️ Atenção',
-        'Ao trocar o kit de início, todos os insumos, categorias, preparos, produtos e embalagens atuais serão excluídos e o app será reiniciado com os dados do novo segmento.\n\nDeseja continuar?',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { text: 'Sim, resetar', style: 'destructive', onPress: () => executarKit(true) },
-        ]
-      );
+      if (Platform.OS === 'web') {
+        const confirm1 = window.confirm('Atenção: Aplicar este kit vai substituir todos os dados atuais do app (insumos, categorias, etc). Deseja continuar?');
+        if (!confirm1) return;
+        const confirm2 = window.confirm('Confirmação Final: Tem certeza? Esta ação não pode ser desfeita.');
+        if (!confirm2) return;
+        executarKit(true);
+      } else {
+        Alert.alert(
+          'Atenção',
+          'Aplicar este kit vai substituir todos os dados atuais do app (insumos, categorias, etc). Deseja continuar?',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+              text: 'Sim, continuar',
+              style: 'destructive',
+              onPress: () => {
+                Alert.alert(
+                  'Confirmação Final',
+                  'Tem certeza? Esta ação não pode ser desfeita.',
+                  [
+                    { text: 'Cancelar', style: 'cancel' },
+                    { text: 'Sim, tenho certeza', style: 'destructive', onPress: () => executarKit(true) },
+                  ]
+                );
+              },
+            },
+          ]
+        );
+      }
       return;
     }
 
@@ -58,81 +91,122 @@ export default function KitInicioScreen({ navigation, route }) {
   }
 
   async function executarKit(resetar) {
-
     setLoading(true);
     try {
-      const db = await getDatabase();
-
-      // Se resetar, limpar todos os dados do usuário
-      if (resetar) {
-        const tablesOrdered = [
-          'produto_ingredientes', 'produto_preparos', 'produto_embalagens',
-          'preparo_ingredientes', 'delivery_combo_itens', 'delivery_produto_itens',
-          'delivery_combos', 'delivery_produtos', 'delivery_adicionais', 'delivery_config',
-          'produtos', 'preparos', 'embalagens', 'materias_primas',
-          'categorias_produtos', 'categorias_preparos', 'categorias_embalagens', 'categorias_insumos',
-        ];
-        for (const table of tablesOrdered) {
-          try {
-            await db.runAsync(`DELETE FROM ${table} WHERE 1=1`);
-          } catch (e) { /* ignora se tabela não existe */ }
-        }
-      }
+      console.log('[Kit] Step 0: Getting user...');
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr) throw new Error('Erro de autenticação: ' + authErr.message);
+      const userId = authData?.user?.id;
+      if (!userId) throw new Error('Usuário não autenticado');
+      console.log('[Kit] User OK:', userId.substring(0, 8));
 
       const insumosTemplate = INSUMOS_POR_SEGMENTO[selected] || [];
       const categoriasTemplate = CATEGORIAS_POR_SEGMENTO[selected] || [];
 
-      // Criar categorias
-      const catIds = {};
-      for (const catNome of categoriasTemplate) {
-        const existing = await db.getAllAsync('SELECT id FROM categorias_insumos WHERE nome = ?', [catNome]);
-        if (existing.length > 0) {
-          catIds[catNome] = existing[0].id;
-        } else {
-          const result = await db.runAsync(
-            'INSERT INTO categorias_insumos (nome, icone) VALUES (?, ?)',
-            [catNome, '📦']
-          );
-          catIds[catNome] = result?.lastInsertRowId;
-        }
+      // Step 1: Clean existing data — sequential in FK-safe order
+      if (resetar || isSetup) {
+        console.log('[Kit] Step 1: Cleaning data...');
+        // Phase 1: Junction tables (no dependencies)
+        const phase1 = ['produto_ingredientes', 'produto_preparos', 'produto_embalagens',
+          'preparo_ingredientes', 'delivery_combo_itens', 'delivery_produto_itens'];
+        await Promise.all(phase1.map(t =>
+          supabase.from(t).delete().eq('user_id', userId).then(r => {
+            if (r.error) console.warn('[Kit] delete', t, r.error.message);
+          }).catch(() => {})
+        ));
+        console.log('[Kit] Phase 1 done (junction tables)');
+
+        // Phase 2: Main entity tables
+        const phase2 = ['delivery_combos', 'delivery_produtos', 'delivery_adicionais',
+          'delivery_config', 'produtos', 'preparos', 'embalagens'];
+        await Promise.all(phase2.map(t =>
+          supabase.from(t).delete().eq('user_id', userId).then(r => {
+            if (r.error) console.warn('[Kit] delete', t, r.error.message);
+          }).catch(() => {})
+        ));
+        console.log('[Kit] Phase 2 done (entity tables)');
+
+        // Phase 3: materias_primas (depends on preparo_ingredientes, produto_ingredientes)
+        const { error: mpErr } = await supabase.from('materias_primas').delete().eq('user_id', userId);
+        if (mpErr) console.warn('[Kit] delete materias_primas:', mpErr.message);
+        console.log('[Kit] Phase 3 done (materias_primas)');
+
+        // Phase 4: Category tables (materias_primas FK gone now)
+        const phase4 = ['categorias_produtos', 'categorias_preparos', 'categorias_embalagens', 'categorias_insumos'];
+        await Promise.all(phase4.map(t =>
+          supabase.from(t).delete().eq('user_id', userId).then(r => {
+            if (r.error) console.warn('[Kit] delete', t, r.error.message);
+          }).catch(() => {})
+        ));
+        console.log('[Kit] Phase 4 done (categories)');
       }
 
-      // Criar insumos
+      // Step 2: Insert categories
+      let firstCatId = null;
+      if (categoriasTemplate.length > 0) {
+        console.log('[Kit] Step 2: Inserting', categoriasTemplate.length, 'categories...');
+        const catRows = categoriasTemplate.map(nome => ({
+          user_id: userId,
+          nome,
+          icone: '📦',
+        }));
+        const { data: catData, error: catErr } = await supabase
+          .from('categorias_insumos')
+          .insert(catRows)
+          .select('id');
+        if (catErr) {
+          console.error('[Kit] categorias error:', catErr.message);
+          throw new Error('Erro ao cadastrar categorias: ' + catErr.message);
+        }
+        firstCatId = catData?.[0]?.id || null;
+        console.log('[Kit] Categories OK, firstCatId:', firstCatId);
+      }
+
+      // Step 3: Insert insumos
       let criados = 0;
-      for (const insumo of insumosTemplate) {
-        // Verificar se já existe
-        const existing = await db.getAllAsync('SELECT id FROM materias_primas WHERE nome = ?', [insumo.nome]);
-        if (existing.length > 0) continue;
-
-        const fc = calcFatorCorrecao(insumo.quantidade_bruta, insumo.quantidade_liquida);
-        const pb = calcPrecoBase(insumo.valor_pago, insumo.quantidade_liquida, insumo.unidade_medida);
-
-        // Encontrar categoria
-        let catId = null;
-        for (const [catNome, id] of Object.entries(catIds)) {
-          catId = id; // default to first
-          break;
+      if (insumosTemplate.length > 0) {
+        console.log('[Kit] Step 3: Inserting', insumosTemplate.length, 'insumos...');
+        const insumoRows = insumosTemplate.map(insumo => {
+          const fc = calcFatorCorrecao(insumo.quantidade_bruta, insumo.quantidade_liquida);
+          const pb = calcPrecoBase(insumo.valor_pago, insumo.quantidade_liquida, insumo.unidade_medida);
+          return {
+            user_id: userId,
+            nome: insumo.nome,
+            marca: '',
+            categoria_id: firstCatId,
+            quantidade_bruta: insumo.quantidade_bruta,
+            quantidade_liquida: insumo.quantidade_liquida,
+            fator_correcao: fc,
+            unidade_medida: insumo.unidade_medida,
+            valor_pago: insumo.valor_pago,
+            preco_por_kg: pb,
+          };
+        });
+        const { data: insData, error: insErr } = await supabase
+          .from('materias_primas')
+          .insert(insumoRows)
+          .select('id');
+        if (insErr) {
+          console.error('[Kit] insumos error:', insErr.message);
+          throw new Error('Erro ao cadastrar insumos: ' + insErr.message);
         }
-
-        await db.runAsync(
-          'INSERT INTO materias_primas (nome, marca, categoria_id, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg) VALUES (?,?,?,?,?,?,?,?,?)',
-          [insumo.nome, '', catId, insumo.quantidade_bruta, insumo.quantidade_liquida, fc, insumo.unidade_medida, insumo.valor_pago, pb]
-        );
-        criados++;
+        criados = insData?.length || 0;
+        console.log('[Kit] Insumos OK, criados:', criados);
       }
 
+      console.log('[Kit] SUCCESS — navigating...');
       setDone(true);
-      setTimeout(() => {
-        Alert.alert(
-          '✅ Kit aplicado!',
-          `${criados} insumos e ${categoriasTemplate.length} categorias foram cadastrados. Agora ajuste os preços conforme seus fornecedores.`,
-          [{ text: 'Começar', onPress: navegarAposKit }]
-        );
-      }, 500);
-    } catch (e) {
-      Alert.alert('Erro', 'Não foi possível aplicar o kit. Tente novamente.');
-    } finally {
       setLoading(false);
+      setTimeout(() => navegarAposKit(), 300);
+    } catch (e) {
+      console.error('[Kit] CATCH error:', e?.message || e);
+      setLoading(false);
+      const errMsg = `Não foi possível aplicar o kit.\n\nDetalhes: ${e?.message || String(e)}`;
+      if (Platform.OS === 'web') {
+        window.alert(errMsg);
+      } else {
+        Alert.alert('Erro', errMsg);
+      }
     }
   }
 
@@ -143,6 +217,18 @@ export default function KitInicioScreen({ navigation, route }) {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
+        {/* Botão Voltar */}
+        {isSetup && (
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.replace('ProfileSetup')}
+            activeOpacity={0.7}
+          >
+            <Feather name="arrow-left" size={18} color={colors.primary} />
+            <Text style={styles.backBtnText}>Voltar</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Header */}
         <View style={styles.headerCard}>
           <Feather name="zap" size={24} color={colors.primary} />
@@ -244,6 +330,12 @@ export default function KitInicioScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, maxWidth: 960, alignSelf: 'center', width: '100%', paddingBottom: 40 },
+  backBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: spacing.sm, paddingHorizontal: 2,
+    marginBottom: spacing.xs, alignSelf: 'flex-start',
+  },
+  backBtnText: { fontSize: fonts.regular, fontFamily: fontFamily.semiBold, color: colors.primary },
 
   headerCard: {
     alignItems: 'center', padding: spacing.lg,
