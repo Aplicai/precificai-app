@@ -32,10 +32,14 @@ export default function KitInicioScreen({ navigation, route }) {
       if (isSetup) {
         navigation.replace('Onboarding');
       } else {
-        navigation.goBack();
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+        } else {
+          navigation.navigate('Home');
+        }
       }
     } catch (e) {
-      // Fallback: se replace falhar, tentar navigate
+      console.warn('navegarAposKit fallback:', e);
       navigation.navigate('Onboarding');
     }
   }
@@ -101,7 +105,7 @@ export default function KitInicioScreen({ navigation, route }) {
         ];
         for (const table of tablesOrdered) {
           try {
-            await db.runAsync(`DELETE FROM ${table} WHERE 1=1`);
+            await db.runAsync(`DELETE FROM ${table} WHERE id > 0`);
           } catch (e) { /* ignora se tabela não existe */ }
         }
       }
@@ -163,15 +167,25 @@ export default function KitInicioScreen({ navigation, route }) {
 
       setDone(true);
       setTimeout(() => {
-        Alert.alert(
-          'Kit aplicado!',
-          `${criados} insumos e ${categoriasTemplate.length} categorias foram cadastrados. Agora ajuste os preços conforme seus fornecedores.`,
-          [{ text: 'Começar', onPress: navegarAposKit }]
-        );
+        if (Platform.OS === 'web') {
+          window.alert(`Kit aplicado! ${criados} insumos e ${categoriasTemplate.length} categorias foram cadastrados. Agora ajuste os preços conforme seus fornecedores.`);
+          navegarAposKit();
+        } else {
+          Alert.alert(
+            'Kit aplicado!',
+            `${criados} insumos e ${categoriasTemplate.length} categorias foram cadastrados. Agora ajuste os preços conforme seus fornecedores.`,
+            [{ text: 'Começar', onPress: navegarAposKit }]
+          );
+        }
       }, 300);
     } catch (e) {
-      console.error('KitInicio executarKit error:', e);
-      Alert.alert('Erro', 'Não foi possível aplicar o kit. Tente novamente.');
+      console.error('KitInicio executarKit error:', e?.message || e);
+      const errMsg = `Não foi possível aplicar o kit.\n\nDetalhes: ${e?.message || String(e)}`;
+      if (Platform.OS === 'web') {
+        window.alert(errMsg);
+      } else {
+        Alert.alert('Erro', errMsg);
+      }
     } finally {
       setLoading(false);
     }
