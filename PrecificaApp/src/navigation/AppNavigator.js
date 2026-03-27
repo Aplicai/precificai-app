@@ -361,7 +361,7 @@ function AppContent() {
       }
       // If user already has data (insumos, produtos, etc.), go straight to app
       const hasData = await db.getFirstAsync(
-        'SELECT 1 as found FROM materias_primas LIMIT 1'
+        'SELECT id FROM materias_primas LIMIT 1'
       );
       if (hasData) return 'MainTabs';
       // First-time user: check financeiro setup
