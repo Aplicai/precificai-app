@@ -28,11 +28,14 @@ export default function LoginScreen({ navigation }) {
       rateLimit.reset();
     } catch (err) {
       rateLimit.recordAttempt();
-      const msg = err.message?.includes('Invalid login')
+      const raw = err?.message || String(err);
+      const msg = raw.includes('Invalid login')
         ? 'Email ou senha incorretos'
-        : err.message?.includes('Email not confirmed')
+        : raw.includes('Email not confirmed')
         ? 'Confirme seu email antes de entrar'
-        : 'Erro ao entrar. Tente novamente.';
+        : raw.includes('fetch')
+        ? 'Sem conexão com o servidor. Verifique sua internet.'
+        : `Erro ao entrar: ${raw}`;
       setError(msg);
     } finally {
       setLoading(false);
