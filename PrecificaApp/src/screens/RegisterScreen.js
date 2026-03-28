@@ -59,7 +59,7 @@ export default function RegisterScreen({ navigation }) {
             <Text style={styles.successText}>
               Enviamos um link de confirmação para {email}. Verifique sua caixa de entrada e clique no link para ativar sua conta.
             </Text>
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('Login')} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.replace('Login')} activeOpacity={0.8}>
               <Text style={styles.primaryBtnText}>Ir para Login</Text>
             </TouchableOpacity>
           </View>
@@ -144,7 +144,7 @@ export default function RegisterScreen({ navigation }) {
 
           <View style={styles.registerRow}>
             <Text style={styles.registerText}>Já tem conta? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+            <TouchableOpacity onPress={() => navigation.replace('Login')}>
               <Text style={styles.registerLink}>Entrar</Text>
             </TouchableOpacity>
           </View>
