@@ -8,10 +8,9 @@ export async function getFinanceiroStatus() {
   try {
     const configs = await db.getAllAsync('SELECT * FROM configuracao');
     configData = configs?.[0];
-    // If config row exists, lucro is configured (default is 0.15 from trigger)
-    lucroOk = configData != null;
+    lucroOk = configData != null && configData.lucro_desejado > 0;
   } catch (err) {
-    console.warn('Error checking config:', err.message);
+    if (__DEV__) console.warn('Error checking config:', err.message);
   }
 
   let faturamentoOk = false;
@@ -20,7 +19,7 @@ export async function getFinanceiroStatus() {
     const mesesPreenchidos = fat.filter(f => f.valor > 0).length;
     faturamentoOk = mesesPreenchidos >= 1;
   } catch (err) {
-    console.warn('Error checking faturamento:', err.message);
+    if (__DEV__) console.warn('Error checking faturamento:', err.message);
   }
 
   let fixasOk = false;
@@ -28,7 +27,7 @@ export async function getFinanceiroStatus() {
     const fixas = await db.getAllAsync('SELECT * FROM despesas_fixas');
     fixasOk = fixas.length > 0;
   } catch (err) {
-    console.warn('Error checking fixas:', err.message);
+    if (__DEV__) console.warn('Error checking fixas:', err.message);
   }
 
   let variaveisOk = false;
@@ -36,7 +35,7 @@ export async function getFinanceiroStatus() {
     const variaveis = await db.getAllAsync('SELECT * FROM despesas_variaveis');
     variaveisOk = variaveis.length > 0;
   } catch (err) {
-    console.warn('Error checking variaveis:', err.message);
+    if (__DEV__) console.warn('Error checking variaveis:', err.message);
   }
 
   const etapas = [

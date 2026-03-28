@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
@@ -9,6 +9,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { formatCurrency, getTipoUnidade, normalizeSearch } from '../utils/calculations';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 // Cores para categorias
 const CATEGORY_COLORS = [
@@ -30,6 +31,8 @@ function getUnidadeInfo(unidade) {
 }
 
 export default function EmbalagensScreen({ navigation }) {
+  const { isDesktop } = useResponsiveLayout();
+  const isWeb = Platform.OS === 'web';
   const isFocused = useIsFocused();
   const [sections, setSections] = useState([]);
   const [totalEmbalagens, setTotalEmbalagens] = useState(0);
@@ -44,7 +47,11 @@ export default function EmbalagensScreen({ navigation }) {
   const [catColorMap, setCatColorMap] = useState({});
   // Seções recolhidas
   const [collapsedSections, setCollapsedSections] = useState({});
+  // Desktop grid seções recolhidas
+  const [collapsedDesktop, setCollapsedDesktop] = useState({});
   const [loading, setLoading] = useState(true);
+
+  function toggleDesktopSection(key) { setCollapsedDesktop(prev => ({...prev, [key]: !prev[key]})); }
 
   useFocusEffect(useCallback(() => {
     loadData();
@@ -111,6 +118,20 @@ export default function EmbalagensScreen({ navigation }) {
 
     setSections(secs);
     setLoading(false);
+  }
+
+  async function duplicarEmbalagem(item) {
+    const db = await getDatabase();
+    const result = await db.runAsync(
+      'INSERT INTO embalagens (nome, marca, categoria_id, quantidade, unidade_medida, preco_embalagem, preco_unitario) VALUES (?,?,?,?,?,?,?)',
+      [item.nome + ' (cópia)', item.marca, item.categoria_id, item.quantidade, item.unidade_medida, item.preco_embalagem, item.preco_unitario]
+    );
+    const newId = result?.lastInsertRowId;
+    if (newId) {
+      navigation.navigate('EmbalagemForm', { id: newId });
+    } else {
+      loadData();
+    }
   }
 
   function solicitarExclusao(id, nome) {
@@ -193,107 +214,181 @@ export default function EmbalagensScreen({ navigation }) {
         <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar embalagem..." />
       </View>
 
+      {/* Botão Adicionar */}
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '10', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14, marginHorizontal: 16, marginTop: 8, marginBottom: 4, borderWidth: 1, borderColor: colors.primary + '30', borderStyle: 'dashed' }}
+        onPress={() => navigation.navigate('EmbalagemForm', {})}
+      >
+        <Feather name="plus-circle" size={18} color={colors.primary} style={{ marginRight: 8 }} />
+        <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 14 }}>Nova Embalagem</Text>
+      </TouchableOpacity>
+
       {/* Lista agrupada */}
-      <SectionList
-        sections={sections.map(s => ({
-          ...s,
-          data: collapsedSections[s.catId] ? [] : s.data,
-        }))}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={styles.list}
-        stickySectionHeadersEnabled={false}
-        ListEmptyComponent={
-          loading ? (
-            <View style={{ padding: 40, alignItems: 'center' }}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 13 }}>Carregando embalagens...</Text>
-            </View>
-          ) : (
-            <EmptyState
-              icon={busca.trim() ? 'search' : 'package'}
-              title={busca.trim()
-                ? 'Nenhuma embalagem encontrada'
-                : 'Nenhuma embalagem cadastrada'}
-              description={busca.trim()
-                ? `Não encontramos resultados para "${busca}".`
-                : 'Cadastre suas embalagens para incluí-las no custo dos seus produtos.'}
-              ctaLabel={!busca.trim() ? 'Cadastrar embalagem' : undefined}
-              onPress={!busca.trim() ? () => navigation.navigate('EmbalagemForm', {}) : undefined}
-            />
-          )
-        }
-        renderSectionHeader={({ section }) => {
-          const isCollapsed = collapsedSections[section.catId];
-          return (
-            <TouchableOpacity
-              style={styles.sectionHeader}
-              onPress={() => setCollapsedSections(prev => ({ ...prev, [section.catId]: !prev[section.catId] }))}
-              activeOpacity={0.6}
-            >
-              <View style={[styles.sectionDot, { backgroundColor: section.catColor }]} />
-              <Text style={styles.sectionTitle}>{section.title}</Text>
-              <Text style={styles.sectionCount}>{section.totalCount}</Text>
-              <Feather
-                name={isCollapsed ? 'chevron-right' : 'chevron-down'}
-                size={14}
-                color={colors.disabled}
-                style={{ marginLeft: 6 }}
-              />
-            </TouchableOpacity>
-          );
-        }}
-        renderItem={({ item, index, section }) => {
-          const isFirst = index === 0;
-          const isLast = index === section.data.length - 1;
-          const catColor = catColorMap[item.categoria_id] || catColorMap['null'] || colors.disabled;
-          const inicial = (item.nome || '?').charAt(0).toUpperCase();
-          const unidadeInfo = getUnidadeInfo(item.unidade_medida);
-
-          return (
-            <TouchableOpacity
-              style={[
-                styles.row,
-                isFirst && styles.rowFirst,
-                isLast && styles.rowLast,
-                !isLast && styles.rowBorder,
-              ]}
-              onPress={() => navigation.navigate('EmbalagemForm', { id: item.id })}
-              activeOpacity={0.6}
-            >
-              {/* Avatar com inicial */}
-              <View style={[styles.avatar, { backgroundColor: catColor + '18' }]}>
-                <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
-              </View>
-
-              {/* Info */}
-              <View style={styles.rowInfo}>
-                <Text style={styles.rowNome} numberOfLines={1}>{item.nome}</Text>
-                {item.marca ? (
-                  <Text style={styles.rowMarca} numberOfLines={1}>{item.marca}</Text>
-                ) : null}
-              </View>
-
-              {/* Preço + unidade */}
-              <View style={styles.rowRight}>
-                <Text style={styles.rowPreco}>{formatCurrency(item.preco_unitario)}</Text>
-                <View style={[styles.unidadeBadge, { backgroundColor: unidadeInfo.color + '12' }]}>
-                  <Text style={[styles.unidadeText, { color: unidadeInfo.color }]}>{unidadeInfo.label}</Text>
+      {isDesktop ? (
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
+          <View style={styles.desktopContentWrap}>
+            <View style={styles.desktopContentInner}>
+              {loading ? (
+                <View style={{ padding: 40, alignItems: 'center' }}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 13 }}>Carregando embalagens...</Text>
                 </View>
+              ) : sections.length === 0 ? (
+                <EmptyState
+                  icon={busca.trim() ? 'search' : 'package'}
+                  title={busca.trim()
+                    ? 'Nenhuma embalagem encontrada'
+                    : 'Nenhuma embalagem cadastrada'}
+                  description={busca.trim()
+                    ? `Não encontramos resultados para "${busca}".`
+                    : 'Cadastre suas embalagens para incluí-las no custo dos seus produtos.'}
+                  ctaLabel={!busca.trim() ? 'Cadastrar embalagem' : undefined}
+                  onPress={!busca.trim() ? () => navigation.navigate('EmbalagemForm', {}) : undefined}
+                />
+              ) : (
+                <View style={styles.desktopGrid}>
+                  {sections.map((section, catIdx) => (
+                    <View key={section.catId} style={{ marginBottom: spacing.md }}>
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, marginTop: catIdx > 0 ? 16 : 0 }}
+                        onPress={() => toggleDesktopSection(section.title)}
+                      >
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: section.catColor }} />
+                        <Text style={styles.gridCatTitle}>{section.title}</Text>
+                        <Text style={{ fontSize: 12, color: colors.textSecondary }}>({section.totalCount})</Text>
+                        <Feather name={collapsedDesktop[section.title] ? 'chevron-right' : 'chevron-down'} size={14} color={colors.disabled} />
+                      </TouchableOpacity>
+                      {!collapsedDesktop[section.title] && (<View style={styles.gridContainer}>
+                        {section.data.map((item) => (
+                          <TouchableOpacity
+                            key={item.id}
+                            style={[styles.gridCard, isWeb && { cursor: 'pointer' }]}
+                            activeOpacity={0.7}
+                            onPress={() => navigation.navigate('EmbalagemForm', { id: item.id })}
+                          >
+                            <Text style={styles.gridCardName} numberOfLines={1} {...(Platform.OS === 'web' ? { title: item.nome + (item.marca ? ' (' + item.marca + ')' : '') } : {})}>{item.nome}{item.marca ? <Text style={{ color: colors.textSecondary, fontWeight: '400' }}> ({item.marca})</Text> : null}</Text>
+                            <Text style={styles.gridCardPrice}>{formatCurrency(item.preco_unitario)}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>)}
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+        </ScrollView>
+      ) : (
+        <SectionList
+          sections={sections.map(s => ({
+            ...s,
+            data: collapsedSections[s.catId] ? [] : s.data,
+          }))}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={styles.list}
+          stickySectionHeadersEnabled={false}
+          ListEmptyComponent={
+            loading ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 13 }}>Carregando embalagens...</Text>
               </View>
-
-              {/* Excluir */}
+            ) : (
+              <EmptyState
+                icon={busca.trim() ? 'search' : 'package'}
+                title={busca.trim()
+                  ? 'Nenhuma embalagem encontrada'
+                  : 'Nenhuma embalagem cadastrada'}
+                description={busca.trim()
+                  ? `Não encontramos resultados para "${busca}".`
+                  : 'Cadastre suas embalagens para incluí-las no custo dos seus produtos.'}
+                ctaLabel={!busca.trim() ? 'Cadastrar embalagem' : undefined}
+                onPress={!busca.trim() ? () => navigation.navigate('EmbalagemForm', {}) : undefined}
+              />
+            )
+          }
+          renderSectionHeader={({ section }) => {
+            const isCollapsed = collapsedSections[section.catId];
+            return (
               <TouchableOpacity
-                onPress={() => solicitarExclusao(item.id, item.nome)}
-                style={styles.deleteBtn}
-                hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                style={styles.sectionHeader}
+                onPress={() => setCollapsedSections(prev => ({ ...prev, [section.catId]: !prev[section.catId] }))}
+                activeOpacity={0.6}
               >
-                <Feather name="trash-2" size={13} color={colors.disabled} />
+                <View style={[styles.sectionDot, { backgroundColor: section.catColor }]} />
+                <Text style={styles.sectionTitle}>{section.title}</Text>
+                <Text style={styles.sectionCount}>{section.totalCount}</Text>
+                <Feather
+                  name={isCollapsed ? 'chevron-right' : 'chevron-down'}
+                  size={14}
+                  color={colors.disabled}
+                  style={{ marginLeft: 6 }}
+                />
               </TouchableOpacity>
-            </TouchableOpacity>
-          );
-        }}
-        ListFooterComponent={<View style={{ height: 20 }} />}
-      />
+            );
+          }}
+          renderItem={({ item, index, section }) => {
+            const isFirst = index === 0;
+            const isLast = index === section.data.length - 1;
+            const catColor = catColorMap[item.categoria_id] || catColorMap['null'] || colors.disabled;
+            const inicial = (item.nome || '?').charAt(0).toUpperCase();
+            const unidadeInfo = getUnidadeInfo(item.unidade_medida);
+
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.row,
+                  isFirst && styles.rowFirst,
+                  isLast && styles.rowLast,
+                  !isLast && styles.rowBorder,
+                ]}
+                onPress={() => navigation.navigate('EmbalagemForm', { id: item.id })}
+                activeOpacity={0.6}
+              >
+                {/* Avatar com inicial */}
+                <View style={[styles.avatar, { backgroundColor: catColor + '18' }]}>
+                  <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
+                </View>
+
+                {/* Info */}
+                <View style={styles.rowInfo}>
+                  <Text style={styles.rowNome} numberOfLines={1}>{item.nome}</Text>
+                  {item.marca ? (
+                    <Text style={styles.rowMarca} numberOfLines={1}>{item.marca}</Text>
+                  ) : null}
+                </View>
+
+                {/* Preço + unidade */}
+                <View style={styles.rowRight}>
+                  <Text style={styles.rowPreco}>{formatCurrency(item.preco_unitario)}</Text>
+                  <View style={[styles.unidadeBadge, { backgroundColor: unidadeInfo.color + '12' }]}>
+                    <Text style={[styles.unidadeText, { color: unidadeInfo.color }]}>{unidadeInfo.label}</Text>
+                  </View>
+                </View>
+
+                {/* Duplicar */}
+                <TouchableOpacity
+                  onPress={() => duplicarEmbalagem(item)}
+                  style={styles.copyBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                >
+                  <Feather name="copy" size={13} color={colors.disabled} />
+                </TouchableOpacity>
+
+                {/* Excluir */}
+                <TouchableOpacity
+                  onPress={() => solicitarExclusao(item.id, item.nome)}
+                  style={styles.deleteBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                >
+                  <Feather name="trash-2" size={13} color={colors.disabled} />
+                </TouchableOpacity>
+              </TouchableOpacity>
+            );
+          }}
+          ListFooterComponent={<View style={{ height: 20 }} />}
+        />
+      )}
 
       <FAB onPress={() => navigation.navigate('EmbalagemForm', {})} />
 
@@ -433,7 +528,7 @@ const styles = StyleSheet.create({
     flex: 1, marginRight: spacing.sm,
   },
   rowNome: {
-    fontSize: 14, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600',
     color: colors.text,
   },
   rowMarca: {
@@ -456,9 +551,70 @@ const styles = StyleSheet.create({
     fontSize: 9, fontFamily: fontFamily.bold, fontWeight: '700',
   },
 
+  // Duplicar
+  copyBtn: {
+    padding: 6,
+  },
   // Excluir
   deleteBtn: {
     padding: 8,
+  },
+
+  // Desktop grid
+  desktopContentWrap: {
+    flex: 1,
+  },
+  desktopContentInner: {
+    maxWidth: 1200,
+    width: '100%',
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
+  },
+  desktopGrid: {
+    marginTop: spacing.xs,
+  },
+  gridCatTitle: {
+    fontSize: 14,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'flex-start',
+  },
+  gridCard: {
+    position: 'relative',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    width: '23.5%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  gridCardName: {
+    fontSize: 12,
+    fontFamily: fontFamily.medium,
+    fontWeight: '500',
+    color: colors.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  gridCardPrice: {
+    fontSize: 13,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.primary,
+    flexShrink: 0,
   },
 
   // Modal

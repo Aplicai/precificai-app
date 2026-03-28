@@ -10,6 +10,7 @@ import WebLayout from '../components/web/WebLayout';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { getSetupStatus } from '../utils/setupStatus';
 import { useAuth } from '../contexts/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
@@ -32,11 +33,9 @@ import DeliveryPlataformasScreen from '../screens/DeliveryPlataformasScreen';
 import DeliveryPrecosScreen from '../screens/DeliveryPrecosScreen';
 import DeliveryProdutosScreen from '../screens/DeliveryProdutosScreen';
 import DeliveryCombosScreen from '../screens/DeliveryCombosScreen';
-import DeliveryAdicionaisScreen from '../screens/DeliveryAdicionaisScreen';
 import MaisScreen from '../screens/MaisScreen';
 import AtualizarPrecosScreen from '../screens/AtualizarPrecosScreen';
 import SimuladorScreen from '../screens/SimuladorScreen';
-import MetaVendasScreen from '../screens/MetaVendasScreen';
 import RelatorioSimplesScreen from '../screens/RelatorioSimplesScreen';
 import FornecedoresScreen from '../screens/FornecedoresScreen';
 import ListaComprasScreen from '../screens/ListaComprasScreen';
@@ -46,6 +45,8 @@ import ContaSegurancaScreen from '../screens/ContaSegurancaScreen';
 import PerfilScreen from '../screens/PerfilScreen';
 import MargemBaixaScreen from '../screens/MargemBaixaScreen';
 import ExportPDFScreen from '../screens/ExportPDFScreen';
+import SuporteScreen from '../screens/SuporteScreen';
+
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -147,7 +148,7 @@ function HomeStack() {
 function ProdutosStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="ProdutosList" component={ProdutosListScreen} options={{ title: 'Produtos' }} />
+      <Stack.Screen name="ProdutosList" component={ProdutosListScreen} options={({ navigation }) => ({ title: 'Produtos', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="ProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
       <Stack.Screen name="CombosScreen" component={DeliveryCombosScreen} options={{ title: 'Combos' }} />
       <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo' }} />
@@ -157,10 +158,30 @@ function ProdutosStack() {
   );
 }
 
+// Back-to-home button for root screens of non-Home tabs
+function backToHomeOption(navigation) {
+  const isDesktopWeb = Platform.OS === 'web' && Dimensions.get('window').width >= 1024;
+  if (isDesktopWeb) return {};
+  return {
+    headerLeft: () => (
+      <TouchableOpacity
+        onPress={() => {
+          const parent = navigation.getParent();
+          if (parent) parent.navigate('Início');
+        }}
+        style={{ marginLeft: 8, padding: 6 }}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Feather name="chevron-left" size={20} color="#fff" />
+      </TouchableOpacity>
+    ),
+  };
+}
+
 function InsumosStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="MateriasPrimas" component={MateriasPrimasScreen} options={{ title: 'Insumos' }} />
+      <Stack.Screen name="MateriasPrimas" component={MateriasPrimasScreen} options={({ navigation }) => ({ title: 'Insumos', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Insumo' }} />
     </Stack.Navigator>
   );
@@ -169,7 +190,7 @@ function InsumosStack() {
 function EmbalagensStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Embalagens" component={EmbalagensScreen} options={{ title: 'Embalagens' }} />
+      <Stack.Screen name="Embalagens" component={EmbalagensScreen} options={({ navigation }) => ({ title: 'Embalagens', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="EmbalagemForm" component={EmbalagemFormScreen} options={{ title: 'Embalagem' }} />
     </Stack.Navigator>
   );
@@ -178,7 +199,7 @@ function EmbalagensStack() {
 function PreparosStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Preparos" component={PreparosScreen} options={{ title: 'Preparos' }} />
+      <Stack.Screen name="Preparos" component={PreparosScreen} options={({ navigation }) => ({ title: 'Preparos', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Preparo' }} />
       <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo' }} />
     </Stack.Navigator>
@@ -201,7 +222,6 @@ function DeliveryStack() {
       <Stack.Screen name="DeliveryPlataformas" component={DeliveryPlataformasScreen} options={{ title: 'Plataformas' }} />
       <Stack.Screen name="DeliveryPrecos" component={DeliveryPrecosScreen} options={{ title: 'Precificação' }} />
       <Stack.Screen name="DeliveryProdutosScreen" component={DeliveryProdutosScreen} options={{ title: 'Produtos Delivery' }} />
-      <Stack.Screen name="DeliveryAdicionaisScreen" component={DeliveryAdicionaisScreen} options={{ title: 'Adicionais' }} />
     </Stack.Navigator>
   );
 }
@@ -217,7 +237,7 @@ function FinanceiroStack() {
 function MaisStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="MaisMain" component={MaisScreen} options={{ title: 'Ferramentas' }} />
+      <Stack.Screen name="MaisMain" component={MaisScreen} options={({ navigation }) => ({ title: 'Ferramentas', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="FinanceiroMain" component={ConfiguracaoScreen} options={{ title: 'Financeiro' }} />
       <Stack.Screen name="MatrizBCG" component={MatrizBCGScreen} options={{ title: 'Engenharia de Cardápio' }} />
       <Stack.Screen name="BCGProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
@@ -225,12 +245,10 @@ function MaisStack() {
       <Stack.Screen name="DeliveryPlataformas" component={DeliveryPlataformasScreen} options={{ title: 'Plataformas' }} />
       <Stack.Screen name="DeliveryPrecos" component={DeliveryPrecosScreen} options={{ title: 'Precificação' }} />
       <Stack.Screen name="DeliveryProdutosScreen" component={DeliveryProdutosScreen} options={{ title: 'Produtos Delivery' }} />
-      <Stack.Screen name="DeliveryAdicionaisScreen" component={DeliveryAdicionaisScreen} options={{ title: 'Adicionais' }} />
       <Stack.Screen name="Configuracoes" component={ConfiguracoesScreen} options={{ title: 'Configurações' }} />
       <Stack.Screen name="Perfil" component={PerfilScreen} options={{ title: 'Meu Perfil' }} />
       <Stack.Screen name="AtualizarPrecos" component={AtualizarPrecosScreen} options={{ title: 'Atualizar Preços' }} />
       <Stack.Screen name="Simulador" component={SimuladorScreen} options={{ title: 'Simulador E se?' }} />
-      <Stack.Screen name="MetaVendas" component={MetaVendasScreen} options={{ title: 'Quanto Preciso Vender?' }} />
       <Stack.Screen name="RelatorioSimples" component={RelatorioSimplesScreen} options={{ title: 'Relatório Simplificado' }} />
       <Stack.Screen name="Fornecedores" component={FornecedoresScreen} options={{ title: 'Comparar Fornecedores' }} />
       <Stack.Screen name="ListaCompras" component={ListaComprasScreen} options={{ title: 'Lista de Compras' }} />
@@ -238,6 +256,7 @@ function MaisStack() {
       <Stack.Screen name="Sobre" component={SobreScreen} options={{ title: 'Sobre o App' }} />
       <Stack.Screen name="ContaSeguranca" component={ContaSegurancaScreen} options={{ title: 'Conta e Segurança' }} />
       <Stack.Screen name="ExportPDF" component={ExportPDFScreen} options={{ title: 'Exportar PDF' }} />
+      <Stack.Screen name="Suporte" component={SuporteScreen} options={{ title: 'Suporte' }} />
     </Stack.Navigator>
   );
 }
@@ -309,8 +328,8 @@ const AuthStack = createNativeStackNavigator();
 function AuthNavigator() {
   return (
     <AuthStack.Navigator screenOptions={{ headerShown: false }}>
-      <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="Register" component={RegisterScreen} />
+      <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
     </AuthStack.Navigator>
   );
@@ -333,6 +352,10 @@ function AppContent() {
 
   async function checkInitialRoute() {
     try {
+      // If onboarding was already completed, always go to MainTabs
+      const onboardingDone = await AsyncStorage.getItem('onboarding_done');
+      if (onboardingDone === 'true') return 'MainTabs';
+
       const { getDatabase } = require('../database/database');
       const db = await getDatabase();
       // Check if profile is filled
@@ -340,7 +363,13 @@ function AppContent() {
       if (!perfil || !perfil.nome_negocio || perfil.nome_negocio.trim() === '') {
         return 'ProfileSetup';
       }
-      // Check financeiro
+      // If user already has data, mark onboarding done and go to app
+      const insumos = await db.getAllAsync('SELECT id FROM materias_primas LIMIT 1');
+      if (insumos && insumos.length > 0) {
+        await AsyncStorage.setItem('onboarding_done', 'true');
+        return 'MainTabs';
+      }
+      // First-time user: check financeiro setup
       const status = await getSetupStatus();
       return status.financeiroCompleto ? 'MainTabs' : 'Onboarding';
     } catch {
@@ -377,6 +406,17 @@ function AppContent() {
   );
 }
 
+const linking = {
+  prefixes: ['https://app.precificaiapp.com', 'precificaiapp://'],
+  config: {
+    screens: {
+      Register: 'register',
+      Login: 'login',
+      ForgotPassword: 'forgot-password',
+    },
+  },
+};
+
 export default function AppNavigator() {
   const { user, loading } = useAuth();
 
@@ -389,7 +429,7 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={!user ? linking : undefined}>
       {user ? <AppContent /> : <AuthNavigator />}
     </NavigationContainer>
   );

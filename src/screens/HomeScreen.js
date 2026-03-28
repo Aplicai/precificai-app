@@ -1,21 +1,29 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Dimensions, ActivityIndicator, Modal, Animated, Image, Platform, StatusBar } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Dimensions, ActivityIndicator, Modal, Animated, Image, Platform, StatusBar, TextInput } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual } from '../utils/calculations';
+import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { getSetupStatus } from '../utils/setupStatus';
 import InfoTooltip from '../components/InfoTooltip';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import { useAuth } from '../contexts/AuthContext';
 
-const { width } = Dimensions.get('window');
 const GAP = spacing.sm;
+
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Bom dia';
+  if (h < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
 
 export default function HomeScreen({ navigation }) {
   const { isDesktop } = useResponsiveLayout();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [d, setD] = useState({
     totalInsumos: 0, totalEmbalagens: 0, totalPreparos: 0, totalProdutos: 0,
@@ -28,6 +36,10 @@ export default function HomeScreen({ navigation }) {
   const [finStatus, setFinStatus] = useState(null);
   const [setupStatus, setSetupStatus] = useState(null);
   const [showNotif, setShowNotif] = useState(false);
+  const [showCmvMeta, setShowCmvMeta] = useState(false);
+  const [cmvMetaValue, setCmvMetaValue] = useState('35');
+  const [showMargemMeta, setShowMargemMeta] = useState(false);
+  const [margemMetaValue, setMargemMetaValue] = useState('15');
   const insets = useSafeAreaInsets();
 
   useFocusEffect(useCallback(() => { loadAll(); }, []));
@@ -54,7 +66,7 @@ export default function HomeScreen({ navigation }) {
       ]);
       // Compute financeiro + setup status inline (avoid separate queries)
       const config = configs?.[0];
-      const lucroOk = config != null;
+      const lucroOk = config != null && config.lucro_desejado > 0;
       const faturamentoOk = fat.filter(f => f.valor > 0).length >= 1;
       const fixasOk = fixas.length > 0;
       const variaveisOk = variaveis.length > 0;
@@ -116,20 +128,16 @@ export default function HomeScreen({ navigation }) {
       for (const p of prodsR) {
         const ings = ingsByProd[p.id] || [];
         const custoIng = ings.reduce((a, i) => {
-          const ppk = i.preco_por_kg || 0;
-          if (i.unidade_medida === 'un') return a + i.quantidade_utilizada * ppk;
-          const qtBase = converterParaBase(i.quantidade_utilizada, i.unidade_medida);
-          return a + (qtBase / 1000) * ppk;
+          return a + calcCustoIngrediente(i.preco_por_kg || 0, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida);
         }, 0);
         const embs = embsByProd[p.id] || [];
         const custoEmb = embs.reduce((a, e) => a + (e.preco_unitario || 0) * e.quantidade_utilizada, 0);
         const prepsQ = prepsByProd[p.id] || [];
         const custoPr = prepsQ.reduce((a, pp) => {
-          const qtBase = converterParaBase(pp.quantidade_utilizada, pp.unidade_medida || 'g');
-          return a + (qtBase / 1000) * (pp.custo_por_kg || 0);
+          return a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g');
         }, 0);
 
-        const custoUnit = (custoIng + custoPr + custoEmb) / (p.rendimento_unidades || 1);
+        const custoUnit = (custoIng + custoPr + custoEmb) / getDivisorRendimento(p);
         somaCustos += custoUnit;
 
         if (p.preco_venda > 0) {
@@ -226,12 +234,11 @@ export default function HomeScreen({ navigation }) {
           if (p.preco_venda <= 0) continue;
           const pIngs = ingsByProd[p.id] || [];
           const pCustoIng = pIngs.reduce((a, i) => {
-            if (i.unidade_medida === 'un') return a + i.quantidade_utilizada * (i.preco_por_kg || 0);
-            return a + (converterParaBase(i.quantidade_utilizada, i.unidade_medida) / 1000) * (i.preco_por_kg || 0);
+            return a + calcCustoIngrediente(i.preco_por_kg || 0, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida);
           }, 0);
           const pCustoEmb = (embsByProd[p.id] || []).reduce((a, e) => a + (e.preco_unitario || 0) * e.quantidade_utilizada, 0);
-          const pCustoPr = (prepsByProd[p.id] || []).reduce((a, pp) => a + (converterParaBase(pp.quantidade_utilizada, pp.unidade_medida || 'g') / 1000) * (pp.custo_por_kg || 0), 0);
-          const custoU = (pCustoIng + pCustoPr + pCustoEmb) / (p.rendimento_unidades || 1);
+          const pCustoPr = (prepsByProd[p.id] || []).reduce((a, pp) => a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
+          const custoU = (pCustoIng + pCustoPr + pCustoEmb) / getDivisorRendimento(p);
           const marg = (p.preco_venda - custoU - p.preco_venda * dfPerc - p.preco_venda * totalVar) / p.preco_venda;
           if (marg > bestMargem) { bestMargem = marg; bestProd = p; }
           if (marg < worstMargem) { worstMargem = marg; worstProd = p; }
@@ -251,13 +258,14 @@ export default function HomeScreen({ navigation }) {
 
       setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, produtosMargBaixa: uniqueProds, produtosSemPreco, cmvPercent, pontoEquilibrio, fatMedio, insights });
       setAlertas(pendencias);
-    } catch (e) { console.error('[Home] Error:', e.message); }
+    } catch (e) { /* error handled silently */ }
     setLoading(false);
   }
 
   function nav(tab) {
     if (tab === 'Configuracoes') { navigation.navigate('Configuracoes'); return; }
     if (tab === 'MargemBaixa') { navigation.navigate('MargemBaixa'); return; }
+    if (tab === 'ProdutoFormHome') { navigation.navigate('ProdutoFormHome'); return; }
     if (tab === 'Onboarding') { navigation.getParent()?.navigate('Onboarding'); return; }
     const ferramentasScreens = ['Financeiro', 'BCG', 'Delivery', 'AtualizarPrecos'];
     const screenMap = { 'Financeiro': 'FinanceiroMain', 'BCG': 'MatrizBCG', 'Delivery': 'DeliveryHub', 'AtualizarPrecos': 'AtualizarPrecos' };
@@ -316,11 +324,11 @@ export default function HomeScreen({ navigation }) {
   if (d.totalInsumos === 0) acoes.push({ label: 'Cadastrar Insumo', icon: 'food-apple-outline', set: 'material', tab: 'Insumos' });
   if (d.totalEmbalagens === 0 && acoes.length < 4) acoes.push({ label: 'Cadastrar Embalagem', icon: 'package', set: 'feather', tab: 'Embalagens' });
   if (d.totalPreparos === 0 && acoes.length < 4) acoes.push({ label: 'Novo Preparo', icon: 'pot-steam-outline', set: 'material', tab: 'Preparos' });
-  if (d.totalProdutos === 0 && acoes.length < 4) acoes.push({ label: 'Novo Produto', icon: 'box', set: 'feather', tab: 'Produtos' });
+  if (d.totalProdutos === 0 && acoes.length < 4) acoes.push({ label: 'Novo Produto', icon: 'box', set: 'feather', tab: 'ProdutoFormHome' });
   if (d.impactoDelivery === 0 && d.totalProdutos > 0 && acoes.length < 4) acoes.push({ label: 'Configurar Delivery', icon: 'moped-outline', set: 'material', tab: 'Delivery' });
   const defaults = [
     { label: 'Atualizar Preços', icon: 'refresh-cw', set: 'feather', tab: 'AtualizarPrecos' },
-    { label: 'Novo Produto', icon: 'box', set: 'feather', tab: 'Produtos' },
+    { label: 'Novo Produto', icon: 'box', set: 'feather', tab: 'ProdutoFormHome' },
     { label: 'Engenharia de Cardápio', icon: 'bar-chart-2', set: 'feather', tab: 'BCG' },
     { label: 'Delivery', icon: 'moped-outline', set: 'material', tab: 'Delivery' },
   ];
@@ -376,11 +384,13 @@ export default function HomeScreen({ navigation }) {
         <Feather name="user" size={20} color="#fff" />
       </TouchableOpacity>
 
-      <Image
-        source={require('../../assets/images/logo-header-white.png')}
-        style={{ width: 130, height: 28 }}
-        resizeMode="contain"
-      />
+      <View style={{ alignItems: 'center' }}>
+        <Image
+          source={require('../../assets/images/logo-header-white.png')}
+          style={{ width: 120, height: 26 }}
+          resizeMode="contain"
+        />
+      </View>
 
       {alertas.length > 0 ? (
         <TouchableOpacity onPress={() => setShowNotif(true)} style={styles.headerIconBtn} activeOpacity={0.7}>
@@ -396,6 +406,14 @@ export default function HomeScreen({ navigation }) {
     )}
 
     <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
+
+      {/* Greeting */}
+      <View style={styles.greetingRow}>
+        <Text style={styles.greetingText}>{getGreeting()} 👋</Text>
+        <Text style={styles.greetingDesc}>
+          {pendente ? 'Complete a configuração para começar' : d.totalProdutos === 0 ? 'Cadastre seus primeiros produtos' : 'Veja como está sua precificação'}
+        </Text>
+      </View>
 
       {/* Setup progress banner */}
       {emSetup && setupStatus && (
@@ -467,46 +485,58 @@ export default function HomeScreen({ navigation }) {
       </TouchableOpacity>
 
       {/* KPIs - Saúde da Precificação */}
-      <Text style={styles.sectionTitle}>Saúde da Precificação</Text>
-      <Text style={styles.benchmarkRef}>Referência: Regra 30-30-30-10 (CMV 30% · MDO 30% · Desp. 30% · Lucro 10%)</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Text style={styles.sectionTitle}>Saúde da Precificação</Text>
+        <InfoTooltip
+          title="Regra 30-30-30-10"
+          text="Referência do setor de alimentação para composição saudável do preço de venda."
+          examples={['CMV: até 30%', 'Mão de obra: até 30%', 'Despesas: até 30%', 'Lucro: mínimo 10%']}
+        />
+      </View>
       <View style={[styles.kpiRow, isDesktop && styles.kpiRowDesktop]}>
         {(() => {
-          const cmvBench = d.cmvPercent < 0.35 ? 'green' : d.cmvPercent <= 0.40 ? 'yellow' : 'red';
+          const cmvTarget = parseFloat(cmvMetaValue) / 100 || 0.35;
+          const cmvBench = d.cmvPercent < cmvTarget ? 'green' : d.cmvPercent <= (cmvTarget + 0.05) ? 'yellow' : 'red';
           const resBench = d.resultadoFinanceiro > 0
             ? (d.fatMedio > 0 && d.resultadoFinanceiro / d.fatMedio < 0.10 ? 'yellow' : 'green')
             : 'red';
-          const margBench = d.margemMedia >= 0.15 ? 'green' : d.margemMedia >= 0.05 ? 'yellow' : 'red';
+          const margTarget = parseFloat(margemMetaValue) / 100 || 0.15;
+          const margBench = d.margemMedia >= margTarget ? 'green' : d.margemMedia >= (margTarget * 0.33) ? 'yellow' : 'red';
           const benchColors = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
           return [
-          { label: 'CMV Médio', value: formatCurrency(d.custoTotal / Math.max(d.totalProdutos, 1)), icon: 'tag', color: colors.accent,
-            tip: { title: 'CMV Médio por Produto', text: 'Custo de Mercadoria Vendida médio unitário dos seus produtos.', examples: ['Inclui insumos, preparos e embalagens', 'Use "Atualizar Preços" para ajustar', 'Meta: manter abaixo de 35% do preço de venda'] },
-            meta: `CMV: ${formatPercent(d.cmvPercent)} · Meta: < 35%`, bench: pendente ? null : cmvBench },
+          { label: 'CMV Médio', value: formatPercent(d.cmvPercent), icon: 'tag', color: colors.accent,
+            tip: { title: 'CMV Médio', text: 'Custo de Mercadoria Vendida em % do preço de venda. Toque para alterar a meta.', examples: ['Referência do setor alimentício:', 'Restaurantes: 28-35%', 'Pizzarias: 25-32%', 'Confeitarias: 20-30%', 'Fast food: 25-35%', `Sua meta: < ${cmvMetaValue}%`] },
+            meta: `Atual: ${formatPercent(d.cmvPercent)} · Meta: < ${cmvMetaValue}%`, bench: pendente ? null : cmvBench, onPress: () => setShowCmvMeta(true) },
           { label: 'Resultado Operacional', value: pendente ? '--' : formatCurrency(d.resultadoFinanceiro), icon: 'dollar-sign', color: pendente ? colors.disabled : (d.resultadoFinanceiro >= 0 ? colors.success : colors.error),
-            tip: { title: 'Resultado Operacional', text: 'Faturamento médio mensal menos as despesas fixas. Mostra quanto sobra da operação antes de custos variáveis e CMV.', examples: ['Positivo: receita cobre despesas fixas', 'Negativo: despesas fixas maiores que o faturamento'] },
+            tip: { title: 'Resultado Operacional', text: 'Faturamento médio mensal menos as despesas fixas. Mostra o resultado da operação antes dos custos variáveis.', examples: ['Fórmula: Faturamento − Despesas Fixas', 'Positivo: receita cobre despesas fixas', 'Negativo: despesas fixas maiores que o faturamento'] },
             meta: d.resultadoFinanceiro >= 0 ? 'Receita cobre despesas' : 'Receita abaixo das despesas', bench: pendente ? null : resBench },
           { label: 'Ponto de Equilíbrio', value: pendente ? '--' : formatCurrency(d.pontoEquilibrio), icon: 'target', color: pendente ? colors.disabled : colors.purple,
-            tip: { title: 'Ponto de Equilíbrio', text: 'Faturamento mensal mínimo necessário para cobrir todos os custos fixos. Abaixo desse valor, a operação gera prejuízo.', examples: ['Fórmula: Custos Fixos / (1 - CMV% - Desp. Variáveis%)', 'Compare com seu faturamento médio', 'Quanto menor, mais segura a operação'] },
+            tip: { title: 'Ponto de Equilíbrio', text: 'Faturamento mensal mínimo para cobrir todos os custos (fixos, variáveis e CMV). É a meta mínima de faturamento — abaixo disso, há prejuízo.', examples: ['Fórmula: Custos Fixos / (1 - CMV% - Desp. Variáveis%)', 'Compare com seu faturamento médio'] },
             meta: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0
               ? (d.fatMedio >= d.pontoEquilibrio ? `Faturamento ${formatPercent(d.fatMedio / d.pontoEquilibrio - 1)} acima` : `Falta ${formatCurrency(d.pontoEquilibrio - d.fatMedio)}`)
               : 'Configure o financeiro', bench: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0
               ? (d.fatMedio >= d.pontoEquilibrio * 1.2 ? 'green' : d.fatMedio >= d.pontoEquilibrio ? 'yellow' : 'red') : null },
-          { label: 'Margem Líquida', value: pendente ? '--' : formatPercent(d.margemMedia), icon: 'trending-up', color: pendente ? colors.disabled : (d.margemMedia >= 0.15 ? colors.success : colors.coral),
-            tip: { title: 'Margem Líquida Média', text: 'Margem de lucro média já descontando CMV, despesas fixas e variáveis (impostos, taxas). Representa o lucro real por produto.', examples: ['Acima de 15%: saudável', '5-15%: atenção', 'Abaixo de 5%: revise preços ou custos'] },
-            meta: d.margemMedia >= 0.15 ? 'Meta: > 15%  ✓' : 'Meta: > 15%', bench: pendente ? null : margBench },
-        ].map(k => (
-          <View key={k.label} style={[styles.kpiCard, isDesktop && styles.kpiCardDesktop]}>
-            <View style={styles.kpiHeader}>
-              <View style={[styles.kpiIconCircle, { backgroundColor: k.color + '15' }]}>
-                <Feather name={k.icon} size={14} color={k.color} />
+          { label: 'Margem Líquida', value: pendente ? '--' : formatPercent(d.margemMedia), icon: 'trending-up', color: pendente ? colors.disabled : (d.margemMedia >= parseFloat(margemMetaValue)/100 ? colors.success : colors.coral),
+            tip: { title: 'Margem Líquida Média', text: 'Margem de lucro média já descontando CMV, despesas fixas e variáveis. Toque para alterar a meta.', examples: ['Acima de 15%: saudável', '5-15%: atenção', `Meta atual: > ${margemMetaValue}%`] },
+            meta: d.margemMedia >= parseFloat(margemMetaValue)/100 ? `Meta: > ${margemMetaValue}%  ✓` : `Meta: > ${margemMetaValue}%`, bench: pendente ? null : margBench, onPress: () => setShowMargemMeta(true) },
+        ].map(k => {
+          const Wrapper = k.onPress ? TouchableOpacity : View;
+          const wrapperProps = k.onPress ? { activeOpacity: 0.7, onPress: k.onPress } : {};
+          return (
+            <Wrapper key={k.label} style={[styles.kpiCard, isDesktop && styles.kpiCardDesktop]} {...wrapperProps}>
+              <View style={styles.kpiHeader}>
+                <View style={[styles.kpiIconCircle, { backgroundColor: k.color + '15' }]}>
+                  <Feather name={k.icon} size={14} color={k.color} />
+                </View>
+                <Text style={styles.kpiLabel} numberOfLines={2}>{k.label}</Text>
+                {k.tip && <InfoTooltip {...k.tip} />}
               </View>
-              <Text style={styles.kpiLabel} numberOfLines={2}>{k.label}</Text>
-              {k.tip && <InfoTooltip {...k.tip} />}
-            </View>
-            <Text style={[styles.kpiValue, { color: k.color }]} numberOfLines={1} adjustsFontSizeToFit>{k.value}</Text>
-            {k.meta && <Text style={styles.kpiMeta} numberOfLines={1}>{k.meta}</Text>}
-            {k.bench && <View style={[styles.kpiBenchBar, { backgroundColor: benchColors[k.bench] }]} />}
-          </View>
-        ));
+              <Text style={[styles.kpiValue, { color: k.color }]} numberOfLines={1} adjustsFontSizeToFit>{k.value}</Text>
+              {k.meta && <Text style={styles.kpiMeta} numberOfLines={1}>{k.meta}</Text>}
+              {k.bench && <View style={[styles.kpiBenchBar, { backgroundColor: benchColors[k.bench] }]} />}
+            </Wrapper>
+          );
+        });
         })()}
       </View>
 
@@ -561,7 +591,7 @@ export default function HomeScreen({ navigation }) {
       {/* Insights */}
       {d.insights?.length > 0 && (
         <>
-          <Text style={styles.sectionTitle}>Insights</Text>
+          <Text style={styles.sectionTitle}>Análises Rápidas</Text>
           {d.insights.map((insight, i) => (
             <View key={i} style={[styles.insightCard, { borderLeftColor: insight.color }]}>
               <Feather name={insight.icon} size={16} color={insight.color} />
@@ -631,6 +661,93 @@ export default function HomeScreen({ navigation }) {
         </View>
       </View>
     </Modal>
+
+    {/* CMV Meta Modal */}
+    <Modal visible={showCmvMeta} transparent animationType="fade" onRequestClose={() => {}}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{ backgroundColor: '#fff', maxWidth: 340, width: '90%', borderRadius: borderRadius.lg, padding: spacing.lg }}>
+          <Text style={{ fontSize: 16, fontFamily: fontFamily.bold, color: colors.text, marginBottom: spacing.sm }}>Meta de CMV</Text>
+          <Text style={{ fontSize: 13, fontFamily: fontFamily.regular, color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 18 }}>
+            Defina o percentual máximo de CMV sobre o preço de venda. O padrão do setor é 30-35%.
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md }}>
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: colors.background, borderRadius: borderRadius.md, paddingHorizontal: spacing.sm, height: 44 }}>
+              <Text style={{ fontSize: 15, fontFamily: fontFamily.bold, color: colors.text }}>Meta: </Text>
+              <TextInput
+                value={cmvMetaValue}
+                onChangeText={setCmvMetaValue}
+                keyboardType="numeric"
+                style={{ flex: 1, fontSize: 18, fontFamily: fontFamily.bold, color: colors.primary, textAlign: 'center' }}
+                maxLength={4}
+              />
+              <Text style={{ fontSize: 15, fontFamily: fontFamily.bold, color: colors.text }}>%</Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.sm }}>
+            {['25', '30', '35', '40'].map(v => (
+              <TouchableOpacity key={v} onPress={() => setCmvMetaValue(v)}
+                style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: cmvMetaValue === v ? colors.primary : colors.background }}>
+                <Text style={{ fontSize: 13, fontFamily: fontFamily.semiBold, color: cmvMetaValue === v ? '#fff' : colors.text }}>{v}%</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.md }}>
+            <TouchableOpacity onPress={() => setShowCmvMeta(false)} style={{ paddingVertical: 8, paddingHorizontal: 24, backgroundColor: colors.background, borderRadius: borderRadius.md }}>
+              <Text style={{ color: colors.textSecondary, fontFamily: fontFamily.semiBold, fontSize: 14 }}>Fechar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowCmvMeta(false)} style={{ paddingVertical: 8, paddingHorizontal: 24, backgroundColor: colors.primary, borderRadius: borderRadius.md }}>
+              <Text style={{ color: '#fff', fontFamily: fontFamily.semiBold, fontSize: 14 }}>Aplicar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+
+    {/* Margem Meta Modal */}
+    <Modal visible={showMargemMeta} transparent animationType="fade" onRequestClose={() => {}}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }}>
+        <View style={{ backgroundColor: '#fff', maxWidth: 340, width: '90%', borderRadius: borderRadius.lg, padding: spacing.lg }}>
+          <Text style={{ fontSize: 16, fontFamily: fontFamily.bold, color: colors.text, marginBottom: spacing.sm }}>Meta de Lucro</Text>
+          <Text style={{ fontSize: 13, fontFamily: fontFamily.regular, color: colors.textSecondary, marginBottom: spacing.md, lineHeight: 18 }}>
+            Defina a margem de lucro mínima desejada. Ao salvar, atualiza também o Financeiro.
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.background, borderRadius: borderRadius.md, paddingHorizontal: spacing.sm, height: 44, marginBottom: spacing.md }}>
+            <Text style={{ fontSize: 15, fontFamily: fontFamily.bold, color: colors.text }}>Meta: </Text>
+            <TextInput
+              value={margemMetaValue}
+              onChangeText={setMargemMetaValue}
+              keyboardType="numeric"
+              style={{ flex: 1, fontSize: 18, fontFamily: fontFamily.bold, color: colors.success, textAlign: 'center' }}
+              maxLength={4}
+            />
+            <Text style={{ fontSize: 15, fontFamily: fontFamily.bold, color: colors.text }}>%</Text>
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.sm, marginBottom: spacing.md }}>
+            {['10', '15', '20', '25'].map(v => (
+              <TouchableOpacity key={v} onPress={() => setMargemMetaValue(v)}
+                style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, backgroundColor: margemMetaValue === v ? colors.success : colors.background }}>
+                <Text style={{ fontSize: 13, fontFamily: fontFamily.semiBold, color: margemMetaValue === v ? '#fff' : colors.text }}>{v}%</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.sm }}>
+            <TouchableOpacity onPress={() => setShowMargemMeta(false)} style={{ paddingVertical: 8, paddingHorizontal: 24, backgroundColor: colors.background, borderRadius: borderRadius.md }}>
+              <Text style={{ color: colors.textSecondary, fontFamily: fontFamily.semiBold, fontSize: 14 }}>Fechar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={async () => {
+              try {
+                const db = await getDatabase();
+                const val = parseFloat(margemMetaValue) / 100;
+                if (val > 0) await db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [val]);
+              } catch (e) {}
+              setShowMargemMeta(false);
+            }} style={{ paddingVertical: 8, paddingHorizontal: 24, backgroundColor: colors.success, borderRadius: borderRadius.md }}>
+              <Text style={{ color: '#fff', fontFamily: fontFamily.semiBold, fontSize: 14 }}>Salvar e Aplicar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
   </View>
   );
 }
@@ -638,6 +755,11 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, paddingBottom: 40, maxWidth: 960, alignSelf: 'center', width: '100%' },
+
+  // Greeting
+  greetingRow: { marginBottom: spacing.md },
+  greetingText: { fontSize: 20, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.text },
+  greetingDesc: { fontSize: 13, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 2 },
 
   // Custom header
   customHeader: {
@@ -716,22 +838,22 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   kpiCard: {
-    width: (width - spacing.md * 2 - GAP) / 2 - 1, minWidth: 140,
+    width: '48.5%', minWidth: 150,
     backgroundColor: colors.surface, borderRadius: borderRadius.lg,
-    padding: spacing.md,
+    padding: spacing.md + 4,
     shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 1,
   },
   kpiCardDesktop: {
-    width: undefined, flex: 1, minWidth: 180,
+    width: undefined, flex: 1, minWidth: 200,
   },
-  kpiHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm },
+  kpiHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm + 2 },
   kpiIconCircle: {
-    width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 6,
+    width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 8,
   },
-  kpiLabel: { flex: 1, fontSize: fonts.tiny, fontFamily: fontFamily.medium, color: colors.textSecondary },
-  kpiValue: { fontSize: fonts.xlarge, fontFamily: fontFamily.bold, fontWeight: '700' },
-  kpiMeta: { fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 4 },
-  kpiBenchBar: { height: 4, borderRadius: 2, marginTop: 8 },
+  kpiLabel: { flex: 1, fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.textSecondary },
+  kpiValue: { fontSize: 22, fontFamily: fontFamily.bold, fontWeight: '700' },
+  kpiMeta: { fontSize: 12, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 6 },
+  kpiBenchBar: { height: 5, borderRadius: 2.5, marginTop: 10 },
   benchmarkRef: { fontSize: 10, fontFamily: fontFamily.regular, color: colors.textSecondary, marginBottom: spacing.sm, marginTop: -4 },
 
   // Resumo

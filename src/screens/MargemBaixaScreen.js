@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual } from '../utils/calculations';
+import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 
 export default function MargemBaixaScreen({ navigation }) {
@@ -46,9 +46,7 @@ export default function MargemBaixaScreen({ navigation }) {
       for (const p of prodsR) {
         const ings = ingsByProd[p.id] || [];
         const custoIng = ings.reduce((a, i) => {
-          if (i.unidade_medida === 'un') return a + i.quantidade_utilizada * (i.preco_por_kg || 0);
-          const qtBase = converterParaBase(i.quantidade_utilizada, i.unidade_medida);
-          return a + (qtBase / 1000) * (i.preco_por_kg || 0);
+          return a + calcCustoIngrediente(i.preco_por_kg || 0, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida);
         }, 0);
 
         const embs = embsByProd[p.id] || [];
@@ -56,11 +54,10 @@ export default function MargemBaixaScreen({ navigation }) {
 
         const prepsQ = prepsByProd[p.id] || [];
         const custoPr = prepsQ.reduce((a, pp) => {
-          const qtBase = converterParaBase(pp.quantidade_utilizada, pp.unidade_medida || 'g');
-          return a + (qtBase / 1000) * (pp.custo_por_kg || 0);
+          return a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g');
         }, 0);
 
-        const custoUnit = (custoIng + custoPr + custoEmb) / (p.rendimento_unidades || 1);
+        const custoUnit = (custoIng + custoPr + custoEmb) / getDivisorRendimento(p);
 
         if (p.preco_venda > 0) {
           const despFixasVal = p.preco_venda * dfPerc;
@@ -98,7 +95,7 @@ export default function MargemBaixaScreen({ navigation }) {
       <TouchableOpacity
         style={styles.card}
         activeOpacity={0.7}
-        onPress={() => navigation.navigate('ProdutoFormHome', { id: item.id })}
+        onPress={() => navigation.navigate('ProdutoFormHome', { id: item.id, returnTo: 'MargemBaixa' })}
       >
         <View style={[styles.avatar, { backgroundColor: mc + '15' }]}>
           <Text style={[styles.avatarText, { color: mc }]}>

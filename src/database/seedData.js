@@ -497,5 +497,5 @@ export async function seedDatabase() {
 
   // Mark as seeded
   await db.runAsync('INSERT OR IGNORE INTO _seed_flag (id) VALUES (1)');
-  console.log('Seed data inserted successfully!');
+  if (__DEV__) console.log('Seed data inserted successfully!');
 }

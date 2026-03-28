@@ -1,14 +1,25 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual } from '../utils/calculations';
+import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+
+function escapeHtml(text) {
+  if (!text) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 export default function RelatorioSimplesScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
+  const [perfilNome, setPerfilNome] = useState('');
 
   useFocusEffect(useCallback(() => {
     loadData();
@@ -20,6 +31,13 @@ export default function RelatorioSimplesScreen({ navigation }) {
       const db = await getDatabase();
 
       // Load ALL data in a single parallel batch
+      // Load profile name
+      try {
+        const perfil = await db.getAllAsync('SELECT * FROM configuracao');
+        if (perfil && perfil[0] && perfil[0].nome_negocio) setPerfilNome(perfil[0].nome_negocio);
+        else setPerfilNome('Meu Negócio');
+      } catch (e) { setPerfilNome('Meu Negócio'); }
+
       const [fixas, variaveis, fat, configRows, prods, allIngs, allEmbs, allPreps] = await Promise.all([
         db.getAllAsync('SELECT * FROM despesas_fixas'),
         db.getAllAsync('SELECT * FROM despesas_variaveis'),
@@ -50,16 +68,15 @@ export default function RelatorioSimplesScreen({ navigation }) {
 
       const produtos = prods.map(p => {
         const custoIng = (ingsByProd[p.id] || []).reduce((a, i) => {
-          if (i.unidade_medida === 'un') return a + i.quantidade_utilizada * (i.preco_por_kg || 0);
-          return a + (converterParaBase(i.quantidade_utilizada, i.unidade_medida) / 1000) * (i.preco_por_kg || 0);
+          return a + calcCustoIngrediente(i.preco_por_kg || 0, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida);
         }, 0);
         const custoPr = (prepsByProd[p.id] || []).reduce((a, pp) => {
-          return a + (converterParaBase(pp.quantidade_utilizada, pp.unidade_medida || 'g') / 1000) * (pp.custo_por_kg || 0);
+          return a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g');
         }, 0);
         const custoEmb = (embsByProd[p.id] || []).reduce((a, e) => a + (e.preco_unitario || 0) * e.quantidade_utilizada, 0);
 
         const custoTotal = custoIng + custoPr + custoEmb;
-        const custoUn = custoTotal / (p.rendimento_unidades || 1);
+        const custoUn = custoTotal / getDivisorRendimento(p);
         const precoVenda = p.preco_venda || 0;
         const despFixasVal = precoVenda * dfPerc;
         const despVarVal = precoVenda * totalVar;
@@ -79,25 +96,25 @@ export default function RelatorioSimplesScreen({ navigation }) {
       const produtosComPreco = produtos.filter(p => p.precoVenda > 0);
 
       // --- Resumo Geral (para cada R$10) ---
+      // CMV: média ponderada pelo preço de venda de cada produto
+      // Fixas e Variáveis: dados financeiros reais configurados pelo usuário
       let resumo = null;
       if (fatMedio > 0 && produtosComPreco.length > 0) {
         const totalReceita = produtosComPreco.reduce((a, p) => a + p.precoVenda, 0);
         const totalCustoIng = produtosComPreco.reduce((a, p) => a + p.custoUn, 0);
-        const totalDespFixas = produtosComPreco.reduce((a, p) => a + p.despFixasVal, 0);
-        const totalDespVar = produtosComPreco.reduce((a, p) => a + p.despVarVal, 0);
-        const totalLucro = produtosComPreco.reduce((a, p) => a + p.lucro, 0);
-
         const percIng = totalReceita > 0 ? totalCustoIng / totalReceita : 0;
-        const percFixas = totalReceita > 0 ? totalDespFixas / totalReceita : 0;
-        const percVar = totalReceita > 0 ? totalDespVar / totalReceita : 0;
-        const percLucro = totalReceita > 0 ? totalLucro / totalReceita : 0;
+        const percFixas = dfPerc;
+        const percVar = totalVar;
+        const percLucro = 1 - percIng - percFixas - percVar;
 
         resumo = {
           ingredientes: (percIng * 10).toFixed(2).replace('.', ','),
           fixas: (percFixas * 10).toFixed(2).replace('.', ','),
           variaveis: (percVar * 10).toFixed(2).replace('.', ','),
-          lucro: (percLucro * 10).toFixed(2).replace('.', ','),
+          lucro: (Math.abs(percLucro) * 10).toFixed(2).replace('.', ','),
           lucroPositivo: percLucro > 0,
+          percIng, percFixas, percVar, percLucro,
+          fatMedio,
         };
       }
 
@@ -195,7 +212,6 @@ export default function RelatorioSimplesScreen({ navigation }) {
         produtosComPreco: produtosComPreco.length,
       });
     } catch (e) {
-      console.error('RelatorioSimples error:', e);
     } finally {
       setLoading(false);
     }
@@ -208,6 +224,87 @@ export default function RelatorioSimplesScreen({ navigation }) {
         <Text style={styles.loadingText}>Preparando seu relatório...</Text>
       </View>
     );
+  }
+
+  function baixarRelatorio() {
+    if (!data || Platform.OS !== 'web') return;
+
+    const sections = [];
+
+    if (data.resumo) {
+      sections.push({
+        title: 'Resumo Geral',
+        text: `De cada R$ 10,00 que entra no caixa: R$ ${data.resumo.ingredientes} vai pra ingredientes, R$ ${data.resumo.fixas} vai pra despesas fixas, R$ ${data.resumo.variaveis} vai pra despesas variáveis, e ${data.resumo.lucroPositivo ? 'sobram' : 'faltam'} R$ ${data.resumo.lucro} ${data.resumo.lucroPositivo ? 'de lucro' : '(prejuízo)'}.`,
+      });
+    }
+
+    if (data.melhores && data.melhores.length > 0) {
+      sections.push({
+        title: 'Seus Melhores Produtos',
+        text: data.melhores.map((p, i) =>
+          i === 0
+            ? `${p.nome} é seu campeão: você ganha ${formatCurrency(p.margemReais)} a cada unidade vendida.`
+            : `${p.nome}: lucro de ${formatCurrency(p.margemReais)} por unidade.`
+        ).join(' '),
+      });
+    }
+
+    if (data.atencao && data.atencao.length > 0) {
+      sections.push({
+        title: 'Atenção',
+        text: data.atencao.slice(0, 5).map(p => {
+          const precoSugerido = p.custoUn > 0 ? p.custoUn / 0.30 : p.precoVenda * 1.15;
+          return `${p.nome} está te custando quase o que você cobra. Considere aumentar de ${formatCurrency(p.precoVenda)} para ${formatCurrency(precoSugerido)}.`;
+        }).join(' '),
+      });
+    }
+
+    if (data.pontoEquilibrio) {
+      let peText = `Você precisa vender pelo menos ${formatCurrency(data.pontoEquilibrio.valorDiario)} por dia para não ter prejuízo.`;
+      if (data.pontoEquilibrio.produtoNome) {
+        peText += ` Isso equivale a ${data.pontoEquilibrio.qtdProduto} unidades de ${data.pontoEquilibrio.produtoNome} por dia.`;
+      }
+      sections.push({ title: 'Ponto de Equilíbrio Traduzido', text: peText });
+    }
+
+    if (data.deliveryInsight) {
+      sections.push({
+        title: 'Delivery vs Balcão',
+        text: `No iFood, seu ${data.deliveryInsight.produto} rende ${data.deliveryInsight.percentMenos}% menos que no balcão por causa das taxas.`,
+      });
+    }
+
+    if (data.tendencia) {
+      sections.push({
+        title: 'Tendência',
+        text: `Nos últimos meses, seu faturamento ${data.tendencia.subiu ? 'subiu' : 'desceu'} ${data.tendencia.variacao}%. Se continuar assim, em 3 meses sua margem será de ${data.tendencia.margemProjetada}%.`,
+      });
+    }
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relatório Precificaí</title>
+    <style>
+      body { font-family: 'Segoe UI', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; color: #333; }
+      .header { background: #004d47; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+      .header h1 { margin: 0 0 8px 0; font-size: 24px; }
+      .header p { margin: 4px 0; opacity: 0.9; }
+      .card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+      .card h3 { margin: 0 0 8px 0; color: #004d47; font-size: 16px; }
+      .card p { margin: 0; line-height: 1.6; }
+      .highlight { font-size: 18px; font-weight: 700; color: #004d47; }
+      .footer { text-align: center; color: #888; margin-top: 30px; padding-top: 16px; border-top: 1px solid #e0e0e0; }
+      @media print { body { margin: 0; } .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    </style></head><body>
+    <div class="header"><h1>Precificaí</h1><p>${escapeHtml(perfilNome)} - Relatório Simplificado</p><p>${new Date().toLocaleDateString('pt-BR')}</p></div>
+    ${sections.map(s => `<div class="card"><h3>${escapeHtml(s.title)}</h3><p>${escapeHtml(s.text)}</p></div>`).join('')}
+    <p class="footer">Gerado por Precificaí - www.precificaiapp.com</p>
+    </body></html>`;
+
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      setTimeout(() => win.print(), 500);
+    }
   }
 
   if (!data || data.totalProdutos === 0) {
@@ -225,9 +322,21 @@ export default function RelatorioSimplesScreen({ navigation }) {
       {/* Header */}
       <View style={styles.header}>
         <Feather name="book-open" size={24} color={colors.primary} />
-        <Text style={styles.headerTitle}>Explica aí</Text>
+        <Text style={styles.headerTitle}>Explicaí</Text>
         <Text style={styles.headerSub}>Seus números traduzidos em linguagem simples</Text>
       </View>
+
+      {/* Download button */}
+      {Platform.OS === 'web' && (
+        <TouchableOpacity
+          style={styles.downloadBtn}
+          activeOpacity={0.7}
+          onPress={baixarRelatorio}
+        >
+          <Feather name="download" size={16} color="#fff" />
+          <Text style={styles.downloadBtnText}>Baixar Relatório Completo</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Resumo Geral */}
       {data.resumo && (
@@ -273,6 +382,62 @@ export default function RelatorioSimplesScreen({ navigation }) {
               </Text>
             </View>
           </View>
+
+          {/* Pie Chart */}
+          {Platform.OS === 'web' && (() => {
+            const slices = [
+              { label: 'CMV', color: colors.coral, pct: data.resumo.percIng },
+              { label: 'Fixas', color: colors.accent, pct: data.resumo.percFixas },
+              { label: 'Variáveis', color: colors.purple, pct: data.resumo.percVar },
+              { label: data.resumo.lucroPositivo ? 'Lucro' : 'Prejuízo', color: data.resumo.lucroPositivo ? colors.success : colors.error, pct: Math.abs(data.resumo.percLucro) },
+            ];
+            // Calculate label positions (angle midpoint of each slice)
+            let cumAngle = 0;
+            const labelPositions = slices.map(s => {
+              const midAngle = cumAngle + (s.pct * 360) / 2;
+              cumAngle += s.pct * 360;
+              const rad = (midAngle - 90) * Math.PI / 180;
+              const r = 55; // radius for label placement
+              return { x: 90 + r * Math.cos(rad), y: 90 + r * Math.sin(rad), pctStr: (s.pct * 100).toFixed(1) };
+            });
+            return (
+              <View style={styles.chartContainer}>
+                <View style={{ position: 'relative', width: 180, height: 180 }}>
+                  <View
+                    style={[styles.pieChart, {
+                      width: 180, height: 180, borderRadius: 90,
+                      backgroundImage: `conic-gradient(${colors.coral} 0deg ${data.resumo.percIng * 360}deg, ${colors.accent} ${data.resumo.percIng * 360}deg ${(data.resumo.percIng + data.resumo.percFixas) * 360}deg, ${colors.purple} ${(data.resumo.percIng + data.resumo.percFixas) * 360}deg ${(data.resumo.percIng + data.resumo.percFixas + data.resumo.percVar) * 360}deg, ${data.resumo.lucroPositivo ? colors.success : colors.error} ${(data.resumo.percIng + data.resumo.percFixas + data.resumo.percVar) * 360}deg 360deg)`,
+                    }]}
+                  />
+                  {slices.map((s, i) => s.pct >= 0.04 && (
+                    <View key={i} style={{ position: 'absolute', left: labelPositions[i].x - 18, top: labelPositions[i].y - 8, width: 36, alignItems: 'center' }}>
+                      <Text style={{ fontSize: 11, fontFamily: fontFamily.bold, fontWeight: '700', color: '#fff', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>
+                        {labelPositions[i].pctStr}%
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+                <View style={styles.chartLegend}>
+                  {[
+                    { label: 'CMV (Ingredientes)', color: colors.coral, pct: (data.resumo.percIng * 100).toFixed(1) },
+                    { label: 'Despesas Fixas', color: colors.accent, pct: (data.resumo.percFixas * 100).toFixed(1) },
+                    { label: 'Despesas Variáveis', color: colors.purple, pct: (data.resumo.percVar * 100).toFixed(1) },
+                    { label: data.resumo.lucroPositivo ? 'Lucro' : 'Prejuízo', color: data.resumo.lucroPositivo ? colors.success : colors.error, pct: (Math.abs(data.resumo.percLucro) * 100).toFixed(1) },
+                  ].map(item => (
+                    <View key={item.label} style={styles.chartLegendItem}>
+                      <View style={[styles.chartLegendDot, { backgroundColor: item.color }]} />
+                      <Text style={styles.chartLegendText}>{item.label}: {item.pct}%</Text>
+                    </View>
+                  ))}
+                </View>
+                {data.resumo.fatMedio > 0 && (
+                  <Text style={styles.chartCaption}>
+                    Base: faturamento médio de {formatCurrency(data.resumo.fatMedio)}/mês
+                  </Text>
+                )}
+              </View>
+            );
+          })()}
         </View>
       )}
 
@@ -349,7 +514,7 @@ export default function RelatorioSimplesScreen({ navigation }) {
             <View style={[styles.iconCircle, { backgroundColor: colors.accent + '15' }]}>
               <Feather name="target" size={18} color={colors.accent} />
             </View>
-            <Text style={styles.cardTitle}>Ponto de Equilíbrio Traduzido</Text>
+            <Text style={[styles.cardTitle, { letterSpacing: 0.5 }]}>Ponto de Equilíbrio Traduzido</Text>
           </View>
           <View style={styles.insightRow}>
             <Feather name="info" size={16} color={colors.accent} style={{ marginRight: 8, marginTop: 2 }} />
@@ -361,7 +526,7 @@ export default function RelatorioSimplesScreen({ navigation }) {
                 <>
                   {' '}Isso equivale a{' '}
                   <Text style={styles.highlightAccent}>{data.pontoEquilibrio.qtdProduto}</Text>
-                  {' '}{data.pontoEquilibrio.produtoNome} por dia.
+                  {' '}unidades de {data.pontoEquilibrio.produtoNome} por dia.
                 </>
               ) : null}
             </Text>
@@ -390,32 +555,32 @@ export default function RelatorioSimplesScreen({ navigation }) {
 
       {/* Tendência */}
       {data.tendencia && (
-        <View style={[styles.card, data.tendencia.subiu ? styles.cardSuccess : styles.cardWarning]}>
+        <View style={[styles.card, data.tendencia.subiu ? styles.cardSuccess : styles.cardError]}>
           <View style={styles.cardHeader}>
-            <View style={[styles.iconCircle, { backgroundColor: (data.tendencia.subiu ? colors.success : colors.warning) + '15' }]}>
+            <View style={[styles.iconCircle, { backgroundColor: (data.tendencia.subiu ? colors.success : colors.error) + '15' }]}>
               <Feather
                 name={data.tendencia.subiu ? 'trending-up' : 'trending-down'}
                 size={18}
-                color={data.tendencia.subiu ? colors.success : colors.warning}
+                color={data.tendencia.subiu ? colors.success : colors.error}
               />
             </View>
-            <Text style={styles.cardTitle}>Tendencia</Text>
+            <Text style={styles.cardTitle}>Tendência</Text>
           </View>
           <View style={styles.insightRow}>
             <Feather
               name="activity"
               size={16}
-              color={data.tendencia.subiu ? colors.success : colors.warning}
+              color={data.tendencia.subiu ? colors.success : colors.error}
               style={{ marginRight: 8, marginTop: 2 }}
             />
             <Text style={styles.cardText}>
-              Nos ultimos meses, seu faturamento{' '}
+              Nos últimos meses, seu faturamento{' '}
               {data.tendencia.subiu ? 'subiu' : 'desceu'}{' '}
-              <Text style={data.tendencia.subiu ? styles.highlightSuccess : styles.highlightWarning}>
+              <Text style={data.tendencia.subiu ? styles.highlightSuccess : styles.highlightError}>
                 {data.tendencia.variacao}%
               </Text>.
-              {' '}Se continuar assim, em 3 meses sua margem sera de{' '}
-              <Text style={data.tendencia.subiu ? styles.highlightSuccess : styles.highlightWarning}>
+              {' '}Se continuar assim, em 3 meses sua margem será de{' '}
+              <Text style={data.tendencia.subiu ? styles.highlightSuccess : styles.highlightError}>
                 {data.tendencia.margemProjetada}%
               </Text>
             </Text>
@@ -438,6 +603,26 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     padding: spacing.md,
+  },
+
+  // Download button
+  downloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginBottom: spacing.md,
+    alignSelf: 'center',
+  },
+  downloadBtnText: {
+    fontSize: fonts.regular,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: '#fff',
   },
 
   // Loading / Empty
@@ -606,5 +791,47 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     fontWeight: '700',
     color: colors.error,
+  },
+
+  // Pie chart
+  chartContainer: {
+    marginTop: spacing.md,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+  },
+  pieChart: {
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+  },
+  chartLegend: {
+    marginTop: spacing.md,
+    alignSelf: 'stretch',
+  },
+  chartLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  chartLegendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  chartLegendText: {
+    fontSize: fonts.small,
+    fontFamily: fontFamily.medium,
+    color: colors.text,
+  },
+  chartCaption: {
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: spacing.sm,
+    textAlign: 'center',
   },
 });

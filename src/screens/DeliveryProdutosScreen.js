@@ -11,7 +11,7 @@ import EmptyState from '../components/EmptyState';
 import { Feather } from '@expo/vector-icons';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, converterParaBase, normalizeSearch } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 
 // Color palette for product avatars
 const AVATAR_COLORS = [
@@ -99,19 +99,16 @@ export default function DeliveryProdutosScreen() {
     for (const p of prods) {
       const ings = ingsByProd[p.id] || [];
       const custoIng = ings.reduce((a, i) => {
-        if (i.unidade_medida === 'un') return a + i.quantidade_utilizada * i.preco_por_kg;
-        const qtBase = converterParaBase(i.quantidade_utilizada, i.unidade_medida);
-        return a + (qtBase / 1000) * i.preco_por_kg;
+        return a + calcCustoIngrediente(i.preco_por_kg, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida);
       }, 0);
       const preps = prepsByProd[p.id] || [];
       const custoPr = preps.reduce((a, pp) => {
-        const qtBase = converterParaBase(pp.quantidade_utilizada, pp.unidade_medida || 'g');
-        return a + (qtBase / 1000) * pp.custo_por_kg;
+        return a + calcCustoPreparo(pp.custo_por_kg, pp.quantidade_utilizada, pp.unidade_medida || 'g');
       }, 0);
       const embs = embsByProd[p.id] || [];
       const custoEmb = embs.reduce((a, e) => a + e.preco_unitario * e.quantidade_utilizada, 0);
       const custoTotal = custoIng + custoPr + custoEmb;
-      const custoUnitario = custoTotal / (p.rendimento_unidades || 1);
+      const custoUnitario = custoTotal / getDivisorRendimento(p);
       prodResults.push({ id: p.id, nome: p.nome, precoVenda: p.preco_venda || 0, custoUnitario });
     }
     setAllProdutos(prodResults);
@@ -139,10 +136,10 @@ export default function DeliveryProdutosScreen() {
           if (emb) { custo += emb.preco_unitario * item.quantidade; nome = emb.nome; }
         } else if (item.tipo === 'preparo') {
           const prep = preparosList.find(p => p.id === item.item_id);
-          if (prep) { custo += (prep.custo_por_kg / 1000) * item.quantidade; nome = prep.nome; }
+          if (prep) { custo += calcCustoPreparo(prep.custo_por_kg, item.quantidade, 'g'); nome = prep.nome; }
         } else if (item.tipo === 'materia_prima') {
           const mp = materiasList.find(m => m.id === item.item_id);
-          if (mp) { custo += (mp.preco_por_kg / 1000) * item.quantidade; nome = mp.nome; }
+          if (mp) { custo += calcCustoIngrediente(mp.preco_por_kg, item.quantidade, mp.unidade_medida, 'g'); nome = mp.nome; }
         } else if (item.tipo === 'adicional') {
           const add = adicionaisList.find(a => a.id === item.item_id);
           if (add) { custo += add.custo * item.quantidade; nome = add.nome; }

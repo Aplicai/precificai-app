@@ -5,7 +5,7 @@ import { getDatabase } from '../database/database';
 import InputField from '../components/InputField';
 import Card from '../components/Card';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
-import { formatCurrency, converterParaBase, calcDespesasFixasPercentual } from '../utils/calculations';
+import { formatCurrency, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 
 function getUltimos6Meses() {
   const meses = [];
@@ -73,17 +73,14 @@ export default function VendaDetalheScreen({ route }) {
         `SELECT pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi
          JOIN materias_primas mp ON mp.id = pi.materia_prima_id WHERE pi.produto_id = ?`, [produtoId]);
       const custoIng = ings.reduce((a, i) => {
-        if (i.unidade_medida === 'un') return a + i.quantidade_utilizada * i.preco_por_kg;
-        const qtBase = converterParaBase(i.quantidade_utilizada, i.unidade_medida);
-        return a + (qtBase / 1000) * i.preco_por_kg;
+        return a + calcCustoIngrediente(i.preco_por_kg, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida);
       }, 0);
 
       const preps = await db.getAllAsync(
         `SELECT pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp
          JOIN preparos pr ON pr.id = pp.preparo_id WHERE pp.produto_id = ?`, [produtoId]);
       const custoPr = preps.reduce((a, pp) => {
-        const qtBase = converterParaBase(pp.quantidade_utilizada, pp.unidade_medida || 'g');
-        return a + (qtBase / 1000) * pp.custo_por_kg;
+        return a + calcCustoPreparo(pp.custo_por_kg, pp.quantidade_utilizada, pp.unidade_medida || 'g');
       }, 0);
 
       const embs = await db.getAllAsync(
@@ -91,7 +88,7 @@ export default function VendaDetalheScreen({ route }) {
          JOIN embalagens em ON em.id = pe.embalagem_id WHERE pe.produto_id = ?`, [produtoId]);
       const custoEmb = embs.reduce((a, e) => a + e.preco_unitario * e.quantidade_utilizada, 0);
 
-      const custoUn = (custoIng + custoPr + custoEmb) / (prod.rendimento_unidades || 1);
+      const custoUn = (custoIng + custoPr + custoEmb) / getDivisorRendimento(prod);
       setCustoUnitario(custoUn);
 
       // Load sales for selected month (filter in JS for web DB compatibility)
@@ -101,7 +98,6 @@ export default function VendaDetalheScreen({ route }) {
       vendasFiltradas.sort((a, b) => b.data.localeCompare(a.data));
       setVendasDoMes(vendasFiltradas);
     } catch (e) {
-      console.error('Erro ao carregar detalhe de venda:', e);
     }
   }
 

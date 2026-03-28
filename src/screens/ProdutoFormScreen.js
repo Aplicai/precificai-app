@@ -12,8 +12,8 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import {
   UNIDADES_MEDIDA, formatCurrency, formatPercent, calcMarkup, calcDespesasFixasPercentual,
-  converterParaBase, getTipoUnidade, calcCustoIngrediente,
-  calcFatorCorrecao, calcPrecoBase, getLabelPrecoBase, normalizeSearch,
+  converterParaBase, getTipoUnidade, calcCustoIngrediente, calcCustoPreparo,
+  calcFatorCorrecao, calcPrecoBase, getLabelPrecoBase, normalizeSearch, getTipoVenda,
 } from '../utils/calculations';
 
 const UNIDADES_TEMPO = [
@@ -61,6 +61,10 @@ export default function ProdutoFormScreen({ route, navigation }) {
   const [novoPreparo, setNovoPreparo] = useState({ id: null, quantidade: '' });
   const [novaEmb, setNovaEmb] = useState({ id: null, quantidade: '' });
 
+  // Quantity prompt modal state: { type: 'ingrediente'|'preparo'|'embalagem', id, nome, unidade, detalhe, quantidade }
+  const [quantityPrompt, setQuantityPrompt] = useState(null);
+  const qtyInputRef = useRef(null);
+
   // Visual feedback states
   const [ingAdicionado, setIngAdicionado] = useState(false);
   const [prepAdicionado, setPrepAdicionado] = useState(false);
@@ -93,6 +97,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
   // Delete modal
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [historicoPrecos, setHistoricoPrecos] = useState([]);
 
   // Auto-save & validation state
   const [errors, setErrors] = useState({});
@@ -100,6 +105,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
   const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved'
   const [loaded, setLoaded] = useState(false);
   const saveTimerRef = useRef(null);
+  const scrollRef = useRef(null);
   const formRef = useRef(form);
   formRef.current = form;
   const allowExit = useRef(false);
@@ -237,9 +243,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
     const newId = result.lastInsertRowId;
     const updated = await db.getAllAsync('SELECT * FROM materias_primas ORDER BY nome');
     setMateriasPrimas(updated);
-    setNovoIng(p => ({ ...p, id: newId }));
     setNovoIngForm({ nome: '', unidade_medida: 'g', quantidade_bruta: '', quantidade_liquida: '', valor_pago: '' });
     setNovoIngModalVisible(false);
+    // Open quantity prompt for the newly created ingredient
+    const newItem = updated.find(m => m.id === newId);
+    if (newItem) openQuantityPrompt('ingrediente', newItem);
   }
 
   async function salvarNovaEmbalagem() {
@@ -257,9 +265,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
     const newId = result.lastInsertRowId;
     const updated = await db.getAllAsync('SELECT * FROM embalagens ORDER BY nome');
     setEmbalagensList(updated);
-    setNovaEmb(p => ({ ...p, id: newId }));
     setNovaEmbForm({ nome: '', quantidade: '', preco_embalagem: '' });
     setNovaEmbModalVisible(false);
+    // Open quantity prompt for the newly created embalagem
+    const newItem = updated.find(e => e.id === newId);
+    if (newItem) openQuantityPrompt('embalagem', newItem);
   }
 
   async function loadProduto() {
@@ -298,6 +308,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
          JOIN embalagens em ON em.id = pe.embalagem_id WHERE pe.produto_id = ?`, [editId]);
       setProdutoEmbalagens(embs.map(e => ({ embalagem_id: e.embalagem_id, em_nome: e.em_nome || e.nome, preco_unitario: e.preco_unitario, quantidade_utilizada: e.quantidade_utilizada })));
 
+      // Load price history for product (use offset ID to avoid collision with insumos)
+      try {
+        const prodHistId = editId + 1000000;
+        const hist = await db.getAllAsync('SELECT * FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC LIMIT 10', [prodHistId]);
+        setHistoricoPrecos((hist || []).reverse());
+      } catch(e) {}
+
       // Marca como carregado após setar o form para evitar auto-save imediato
       setTimeout(() => setLoaded(true), 100);
     } else {
@@ -317,8 +334,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
     const pr = preparosList.find(p => p.id === pp.preparo_id);
     const cpk = pr?.custo_por_kg || pp.custo_por_kg || 0;
     const unidade = pp.unidade || pr?.unidade_medida || 'g';
-    const qtBase = converterParaBase(pp.quantidade_utilizada, unidade);
-    return acc + (qtBase / 1000) * cpk;
+    return acc + calcCustoPreparo(cpk, pp.quantidade_utilizada, unidade);
   }, 0);
 
   const custoEmbalagens = produtoEmbalagens.reduce((acc, pe) => {
@@ -329,7 +345,15 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
   const custoTotalReceita = custoInsumos + custoPreparos + custoEmbalagens;
   const rendUn = parseNum(form.rendimento_unidades) || 1;
-  const custoUnitario = custoTotalReceita / rendUn;
+
+  // Determinar tipo de venda usando função centralizada (calculations.js)
+  const tipoVenda = getTipoVenda(form);
+
+  // Por kg/litro: divide pelo rendimento total (em kg ou litros)
+  // Por unidade: divide pelo número de unidades
+  const custoUnitario = tipoVenda !== 'unidade'
+    ? custoTotalReceita / (parseNum(form.rendimento_total) || 1)
+    : custoTotalReceita / rendUn;
 
   const margemProduto = form.margem_lucro_produto.trim() !== ''
     ? parseNum(form.margem_lucro_produto) / 100
@@ -353,32 +377,69 @@ export default function ProdutoFormScreen({ route, navigation }) {
     setTimeout(() => setter(false), 1500);
   }
 
-  function addIngrediente() {
-    if (!novoIng.id) return Alert.alert('Erro', 'Selecione um insumo');
-    if (!novoIng.quantidade || parseNum(novoIng.quantidade) <= 0) return Alert.alert('Erro', 'Informe a quantidade');
-    const mp = materiasPrimas.find(m => m.id === novoIng.id);
+  function addIngrediente(overrideId, overrideQtd) {
+    const id = overrideId || novoIng.id;
+    const qtd = overrideQtd || novoIng.quantidade;
+    if (!id) return Alert.alert('Erro', 'Selecione um insumo');
+    if (!qtd || parseNum(qtd) <= 0) return Alert.alert('Erro', 'Informe a quantidade');
+    const mp = materiasPrimas.find(m => m.id === id);
     const unidade = mp?.unidade_medida || 'g';
-    setIngredientes(prev => [...prev, { materia_prima_id: novoIng.id, mp_nome: mp.nome, preco_por_kg: mp.preco_por_kg, quantidade_utilizada: parseNum(novoIng.quantidade), unidade }]);
+    setIngredientes(prev => [...prev, { materia_prima_id: id, mp_nome: mp.nome, preco_por_kg: mp.preco_por_kg, quantidade_utilizada: parseNum(qtd), unidade }]);
     setNovoIng({ id: null, quantidade: '' });
     showFeedback(setIngAdicionado);
   }
 
-  function addPreparo() {
-    if (!novoPreparo.id) return Alert.alert('Erro', 'Selecione um preparo');
-    if (!novoPreparo.quantidade || parseNum(novoPreparo.quantidade) <= 0) return Alert.alert('Erro', 'Informe a quantidade');
-    const pr = preparosList.find(p => p.id === novoPreparo.id);
-    setProdutoPreparos(prev => [...prev, { preparo_id: novoPreparo.id, pr_nome: pr.nome, custo_por_kg: pr.custo_por_kg, quantidade_utilizada: parseNum(novoPreparo.quantidade), unidade: pr.unidade_medida || 'g' }]);
+  function addPreparo(overrideId, overrideQtd) {
+    const id = overrideId || novoPreparo.id;
+    const qtd = overrideQtd || novoPreparo.quantidade;
+    if (!id) return Alert.alert('Erro', 'Selecione um preparo');
+    if (!qtd || parseNum(qtd) <= 0) return Alert.alert('Erro', 'Informe a quantidade');
+    const pr = preparosList.find(p => p.id === id);
+    setProdutoPreparos(prev => [...prev, { preparo_id: id, pr_nome: pr.nome, custo_por_kg: pr.custo_por_kg, quantidade_utilizada: parseNum(qtd), unidade: pr.unidade_medida || 'g' }]);
     setNovoPreparo({ id: null, quantidade: '' });
     showFeedback(setPrepAdicionado);
   }
 
-  function addEmbalagem() {
-    if (!novaEmb.id) return Alert.alert('Erro', 'Selecione uma embalagem');
-    if (!novaEmb.quantidade || parseNum(novaEmb.quantidade) <= 0) return Alert.alert('Erro', 'Informe a quantidade');
-    const em = embalagensList.find(e => e.id === novaEmb.id);
-    setProdutoEmbalagens(prev => [...prev, { embalagem_id: novaEmb.id, em_nome: em.nome, preco_unitario: em.preco_unitario, quantidade_utilizada: parseNum(novaEmb.quantidade) }]);
+  function addEmbalagem(overrideId, overrideQtd) {
+    const id = overrideId || novaEmb.id;
+    const qtd = overrideQtd || novaEmb.quantidade;
+    if (!id) return Alert.alert('Erro', 'Selecione uma embalagem');
+    if (!qtd || parseNum(qtd) <= 0) return Alert.alert('Erro', 'Informe a quantidade');
+    const em = embalagensList.find(e => e.id === id);
+    setProdutoEmbalagens(prev => [...prev, { embalagem_id: id, em_nome: em.nome, preco_unitario: em.preco_unitario, quantidade_utilizada: parseNum(qtd) }]);
     setNovaEmb({ id: null, quantidade: '' });
     showFeedback(setEmbAdicionado);
+  }
+
+  // Open quantity prompt when tapping an item in the search list
+  function openQuantityPrompt(type, item) {
+    let nome, unidade, detalhe;
+    if (type === 'ingrediente') {
+      nome = item.nome;
+      unidade = item.unidade_medida || 'g';
+      detalhe = `${formatCurrency(item.preco_por_kg)}/${getLabelPrecoBase(item.unidade_medida).replace('Preço por ', '')}`;
+    } else if (type === 'preparo') {
+      nome = item.nome;
+      unidade = item.unidade_medida || 'g';
+      detalhe = `${formatCurrency(item.custo_por_kg)}/kg`;
+    } else {
+      nome = item.nome;
+      unidade = 'un';
+      detalhe = `${formatCurrency(item.preco_unitario)}/un`;
+    }
+    setQuantityPrompt({ type, id: item.id, nome, unidade, detalhe, quantidade: '' });
+    setTimeout(() => qtyInputRef.current?.focus(), 200);
+  }
+
+  function confirmQuantityPrompt() {
+    if (!quantityPrompt || !quantityPrompt.quantidade || parseNum(quantityPrompt.quantidade) <= 0) {
+      return Alert.alert('Erro', 'Informe a quantidade');
+    }
+    const { type, id, quantidade } = quantityPrompt;
+    if (type === 'ingrediente') addIngrediente(id, quantidade);
+    else if (type === 'preparo') addPreparo(id, quantidade);
+    else addEmbalagem(id, quantidade);
+    setQuantityPrompt(null);
   }
 
   function getSelectedIngUnit() {
@@ -405,8 +466,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
     const pr = preparosList.find(p => p.id === pp.preparo_id);
     const cpk = pr?.custo_por_kg || pp.custo_por_kg || 0;
     const unidade = pp.unidade || pr?.unidade_medida || 'g';
-    const qtBase = converterParaBase(pp.quantidade_utilizada, unidade);
-    return (qtBase / 1000) * cpk;
+    return calcCustoPreparo(cpk, pp.quantidade_utilizada, unidade);
   }
 
   // Auto-save para modo edição (salva apenas campos principais do produto)
@@ -446,55 +506,67 @@ export default function ProdutoFormScreen({ route, navigation }) {
     const errs = validateForm(form);
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      return Alert.alert('Campos obrigatórios', 'Preencha todos os campos obrigatórios antes de salvar.');
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      return Alert.alert('Campos obrigatórios', 'Preencha o nome do produto e o preço de venda antes de salvar.');
     }
     setErrors({});
     allowExit.current = true;
-    const db = await getDatabase();
-    const margemSalvar = form.margem_lucro_produto.trim() !== '' ? parseNum(form.margem_lucro_produto) / 100 : null;
-    const params = [
-      form.nome, form.categoria_id, parseNum(form.rendimento_total), form.unidade_rendimento,
-      rendUn, parseNum(form.tempo_preparo), precoVenda, margemSalvar,
-      parseNum(form.validade_dias),
-      form.conserv_congelado ? form.temp_congelado : '', form.conserv_congelado ? form.tempo_congelado : '',
-      form.conserv_refrigerado ? form.temp_refrigerado : '', form.conserv_refrigerado ? form.tempo_refrigerado : '',
-      form.conserv_ambiente ? form.temp_ambiente : '', form.conserv_ambiente ? form.tempo_ambiente : '',
-      form.modo_preparo, form.observacoes,
-    ];
 
-    let produtoId = editId;
-    if (editId) {
-      await db.runAsync(
-        `UPDATE produtos SET nome=?, categoria_id=?, rendimento_total=?, unidade_rendimento=?, rendimento_unidades=?,
-         tempo_preparo=?, preco_venda=?, margem_lucro_produto=?, validade_dias=?, temp_congelado=?, tempo_congelado=?,
-         temp_refrigerado=?, tempo_refrigerado=?, temp_ambiente=?, tempo_ambiente=?,
-         modo_preparo=?, observacoes=? WHERE id=?`, [...params, editId]);
-      await db.runAsync('DELETE FROM produto_ingredientes WHERE produto_id = ?', [editId]);
-      await db.runAsync('DELETE FROM produto_preparos WHERE produto_id = ?', [editId]);
-      await db.runAsync('DELETE FROM produto_embalagens WHERE produto_id = ?', [editId]);
-    } else {
-      const result = await db.runAsync(
-        `INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades,
-         tempo_preparo, preco_venda, margem_lucro_produto, validade_dias, temp_congelado, tempo_congelado,
-         temp_refrigerado, tempo_refrigerado, temp_ambiente, tempo_ambiente,
-         modo_preparo, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, params);
-      produtoId = result.lastInsertRowId;
-    }
+    try {
+      const db = await getDatabase();
+      const margemSalvar = form.margem_lucro_produto.trim() !== '' ? parseNum(form.margem_lucro_produto) / 100 : null;
+      const params = [
+        form.nome, form.categoria_id, parseNum(form.rendimento_total), form.unidade_rendimento,
+        rendUn, parseNum(form.tempo_preparo), precoVenda, margemSalvar,
+        parseNum(form.validade_dias),
+        form.conserv_congelado ? form.temp_congelado : '', form.conserv_congelado ? form.tempo_congelado : '',
+        form.conserv_refrigerado ? form.temp_refrigerado : '', form.conserv_refrigerado ? form.tempo_refrigerado : '',
+        form.conserv_ambiente ? form.temp_ambiente : '', form.conserv_ambiente ? form.tempo_ambiente : '',
+        form.modo_preparo, form.observacoes,
+      ];
 
-    for (const ing of ingredientes) {
-      await db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)',
-        [produtoId, ing.materia_prima_id, ing.quantidade_utilizada]);
-    }
-    for (const pp of produtoPreparos) {
-      await db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)',
-        [produtoId, pp.preparo_id, pp.quantidade_utilizada]);
-    }
-    for (const pe of produtoEmbalagens) {
-      await db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
-        [produtoId, pe.embalagem_id, pe.quantidade_utilizada]);
-    }
+      let produtoId = editId;
+      if (editId) {
+        await db.runAsync(
+          `UPDATE produtos SET nome=?, categoria_id=?, rendimento_total=?, unidade_rendimento=?, rendimento_unidades=?,
+           tempo_preparo=?, preco_venda=?, margem_lucro_produto=?, validade_dias=?, temp_congelado=?, tempo_congelado=?,
+           temp_refrigerado=?, tempo_refrigerado=?, temp_ambiente=?, tempo_ambiente=?,
+           modo_preparo=?, observacoes=? WHERE id=?`, [...params, editId]);
+        await db.runAsync('DELETE FROM produto_ingredientes WHERE produto_id = ?', [editId]);
+        await db.runAsync('DELETE FROM produto_preparos WHERE produto_id = ?', [editId]);
+        await db.runAsync('DELETE FROM produto_embalagens WHERE produto_id = ?', [editId]);
+      } else {
+        const result = await db.runAsync(
+          `INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades,
+           tempo_preparo, preco_venda, margem_lucro_produto, validade_dias, temp_congelado, tempo_congelado,
+           temp_refrigerado, tempo_refrigerado, temp_ambiente, tempo_ambiente,
+           modo_preparo, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, params);
+        produtoId = result.lastInsertRowId;
+      }
 
-    navigation.goBack();
+      for (const ing of ingredientes) {
+        await db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)',
+          [produtoId, ing.materia_prima_id, ing.quantidade_utilizada]);
+      }
+      for (const pp of produtoPreparos) {
+        await db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)',
+          [produtoId, pp.preparo_id, pp.quantidade_utilizada]);
+      }
+      for (const pe of produtoEmbalagens) {
+        await db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
+          [produtoId, pe.embalagem_id, pe.quantidade_utilizada]);
+      }
+
+      const returnTo = route.params?.returnTo;
+      if (returnTo) {
+        navigation.navigate(returnTo);
+      } else {
+        navigation.goBack();
+      }
+    } catch (e) {
+      allowExit.current = false;
+      Alert.alert('Erro ao salvar', 'Ocorreu um erro ao salvar o produto. Tente novamente.');
+    }
   }
 
   function solicitarExclusao() {
@@ -541,12 +613,12 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 1100, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}>
+      <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 960, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}>
         <View style={isDesktop ? styles.desktopRow : undefined}>
         <View style={isDesktop ? styles.desktopLeftCol : undefined}>
         {/* Bloco 1: Informações do Produto */}
         <Card title="Informações do Produto">
-          <InputField label="Nome do Produto" value={form.nome} onChangeText={(v) => { setForm(p => ({ ...p, nome: v })); setErrors(p => ({ ...p, nome: undefined })); }} placeholder="Ex: Hambúrguer Artesanal" error={errors.nome} />
+          <InputField label="Nome do Produto *" value={form.nome} onChangeText={(v) => { setForm(p => ({ ...p, nome: v })); setErrors(p => ({ ...p, nome: undefined })); }} placeholder="Ex: Hambúrguer Artesanal" error={errors.nome} errorText="Informe o nome do produto" />
 
           <View style={styles.pickerContainer}>
             <Text style={styles.pickerLabel}>Categoria</Text>
@@ -561,10 +633,6 @@ export default function ProdutoFormScreen({ route, navigation }) {
           </View>
 
           {(() => {
-            const un = (form.unidade_rendimento || '').toLowerCase();
-            const isKg = un.includes('grama') || un.includes('quilo');
-            const isLitro = un.includes('litro') || un.includes('ml');
-            const tipoVenda = isKg ? 'kg' : isLitro ? 'litro' : 'unidade';
 
             return (
               <>
@@ -578,7 +646,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     ].map(opt => (
                       <TouchableOpacity key={opt.value} style={[styles.vendaChip, tipoVenda === opt.value && styles.vendaChipActive]}
                         onPress={() => {
-                          const map = { unidade: 'Unidades', kg: 'Grama(s)', litro: 'Mililitro(s)' };
+                          const map = { unidade: 'por_unidade', kg: 'por_kg', litro: 'por_litro' };
                           setForm(p => ({ ...p, unidade_rendimento: map[opt.value] }));
                         }}>
                         <Feather name={opt.icon} size={14} color={tipoVenda === opt.value ? '#fff' : colors.textSecondary} style={{ marginRight: 4 }} />
@@ -601,12 +669,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <InputField
-                        label="Preço por unidade (R$)"
+                        label="Preço de Venda /un (R$) *"
                         value={form.preco_venda}
                         onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
                         keyboardType="numeric"
                         placeholder={precoSugerido > 0 ? precoSugerido.toFixed(2) : '0,00'}
                         error={errors.preco_venda}
+                        errorText="Informe o preço de venda"
                       />
                     </View>
                   </View>
@@ -623,12 +692,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <InputField
-                        label={`Preço por ${tipoVenda === 'kg' ? 'kg' : 'litro'} (R$)`}
+                        label={`Preço por ${tipoVenda === 'kg' ? 'kg' : 'litro'} (R$) *`}
                         value={form.preco_venda}
                         onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
                         keyboardType="numeric"
                         placeholder={precoSugerido > 0 ? precoSugerido.toFixed(2) : '0,00'}
                         error={errors.preco_venda}
+                        errorText="Informe o preço de venda"
                       />
                     </View>
                   </View>
@@ -652,7 +722,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
             </View>
             <View style={styles.costsGrid}>
               <View style={styles.costsItem}>
-                <Text style={styles.costsItemLabel}>CMV Unit.</Text>
+                <Text style={styles.costsItemLabel}>CMV{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : ' Unit.'}</Text>
                 <Text style={styles.costsItemValue}>{formatCurrency(custoUnitario)}</Text>
               </View>
               <View style={styles.costsItem}>
@@ -682,78 +752,6 @@ export default function ProdutoFormScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* Bloco 3: Insumos (search + table unified) */}
-        <Card title={`Insumos${ingredientes.length > 0 ? ` (${ingredientes.length})` : ''}`} style={{ marginTop: spacing.md }}>
-          {/* Search + add */}
-          <View style={styles.searchRow}>
-            <Text style={styles.searchIcon}>🔍</Text>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Buscar insumo..."
-              placeholderTextColor={colors.disabled}
-              value={buscaIng}
-              onChangeText={setBuscaIng}
-            />
-          </View>
-          <TouchableOpacity style={styles.novoIngBtn} onPress={() => setNovoIngModalVisible(true)}>
-            <Text style={styles.novoIngBtnIcon}>+</Text>
-            <Text style={styles.novoIngBtnText}>Criar novo insumo</Text>
-          </TouchableOpacity>
-          <ScrollView style={styles.selectionList} nestedScrollEnabled>
-            {materiasPrimas
-              .filter(m => normalizeSearch(m.nome).includes(normalizeSearch(buscaIng)))
-              .map(m => (
-                <TouchableOpacity
-                  key={m.id}
-                  style={[styles.selListItem, novoIng.id === m.id && styles.selListItemSelected]}
-                  onPress={() => setNovoIng(p => ({ ...p, id: m.id }))}
-                >
-                  <Text style={[styles.selListItemName, novoIng.id === m.id && styles.selListItemNameSelected]}>{m.nome}</Text>
-                  <Text style={[styles.selListItemDetail, novoIng.id === m.id && styles.selListItemDetailSelected]}>
-                    {formatCurrency(m.preco_por_kg)}/{getLabelPrecoBase(m.unidade_medida).replace('Preço por ', '')}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            {materiasPrimas.filter(m => normalizeSearch(m.nome).includes(normalizeSearch(buscaIng))).length === 0 && (
-              <Text style={styles.listEmpty}>Nenhum insumo encontrado</Text>
-            )}
-          </ScrollView>
-          <View style={styles.addRow}>
-            <InputField style={{ flex: 1, marginRight: spacing.sm, marginBottom: 0 }} label={novoIng.id ? `Quantidade (${getSelectedIngUnit()})` : 'Quantidade'}
-              value={novoIng.quantidade} onChangeText={(v) => setNovoIng(p => ({ ...p, quantidade: v }))} keyboardType="numeric" />
-            <TouchableOpacity style={styles.addBtn} onPress={addIngrediente}><Text style={styles.addBtnText}>+</Text></TouchableOpacity>
-          </View>
-          {ingAdicionado && <Text style={styles.feedbackText}>Insumo adicionado!</Text>}
-
-          {/* Table inline */}
-          {ingredientes.length > 0 && (
-            <View style={styles.tableBlock}>
-              <View style={styles.tableHeader}>
-                <Text style={[styles.tableHeaderText, { flex: 2 }]}>Insumo</Text>
-                <Text style={[styles.tableHeaderText, { flex: 1, textAlign: 'center' }]}>Qtd</Text>
-                <Text style={[styles.tableHeaderText, { flex: 0.8, textAlign: 'center' }]}>Un</Text>
-                <Text style={[styles.tableHeaderText, { flex: 1.2, textAlign: 'right' }]}>Custo</Text>
-                <Text style={[styles.tableHeaderText, { width: 32, textAlign: 'center' }]}></Text>
-              </View>
-              {ingredientes.map((ing, idx) => (
-                <View key={idx} style={[styles.tableRow, idx % 2 === 0 && styles.tableRowEven]}>
-                  <Text style={[styles.tableCell, { flex: 2 }]} numberOfLines={1}>{ing.mp_nome}</Text>
-                  <Text style={[styles.tableCell, { flex: 1, textAlign: 'center' }]}>{ing.quantidade_utilizada}</Text>
-                  <Text style={[styles.tableCell, { flex: 0.8, textAlign: 'center' }]}>{ing.unidade}</Text>
-                  <Text style={[styles.tableCellCusto, { flex: 1.2, textAlign: 'right' }]}>{formatCurrency(custoIng(ing))}</Text>
-                  <TouchableOpacity onPress={() => setIngredientes(prev => prev.filter((_, i) => i !== idx))} style={{ width: 32, alignItems: 'center' }}>
-                    <Text style={styles.removeBtn}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-              <View style={styles.tableFooter}>
-                <Text style={styles.tableFooterLabel}>Total Insumos:</Text>
-                <Text style={styles.tableFooterValue}>{formatCurrency(custoInsumos)}</Text>
-              </View>
-            </View>
-          )}
-        </Card>
-
         {/* Bloco 3: Preparos (search + table unified) */}
         <Card
           title={`Preparos${produtoPreparos.length > 0 ? ` (${produtoPreparos.length})` : ''}`}
@@ -761,7 +759,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
           headerRight={
             <InfoTooltip
               title="O que é um Preparo?"
-              text="Preparos são receitas intermediárias (pré-preparações) que você utiliza dentro de outros produtos. Em vez de listar cada ingrediente individualmente, você cadastra o preparo uma vez e reutiliza em vários produtos."
+              text="Preparos são receitas intermediárias (ex: caldas, massas, recheios) que você faz antes de montar o produto final."
               examples={[
                 'Calda de chocolate: usada em bolos e sobremesas',
                 'Massa base de bolo: usada em vários sabores',
@@ -771,7 +769,6 @@ export default function ProdutoFormScreen({ route, navigation }) {
           }
         >
           <View style={styles.searchRow}>
-            <Text style={styles.searchIcon}>🔍</Text>
             <TextInput
               style={styles.searchInput}
               placeholder="Buscar preparo..."
@@ -786,28 +783,23 @@ export default function ProdutoFormScreen({ route, navigation }) {
           </TouchableOpacity>
           <ScrollView style={styles.selectionList} nestedScrollEnabled>
             {preparosList
-              .filter(p => normalizeSearch(p.nome).includes(normalizeSearch(buscaPreparo)))
+              .filter(p => !buscaPreparo || normalizeSearch(p.nome).includes(normalizeSearch(buscaPreparo)))
               .map(p => (
                 <TouchableOpacity
                   key={p.id}
-                  style={[styles.selListItem, novoPreparo.id === p.id && styles.selListItemSelected]}
-                  onPress={() => setNovoPreparo(prev => ({ ...prev, id: p.id }))}
+                  style={[styles.selListItem]}
+                  onPress={() => openQuantityPrompt('preparo', p)}
                 >
-                  <Text style={[styles.selListItemName, novoPreparo.id === p.id && styles.selListItemNameSelected]}>{p.nome}</Text>
-                  <Text style={[styles.selListItemDetail, novoPreparo.id === p.id && styles.selListItemDetailSelected]}>
+                  <Text style={[styles.selListItemName]}>{p.nome}</Text>
+                  <Text style={[styles.selListItemDetail]}>
                     {p.unidade_medida || 'g'} - {formatCurrency(p.custo_por_kg)}/kg
                   </Text>
                 </TouchableOpacity>
               ))}
-            {preparosList.filter(p => normalizeSearch(p.nome).includes(normalizeSearch(buscaPreparo))).length === 0 && (
+            {preparosList.filter(p => !buscaPreparo || normalizeSearch(p.nome).includes(normalizeSearch(buscaPreparo))).length === 0 && (
               <Text style={styles.listEmpty}>Nenhum preparo encontrado</Text>
             )}
           </ScrollView>
-          <View style={styles.addRow}>
-            <InputField style={{ flex: 1, marginRight: spacing.sm, marginBottom: 0 }} label={novoPreparo.id ? `Quantidade (${getSelectedPrepUnit()})` : 'Quantidade'}
-              value={novoPreparo.quantidade} onChangeText={(v) => setNovoPreparo(p => ({ ...p, quantidade: v }))} keyboardType="numeric" />
-            <TouchableOpacity style={styles.addBtn} onPress={addPreparo}><Text style={styles.addBtnText}>+</Text></TouchableOpacity>
-          </View>
           {prepAdicionado && <Text style={styles.feedbackText}>Preparo adicionado!</Text>}
 
           {produtoPreparos.length > 0 && (
@@ -842,10 +834,86 @@ export default function ProdutoFormScreen({ route, navigation }) {
           )}
         </Card>
 
-        {/* Bloco 4: Embalagens (search + table unified) */}
+        {/* Bloco 4: Insumos (search + table unified) */}
+        <Card
+          title={`Insumos${ingredientes.length > 0 ? ` (${ingredientes.length})` : ''}`}
+          style={{ marginTop: spacing.md }}
+          headerRight={
+            <InfoTooltip
+              title="O que são Insumos?"
+              text="Insumos são ingredientes comprados diretamente (ex: farinha, açúcar, ovos) usados na receita."
+            />
+          }
+        >
+          {/* Search + add */}
+          <View style={styles.searchRow}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Buscar insumo..."
+              placeholderTextColor={colors.disabled}
+              value={buscaIng}
+              onChangeText={setBuscaIng}
+            />
+          </View>
+          <TouchableOpacity style={styles.novoIngBtn} onPress={() => setNovoIngModalVisible(true)}>
+            <Text style={styles.novoIngBtnIcon}>+</Text>
+            <Text style={styles.novoIngBtnText}>Criar novo insumo</Text>
+          </TouchableOpacity>
+          {buscaIng.length > 0 && (
+          <ScrollView style={styles.selectionList} nestedScrollEnabled>
+            {materiasPrimas
+              .filter(m => normalizeSearch(m.nome).includes(normalizeSearch(buscaIng)))
+              .map(m => (
+                <TouchableOpacity
+                  key={m.id}
+                  style={[styles.selListItem]}
+                  onPress={() => openQuantityPrompt('ingrediente', m)}
+                >
+                  <Text style={[styles.selListItemName]}>{m.nome}</Text>
+                  <Text style={[styles.selListItemDetail]}>
+                    {formatCurrency(m.preco_por_kg)}/{getLabelPrecoBase(m.unidade_medida).replace('Preço por ', '')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            {materiasPrimas.filter(m => normalizeSearch(m.nome).includes(normalizeSearch(buscaIng))).length === 0 && (
+              <Text style={styles.listEmpty}>Nenhum insumo encontrado</Text>
+            )}
+          </ScrollView>
+          )}
+          {ingAdicionado && <Text style={styles.feedbackText}>Insumo adicionado!</Text>}
+
+          {/* Table inline */}
+          {ingredientes.length > 0 && (
+            <View style={styles.tableBlock}>
+              <View style={styles.tableHeader}>
+                <Text style={[styles.tableHeaderText, { flex: 2 }]}>Insumo</Text>
+                <Text style={[styles.tableHeaderText, { flex: 1, textAlign: 'center' }]}>Qtd</Text>
+                <Text style={[styles.tableHeaderText, { flex: 0.8, textAlign: 'center' }]}>Un</Text>
+                <Text style={[styles.tableHeaderText, { flex: 1.2, textAlign: 'right' }]}>Custo</Text>
+                <Text style={[styles.tableHeaderText, { width: 32, textAlign: 'center' }]}></Text>
+              </View>
+              {ingredientes.map((ing, idx) => (
+                <View key={idx} style={[styles.tableRow, idx % 2 === 0 && styles.tableRowEven]}>
+                  <Text style={[styles.tableCell, { flex: 2 }]} numberOfLines={1}>{ing.mp_nome}</Text>
+                  <Text style={[styles.tableCell, { flex: 1, textAlign: 'center' }]}>{ing.quantidade_utilizada}</Text>
+                  <Text style={[styles.tableCell, { flex: 0.8, textAlign: 'center' }]}>{ing.unidade}</Text>
+                  <Text style={[styles.tableCellCusto, { flex: 1.2, textAlign: 'right' }]}>{formatCurrency(custoIng(ing))}</Text>
+                  <TouchableOpacity onPress={() => setIngredientes(prev => prev.filter((_, i) => i !== idx))} style={{ width: 32, alignItems: 'center' }}>
+                    <Text style={styles.removeBtn}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <View style={styles.tableFooter}>
+                <Text style={styles.tableFooterLabel}>Total Insumos:</Text>
+                <Text style={styles.tableFooterValue}>{formatCurrency(custoInsumos)}</Text>
+              </View>
+            </View>
+          )}
+        </Card>
+
+        {/* Bloco 5: Embalagens (search + table unified) */}
         <Card title={`Embalagens${produtoEmbalagens.length > 0 ? ` (${produtoEmbalagens.length})` : ''}`} style={{ marginTop: spacing.md }}>
           <View style={styles.searchRow}>
-            <Text style={styles.searchIcon}>🔍</Text>
             <TextInput
               style={styles.searchInput}
               placeholder="Buscar embalagem..."
@@ -858,17 +926,18 @@ export default function ProdutoFormScreen({ route, navigation }) {
             <Text style={styles.novoIngBtnIcon}>+</Text>
             <Text style={styles.novoIngBtnText}>Criar nova embalagem</Text>
           </TouchableOpacity>
+          {buscaEmb.length > 0 && (
           <ScrollView style={styles.selectionList} nestedScrollEnabled>
             {embalagensList
               .filter(e => normalizeSearch(e.nome).includes(normalizeSearch(buscaEmb)))
               .map(e => (
                 <TouchableOpacity
                   key={e.id}
-                  style={[styles.selListItem, novaEmb.id === e.id && styles.selListItemSelected]}
-                  onPress={() => setNovaEmb(p => ({ ...p, id: e.id }))}
+                  style={[styles.selListItem]}
+                  onPress={() => openQuantityPrompt('embalagem', e)}
                 >
-                  <Text style={[styles.selListItemName, novaEmb.id === e.id && styles.selListItemNameSelected]}>{e.nome}</Text>
-                  <Text style={[styles.selListItemDetail, novaEmb.id === e.id && styles.selListItemDetailSelected]}>
+                  <Text style={[styles.selListItemName]}>{e.nome}</Text>
+                  <Text style={[styles.selListItemDetail]}>
                     {formatCurrency(e.preco_unitario)}/un
                   </Text>
                 </TouchableOpacity>
@@ -877,11 +946,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               <Text style={styles.listEmpty}>Nenhuma embalagem encontrada</Text>
             )}
           </ScrollView>
-          <View style={styles.addRow}>
-            <InputField style={{ flex: 1, marginRight: spacing.sm, marginBottom: 0 }} label="Quantidade"
-              value={novaEmb.quantidade} onChangeText={(v) => setNovaEmb(p => ({ ...p, quantidade: v }))} keyboardType="numeric" />
-            <TouchableOpacity style={styles.addBtn} onPress={addEmbalagem}><Text style={styles.addBtnText}>+</Text></TouchableOpacity>
-          </View>
+          )}
           {embAdicionado && <Text style={styles.feedbackText}>Embalagem adicionada!</Text>}
 
           {produtoEmbalagens.length > 0 && (
@@ -951,9 +1016,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
               <View style={styles.custoRow}><Text style={styles.custoLabel}>Insumos</Text><Text style={styles.custoValue}>{formatCurrency(custoInsumos)}</Text></View>
               <View style={styles.custoRow}><Text style={styles.custoLabel}>Preparos</Text><Text style={styles.custoValue}>{formatCurrency(custoPreparos)}</Text></View>
               <View style={styles.custoRow}><Text style={styles.custoLabel}>Embalagens</Text><Text style={styles.custoValue}>{formatCurrency(custoEmbalagens)}</Text></View>
-              <View style={[styles.custoRow, styles.custoTotal]}><Text style={[styles.custoLabel, styles.custoTotalText]}>Custo Total</Text><Text style={[styles.custoValue, styles.custoTotalText]}>{formatCurrency(custoTotalReceita)}</Text></View>
-              {rendUn > 1 && (
-                <View style={styles.custoRow}><Text style={styles.custoLabel}>Custo por Unidade ({rendUn} un)</Text><Text style={styles.custoValue}>{formatCurrency(custoUnitario)}</Text></View>
+              <View style={[styles.custoRow, styles.custoTotal]}><Text style={[styles.custoLabel, styles.custoTotalText]}>Custo Total da Receita</Text><Text style={[styles.custoValue, styles.custoTotalText]}>{formatCurrency(custoTotalReceita)}</Text></View>
+              {tipoVenda === 'unidade' ? (
+                rendUn > 1 && <View style={styles.custoRow}><Text style={styles.custoLabel}>Custo por Unidade ({rendUn} un)</Text><Text style={styles.custoValue}>{formatCurrency(custoUnitario)}</Text></View>
+              ) : (
+                <View style={styles.custoRow}><Text style={styles.custoLabel}>Custo por {tipoVenda === 'kg' ? 'kg' : 'litro'}</Text><Text style={styles.custoValue}>{formatCurrency(custoUnitario)}</Text></View>
               )}
 
               <View style={styles.separator} />
@@ -984,12 +1051,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </View>
 
               <InputField
-                label="Preço de Venda (R$)"
+                label="Preço de Venda (R$) *"
                 value={form.preco_venda}
                 onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
                 keyboardType="numeric"
                 placeholder={precoSugerido.toFixed(2)}
                 error={errors.preco_venda}
+                errorText="Informe o preço de venda"
               />
               {form.preco_venda && parseNum(form.preco_venda) !== precoSugerido && precoSugerido > 0 && (
                 <Text style={styles.precoHint}>
@@ -1071,9 +1139,39 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
         {/* Delete button for existing products */}
         {editId && (
-          <TouchableOpacity style={styles.deleteProductBtn} onPress={solicitarExclusao}>
-            <Text style={styles.deleteProductText}>Excluir Produto</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.md, marginTop: spacing.sm }}>
+            {isFormComplete(form) && <TouchableOpacity style={[styles.deleteProductBtn, { borderColor: colors.primary + '30' }]} onPress={async () => {
+              const f = formRef.current;
+              try { await autoSave(); } catch(e) {}
+              const db = await getDatabase();
+              const margemVal = f.margem_lucro_produto && f.margem_lucro_produto.trim() !== '' ? parseFloat(String(f.margem_lucro_produto).replace(',', '.')) / 100 : null;
+              const result = await db.runAsync(
+                `INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades, tempo_preparo, preco_venda, margem_lucro_produto, validade_dias, temp_congelado, tempo_congelado, temp_refrigerado, tempo_refrigerado, temp_ambiente, tempo_ambiente, modo_preparo, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                [f.nome.trim() + ' (cópia)', f.categoria_id, parseNum(f.rendimento_total), f.unidade_rendimento || 'g', parseNum(f.rendimento_unidades) || 1, parseNum(f.tempo_preparo), parseFloat(String(f.preco_venda).replace(',','.')) || 0, margemVal, parseNum(f.validade_dias),
+                 f.conserv_congelado ? f.temp_congelado : '', f.conserv_congelado ? f.tempo_congelado : '',
+                 f.conserv_refrigerado ? f.temp_refrigerado : '', f.conserv_refrigerado ? f.tempo_refrigerado : '',
+                 f.conserv_ambiente ? f.temp_ambiente : '', f.conserv_ambiente ? f.tempo_ambiente : '',
+                 f.modo_preparo || '', f.observacoes || '']);
+              const newId = result?.lastInsertRowId;
+              if (newId) {
+                const ings = await db.getAllAsync('SELECT * FROM produto_ingredientes WHERE produto_id = ?', [editId]);
+                for (const i of ings) await db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)', [newId, i.materia_prima_id, i.quantidade_utilizada]);
+                const preps = await db.getAllAsync('SELECT * FROM produto_preparos WHERE produto_id = ?', [editId]);
+                for (const p of preps) await db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)', [newId, p.preparo_id, p.quantidade_utilizada]);
+                const embs = await db.getAllAsync('SELECT * FROM produto_embalagens WHERE produto_id = ?', [editId]);
+                for (const e of embs) await db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)', [newId, e.embalagem_id, e.quantidade_utilizada]);
+                allowExit.current = true;
+                navigation.replace('ProdutoForm', { id: newId });
+              }
+            }}>
+              <Feather name="copy" size={13} color={colors.primary} style={{ marginRight: 5 }} />
+              <Text style={[styles.deleteProductText, { color: colors.primary }]}>Duplicar</Text>
+            </TouchableOpacity>}
+            <TouchableOpacity style={styles.deleteProductBtn} onPress={solicitarExclusao}>
+              <Feather name="trash-2" size={13} color={colors.error} style={{ marginRight: 5 }} />
+              <Text style={styles.deleteProductText}>Excluir</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {/* Spacer for footer */}
@@ -1095,7 +1193,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </View>
               <View style={[styles.costsGrid, { flexWrap: 'wrap' }]}>
                 <View style={[styles.costsItem, { minWidth: '45%' }]}>
-                  <Text style={styles.costsItemLabel}>CMV Unit.</Text>
+                  <Text style={styles.costsItemLabel}>CMV{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : ' Unit.'}</Text>
                   <Text style={styles.costsItemValue}>{formatCurrency(custoUnitario)}</Text>
                 </View>
                 <View style={[styles.costsItem, { minWidth: '45%' }]}>
@@ -1126,27 +1224,29 @@ export default function ProdutoFormScreen({ route, navigation }) {
               {/* Detailed breakdown in sidebar */}
               {temCustos && (() => {
                 const pv = parseNum(form.preco_venda) || 0;
-                const percInsumos = pv > 0 ? (custoInsumos / (rendUn || 1)) / pv : 0;
-                const percPreparos = pv > 0 ? (custoPreparos / (rendUn || 1)) / pv : 0;
-                const percEmbalagens = pv > 0 ? (custoEmbalagens / (rendUn || 1)) / pv : 0;
+                const divisor = tipoVenda !== 'unidade' ? (parseNum(form.rendimento_total) || 1) : (rendUn || 1);
+                const labelUnit = tipoVenda === 'kg' ? 'por kg' : tipoVenda === 'litro' ? 'por litro' : 'por unidade vendida';
+                const percInsumos = pv > 0 ? (custoInsumos / divisor) / pv : 0;
+                const percPreparos = pv > 0 ? (custoPreparos / divisor) / pv : 0;
+                const percEmbalagens = pv > 0 ? (custoEmbalagens / divisor) / pv : 0;
                 return (
                   <>
                     <View style={[styles.separator, { marginTop: spacing.md }]} />
-                    <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 6, fontFamily: fontFamily.medium }}>Composição por unidade vendida</Text>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 6, fontFamily: fontFamily.medium }}>Composição {labelUnit}</Text>
                     <View style={styles.custoRow}>
                       <Text style={styles.custoLabel}>Insumos</Text>
-                      <Text style={styles.custoValue}>{formatCurrency(custoInsumos / (rendUn || 1))} {pv > 0 ? `(${formatPercent(percInsumos)})` : ''}</Text>
+                      <Text style={styles.custoValue}>{formatCurrency(custoInsumos / divisor)} {pv > 0 ? `(${formatPercent(percInsumos)})` : ''}</Text>
                     </View>
                     <View style={styles.custoRow}>
                       <Text style={styles.custoLabel}>Preparos</Text>
-                      <Text style={styles.custoValue}>{formatCurrency(custoPreparos / (rendUn || 1))} {pv > 0 ? `(${formatPercent(percPreparos)})` : ''}</Text>
+                      <Text style={styles.custoValue}>{formatCurrency(custoPreparos / divisor)} {pv > 0 ? `(${formatPercent(percPreparos)})` : ''}</Text>
                     </View>
                     <View style={styles.custoRow}>
                       <Text style={styles.custoLabel}>Embalagens</Text>
-                      <Text style={styles.custoValue}>{formatCurrency(custoEmbalagens / (rendUn || 1))} {pv > 0 ? `(${formatPercent(percEmbalagens)})` : ''}</Text>
+                      <Text style={styles.custoValue}>{formatCurrency(custoEmbalagens / divisor)} {pv > 0 ? `(${formatPercent(percEmbalagens)})` : ''}</Text>
                     </View>
                     <View style={[styles.custoRow, styles.custoTotal]}>
-                      <Text style={[styles.custoLabel, styles.custoTotalText]}>CMV Unitário</Text>
+                      <Text style={[styles.custoLabel, styles.custoTotalText]}>CMV{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : ' Unitário'}</Text>
                       <Text style={[styles.custoValue, styles.custoTotalText]}>{formatCurrency(custoUnitario)} {pv > 0 ? `(${formatPercent(cmvPerc)})` : ''}</Text>
                     </View>
                     <View style={styles.separator} />
@@ -1176,8 +1276,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                   <>
                     <Text style={[styles.costsTitle, { fontSize: 13, marginBottom: 6 }]}>Insumos ({ingredientes.length})</Text>
                     {ingredientes.map((ing, i) => {
-                      const qtBase = converterParaBase(ing.quantidade_utilizada || 0, ing.unidade || 'g');
-                      const custoIng = (qtBase / 1000) * (ing.preco_por_kg || 0);
+                      const custoIng = calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada || 0, ing.unidade || 'g', ing.unidade || 'g');
                       return (
                         <View key={ing.id || i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
                           <Text style={{ fontSize: 12, color: colors.textSecondary, flex: 1 }} numberOfLines={1}>{ing.mp_nome || ing.nome}</Text>
@@ -1191,8 +1290,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                   <>
                     <Text style={[styles.costsTitle, { fontSize: 13, marginTop: 10, marginBottom: 6 }]}>Preparos ({produtoPreparos.length})</Text>
                     {produtoPreparos.map((pr, i) => {
-                      const qtBase = pr.quantidade_utilizada ? converterParaBase(pr.quantidade_utilizada, pr.unidade || 'g') : 0;
-                      const custoPr = (qtBase / 1000) * (pr.custo_por_kg || 0);
+                      const custoPr = calcCustoPreparo(pr.custo_por_kg || 0, pr.quantidade_utilizada || 0, pr.unidade || 'g');
                       return (
                         <View key={pr.preparo_id || i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
                           <Text style={{ fontSize: 12, color: colors.textSecondary, flex: 1 }} numberOfLines={1}>{pr.pr_nome}</Text>
@@ -1218,6 +1316,71 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 )}
               </View>
             )}
+
+            {/* Histórico de Preço de Venda */}
+            {editId && historicoPrecos.length > 1 && (
+              <View style={[styles.costsSummaryCard, { marginTop: spacing.sm }]}>
+                <Text style={[styles.costsTitle, { fontSize: 13, marginBottom: 8 }]}>📈 Histórico de Preço</Text>
+                {(() => {
+                  const sorted = [...historicoPrecos].reverse();
+                  const prices = sorted.map(x => x.valor_pago);
+                  const min = Math.min(...prices);
+                  const max = Math.max(...prices);
+                  const range = max - min || 1;
+                  const ultimo = prices[prices.length - 1];
+                  const penultimo = prices.length >= 2 ? prices[prices.length - 2] : ultimo;
+                  const variacao = penultimo > 0 ? ((ultimo - penultimo) / penultimo * 100) : 0;
+                  return (
+                    <>
+                      <View style={styles.historicoBars}>
+                        {sorted.map((h, i) => {
+                          const p = h.valor_pago;
+                          const height = Math.max(12, ((p - min) / range) * 56 + 12);
+                          const isLast = i === sorted.length - 1;
+                          const data = h.data ? new Date(h.data).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit'}) : '';
+                          return (
+                            <View key={h.id || i} style={styles.historicoBarWrapper}>
+                              <Text style={styles.historicoBarPrice}>{formatCurrency(p)}</Text>
+                              <View style={[styles.historicoBar, { height, backgroundColor: isLast ? colors.primary : colors.primary+'30' }]} />
+                              {data ? <Text style={styles.historicoBarDate}>{data}</Text> : null}
+                              <TouchableOpacity
+                                style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: colors.error + '12', alignItems: 'center', justifyContent: 'center', marginTop: 4 }}
+                                onPress={async () => {
+                                  if (Platform.OS === 'web') {
+                                    const ok = window.confirm('Deseja excluir este registro de preço do histórico?');
+                                    if (ok) {
+                                      try {
+                                        const db = await getDatabase();
+                                        await db.runAsync('DELETE FROM historico_precos WHERE id = ?', [h.id]);
+                                        setHistoricoPrecos(prev => prev.filter(x => x.id !== h.id));
+                                      } catch (e) {}
+                                    }
+                                  } else {
+                                    Alert.alert('Excluir registro', 'Deseja excluir este registro de preço?', [
+                                      { text: 'Cancelar', style: 'cancel' },
+                                      { text: 'Excluir', style: 'destructive', onPress: async () => {
+                                        try { const db = await getDatabase(); await db.runAsync('DELETE FROM historico_precos WHERE id = ?', [h.id]); setHistoricoPrecos(prev => prev.filter(x => x.id !== h.id)); } catch(e) {}
+                                      }}
+                                    ]);
+                                  }
+                                }}
+                                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                {...(Platform.OS === 'web' ? { title: 'Excluir este registro de preço' } : {})}
+                              >
+                                <Feather name="x" size={9} color={colors.error + '80'} />
+                              </TouchableOpacity>
+                            </View>
+                          );
+                        })}
+                      </View>
+                      <Text style={{ fontSize: 11, color: variacao > 0 ? colors.error : variacao < 0 ? colors.success : colors.textSecondary, fontFamily: fontFamily.semiBold, marginTop: 8 }}>
+                        {variacao > 0 ? '▲ Subiu' : variacao < 0 ? '▼ Caiu' : '= Estável'} {Math.abs(variacao).toFixed(1)}%
+                      </Text>
+                    </>
+                  );
+                })()}
+              </View>
+            )}
           </View>
         )}
         </View>{/* end desktopRow */}
@@ -1241,9 +1404,26 @@ export default function ProdutoFormScreen({ route, navigation }) {
             )}
           </View>
           )}
-          <TouchableOpacity style={styles.saveBackBtn} onPress={() => {
+          <TouchableOpacity style={styles.saveBackBtn} onPress={async () => {
             allowExit.current = true;
-            navigation.navigate('ProdutosList');
+            // Save price to history
+            const price = parseFloat(String(formRef.current.preco_venda).replace(',','.')) || 0;
+            if (price > 0 && editId) {
+              try {
+                const prodHistId = editId + 1000000;
+                const db = await getDatabase();
+                const lastH = await db.getAllAsync('SELECT valor_pago FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC LIMIT 1', [prodHistId]);
+                if (!lastH?.[0] || Math.abs(lastH[0].valor_pago - price) > 0.001) {
+                  await db.runAsync('INSERT INTO historico_precos (materia_prima_id, valor_pago, preco_por_kg) VALUES (?,?,?)', [prodHistId, price, -1]);
+                }
+              } catch(e) {}
+            }
+            const returnTo = route.params?.returnTo;
+            if (returnTo) {
+              navigation.navigate(returnTo);
+            } else {
+              navigation.navigate('ProdutosList');
+            }
           }}>
             <Feather name="check" size={16} color="#fff" />
             <Text style={styles.saveBackBtnText}>Salvar e Voltar</Text>
@@ -1311,6 +1491,43 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     loadCategorias();
                   }}>
                     <Text style={styles.modalSaveText}>Criar e Selecionar</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Modal Quantity Prompt (inline add) */}
+      <Modal visible={!!quantityPrompt} transparent animationType="fade" onRequestClose={() => setQuantityPrompt(null)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setQuantityPrompt(null)}>
+          <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { maxWidth: 360 }]} onPress={() => {}}>
+            {quantityPrompt && (
+              <>
+                <Text style={styles.modalTitle}>{quantityPrompt.nome}</Text>
+                <Text style={{ fontSize: fonts.small, color: colors.textSecondary, textAlign: 'center', marginTop: -spacing.sm, marginBottom: spacing.md }}>
+                  {quantityPrompt.detalhe}
+                </Text>
+                <Text style={styles.modalLabel}>Quantidade ({quantityPrompt.unidade})</Text>
+                <TextInput
+                  ref={qtyInputRef}
+                  style={styles.modalInput}
+                  value={quantityPrompt.quantidade}
+                  onChangeText={(v) => setQuantityPrompt(prev => prev ? { ...prev, quantidade: v } : null)}
+                  keyboardType="numeric"
+                  placeholder="Ex: 100"
+                  placeholderTextColor={colors.disabled}
+                  autoFocus
+                  onSubmitEditing={confirmQuantityPrompt}
+                  returnKeyType="done"
+                />
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setQuantityPrompt(null)}>
+                    <Text style={styles.modalCancelText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.modalSaveBtn} onPress={confirmQuantityPrompt}>
+                    <Text style={styles.modalSaveText}>Adicionar</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -1723,9 +1940,10 @@ const styles = StyleSheet.create({
 
   // Edit footer with save+back
   editFooter: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
     backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border,
+    gap: spacing.sm,
   },
   saveBackBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -1808,4 +2026,11 @@ const styles = StyleSheet.create({
     color: colors.error, fontFamily: fontFamily.semiBold, fontWeight: '600',
     fontSize: fonts.regular,
   },
+
+  // Histórico de preço
+  historicoBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, minHeight: 100, paddingBottom: 4, backgroundColor: colors.background, borderRadius: borderRadius.sm, padding: spacing.sm },
+  historicoBarWrapper: { alignItems: 'center', flex: 1, maxWidth: 64 },
+  historicoBar: { width: '70%', maxWidth: 28, borderRadius: 4, minHeight: 8 },
+  historicoBarPrice: { fontSize: 10, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text, marginBottom: 4, textAlign: 'center' },
+  historicoBarDate: { fontSize: 9, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 3 },
 });

@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import Card from '../components/Card';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
-import { formatCurrency, converterParaBase, calcDespesasFixasPercentual } from '../utils/calculations';
+import { formatCurrency, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 
 function getUltimos6Meses() {
   const meses = [];
@@ -75,21 +75,18 @@ export default function VendasScreen({ navigation }) {
       for (const p of prods) {
         const ings = ingsByProd[p.id] || [];
         const custoIng = ings.reduce((a, i) => {
-          if (i.unidade_medida === 'un') return a + i.quantidade_utilizada * i.preco_por_kg;
-          const qtBase = converterParaBase(i.quantidade_utilizada, i.unidade_medida);
-          return a + (qtBase / 1000) * i.preco_por_kg;
+          return a + calcCustoIngrediente(i.preco_por_kg, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida);
         }, 0);
 
         const preps = prepsByProd[p.id] || [];
         const custoPr = preps.reduce((a, pp) => {
-          const qtBase = converterParaBase(pp.quantidade_utilizada, pp.unidade_medida || 'g');
-          return a + (qtBase / 1000) * pp.custo_por_kg;
+          return a + calcCustoPreparo(pp.custo_por_kg, pp.quantidade_utilizada, pp.unidade_medida || 'g');
         }, 0);
 
         const embs = embsByProd[p.id] || [];
         const custoEmb = embs.reduce((a, e) => a + e.preco_unitario * e.quantidade_utilizada, 0);
 
-        const custoUn = (custoIng + custoPr + custoEmb) / (p.rendimento_unidades || 1);
+        const custoUn = (custoIng + custoPr + custoEmb) / getDivisorRendimento(p);
         const precoVenda = p.preco_venda || 0;
         const despFixasVal = precoVenda * dfPerc;
         const despVarVal = precoVenda * totalVar;
@@ -128,7 +125,6 @@ export default function VendasScreen({ navigation }) {
       setProdutos(result);
       setResumo({ totalQty, faturamento, lucro, ticketMedio });
     } catch (e) {
-      console.error('Erro ao carregar vendas:', e);
     } finally {
       setLoading(false);
     }

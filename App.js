@@ -1,10 +1,26 @@
-import React from 'react';
-import { View, Text } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import AppNavigator from './src/navigation/AppNavigator';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { colors } from './src/utils/theme';
+
+// Remove browser default outline on all inputs (web only)
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const style = document.createElement('style');
+  style.textContent = `
+    input, textarea, select, [contenteditable] {
+      outline: none !important;
+      -webkit-tap-highlight-color: transparent;
+    }
+    input:focus, textarea:focus, select:focus {
+      outline: none !important;
+      box-shadow: none !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 export default function App() {
   const [fontsLoaded] = useFonts({

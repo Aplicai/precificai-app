@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
+import useRateLimit from '../hooks/useRateLimit';
 
 export default function LoginScreen({ navigation }) {
   const { signIn } = useAuth();
@@ -9,8 +11,12 @@ export default function LoginScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const rateLimit = useRateLimit();
 
   const handleLogin = async () => {
+    const limitMsg = rateLimit.checkLimit();
+    if (limitMsg) { setError(limitMsg); return; }
     if (!email.trim() || !password.trim()) {
       setError('Preencha todos os campos');
       return;
@@ -19,7 +25,9 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
     try {
       await signIn(email.trim().toLowerCase(), password);
+      rateLimit.reset();
     } catch (err) {
+      rateLimit.recordAttempt();
       const msg = err.message?.includes('Invalid login')
         ? 'Email ou senha incorretos'
         : err.message?.includes('Email not confirmed')
@@ -46,7 +54,12 @@ export default function LoginScreen({ navigation }) {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Entrar</Text>
 
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+          {error ? (
+            <View style={styles.errorBox}>
+              <Feather name="alert-circle" size={14} color="#dc2626" style={{ marginRight: 6 }} />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : null}
 
           <Text style={styles.label}>Email</Text>
           <TextInput
@@ -61,14 +74,23 @@ export default function LoginScreen({ navigation }) {
           />
 
           <Text style={styles.label}>Senha</Text>
-          <TextInput
-            style={styles.input}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Sua senha"
-            secureTextEntry
-            placeholderTextColor={colors.disabled}
-          />
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Sua senha"
+              secureTextEntry={!showPassword}
+              placeholderTextColor={colors.disabled}
+            />
+            <TouchableOpacity
+              style={styles.eyeBtn}
+              onPress={() => setShowPassword(!showPassword)}
+              activeOpacity={0.7}
+            >
+              <Feather name={showPassword ? 'eye-off' : 'eye'} size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')} style={styles.forgotBtn}>
             <Text style={styles.forgotText}>Esqueci minha senha</Text>
@@ -78,13 +100,16 @@ export default function LoginScreen({ navigation }) {
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
-              <Text style={styles.primaryBtnText}>Entrar</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={styles.primaryBtnText}>Entrar</Text>
+                <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
+              </View>
             )}
           </TouchableOpacity>
 
           <View style={styles.registerRow}>
             <Text style={styles.registerText}>Ainda não tem conta? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+            <TouchableOpacity onPress={() => navigation.replace('Register')}>
               <Text style={styles.registerLink}>Criar conta</Text>
             </TouchableOpacity>
           </View>
@@ -97,15 +122,27 @@ export default function LoginScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.primary },
   inner: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.lg, maxWidth: 420, alignSelf: 'center', width: '100%' },
-  logoArea: { alignItems: 'center', marginBottom: 32 },
-  logo: { width: 180, height: 40, marginBottom: 12 },
-  subtitle: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontFamily: fontFamily.regular, textAlign: 'center', lineHeight: 20 },
-  card: { backgroundColor: '#fff', borderRadius: borderRadius.xl, padding: spacing.lg, paddingTop: 28 },
+  logoArea: { alignItems: 'center', marginBottom: 28 },
+  logo: { width: 160, height: 36, marginBottom: 8 },
+  subtitle: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontFamily: fontFamily.regular, textAlign: 'center', lineHeight: 19 },
+  card: { backgroundColor: '#fff', borderRadius: borderRadius.xl, padding: spacing.lg, paddingTop: 24 },
   cardTitle: { fontSize: 22, fontWeight: '700', fontFamily: fontFamily.bold, color: colors.text, marginBottom: 20, textAlign: 'center' },
-  label: { fontSize: 13, fontFamily: fontFamily.medium, color: colors.textSecondary, marginBottom: 6, marginTop: 12 },
+  label: { fontSize: 13, fontFamily: fontFamily.medium, color: colors.textSecondary, marginBottom: 6, marginTop: 14 },
   input: {
-    backgroundColor: colors.surface, borderRadius: borderRadius.md, paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: colors.inputBg, borderRadius: borderRadius.sm, paddingHorizontal: 14, paddingVertical: 12,
     fontSize: 15, fontFamily: fontFamily.regular, color: colors.text, borderWidth: 1, borderColor: colors.border,
+  },
+  passwordContainer: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.inputBg, borderRadius: borderRadius.sm,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  passwordInput: {
+    flex: 1, paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 15, fontFamily: fontFamily.regular, color: colors.text,
+  },
+  eyeBtn: {
+    paddingHorizontal: 12, paddingVertical: 12, justifyContent: 'center', alignItems: 'center',
   },
   forgotBtn: { alignSelf: 'flex-end', marginTop: 8, marginBottom: 20 },
   forgotText: { fontSize: 13, color: colors.info, fontFamily: fontFamily.medium },
@@ -117,5 +154,10 @@ const styles = StyleSheet.create({
   registerRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
   registerText: { fontSize: 14, color: colors.textSecondary, fontFamily: fontFamily.regular },
   registerLink: { fontSize: 14, color: colors.primary, fontWeight: '600', fontFamily: fontFamily.semiBold },
-  errorText: { backgroundColor: '#fef2f2', color: '#dc2626', fontSize: 13, padding: 10, borderRadius: borderRadius.sm, textAlign: 'center', marginBottom: 8 },
+  errorBox: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fef2f2', padding: 10, borderRadius: borderRadius.sm,
+    marginBottom: 4,
+  },
+  errorText: { color: '#dc2626', fontSize: 13, fontFamily: fontFamily.regular, flex: 1 },
 });

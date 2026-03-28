@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts, borderRadius, fontFamily } from '../utils/theme';
 import { getSetupStatus } from '../utils/setupStatus';
 
@@ -23,7 +24,8 @@ export default function OnboardingScreen({ navigation }) {
     }
   }
 
-  function goToHome() {
+  async function goToHome() {
+    await AsyncStorage.setItem('onboarding_done', 'true');
     setShowCompleteModal(false);
     navigation.replace('MainTabs');
   }
@@ -38,7 +40,8 @@ export default function OnboardingScreen({ navigation }) {
     }
   }
 
-  function skipToHome() {
+  async function skipToHome() {
+    await AsyncStorage.setItem('onboarding_done', 'true');
     navigation.replace('MainTabs');
   }
 
@@ -49,6 +52,16 @@ export default function OnboardingScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
+
+        {/* Botão Voltar ao Kit */}
+        <TouchableOpacity
+          style={styles.backToKit}
+          onPress={() => navigation.navigate('KitInicio', { setup: true })}
+          activeOpacity={0.7}
+        >
+          <Feather name="arrow-left" size={18} color={colors.primary} />
+          <Text style={styles.backToKitText}>Voltar ao Kit de Início</Text>
+        </TouchableOpacity>
 
         {/* Header */}
         <View style={styles.header}>
@@ -193,6 +206,14 @@ export default function OnboardingScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, maxWidth: 520, alignSelf: 'center', width: '100%' },
+
+  // Back to Kit
+  backToKit: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: spacing.sm, paddingHorizontal: 2,
+    marginBottom: spacing.xs, alignSelf: 'flex-start',
+  },
+  backToKitText: { fontSize: fonts.regular, fontFamily: fontFamily.semiBold, color: colors.primary },
 
   // Header
   header: { alignItems: 'center', paddingVertical: spacing.lg, paddingBottom: spacing.md },

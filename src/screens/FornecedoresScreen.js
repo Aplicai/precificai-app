@@ -1,20 +1,54 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency } from '../utils/calculations';
+import SearchBar from '../components/SearchBar';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
+
+const CATEGORY_COLORS = [
+  colors.primary, colors.accent, colors.coral, colors.purple,
+  colors.yellow, colors.success, colors.info, colors.red,
+  colors.primaryLight, colors.accentLight, colors.coralLight, colors.purpleLight,
+];
+
+function getCategoryColor(index) {
+  return CATEGORY_COLORS[index % CATEGORY_COLORS.length];
+}
+
+function normalizeStr(str) {
+  return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
 
 export default function FornecedoresScreen({ navigation }) {
+  const { isDesktop } = useResponsiveLayout();
   const [groups, setGroups] = useState([]);
   const [totalSavings, setTotalSavings] = useState(0);
+  const [busca, setBusca] = useState('');
+  const [filtroCategoria, setFiltroCategoria] = useState(null);
+  const [categorias, setCategorias] = useState([]);
 
-  useFocusEffect(useCallback(() => { loadData(); }, []));
+  useFocusEffect(useCallback(() => { loadData(); }, [busca, filtroCategoria]));
 
   async function loadData() {
     const db = await getDatabase();
-    const insumos = await db.getAllAsync('SELECT * FROM materias_primas ORDER BY nome');
+    const [insumosBrutos, cats] = await Promise.all([
+      db.getAllAsync('SELECT * FROM materias_primas ORDER BY nome'),
+      db.getAllAsync('SELECT * FROM categorias_insumos ORDER BY nome'),
+    ]);
+    setCategorias(cats);
+
+    // Filter by search and category
+    let insumos = insumosBrutos;
+    if (busca.trim()) {
+      const termo = normalizeStr(busca);
+      insumos = insumos.filter(i => normalizeStr(i.nome).includes(termo) || normalizeStr(i.marca).includes(termo));
+    }
+    if (filtroCategoria !== null) {
+      insumos = insumos.filter(i => i.categoria_id === filtroCategoria);
+    }
 
     // Group insumos by base name (ignoring brand differences)
     // Normalize: lowercase, trim
@@ -37,11 +71,9 @@ export default function FornecedoresScreen({ navigation }) {
       const cheapest = sorted[0];
       const mostExpensive = sorted[sorted.length - 1];
 
-      // Calculate potential savings (difference between most expensive and cheapest)
+      // Calculate savings per unit (difference between most expensive and cheapest)
       const savingPerKg = (mostExpensive.preco_por_kg || 0) - (cheapest.preco_por_kg || 0);
-      // Estimate monthly savings assuming ~30kg usage (rough estimate)
-      const monthlySaving = savingPerKg * 30;
-      savings += monthlySaving;
+      savings += savingPerKg;
 
       result.push({
         baseName: items[0].nome, // Use the original casing from first item
@@ -54,7 +86,7 @@ export default function FornecedoresScreen({ navigation }) {
           isCheapest: item.id === cheapest.id,
         })),
         savingPerKg,
-        monthlySaving,
+        monthlySaving: savingPerKg,
         cheapestMarca: cheapest.marca || 'Sem marca',
       });
     }
@@ -65,8 +97,100 @@ export default function FornecedoresScreen({ navigation }) {
     setTotalSavings(savings);
   }
 
+  const isWeb = Platform.OS === 'web';
+
+  function renderDesktopGrid() {
+    if (!isDesktop || groups.length === 0) return null;
+    return (
+      <View style={{ marginTop: spacing.xs }}>
+        {groups.map((group, gi) => (
+          <View key={gi} style={{ marginBottom: spacing.md }}>
+            <View style={styles.gridCatHeader}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: CATEGORY_COLORS[gi % CATEGORY_COLORS.length] }} />
+              <Text style={styles.gridCatTitle}>{group.baseName} ({group.items.length})</Text>
+              {group.monthlySaving > 0 && (
+                <View style={styles.savingBadge}>
+                  <Text style={styles.savingBadgeText}>-{formatCurrency(group.savingPerKg)}/kg</Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.gridContainer}>
+              {group.items.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[
+                    styles.gridCard,
+                    item.isCheapest && { borderColor: colors.success + '40', backgroundColor: colors.success + '04' },
+                    isWeb && { cursor: 'pointer' },
+                  ]}
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: item.id, returnTo: 'Fornecedores' } })}
+                >
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={styles.gridCardName} numberOfLines={1}>
+                      {item.nome}{item.marca !== 'Sem marca' ? ` (${item.marca})` : ''}
+                    </Text>
+                    {item.isCheapest && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
+                        <Feather name="check-circle" size={9} color={colors.success} />
+                        <Text style={{ fontSize: 9, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.success }}>Melhor preço</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={[styles.gridCardPrice, item.isCheapest && { color: colors.success }]}>
+                    {formatCurrency(item.preco_por_kg)}/{item.unidade_medida === 'un' ? 'un' : 'kg'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {group.monthlySaving > 0 && (
+              <View style={[styles.tipRow, { marginTop: 4, borderRadius: borderRadius.sm }]}>
+                <Feather name="info" size={12} color={colors.accent} />
+                <Text style={styles.tipText}>
+                  Comprando de "{group.cheapestMarca}", você economiza {formatCurrency(group.monthlySaving)}/kg
+                </Text>
+              </View>
+            )}
+          </View>
+        ))}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
+      {/* Search + Category Filter */}
+      <View style={styles.headerBar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filtrosList}
+          nestedScrollEnabled
+        >
+          {[{ id: null, nome: 'Todos' }, ...categorias].map((item, index) => {
+            const isActive = filtroCategoria === item.id;
+            const chipColor = item.id === null ? colors.primary : getCategoryColor(index - 1);
+            return (
+              <TouchableOpacity
+                key={String(item.id)}
+                style={[styles.filtroChip, isActive && { backgroundColor: chipColor, borderColor: chipColor }]}
+                onPress={() => setFiltroCategoria(item.id === filtroCategoria ? null : item.id)}
+              >
+                {item.id === null ? (
+                  <Feather name="list" size={11} color={isActive ? '#fff' : colors.textSecondary} style={{ marginRight: 3 }} />
+                ) : (
+                  <View style={[styles.chipDot, { backgroundColor: isActive ? '#fff' : chipColor }]} />
+                )}
+                <Text style={[styles.filtroTexto, isActive && styles.filtroTextoAtivo]} numberOfLines={1}>
+                  {item.nome}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+        <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar insumo ou marca..." />
+      </View>
+
       <ScrollView contentContainerStyle={styles.content}>
         {/* Total savings summary */}
         <View style={styles.savingsCard}>
@@ -74,8 +198,8 @@ export default function FornecedoresScreen({ navigation }) {
             <Feather name="trending-down" size={20} color={colors.success} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.savingsLabel}>Economia potencial estimada/mês</Text>
-            <Text style={styles.savingsValue}>{formatCurrency(totalSavings)}</Text>
+            <Text style={styles.savingsLabel}>Economia potencial por kg (soma)</Text>
+            <Text style={styles.savingsValue}>{formatCurrency(totalSavings)}/kg</Text>
           </View>
         </View>
 
@@ -89,52 +213,61 @@ export default function FornecedoresScreen({ navigation }) {
           </View>
         )}
 
-        {groups.map((group, gi) => (
-          <View key={gi} style={styles.groupCard}>
-            <View style={styles.groupHeader}>
-              <Feather name="package" size={14} color={colors.primary} />
-              <Text style={styles.groupTitle} numberOfLines={1}>{group.baseName}</Text>
+        {isDesktop ? (
+          renderDesktopGrid()
+        ) : (
+          groups.map((group, gi) => (
+            <View key={gi} style={styles.groupCard}>
+              <View style={styles.groupHeader}>
+                <Feather name="package" size={14} color={colors.primary} />
+                <Text style={styles.groupTitle} numberOfLines={1}>{group.baseName}</Text>
+                {group.monthlySaving > 0 && (
+                  <View style={styles.savingBadge}>
+                    <Text style={styles.savingBadgeText}>-{formatCurrency(group.savingPerKg)}/kg</Text>
+                  </View>
+                )}
+              </View>
+
+              {group.items.map((item, ii) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[
+                    styles.itemRow,
+                    ii < group.items.length - 1 && styles.itemRowBorder,
+                    item.isCheapest && styles.itemRowCheapest,
+                  ]}
+                  activeOpacity={0.6}
+                  onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: item.id, returnTo: 'Fornecedores' } })}
+                >
+                  <View style={styles.itemInfo}>
+                    <Text style={styles.itemMarca} numberOfLines={1}>{item.marca}</Text>
+                    {item.isCheapest && (
+                      <View style={styles.cheapestBadge}>
+                        <Feather name="check-circle" size={10} color={colors.success} />
+                        <Text style={styles.cheapestText}>Melhor preço</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={[styles.itemPreco, item.isCheapest && styles.itemPrecoCheapest]}>
+                      {formatCurrency(item.preco_por_kg)}/{item.unidade_medida === 'un' ? 'un' : 'kg'}
+                    </Text>
+                    <Feather name="edit-2" size={14} color={colors.textSecondary} />
+                  </View>
+                </TouchableOpacity>
+              ))}
+
               {group.monthlySaving > 0 && (
-                <View style={styles.savingBadge}>
-                  <Text style={styles.savingBadgeText}>-{formatCurrency(group.savingPerKg)}/kg</Text>
+                <View style={styles.tipRow}>
+                  <Feather name="info" size={12} color={colors.accent} />
+                  <Text style={styles.tipText}>
+                    Comprando de "{group.cheapestMarca}", você economiza {formatCurrency(group.monthlySaving)}/kg
+                  </Text>
                 </View>
               )}
             </View>
-
-            {group.items.map((item, ii) => (
-              <View
-                key={item.id}
-                style={[
-                  styles.itemRow,
-                  ii < group.items.length - 1 && styles.itemRowBorder,
-                  item.isCheapest && styles.itemRowCheapest,
-                ]}
-              >
-                <View style={styles.itemInfo}>
-                  <Text style={styles.itemMarca} numberOfLines={1}>{item.marca}</Text>
-                  {item.isCheapest && (
-                    <View style={styles.cheapestBadge}>
-                      <Feather name="check-circle" size={10} color={colors.success} />
-                      <Text style={styles.cheapestText}>Melhor preço</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={[styles.itemPreco, item.isCheapest && styles.itemPrecoCheapest]}>
-                  {formatCurrency(item.preco_por_kg)}/{item.unidade_medida === 'un' ? 'un' : 'kg'}
-                </Text>
-              </View>
-            ))}
-
-            {group.monthlySaving > 0 && (
-              <View style={styles.tipRow}>
-                <Feather name="info" size={12} color={colors.accent} />
-                <Text style={styles.tipText}>
-                  Se comprar de "{group.cheapestMarca}", economia de ~{formatCurrency(group.monthlySaving)}/mes
-                </Text>
-              </View>
-            )}
-          </View>
-        ))}
+          ))
+        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -144,7 +277,31 @@ export default function FornecedoresScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, maxWidth: 960, alignSelf: 'center', width: '100%' },
+  content: { padding: spacing.md, maxWidth: 1200, width: '100%' },
+
+  // Header bar
+  headerBar: {
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xs,
+  },
+  filtrosList: { paddingHorizontal: spacing.md, gap: 2 },
+  filtroChip: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.inputBg,
+    paddingHorizontal: spacing.sm + 2, paddingVertical: 5,
+    borderRadius: 16, borderWidth: 1, borderColor: colors.border, marginRight: 2,
+  },
+  chipDot: {
+    width: 6, height: 6, borderRadius: 3, marginRight: 4,
+  },
+  filtroTexto: {
+    fontSize: 11, fontWeight: '600', color: colors.text, maxWidth: 90,
+    fontFamily: fontFamily.semiBold,
+  },
+  filtroTextoAtivo: { color: '#fff' },
 
   // Savings summary
   savingsCard: {
@@ -200,6 +357,56 @@ const styles = StyleSheet.create({
   cheapestText: { fontSize: 10, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.success },
   itemPreco: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.textSecondary },
   itemPrecoCheapest: { color: colors.success },
+
+  // Desktop grid
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'flex-start',
+  },
+  gridCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    width: '23.5%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  gridCardName: {
+    fontSize: 12,
+    fontFamily: fontFamily.medium,
+    fontWeight: '500',
+    color: colors.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  gridCardPrice: {
+    fontSize: 13,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.primary,
+    flexShrink: 0,
+  },
+  gridCatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  gridCatTitle: {
+    fontSize: 14,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    flex: 1,
+  },
 
   // Tip
   tipRow: {

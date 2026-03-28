@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, FlatList, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
@@ -9,6 +9,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, getTipoUnidade, normalizeSearch } from '../utils/calculations';
 import EmptyState from '../components/EmptyState';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 // Cores para categorias
 const CATEGORY_COLORS = [
@@ -43,6 +44,7 @@ function formatRendimento(valor, unidade) {
 }
 
 export default function PreparosScreen({ navigation }) {
+  const { isDesktop } = useResponsiveLayout();
   const isFocused = useIsFocused();
   const [sections, setSections] = useState([]);
   const [totalPreparos, setTotalPreparos] = useState(0);
@@ -57,7 +59,11 @@ export default function PreparosScreen({ navigation }) {
   const [catColorMap, setCatColorMap] = useState({});
   // Seções recolhidas
   const [collapsedSections, setCollapsedSections] = useState({});
+  // Desktop grid seções recolhidas
+  const [collapsedDesktop, setCollapsedDesktop] = useState({});
   const [loading, setLoading] = useState(true);
+
+  function toggleDesktopSection(key) { setCollapsedDesktop(prev => ({...prev, [key]: !prev[key]})); }
 
   useFocusEffect(useCallback(() => {
     loadData();
@@ -123,6 +129,25 @@ export default function PreparosScreen({ navigation }) {
     setLoading(false);
   }
 
+  async function duplicarPreparo(item) {
+    const db = await getDatabase();
+    const result = await db.runAsync(
+      'INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg) VALUES (?,?,?,?,?,?)',
+      [item.nome + ' (cópia)', item.categoria_id, item.rendimento_total, item.unidade_medida, item.custo_total, item.custo_por_kg]
+    );
+    const newId = result?.lastInsertRowId;
+    if (newId) {
+      // Copy ingredients in parallel
+      const ings = await db.getAllAsync('SELECT * FROM preparo_ingredientes WHERE preparo_id = ?', [item.id]);
+      await Promise.all(ings.map(ing =>
+        db.runAsync('INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES (?,?,?,?)', [newId, ing.materia_prima_id, ing.quantidade_utilizada, ing.custo])
+      ));
+      navigation.navigate('PreparoForm', { id: newId });
+    } else {
+      loadData();
+    }
+  }
+
   function solicitarExclusao(id, nome) {
     setConfirmDelete({
       titulo: 'Excluir Preparo',
@@ -165,6 +190,44 @@ export default function PreparosScreen({ navigation }) {
     });
   }
 
+  const isWeb = Platform.OS === 'web';
+
+  function renderDesktopGrid() {
+    if (!isDesktop || sections.length === 0) return null;
+    return (
+      <View style={{ marginTop: spacing.xs }}>
+        {sections.map((section, catIdx) => (
+          <View key={section.catId} style={{ marginBottom: spacing.md }}>
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, marginTop: catIdx > 0 ? 16 : 0 }}
+              onPress={() => toggleDesktopSection(section.title)}
+            >
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: section.catColor }} />
+              <Text style={styles.gridCatTitle}>{section.title}</Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary }}>({section.totalCount})</Text>
+              <Feather name={collapsedDesktop[section.title] ? 'chevron-right' : 'chevron-down'} size={14} color={colors.disabled} />
+            </TouchableOpacity>
+            {!collapsedDesktop[section.title] && (<View style={styles.gridContainer}>
+              {section.data.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[styles.gridCard, isWeb && { cursor: 'pointer' }]}
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate('PreparoForm', { id: item.id })}
+                >
+                  <Text style={styles.gridCardName} numberOfLines={1} {...(Platform.OS === 'web' ? { title: item.nome } : {})}>{item.nome}</Text>
+                  <Text style={styles.gridCardPrice}>
+                    Rende {formatRendimento(item.rendimento_total, item.unidade_medida)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>)}
+          </View>
+        ))}
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* Filtros + busca */}
@@ -203,107 +266,154 @@ export default function PreparosScreen({ navigation }) {
         <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar preparo..." />
       </View>
 
-      {/* Lista agrupada */}
-      <SectionList
-        sections={sections.map(s => ({
-          ...s,
-          data: collapsedSections[s.catId] ? [] : s.data,
-        }))}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={styles.list}
-        stickySectionHeadersEnabled={false}
-        ListEmptyComponent={
-          loading ? (
-            <View style={{ padding: 40, alignItems: 'center' }}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 13 }}>Carregando preparos...</Text>
+      {/* Botão Adicionar */}
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '10', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14, marginHorizontal: 16, marginTop: 8, marginBottom: 4, borderWidth: 1, borderColor: colors.primary + '30', borderStyle: 'dashed' }}
+        onPress={() => navigation.navigate('PreparoForm', {})}
+      >
+        <Feather name="plus-circle" size={18} color={colors.primary} style={{ marginRight: 8 }} />
+        <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 14 }}>Novo Preparo</Text>
+      </TouchableOpacity>
+
+      {/* Content */}
+      {isDesktop ? (
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
+          <View style={styles.desktopContentWrap}>
+            <View style={styles.desktopContentInner}>
+              {sections.length === 0 ? (
+                loading ? (
+                  <View style={{ padding: 40, alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 13 }}>Carregando preparos...</Text>
+                  </View>
+                ) : (
+                  <EmptyState
+                    icon={busca.trim() ? 'search' : 'layers'}
+                    title={busca.trim() ? 'Nenhum preparo encontrado' : 'Nenhum preparo cadastrado'}
+                    description={busca.trim()
+                      ? `Não encontramos resultados para "${busca}".`
+                      : 'Cadastre suas receitas base para calcular custos automaticamente.'}
+                    ctaLabel={!busca.trim() ? 'Cadastrar preparo' : undefined}
+                    onPress={!busca.trim() ? () => navigation.navigate('PreparoForm', {}) : undefined}
+                  />
+                )
+              ) : (
+                renderDesktopGrid()
+              )}
             </View>
-          ) : (
-            <EmptyState
-              icon={busca.trim() ? 'search' : 'layers'}
-              title={busca.trim()
-                ? 'Nenhum preparo encontrado'
-                : 'Nenhum preparo cadastrado'}
-              description={busca.trim()
-                ? `Não encontramos resultados para "${busca}".`
-                : 'Cadastre suas receitas base para calcular custos automaticamente.'}
-              ctaLabel={!busca.trim() ? 'Cadastrar preparo' : undefined}
-              onPress={!busca.trim() ? () => navigation.navigate('PreparoForm', {}) : undefined}
-            />
-          )
-        }
-        renderSectionHeader={({ section }) => {
-          const isCollapsed = collapsedSections[section.catId];
-          return (
-            <TouchableOpacity
-              style={styles.sectionHeader}
-              onPress={() => setCollapsedSections(prev => ({ ...prev, [section.catId]: !prev[section.catId] }))}
-              activeOpacity={0.6}
-            >
-              <View style={[styles.sectionDot, { backgroundColor: section.catColor }]} />
-              <Text style={styles.sectionTitle}>{section.title}</Text>
-              <Text style={styles.sectionCount}>{section.totalCount}</Text>
-              <Feather
-                name={isCollapsed ? 'chevron-right' : 'chevron-down'}
-                size={14}
-                color={colors.disabled}
-                style={{ marginLeft: 6 }}
+          </View>
+        </ScrollView>
+      ) : (
+        <SectionList
+          sections={sections.map(s => ({
+            ...s,
+            data: collapsedSections[s.catId] ? [] : s.data,
+          }))}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={styles.list}
+          stickySectionHeadersEnabled={false}
+          ListEmptyComponent={
+            loading ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 13 }}>Carregando preparos...</Text>
+              </View>
+            ) : (
+              <EmptyState
+                icon={busca.trim() ? 'search' : 'layers'}
+                title={busca.trim()
+                  ? 'Nenhum preparo encontrado'
+                  : 'Nenhum preparo cadastrado'}
+                description={busca.trim()
+                  ? `Não encontramos resultados para "${busca}".`
+                  : 'Cadastre suas receitas base para calcular custos automaticamente.'}
+                ctaLabel={!busca.trim() ? 'Cadastrar preparo' : undefined}
+                onPress={!busca.trim() ? () => navigation.navigate('PreparoForm', {}) : undefined}
               />
-            </TouchableOpacity>
-          );
-        }}
-        renderItem={({ item, index, section }) => {
-          const isFirst = index === 0;
-          const isLast = index === section.data.length - 1;
-          const catColor = catColorMap[item.categoria_id] || catColorMap['null'] || colors.disabled;
-          const inicial = (item.nome || '?').charAt(0).toUpperCase();
-          const unidadeInfo = getUnidadeInfo(item.unidade_medida);
-
-          return (
-            <TouchableOpacity
-              style={[
-                styles.row,
-                isFirst && styles.rowFirst,
-                isLast && styles.rowLast,
-                !isLast && styles.rowBorder,
-              ]}
-              onPress={() => navigation.navigate('PreparoForm', { id: item.id })}
-              activeOpacity={0.6}
-            >
-              {/* Avatar com inicial */}
-              <View style={[styles.avatar, { backgroundColor: catColor + '18' }]}>
-                <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
-              </View>
-
-              {/* Info */}
-              <View style={styles.rowInfo}>
-                <Text style={styles.rowNome} numberOfLines={1}>{item.nome}</Text>
-                <Text style={styles.rowMarca} numberOfLines={1}>
-                  Rende {formatRendimento(item.rendimento_total, item.unidade_medida)}
-                </Text>
-              </View>
-
-              {/* Preço + unidade */}
-              <View style={styles.rowRight}>
-                <Text style={styles.rowPreco}>{formatCurrency(item.custo_total)}</Text>
-                <View style={[styles.unidadeBadge, { backgroundColor: unidadeInfo.color + '12' }]}>
-                  <Text style={[styles.unidadeText, { color: unidadeInfo.color }]}>{unidadeInfo.label}</Text>
-                </View>
-              </View>
-
-              {/* Excluir */}
+            )
+          }
+          renderSectionHeader={({ section }) => {
+            const isCollapsed = collapsedSections[section.catId];
+            return (
               <TouchableOpacity
-                onPress={() => solicitarExclusao(item.id, item.nome)}
-                style={styles.deleteBtn}
-                hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                style={styles.sectionHeader}
+                onPress={() => setCollapsedSections(prev => ({ ...prev, [section.catId]: !prev[section.catId] }))}
+                activeOpacity={0.6}
               >
-                <Feather name="trash-2" size={13} color={colors.disabled} />
+                <View style={[styles.sectionDot, { backgroundColor: section.catColor }]} />
+                <Text style={styles.sectionTitle}>{section.title}</Text>
+                <Text style={styles.sectionCount}>{section.totalCount}</Text>
+                <Feather
+                  name={isCollapsed ? 'chevron-right' : 'chevron-down'}
+                  size={14}
+                  color={colors.disabled}
+                  style={{ marginLeft: 6 }}
+                />
               </TouchableOpacity>
-            </TouchableOpacity>
-          );
-        }}
-        ListFooterComponent={<View style={{ height: 20 }} />}
-      />
+            );
+          }}
+          renderItem={({ item, index, section }) => {
+            const isFirst = index === 0;
+            const isLast = index === section.data.length - 1;
+            const catColor = catColorMap[item.categoria_id] || catColorMap['null'] || colors.disabled;
+            const inicial = (item.nome || '?').charAt(0).toUpperCase();
+            const unidadeInfo = getUnidadeInfo(item.unidade_medida);
+
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.row,
+                  isFirst && styles.rowFirst,
+                  isLast && styles.rowLast,
+                  !isLast && styles.rowBorder,
+                ]}
+                onPress={() => navigation.navigate('PreparoForm', { id: item.id })}
+                activeOpacity={0.6}
+              >
+                {/* Avatar com inicial */}
+                <View style={[styles.avatar, { backgroundColor: catColor + '18' }]}>
+                  <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
+                </View>
+
+                {/* Info */}
+                <View style={styles.rowInfo}>
+                  <Text style={styles.rowNome} numberOfLines={1}>{item.nome}</Text>
+                  <Text style={styles.rowMarca} numberOfLines={1}>
+                    Rende {formatRendimento(item.rendimento_total, item.unidade_medida)}
+                  </Text>
+                </View>
+
+                {/* Preço + unidade */}
+                <View style={styles.rowRight}>
+                  <Text style={styles.rowPreco}>{formatCurrency(item.custo_total)}</Text>
+                  <View style={[styles.unidadeBadge, { backgroundColor: unidadeInfo.color + '12' }]}>
+                    <Text style={[styles.unidadeText, { color: unidadeInfo.color }]}>{unidadeInfo.label}</Text>
+                  </View>
+                </View>
+
+                {/* Duplicar */}
+                <TouchableOpacity
+                  onPress={() => duplicarPreparo(item)}
+                  style={styles.copyBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                >
+                  <Feather name="copy" size={13} color={colors.disabled} />
+                </TouchableOpacity>
+
+                {/* Excluir */}
+                <TouchableOpacity
+                  onPress={() => solicitarExclusao(item.id, item.nome)}
+                  style={styles.deleteBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                >
+                  <Feather name="trash-2" size={13} color={colors.disabled} />
+                </TouchableOpacity>
+              </TouchableOpacity>
+            );
+          }}
+          ListFooterComponent={<View style={{ height: 20 }} />}
+        />
+      )}
 
       <FAB onPress={() => navigation.navigate('PreparoForm', {})} />
 
@@ -443,7 +553,7 @@ const styles = StyleSheet.create({
     flex: 1, marginRight: spacing.sm,
   },
   rowNome: {
-    fontSize: 14, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600',
     color: colors.text,
   },
   rowMarca: {
@@ -466,9 +576,73 @@ const styles = StyleSheet.create({
     fontSize: 9, fontFamily: fontFamily.bold, fontWeight: '700',
   },
 
+  // Duplicar
+  copyBtn: {
+    padding: 6,
+  },
   // Excluir
   deleteBtn: {
     padding: 8,
+  },
+
+  // Desktop grid
+  desktopContentWrap: {
+    flex: 1,
+  },
+  desktopContentInner: {
+    maxWidth: 1200,
+    width: '100%',
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'flex-start',
+  },
+  gridCard: {
+    position: 'relative',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    width: '23.5%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  gridCardName: {
+    fontSize: 12,
+    fontFamily: fontFamily.medium,
+    fontWeight: '500',
+    color: colors.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  gridCardPrice: {
+    fontSize: 13,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.primary,
+    flexShrink: 0,
+  },
+  gridCatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  gridCatTitle: {
+    fontSize: 14,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
   // Modal

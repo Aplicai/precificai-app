@@ -17,6 +17,7 @@ export default function InputField({
   inputStyle,
   rightLabel,
   error,
+  errorText,
 }) {
   return (
     <View style={[styles.container, style]}>
@@ -48,6 +49,7 @@ export default function InputField({
         />
         {suffix && <Text style={styles.suffix}>{suffix}</Text>}
       </View>
+      {error && errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
     </View>
   );
 }
@@ -104,5 +106,11 @@ const styles = StyleSheet.create({
     fontSize: fonts.small,
     color: colors.textSecondary,
     minWidth: 50,
+  },
+  errorText: {
+    fontSize: fonts.tiny || 11,
+    color: colors.error,
+    marginTop: 2,
+    fontWeight: '500',
   },
 });

@@ -8,6 +8,7 @@ import PickerSelect from '../components/PickerSelect';
 import InfoTooltip from '../components/InfoTooltip';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useIsFocused } from '@react-navigation/native';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import {
   UNIDADES_MEDIDA,
@@ -25,7 +26,9 @@ const CATEGORY_COLORS = [
 export default function PreparoFormScreen({ route, navigation }) {
   const editId = route.params?.id;
   const isFocused = useIsFocused();
-  const [form, setForm] = useState({ nome: '', rendimento_total: '', unidade_medida: 'g', categoria_id: null });
+  const { isDesktop } = useResponsiveLayout();
+  const [form, setForm] = useState({ nome: '', rendimento_total: '', unidade_medida: 'g', categoria_id: null, modo_preparo: '', observacoes: '', validade_dias: '', temp_congelado: '', tempo_congelado: '', temp_refrigerado: '', tempo_refrigerado: '', temp_ambiente: '', tempo_ambiente: '' });
+  const [showInfoAdicional, setShowInfoAdicional] = useState(false); // collapsed by default for compactness
   const [ingredientes, setIngredientes] = useState([]);
   const [materiasPrimas, setMateriasPrimas] = useState([]);
   const [categorias, setCategorias] = useState([]);
@@ -129,7 +132,8 @@ export default function PreparoFormScreen({ route, navigation }) {
     const db = await getDatabase();
     const item = await db.getFirstAsync('SELECT * FROM preparos WHERE id = ?', [editId]);
     if (item) {
-      setForm({ nome: item.nome, rendimento_total: String(item.rendimento_total || ''), unidade_medida: item.unidade_medida || 'g', categoria_id: item.categoria_id || null });
+      setForm({ nome: item.nome, rendimento_total: String(item.rendimento_total || ''), unidade_medida: item.unidade_medida || 'g', categoria_id: item.categoria_id || null, modo_preparo: item.modo_preparo || '', observacoes: item.observacoes || '', validade_dias: String(item.validade_dias || ''), temp_congelado: item.temp_congelado || '', tempo_congelado: item.tempo_congelado || '', temp_refrigerado: item.temp_refrigerado || '', tempo_refrigerado: item.tempo_refrigerado || '', temp_ambiente: item.temp_ambiente || '', tempo_ambiente: item.tempo_ambiente || '' });
+      if (item.modo_preparo || item.observacoes || item.validade_dias) setShowInfoAdicional(true);
       const ings = await db.getAllAsync(
         `SELECT pi.*, mp.nome as mp_nome, mp.preco_por_kg, mp.unidade_medida as mp_unidade FROM preparo_ingredientes pi
          JOIN materias_primas mp ON mp.id = pi.materia_prima_id WHERE pi.preparo_id = ?`, [editId]
@@ -205,8 +209,8 @@ export default function PreparoFormScreen({ route, navigation }) {
     setSaveStatus('saving');
     try {
       const db = await getDatabase();
-      await db.runAsync('UPDATE preparos SET nome=?, categoria_id=?, rendimento_total=?, unidade_medida=?, custo_total=?, custo_por_kg=? WHERE id=?',
-        [f.nome, f.categoria_id, rend, f.unidade_medida, ct, ck, editId]);
+      await db.runAsync('UPDATE preparos SET nome=?, categoria_id=?, rendimento_total=?, unidade_medida=?, custo_total=?, custo_por_kg=?, modo_preparo=?, observacoes=?, validade_dias=?, temp_congelado=?, tempo_congelado=?, temp_refrigerado=?, tempo_refrigerado=?, temp_ambiente=?, tempo_ambiente=? WHERE id=?',
+        [f.nome, f.categoria_id, rend, f.unidade_medida, ct, ck, f.modo_preparo || '', f.observacoes || '', parseFloat(f.validade_dias) || 0, f.temp_congelado || '', f.tempo_congelado || '', f.temp_refrigerado || '', f.tempo_refrigerado || '', f.temp_ambiente || '', f.tempo_ambiente || '', editId]);
       // Re-save ingredientes
       await db.runAsync('DELETE FROM preparo_ingredientes WHERE preparo_id = ?', [editId]);
       for (const ing of ings) {
@@ -234,8 +238,8 @@ export default function PreparoFormScreen({ route, navigation }) {
     allowExit.current = true;
     const db = await getDatabase();
 
-    const result = await db.runAsync('INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg) VALUES (?,?,?,?,?,?)',
-      [form.nome, form.categoria_id, rendimento, form.unidade_medida, custoTotal, custoKg]);
+    const result = await db.runAsync('INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg, modo_preparo, observacoes, validade_dias, temp_congelado, tempo_congelado, temp_refrigerado, tempo_refrigerado, temp_ambiente, tempo_ambiente) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      [form.nome, form.categoria_id, rendimento, form.unidade_medida, custoTotal, custoKg, form.modo_preparo || '', form.observacoes || '', parseFloat(form.validade_dias) || 0, form.temp_congelado || '', form.tempo_congelado || '', form.temp_refrigerado || '', form.tempo_refrigerado || '', form.temp_ambiente || '', form.tempo_ambiente || '']);
     const newId = result.lastInsertRowId;
     for (const ing of ingredientes) {
       const mp = materiasPrimas.find(m => m.id === ing.materia_prima_id);
@@ -287,7 +291,7 @@ export default function PreparoFormScreen({ route, navigation }) {
 
   return (
     <View style={styles.wrapper}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}>
+      <ScrollView style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 600, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}>
 
         {/* Bloco 1 — Dados do Preparo */}
         <Card title="Dados do Preparo">
@@ -345,7 +349,7 @@ export default function PreparoFormScreen({ route, navigation }) {
         </Card>
 
         {/* Bloco 2 — Ingredientes */}
-        <Card title="Ingredientes" style={{ marginTop: spacing.md }}>
+        <Card title="Ingredientes" style={{ marginTop: spacing.sm }}>
           {/* Adicionar ingrediente */}
           <View style={styles.addIngSection}>
             <PickerSelect
@@ -449,12 +453,106 @@ export default function PreparoFormScreen({ route, navigation }) {
           </View>
         )}
 
+        {/* Informações Adicionais */}
+        <TouchableOpacity
+          style={styles.collapsibleHeader}
+          onPress={() => setShowInfoAdicional(!showInfoAdicional)}
+          activeOpacity={0.7}
+        >
+          <Feather name="file-text" size={14} color={colors.textSecondary} />
+          <Text style={styles.collapsibleText}>Informações Adicionais <Text style={{ fontSize: 11, color: colors.disabled }}>(opcional)</Text></Text>
+          <Feather name={showInfoAdicional ? 'chevron-up' : 'chevron-down'} size={16} color={colors.disabled} />
+        </TouchableOpacity>
+
+        {showInfoAdicional && (
+          <View style={styles.infoAdicionalBody}>
+            <InputField
+              label="Modo de Preparo"
+              value={form.modo_preparo}
+              onChangeText={(v) => setForm(p => ({ ...p, modo_preparo: v }))}
+              placeholder="Descreva o passo a passo..."
+              multiline
+              numberOfLines={4}
+              style={{ minHeight: 80, textAlignVertical: 'top' }}
+            />
+            <InputField
+              label="Observações"
+              value={form.observacoes}
+              onChangeText={(v) => setForm(p => ({ ...p, observacoes: v }))}
+              placeholder="Dicas, variações, alérgenos..."
+              multiline
+              numberOfLines={3}
+              style={{ minHeight: 60, textAlignVertical: 'top' }}
+            />
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <View style={{ flex: 1 }}>
+                <InputField
+                  label="Validade (dias)"
+                  value={form.validade_dias}
+                  onChangeText={(v) => setForm(p => ({ ...p, validade_dias: v }))}
+                  keyboardType="numeric"
+                  placeholder="Ex: 7"
+                />
+              </View>
+              <View style={{ flex: 2 }} />
+            </View>
+
+            <Text style={{ fontSize: 13, fontFamily: fontFamily.semiBold, color: colors.text, marginTop: spacing.sm, marginBottom: 4 }}>Conservação</Text>
+            {[
+              { key: 'congelado', icon: 'box', label: 'Congelado', tempKey: 'temp_congelado', tempoKey: 'tempo_congelado' },
+              { key: 'refrigerado', icon: 'thermometer', label: 'Refrigerado', tempKey: 'temp_refrigerado', tempoKey: 'tempo_refrigerado' },
+              { key: 'ambiente', icon: 'sun', label: 'Ambiente', tempKey: 'temp_ambiente', tempoKey: 'tempo_ambiente' },
+            ].map(c => (
+              <View key={c.key} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: 6 }}>
+                <Feather name={c.icon} size={13} color={colors.textSecondary} />
+                <Text style={{ fontSize: 12, fontFamily: fontFamily.medium, color: colors.text, width: 80 }}>{c.label}</Text>
+                <TextInput
+                  style={styles.conservInput}
+                  value={form[c.tempKey]}
+                  onChangeText={(v) => setForm(p => ({ ...p, [c.tempKey]: v }))}
+                  placeholder="Temp."
+                  placeholderTextColor={colors.disabled}
+                />
+                <TextInput
+                  style={styles.conservInput}
+                  value={form[c.tempoKey]}
+                  onChangeText={(v) => setForm(p => ({ ...p, [c.tempoKey]: v }))}
+                  placeholder="Duração"
+                  placeholderTextColor={colors.disabled}
+                />
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Excluir */}
         {editId && (
-          <TouchableOpacity style={styles.btnDelete} onPress={solicitarExclusao}>
-            <Feather name="trash-2" size={13} color={colors.error} style={{ marginRight: 5 }} />
-            <Text style={styles.btnDeleteText}>Excluir Preparo</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.md, marginTop: spacing.sm }}>
+            {isFormComplete(form) && <TouchableOpacity style={[styles.btnDelete, { borderColor: colors.primary + '30' }]} onPress={async () => {
+              const f = formRef.current;
+              try { await autoSave(); } catch(e) {}
+              const db = await getDatabase();
+              const result = await db.runAsync('INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg, modo_preparo, observacoes, validade_dias) VALUES (?,?,?,?,?,?,?,?,?)',
+                [f.nome.trim() + ' (cópia)', f.categoria_id, parseFloat(f.rendimento_total) || 0, f.unidade_medida, 0, 0, f.modo_preparo || '', f.observacoes || '', parseFloat(f.validade_dias) || 0]);
+              const newId = result?.lastInsertRowId;
+              if (newId) {
+                const ings = await db.getAllAsync('SELECT * FROM preparo_ingredientes WHERE preparo_id = ?', [editId]);
+                for (const ing of ings) {
+                  await db.runAsync('INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
+                    [newId, ing.materia_prima_id, ing.quantidade_utilizada, ing.custo]);
+                }
+                allowExit.current = true;
+                navigation.replace('PreparoForm', { id: newId });
+              }
+            }}>
+              <Feather name="copy" size={13} color={colors.primary} style={{ marginRight: 5 }} />
+              <Text style={[styles.btnDeleteText, { color: colors.primary }]}>Duplicar</Text>
+            </TouchableOpacity>}
+            <TouchableOpacity style={styles.btnDelete} onPress={solicitarExclusao}>
+              <Feather name="trash-2" size={13} color={colors.error} style={{ marginRight: 5 }} />
+              <Text style={styles.btnDeleteText}>Excluir</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         <View style={{ height: 80 }} />
@@ -478,7 +576,7 @@ export default function PreparoFormScreen({ route, navigation }) {
               )}
             </View>
           )}
-          <TouchableOpacity style={styles.saveBackBtn} onPress={() => { allowExit.current = true; triggerAutoSave(); setTimeout(() => navigation.goBack(), 200); }}>
+          <TouchableOpacity style={styles.saveBackBtn} onPress={async () => { allowExit.current = true; try { await autoSave(); } catch(e) {} const returnTo = route.params?.returnTo; if (returnTo) { navigation.navigate(returnTo); } else { navigation.goBack(); } }}>
             <Feather name="check" size={16} color="#fff" />
             <Text style={styles.saveBackBtnText}>Salvar e voltar</Text>
           </TouchableOpacity>
@@ -681,9 +779,9 @@ const styles = StyleSheet.create({
   },
   resultEmpty: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: spacing.xs, marginTop: spacing.md,
+    gap: spacing.xs, marginTop: spacing.sm,
     backgroundColor: colors.inputBg, borderRadius: borderRadius.sm,
-    paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
   },
   resultEmptyText: {
     fontSize: fonts.tiny, color: colors.disabled, flex: 1,
@@ -691,9 +789,10 @@ const styles = StyleSheet.create({
 
   // Edit footer with save+back
   editFooter: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
     backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border,
+    gap: spacing.sm,
   },
   saveBackBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -725,15 +824,28 @@ const styles = StyleSheet.create({
   btnSaveText: { color: colors.textLight, fontWeight: '700', fontSize: fonts.regular },
 
   // Excluir
+  collapsibleHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: spacing.xs, marginTop: spacing.sm,
+    borderTopWidth: 1, borderTopColor: colors.border + '40',
+  },
+  collapsibleText: { flex: 1, fontSize: 13, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text },
+  infoAdicionalBody: { paddingTop: spacing.xs },
+  conservInput: {
+    flex: 1, height: 32, borderWidth: 1, borderColor: colors.border,
+    borderRadius: borderRadius.sm, paddingHorizontal: 8,
+    fontSize: 12, fontFamily: fontFamily.regular, color: colors.text,
+    backgroundColor: colors.background,
+  },
   btnDelete: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     backgroundColor: '#fff', borderWidth: 1, borderColor: colors.error + '40',
-    padding: spacing.xs + 4, borderRadius: borderRadius.sm, marginTop: spacing.lg,
+    padding: spacing.xs + 4, borderRadius: borderRadius.sm, marginTop: spacing.sm,
   },
   btnDeleteText: { color: colors.error, fontWeight: '600', fontSize: fonts.small },
 
   // Picker customizado
-  pickerContainer: { marginBottom: spacing.md },
+  pickerContainer: { marginBottom: spacing.sm },
   pickerLabel: { fontSize: fonts.small, color: colors.textSecondary, marginBottom: spacing.xs, fontWeight: '600' },
   pickerSelector: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',

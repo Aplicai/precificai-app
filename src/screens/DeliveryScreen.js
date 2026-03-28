@@ -7,7 +7,7 @@ import Card from '../components/Card';
 import InputField from '../components/InputField';
 import InfoTooltip from '../components/InfoTooltip';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
-import { formatCurrency, converterParaBase } from '../utils/calculations';
+import { formatCurrency, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 
 const DEFAULT_PLATFORMS = [
   { plataforma: 'iFood', taxa_plataforma: 27, taxa_entrega: 0, embalagem_extra: 0, ativo: 1 },
@@ -98,23 +98,16 @@ export default function DeliveryScreen() {
     const result = [];
     for (const p of prods) {
       const ings = ingsByProd[p.id] || [];
-      const custoIng = ings.reduce((a, i) => {
-        if (i.unidade_medida === 'un') return a + i.quantidade_utilizada * i.preco_por_kg;
-        const qtBase = converterParaBase(i.quantidade_utilizada, i.unidade_medida);
-        return a + (qtBase / 1000) * i.preco_por_kg;
-      }, 0);
+      const custoIng = ings.reduce((a, i) => a + calcCustoIngrediente(i.preco_por_kg || 0, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida), 0);
 
       const preps = prepsByProd[p.id] || [];
-      const custoPr = preps.reduce((a, pp) => {
-        const qtBase = converterParaBase(pp.quantidade_utilizada, pp.unidade_medida || 'g');
-        return a + (qtBase / 1000) * pp.custo_por_kg;
-      }, 0);
+      const custoPr = preps.reduce((a, pp) => a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
 
       const embs = embsByProd[p.id] || [];
       const custoEmb = embs.reduce((a, e) => a + e.preco_unitario * e.quantidade_utilizada, 0);
 
       const custoTotal = custoIng + custoPr + custoEmb;
-      const custoUnitario = custoTotal / (p.rendimento_unidades || 1);
+      const custoUnitario = custoTotal / getDivisorRendimento(p);
 
       result.push({
         id: p.id,
@@ -148,10 +141,10 @@ export default function DeliveryScreen() {
           if (emb) custo += emb.preco_unitario * item.quantidade;
         } else if (item.tipo === 'preparo') {
           const prep = preparosList.find(p => p.id === item.item_id);
-          if (prep) custo += (prep.custo_por_kg / 1000) * item.quantidade;
+          if (prep) custo += calcCustoPreparo(prep.custo_por_kg || 0, item.quantidade, 'g');
         } else if (item.tipo === 'materia_prima') {
           const mp = materiasList.find(m => m.id === item.item_id);
-          if (mp) custo += (mp.preco_por_kg / 1000) * item.quantidade;
+          if (mp) custo += calcCustoIngrediente(mp.preco_por_kg || 0, item.quantidade, mp.unidade_medida, mp.unidade_medida || 'g');
         }
       }
       dProdsWithCost.push({ ...dp, itens, custo });

@@ -10,7 +10,9 @@ const ROUTE_TITLES = {
   'HomeMain': 'Painel Geral',
   'Insumos': 'Insumos',
   'MateriasPrimasMain': 'Insumos',
+  'MateriasPrimas': 'Insumos',
   'MateriasPrimasForm': 'Editar Insumo',
+  'MateriaPrimaForm': 'Editar Insumo',
   'Preparos': 'Preparos',
   'PreparosMain': 'Preparos',
   'PreparoForm': 'Editar Preparo',
@@ -19,29 +21,33 @@ const ROUTE_TITLES = {
   'EmbalagemForm': 'Editar Embalagem',
   'Produtos': 'Produtos',
   'ProdutosMain': 'Produtos',
+  'ProdutosList': 'Produtos',
   'ProdutoForm': 'Editar Produto',
+  'ProdutoFormHome': 'Editar Produto',
+  'BCGProdutoForm': 'Editar Produto',
+  'CombosScreen': 'Combos',
+  'DeliveryCombosScreen': 'Combos',
+  'MargemBaixa': 'Produtos com Margem Baixa',
   'Ferramentas': 'Ferramentas',
   'MaisMain': 'Ferramentas',
   'FinanceiroMain': 'Financeiro',
   'DeliveryHub': 'Delivery',
-  'DeliveryProdutosScreen': 'Produtos Delivery',
-  'DeliveryAdicionaisScreen': 'Adicionais Delivery',
-  'DeliveryPlataformas': 'Plataformas Delivery',
+  'DeliveryPlataformas': 'Plataformas',
   'DeliveryPrecos': 'Precificação Delivery',
+  'DeliveryProdutosScreen': 'Produtos Delivery',
   'MatrizBCG': 'Engenharia de Cardápio',
-  'AtualizarPrecos': 'Atualizar Preços',
-  'Simulador': 'Simulador E se?',
-  'MetaVendas': 'Quanto Preciso Vender?',
-  'RelatorioSimples': 'Relatório Simplificado',
-  'Fornecedores': 'Comparar Fornecedores',
-  'ListaCompras': 'Lista de Compras',
-  'KitInicio': 'Kit de Início Rápido',
-  'ExportPDF': 'Exportar PDF',
-  'Sobre': 'Sobre o App',
-  'ContaSeguranca': 'Conta e Segurança',
-  'KitInicio': 'Kit de Início',
   'Configuracoes': 'Configurações',
-  'Perfil': 'Meu Perfil',
+  'ContaSeguranca': 'Conta e Segurança',
+  'Perfil': 'Perfil do Negócio',
+  'AtualizarPrecos': 'Atualizar Preços',
+  'Simulador': 'Simulador',
+  'RelatorioSimples': 'Explica aí',
+  'Fornecedores': 'Fornecedores',
+  'ListaCompras': 'Lista de Compras',
+  'ExportPDF': 'Exportar PDF',
+  'KitInicio': 'Kit de Início',
+  'Sobre': 'Sobre o App',
+  'Suporte': 'Suporte',
 };
 
 function getPageTitle(navState) {
@@ -54,8 +60,19 @@ function getPageTitle(navState) {
   if (stackState) {
     const stackRoute = stackState.routes?.[stackState.index];
     if (stackRoute?.name) {
+      // Check if this route has a nested screen via params
+      const nestedScreen = stackRoute.params?.screen;
+      if (nestedScreen && ROUTE_TITLES[nestedScreen]) {
+        return ROUTE_TITLES[nestedScreen];
+      }
       return ROUTE_TITLES[stackRoute.name] || stackRoute.name;
     }
+  }
+
+  // Fallback: check params.screen for direct sidebar navigation
+  const paramScreen = tabRoute.params?.screen || tabRoute.state?.routes?.[0]?.name;
+  if (paramScreen && ROUTE_TITLES[paramScreen]) {
+    return ROUTE_TITLES[paramScreen];
   }
 
   return ROUTE_TITLES[tabRoute.name] || tabRoute.name;
@@ -74,14 +91,68 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
   const stackState = tabRoute?.state;
   const canGoBack = stackState && stackState.index > 0;
 
+  // Map child screens to their parent tab + screen
+  const PARENT_SCREENS = {
+    // Ferramentas sub-screens
+    'ContaSeguranca': { tab: 'Ferramentas', screen: 'Configuracoes' },
+    'Perfil': { tab: 'Ferramentas', screen: 'Configuracoes' },
+    'KitInicio': { tab: 'Ferramentas', screen: 'Configuracoes' },
+    'Sobre': { tab: 'Ferramentas', screen: 'Configuracoes' },
+    'BCGProdutoForm': { tab: 'Ferramentas', screen: 'MatrizBCG' },
+    'DeliveryPlataformas': { tab: 'Ferramentas', screen: 'DeliveryHub' },
+    'DeliveryPrecos': { tab: 'Ferramentas', screen: 'DeliveryHub' },
+    'DeliveryProdutosScreen': { tab: 'Ferramentas', screen: 'DeliveryHub' },
+    // Form screens inside tab stacks
+    'ProdutoForm': { tab: 'Produtos', screen: 'ProdutosList' },
+    'ProdutoFormHome': { tab: 'Início', screen: 'HomeMain' },
+    'CombosScreen': { tab: 'Produtos', screen: 'ProdutosList' },
+    'DeliveryCombosScreen': { tab: 'Produtos', screen: 'ProdutosList' },
+    'MateriaPrimaForm': { tab: 'Insumos', screen: 'MateriasPrimas' },
+    'EmbalagemForm': { tab: 'Embalagens', screen: 'Embalagens' },
+    'PreparoForm': { tab: 'Preparos', screen: 'Preparos' },
+    'MargemBaixa': { tab: 'Início', screen: 'HomeMain' },
+    'Fornecedores': { tab: 'Ferramentas', screen: 'Fornecedores' },
+    'Suporte': { tab: 'Ferramentas', screen: 'Suporte' },
+  };
+
+  // Check if current screen has a returnTo param or a known parent
+  const currentStackRoute = stackState?.routes?.[stackState?.index];
+  // Fallback: if no stack state, check if the tab route itself has nested params
+  const currentScreenName = currentStackRoute?.name || tabRoute?.state?.routes?.[0]?.name || tabRoute?.params?.screen;
+  const returnTo = currentStackRoute?.params?.returnTo || currentStackRoute?.params?.params?.returnTo || tabRoute?.params?.params?.returnTo;
+  const parentScreen = PARENT_SCREENS[currentScreenName];
+
+  function handleGoBack() {
+    // 1. Check returnTo param (passed when navigating from another context)
+    if (returnTo) {
+      const returnParent = PARENT_SCREENS[returnTo];
+      if (returnParent) {
+        navigation.navigate(returnParent.tab, { screen: returnTo });
+      } else {
+        // Try navigating directly to the returnTo screen in current tab
+        try { navigation.navigate(returnTo); } catch(e) {
+          navigation.navigate('Início', { screen: 'HomeMain' });
+        }
+      }
+      return;
+    }
+    // 2. Use explicit parent mapping — always reliable on web
+    if (parentScreen && parentScreen.tab && parentScreen.screen) {
+      navigation.navigate(parentScreen.tab, { screen: parentScreen.screen });
+      return;
+    }
+    // 3. Last resort
+    navigation.navigate('Início', { screen: 'HomeMain' });
+  }
+
   const initials = user?.email ? user.email.substring(0, 2).toUpperCase() : 'US';
 
   return (
     <View style={styles.container}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        {canGoBack && Platform.OS === 'web' && (
+        {(canGoBack || parentScreen || returnTo) && Platform.OS === 'web' && (
           <div
-            onClick={() => navigation.goBack()}
+            onClick={handleGoBack}
             style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 4 }}
           >
             <Feather name="arrow-left" size={20} color="#fff" />

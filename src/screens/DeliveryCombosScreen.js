@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { View, Text, FlatList, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert } from 'react-native';
+import { View, Text, FlatList, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert, Platform } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
@@ -9,7 +9,8 @@ import EmptyState from '../components/EmptyState';
 import InputField from '../components/InputField';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, converterParaBase, normalizeSearch } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 // Color cycling for combo avatars
 const COMBO_COLORS = [
@@ -27,14 +28,13 @@ function getTipoBadgeInfo(tipo) {
   if (tipo === 'materia_prima') return { label: 'insumo', color: colors.primary };
   if (tipo === 'preparo') return { label: 'preparo', color: colors.accent };
   if (tipo === 'produto') return { label: 'produto', color: colors.purple };
-  if (tipo === 'delivery_produto') return { label: 'delivery', color: colors.coral };
   if (tipo === 'embalagem') return { label: 'embalagem', color: colors.yellow };
-  if (tipo === 'adicional') return { label: 'adicional', color: colors.info };
   return { label: tipo, color: colors.disabled };
 }
 
 export default function DeliveryCombosScreen() {
   const isFocused = useIsFocused();
+  const { isDesktop } = useResponsiveLayout();
   const [combos, setCombos] = useState([]);
   const [busca, setBusca] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(null);
@@ -57,11 +57,11 @@ export default function DeliveryCombosScreen() {
 
   // Available items for picker
   const [allProdutos, setAllProdutos] = useState([]);
-  const [deliveryProdutos, setDeliveryProdutos] = useState([]);
+  // deliveryProdutos removed (feature deprecated)
   const [allMaterias, setAllMaterias] = useState([]);
   const [allEmbalagens, setAllEmbalagens] = useState([]);
   const [allPreparos, setAllPreparos] = useState([]);
-  const [allAdicionais, setAllAdicionais] = useState([]);
+  // allAdicionais removed (feature deprecated)
 
   useFocusEffect(
     useCallback(() => {
@@ -97,7 +97,7 @@ export default function DeliveryCombosScreen() {
     const db = await getDatabase();
 
     const [prods, allIngs, allPreps, allEmbs, embalagensList, preparosList, materiasList,
-           dProds, allDProdItens, adicionaisList, combosList, allComboItens] = await Promise.all([
+           combosList, allComboItens] = await Promise.all([
       db.getAllAsync('SELECT * FROM produtos ORDER BY nome'),
       db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
       db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
@@ -105,9 +105,6 @@ export default function DeliveryCombosScreen() {
       db.getAllAsync('SELECT id, nome, preco_unitario FROM embalagens ORDER BY nome'),
       db.getAllAsync('SELECT id, nome, custo_por_kg FROM preparos ORDER BY nome'),
       db.getAllAsync('SELECT id, nome, preco_por_kg, unidade_medida FROM materias_primas ORDER BY nome'),
-      db.getAllAsync('SELECT * FROM delivery_produtos ORDER BY nome'),
-      db.getAllAsync('SELECT * FROM delivery_produto_itens'),
-      db.getAllAsync('SELECT * FROM delivery_adicionais ORDER BY nome'),
       db.getAllAsync('SELECT * FROM delivery_combos ORDER BY nome'),
       db.getAllAsync('SELECT * FROM delivery_combo_itens'),
     ]);
@@ -124,53 +121,22 @@ export default function DeliveryCombosScreen() {
     for (const p of prods) {
       const ings = ingsByProd[p.id] || [];
       const custoIng = ings.reduce((a, i) => {
-        if (i.unidade_medida === 'un') return a + i.quantidade_utilizada * i.preco_por_kg;
-        const qtBase = converterParaBase(i.quantidade_utilizada, i.unidade_medida);
-        return a + (qtBase / 1000) * i.preco_por_kg;
+        return a + calcCustoIngrediente(i.preco_por_kg, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida);
       }, 0);
       const preps = prepsByProd[p.id] || [];
       const custoPr = preps.reduce((a, pp) => {
-        const qtBase = converterParaBase(pp.quantidade_utilizada, pp.unidade_medida || 'g');
-        return a + (qtBase / 1000) * pp.custo_por_kg;
+        return a + calcCustoPreparo(pp.custo_por_kg, pp.quantidade_utilizada, pp.unidade_medida || 'g');
       }, 0);
       const embs = embsByProd[p.id] || [];
       const custoEmb = embs.reduce((a, e) => a + e.preco_unitario * e.quantidade_utilizada, 0);
       const custoTotal = custoIng + custoPr + custoEmb;
-      const custoUnitario = custoTotal / (p.rendimento_unidades || 1);
+      const custoUnitario = custoTotal / getDivisorRendimento(p);
       prodResults.push({ id: p.id, nome: p.nome, precoVenda: p.preco_venda || 0, custoUnitario });
     }
     setAllProdutos(prodResults);
-
-    // Build delivery product items lookup
-    const dProdItensByDProd = {};
-    (allDProdItens || []).forEach(i => { (dProdItensByDProd[i.delivery_produto_id] = dProdItensByDProd[i.delivery_produto_id] || []).push(i); });
-
-    const dProdsWithCost = [];
-    for (const dp of dProds) {
-      const itens = dProdItensByDProd[dp.id] || [];
-      let custo = 0;
-      for (const item of itens) {
-        if (item.tipo === 'produto') {
-          const prod = prodResults.find(p => p.id === item.item_id);
-          if (prod) custo += prod.custoUnitario * item.quantidade;
-        } else if (item.tipo === 'embalagem') {
-          const emb = embalagensList.find(e => e.id === item.item_id);
-          if (emb) custo += (emb.preco_unitario || 0) * item.quantidade;
-        } else if (item.tipo === 'preparo') {
-          const prep = preparosList.find(p => p.id === item.item_id);
-          if (prep) custo += ((prep.custo_por_kg || 0) / 1000) * item.quantidade;
-        } else if (item.tipo === 'materia_prima') {
-          const mp = materiasList.find(m => m.id === item.item_id);
-          if (mp) custo += ((mp.preco_por_kg || 0) / 1000) * item.quantidade;
-        }
-      }
-      dProdsWithCost.push({ ...dp, itens, custo });
-    }
-    setDeliveryProdutos(dProdsWithCost);
     setAllMaterias(materiasList);
     setAllEmbalagens(embalagensList);
     setAllPreparos(preparosList);
-    setAllAdicionais(adicionaisList);
 
     // Build combo items lookup
     const comboItensByCombo = {};
@@ -184,24 +150,15 @@ export default function DeliveryCombosScreen() {
         if (item.tipo === 'produto') {
           const prod = prodResults.find(p => p.id === item.item_id);
           if (prod) custo += prod.custoUnitario * item.quantidade;
-        } else if (item.tipo === 'delivery_produto') {
-          const dp = dProdsWithCost.find(d => d.id === item.item_id);
-          if (dp) custo += dp.custo * item.quantidade;
         } else if (item.tipo === 'materia_prima') {
           const mp = materiasList.find(m => m.id === item.item_id);
-          if (mp) {
-            if (mp.unidade_medida === 'un') custo += mp.preco_por_kg * item.quantidade;
-            else custo += (mp.preco_por_kg / 1000) * item.quantidade;
-          }
+          if (mp) custo += calcCustoIngrediente(mp.preco_por_kg, item.quantidade, mp.unidade_medida, 'g');
         } else if (item.tipo === 'embalagem') {
           const emb = embalagensList.find(e => e.id === item.item_id);
           if (emb) custo += emb.preco_unitario * item.quantidade;
         } else if (item.tipo === 'preparo') {
           const prep = preparosList.find(p => p.id === item.item_id);
-          if (prep) custo += (prep.custo_por_kg / 1000) * item.quantidade;
-        } else if (item.tipo === 'adicional') {
-          const add = adicionaisList.find(a => a.id === item.item_id);
-          if (add) custo += add.custo * item.quantidade;
+          if (prep) custo += calcCustoPreparo(prep.custo_por_kg, item.quantidade, 'g');
         }
       }
       combosWithCost.push({ ...combo, itens, custo });
@@ -239,14 +196,10 @@ export default function DeliveryCombosScreen() {
         const p = allProdutos.find(x => x.id === item.item_id);
         nome = p ? p.nome : 'Produto';
         custoUnit = p ? p.custoUnitario : 0;
-      } else if (item.tipo === 'delivery_produto') {
-        const dp = deliveryProdutos.find(x => x.id === item.item_id);
-        nome = dp ? dp.nome : 'Delivery';
-        custoUnit = dp ? dp.custo : 0;
       } else if (item.tipo === 'materia_prima') {
         const mp = allMaterias.find(x => x.id === item.item_id);
         nome = mp ? mp.nome : 'Insumo';
-        custoUnit = mp ? (mp.unidade_medida === 'un' ? mp.preco_por_kg : mp.preco_por_kg / 1000) : 0;
+        custoUnit = mp ? calcCustoIngrediente(mp.preco_por_kg, 1, mp.unidade_medida, 'g') : 0;
       } else if (item.tipo === 'embalagem') {
         const e = allEmbalagens.find(x => x.id === item.item_id);
         nome = e ? e.nome : 'Embalagem';
@@ -254,11 +207,7 @@ export default function DeliveryCombosScreen() {
       } else if (item.tipo === 'preparo') {
         const p = allPreparos.find(x => x.id === item.item_id);
         nome = p ? p.nome : 'Preparo';
-        custoUnit = p ? p.custo_por_kg / 1000 : 0;
-      } else if (item.tipo === 'adicional') {
-        const a = allAdicionais.find(x => x.id === item.item_id);
-        nome = a ? a.nome : 'Adicional';
-        custoUnit = a ? a.custo : 0;
+        custoUnit = p ? calcCustoPreparo(p.custo_por_kg, 1, 'g') : 0;
       }
       return { tipo: item.tipo, item_id: item.item_id, quantidade: item.quantidade, nome, custoUnit };
     });
@@ -304,35 +253,33 @@ export default function DeliveryCombosScreen() {
   }
 
   // Immediate save for item add/remove/quantity changes (edit mode)
-  async function autoSaveImmediate() {
+  // Accepts optional override data to avoid race conditions with state updates
+  async function autoSaveImmediate(overrideData) {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
-    // Use a small timeout to let state update propagate
-    setTimeout(async () => {
-      const combo = editingComboRef.current;
-      const data = novoComboRef.current;
-      if (!combo || !loaded) return;
-      if (!data.nome.trim()) return;
+    const combo = editingComboRef.current;
+    const data = overrideData || novoComboRef.current;
+    if (!combo || !loaded) return;
+    if (!data.nome.trim()) return;
 
-      setSaveStatus('saving');
-      try {
-        const db = await getDatabase();
+    setSaveStatus('saving');
+    try {
+      const db = await getDatabase();
+      await db.runAsync(
+        'UPDATE delivery_combos SET nome = ?, preco_venda = ? WHERE id = ?',
+        [data.nome.trim(), parseInputValue(data.preco_venda), combo.id]
+      );
+      await db.runAsync('DELETE FROM delivery_combo_itens WHERE combo_id = ?', [combo.id]);
+      for (const item of data.itens) {
         await db.runAsync(
-          'UPDATE delivery_combos SET nome = ?, preco_venda = ? WHERE id = ?',
-          [data.nome.trim(), parseInputValue(data.preco_venda), combo.id]
+          'INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
+          [combo.id, item.tipo, item.item_id, item.quantidade]
         );
-        await db.runAsync('DELETE FROM delivery_combo_itens WHERE combo_id = ?', [combo.id]);
-        for (const item of data.itens) {
-          await db.runAsync(
-            'INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
-            [combo.id, item.tipo, item.item_id, item.quantidade]
-          );
-        }
-        setSaveStatus('saved');
-      } catch (e) {
-        setSaveStatus(null);
       }
-    }, 50);
+      setSaveStatus('saved');
+    } catch (e) {
+      setSaveStatus(null);
+    }
   }
 
   // Save for NEW combos only
@@ -414,6 +361,19 @@ export default function DeliveryCombosScreen() {
     loadData();
   }
 
+  async function duplicarCombo(combo) {
+    const db = await getDatabase();
+    const result = await db.runAsync('INSERT INTO delivery_combos (nome, preco_venda) VALUES (?,?)', [combo.nome + ' (cópia)', combo.preco_venda]);
+    const newId = result?.lastInsertRowId;
+    if (newId) {
+      const itens = await db.getAllAsync('SELECT * FROM delivery_combo_itens WHERE combo_id = ?', [combo.id]);
+      await Promise.all(itens.map(item =>
+        db.runAsync('INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?,?,?,?)', [newId, item.tipo, item.item_id, item.quantidade])
+      ));
+    }
+    loadData();
+  }
+
   function removerCombo(id, nome) {
     setConfirmRemove({
       id, nome,
@@ -429,43 +389,46 @@ export default function DeliveryCombosScreen() {
 
   function getItemCusto(tipo, item) {
     if (tipo === 'produto') return item.custoUnitario || 0;
-    if (tipo === 'delivery_produto') return item.custo || 0;
-    if (tipo === 'materia_prima') {
-      if (item.unidade_medida === 'un') return item.preco_por_kg || 0;
-      return (item.preco_por_kg || 0) / 1000;
-    }
+    if (tipo === 'materia_prima') return calcCustoIngrediente(item.preco_por_kg || 0, 1, item.unidade_medida, 'g');
     if (tipo === 'embalagem') return item.preco_unitario || 0;
-    if (tipo === 'preparo') return (item.custo_por_kg || 0) / 1000;
-    if (tipo === 'adicional') return item.custo || 0;
+    if (tipo === 'preparo') return calcCustoPreparo(item.custo_por_kg || 0, 1, 'g');
     return 0;
   }
 
   function adicionarItemAoCombo(tipo, item) {
     const custoUnit = getItemCusto(tipo, item);
-    setNovoCombo(prev => ({ ...prev, itens: [...prev.itens, { tipo, item_id: item.id, quantidade: 1, nome: item.nome, custoUnit }] }));
-    // Immediate save in edit mode
-    if (editingComboRef.current && loaded) {
-      autoSaveImmediate();
-    }
+    const newItem = { tipo, item_id: item.id, quantidade: 1, nome: item.nome, custoUnit };
+    setNovoCombo(prev => {
+      const updated = { ...prev, itens: [...prev.itens, newItem] };
+      // Auto-save imediato com dados atualizados (modo edição)
+      if (editingComboRef.current && loaded) {
+        autoSaveImmediate(updated);
+      }
+      return updated;
+    });
   }
 
   function removerItemDoCombo(index) {
-    setNovoCombo(prev => ({ ...prev, itens: prev.itens.filter((_, i) => i !== index) }));
-    // Immediate save in edit mode
-    if (editingComboRef.current && loaded) {
-      autoSaveImmediate();
-    }
+    setNovoCombo(prev => {
+      const updated = { ...prev, itens: prev.itens.filter((_, i) => i !== index) };
+      if (editingComboRef.current && loaded) {
+        autoSaveImmediate(updated);
+      }
+      return updated;
+    });
   }
 
   function alterarQuantidadeItem(index, val) {
-    setNovoCombo(prev => ({
-      ...prev,
-      itens: prev.itens.map((it, i) => i === index ? { ...it, quantidade: parseFloat(val) || 1 } : it),
-    }));
-    // Immediate save in edit mode
-    if (editingComboRef.current && loaded) {
-      autoSaveImmediate();
-    }
+    setNovoCombo(prev => {
+      const updated = {
+        ...prev,
+        itens: prev.itens.map((it, i) => i === index ? { ...it, quantidade: parseFloat(val) || 1 } : it),
+      };
+      if (editingComboRef.current && loaded) {
+        autoSaveImmediate(updated);
+      }
+      return updated;
+    });
   }
 
   function calcSomaItens() {
@@ -527,32 +490,98 @@ export default function DeliveryCombosScreen() {
     );
   }
 
+  function renderDesktopGridCard({ item: combo, index }) {
+    const margem = combo.preco_venda > 0 ? ((combo.preco_venda - combo.custo) / combo.preco_venda) * 100 : 0;
+    const margemPositiva = margem >= 0;
+    const comboColor = getComboColor(index);
+    const inicial = (combo.nome || '?').charAt(0).toUpperCase();
+    const itemCount = combo.itens ? combo.itens.length : 0;
+
+    return (
+      <TouchableOpacity
+        style={styles.gridCard}
+        onPress={() => abrirEditarCombo(combo)}
+        activeOpacity={0.6}
+      >
+        <View style={styles.gridCardTop}>
+          <View style={[styles.gridAvatar, { backgroundColor: comboColor + '18' }]}>
+            <Text style={[styles.gridAvatarText, { color: comboColor }]}>{inicial}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+            <TouchableOpacity
+              onPress={() => removerCombo(combo.id, combo.nome)}
+              style={styles.gridDeleteBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+            >
+              <Feather name="trash-2" size={12} color={colors.disabled} />
+            </TouchableOpacity>
+          </View>
+        </View>
+        <Text style={styles.gridNome} numberOfLines={2}>{combo.nome}</Text>
+        <Text style={styles.gridSubtitle}>{itemCount} {itemCount === 1 ? 'item' : 'itens'}</Text>
+        <View style={styles.gridBottom}>
+          <Text style={styles.gridPreco}>{formatCurrency(combo.preco_venda)}</Text>
+          <View style={[styles.margemBadge, { backgroundColor: (margemPositiva ? colors.success : colors.error) + '12' }]}>
+            <Text style={[styles.margemBadgeText, { color: margemPositiva ? colors.success : colors.error }]}>
+              {margem.toFixed(1)}%
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* Search header */}
-      <View style={styles.headerBar}>
+      <View style={[styles.headerBar, isDesktop && { maxWidth: 1200, alignSelf: 'center', width: '100%' }]}>
         <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar combo..." />
       </View>
 
       {/* Combo list */}
-      <FlatList
-        data={combosFiltrados}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={renderComboCard}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <EmptyState
-            icon={busca.trim() ? 'search' : 'layers'}
-            title={busca.trim() ? 'Nenhum combo encontrado' : 'Nenhum combo criado'}
-            description={busca.trim()
-              ? `Não encontramos resultados para "${busca}".`
-              : 'Monte combos agrupando seus produtos com preço especial.'}
-            ctaLabel={!busca.trim() ? 'Criar primeiro combo' : undefined}
-            onPress={!busca.trim() ? abrirCriarCombo : undefined}
-          />
-        }
-        ListFooterComponent={<View style={{ height: 20 }} />}
-      />
+      {isDesktop ? (
+        <ScrollView contentContainerStyle={[styles.list, { maxWidth: 1200, alignSelf: 'center', width: '100%' }]}>
+          {combosFiltrados.length === 0 ? (
+            <EmptyState
+              icon={busca.trim() ? 'search' : 'layers'}
+              title={busca.trim() ? 'Nenhum combo encontrado' : 'Nenhum combo criado'}
+              description={busca.trim()
+                ? `Não encontramos resultados para "${busca}".`
+                : 'Monte combos agrupando seus produtos com preço especial.'}
+              ctaLabel={!busca.trim() ? 'Criar primeiro combo' : undefined}
+              onPress={!busca.trim() ? abrirCriarCombo : undefined}
+            />
+          ) : (
+            <View style={styles.gridContainer}>
+              {combosFiltrados.map((combo, index) => (
+                <React.Fragment key={combo.id}>
+                  {renderDesktopGridCard({ item: combo, index })}
+                </React.Fragment>
+              ))}
+            </View>
+          )}
+          <View style={{ height: 20 }} />
+        </ScrollView>
+      ) : (
+        <FlatList
+          data={combosFiltrados}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={renderComboCard}
+          contentContainerStyle={styles.list}
+          ListEmptyComponent={
+            <EmptyState
+              icon={busca.trim() ? 'search' : 'layers'}
+              title={busca.trim() ? 'Nenhum combo encontrado' : 'Nenhum combo criado'}
+              description={busca.trim()
+                ? `Não encontramos resultados para "${busca}".`
+                : 'Monte combos agrupando seus produtos com preço especial.'}
+              ctaLabel={!busca.trim() ? 'Criar primeiro combo' : undefined}
+              onPress={!busca.trim() ? abrirCriarCombo : undefined}
+            />
+          }
+          ListFooterComponent={<View style={{ height: 20 }} />}
+        />
+      )}
 
       {/* FAB */}
       <FAB onPress={abrirCriarCombo} />
@@ -677,11 +706,9 @@ export default function DeliveryCombosScreen() {
               {(() => {
                 const termo = buscaItem.trim().toLowerCase();
                 const filteredProdutos = allProdutos.filter(p => !termo || p.nome.toLowerCase().includes(termo));
-                const filteredDelivery = deliveryProdutos.filter(dp => !termo || dp.nome.toLowerCase().includes(termo));
                 const filteredMaterias = allMaterias.filter(m => !termo || m.nome.toLowerCase().includes(termo));
                 const filteredEmbalagens = allEmbalagens.filter(e => !termo || e.nome.toLowerCase().includes(termo));
                 const filteredPreparos = allPreparos.filter(p => !termo || p.nome.toLowerCase().includes(termo));
-                const filteredAdicionais = allAdicionais.filter(a => !termo || a.nome.toLowerCase().includes(termo));
                 return (
                   <>
                     {filteredProdutos.length > 0 && (
@@ -692,20 +719,6 @@ export default function DeliveryCombosScreen() {
                             <TouchableOpacity key={`prod-${p.id}`} style={styles.modalAddItem} onPress={() => adicionarItemAoCombo('produto', p)}>
                               <Feather name="plus" size={10} color={colors.primary} style={{ marginRight: 3 }} />
                               <Text style={styles.modalAddItemText}>{p.nome}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </>
-                    )}
-
-                    {filteredDelivery.length > 0 && (
-                      <>
-                        <Text style={styles.modalCatLabel}>Produtos Delivery</Text>
-                        <View style={styles.modalItemList}>
-                          {filteredDelivery.map(dp => (
-                            <TouchableOpacity key={`dp-${dp.id}`} style={styles.modalAddItem} onPress={() => adicionarItemAoCombo('delivery_produto', dp)}>
-                              <Feather name="plus" size={10} color={colors.primary} style={{ marginRight: 3 }} />
-                              <Text style={styles.modalAddItemText}>{dp.nome}</Text>
                             </TouchableOpacity>
                           ))}
                         </View>
@@ -754,29 +767,52 @@ export default function DeliveryCombosScreen() {
                       </>
                     )}
 
-                    {filteredAdicionais.length > 0 && (
-                      <>
-                        <Text style={styles.modalCatLabel}>Adicionais</Text>
-                        <View style={styles.modalItemList}>
-                          {filteredAdicionais.map(a => (
-                            <TouchableOpacity key={`add-${a.id}`} style={styles.modalAddItem} onPress={() => adicionarItemAoCombo('adicional', a)}>
-                              <Feather name="plus" size={10} color={colors.primary} style={{ marginRight: 3 }} />
-                              <Text style={styles.modalAddItemText}>{a.nome}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </>
-                    )}
                   </>
                 );
               })()}
 
               {/* Modal actions: show Salvar only for NEW combos; edit mode uses auto-save */}
               {isEditing ? (
-                <View style={styles.modalActions}>
-                  <TouchableOpacity style={styles.modalCloseBtnFull} onPress={handleCloseModal}>
-                    <Text style={styles.modalCloseText}>Fechar</Text>
-                  </TouchableOpacity>
+                <View style={styles.editModalFooter}>
+                  {saveStatus && (
+                    <View style={styles.autoSaveBar}>
+                      {saveStatus === 'saving' ? (
+                        <>
+                          <Feather name="loader" size={13} color={colors.textSecondary} />
+                          <Text style={styles.autoSaveText}>Salvando...</Text>
+                        </>
+                      ) : (
+                        <>
+                          <Feather name="check-circle" size={13} color={colors.success} />
+                          <Text style={[styles.autoSaveText, { color: colors.success }]}>Salvo</Text>
+                        </>
+                      )}
+                    </View>
+                  )}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm }}>
+                    {novoCombo.nome.trim() !== '' && (
+                      <TouchableOpacity
+                        style={styles.duplicarBtn}
+                        onPress={async () => {
+                          await duplicarCombo(editingCombo);
+                          setShowComboModal(false);
+                          setEditingCombo(null);
+                          setNovoCombo({ nome: '', preco_venda: '', itens: [] });
+                          setLoaded(false);
+                        }}
+                      >
+                        <Feather name="copy" size={13} color={colors.primary} style={{ marginRight: 5 }} />
+                        <Text style={styles.duplicarBtnText}>Duplicar</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity style={styles.modalCloseBtnFull} onPress={handleCloseModal}>
+                      <Text style={styles.modalCloseText}>Fechar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.saveBackBtn} onPress={async () => { try { await autoSaveImmediate(); } catch(e) {} handleCloseModal(); }}>
+                      <Feather name="check" size={16} color="#fff" />
+                      <Text style={styles.saveBackBtnText}>Salvar e voltar</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ) : (
                 <View style={styles.modalActions}>
@@ -1020,6 +1056,34 @@ const styles = StyleSheet.create({
     fontWeight: '600', fontSize: fonts.regular,
   },
 
+  // Edit modal footer (padrão da plataforma)
+  editModalFooter: {
+    marginTop: spacing.lg, alignItems: 'center',
+  },
+  autoSaveBar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 4, marginBottom: spacing.sm,
+  },
+  autoSaveText: {
+    fontSize: fonts.tiny, fontFamily: fontFamily.regular, color: colors.textSecondary,
+  },
+  duplicarBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#fff', borderWidth: 1, borderColor: colors.primary + '30',
+    borderRadius: borderRadius.sm, paddingVertical: 8, paddingHorizontal: 14,
+  },
+  duplicarBtnText: {
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.primary,
+  },
+  saveBackBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: colors.primary, paddingVertical: 8, paddingHorizontal: 16,
+    borderRadius: borderRadius.md,
+  },
+  saveBackBtnText: {
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: '#fff',
+  },
+
   // Incomplete modal
   incompleteOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
@@ -1062,5 +1126,56 @@ const styles = StyleSheet.create({
   incompleteBtnDeleteText: {
     color: colors.error, fontFamily: fontFamily.semiBold, fontWeight: '600',
     fontSize: fonts.regular,
+  },
+
+  // Desktop grid
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'flex-start',
+  },
+  gridCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    width: 'calc(25% - 6px)',
+    minWidth: 180,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06, shadowRadius: 3, elevation: 1,
+  },
+  gridCardTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  gridAvatar: {
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  gridAvatarText: {
+    fontSize: 14, fontFamily: fontFamily.bold, fontWeight: '700',
+  },
+  gridDeleteBtn: {
+    padding: 6,
+  },
+  gridNome: {
+    fontSize: 13, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    color: colors.text, marginBottom: 2,
+  },
+  gridSubtitle: {
+    fontSize: 10, fontFamily: fontFamily.regular,
+    color: colors.textSecondary, marginBottom: spacing.xs,
+  },
+  gridBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 'auto',
+  },
+  gridPreco: {
+    fontSize: 14, fontFamily: fontFamily.bold, fontWeight: '700',
+    color: colors.primary,
   },
 });

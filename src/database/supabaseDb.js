@@ -31,9 +31,13 @@ function setCache(key, data) {
   }
 }
 
-// Invalidate cache on writes
-function invalidateCache() {
-  queryCache.clear();
+// Invalidate cache — table-aware: only clears entries that reference the affected table
+function invalidateCache(table) {
+  if (!table) { queryCache.clear(); return; }
+  const tbl = table.toLowerCase();
+  for (const key of queryCache.keys()) {
+    if (key.toLowerCase().includes(tbl)) queryCache.delete(key);
+  }
 }
 
 // Export for clearing on sign-out
@@ -56,7 +60,9 @@ export function createSupabaseDb(userId) {
     },
     getFirstAsync: (sql, params = []) => executeQuery(sql, params, 'first'),
     runAsync: (sql, params = []) => {
-      invalidateCache(); // Clear cache on any write
+      // Extract table name for targeted cache invalidation
+      const tblMatch = sql.match(/(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(\w+)/i);
+      invalidateCache(tblMatch ? tblMatch[1] : null);
       return executeRun(sql, params);
     },
     execAsync: (sql) => Promise.resolve(),
@@ -197,6 +203,11 @@ async function executeRun(sql, params = []) {
     const whereConditions = parseWhereSimple(whereClause, params, 0);
     for (const w of whereConditions) {
       if (w.op === '=') query = query.eq(w.col, w.val);
+      else if (w.op === '!=') query = query.neq(w.col, w.val);
+      else if (w.op === '>') query = query.gt(w.col, w.val);
+      else if (w.op === '<') query = query.lt(w.col, w.val);
+      else if (w.op === '>=') query = query.gte(w.col, w.val);
+      else if (w.op === '<=') query = query.lte(w.col, w.val);
     }
 
     const { error } = await query;

@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
@@ -7,9 +7,10 @@ import FAB from '../components/FAB';
 import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, calcDespesasFixasPercentual, converterParaBase, normalizeSearch } from '../utils/calculations';
+import { formatCurrency, formatPercent, calcDespesasFixasPercentual, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 // Cores para categorias
 const CATEGORY_COLORS = [
@@ -22,14 +23,31 @@ function getCategoryColor(index) {
   return CATEGORY_COLORS[index % CATEGORY_COLORS.length];
 }
 
-function getHealthColor(margem) {
-  if (margem < 0) return colors.disabled; // no price set
-  if (margem >= 0.15) return colors.success;
-  if (margem >= 0.05) return colors.warning;
+const YELLOW = '#E6A800';
+
+function getHealthColor(margem, meta = 0.15) {
+  if (margem === -1) return colors.disabled;
+  if (margem >= meta) return colors.success;
+  if (margem >= meta - 0.10) return YELLOW;
   return colors.error;
 }
 
+function getHealthBgColor(margem, meta = 0.15) {
+  if (margem === -1) return colors.disabled + '0C';
+  if (margem >= meta) return colors.success + '12';
+  if (margem >= meta - 0.10) return YELLOW + '18';
+  return colors.error + '12';
+}
+
+function getHealthBorderColor(margem, meta = 0.15) {
+  if (margem === -1) return colors.disabled + '40';
+  if (margem >= meta) return colors.success + '50';
+  if (margem >= meta - 0.10) return YELLOW + '60';
+  return colors.error + '50';
+}
+
 export default function ProdutosListScreen({ navigation }) {
+  const { isDesktop } = useResponsiveLayout();
   const isFocused = useIsFocused();
   const [sections, setSections] = useState([]);
   const [categorias, setCategorias] = useState([]);
@@ -37,14 +55,18 @@ export default function ProdutosListScreen({ navigation }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [novaCategoria, setNovaCategoria] = useState('');
   const [busca, setBusca] = useState('');
-  const [config, setConfig] = useState({ despFixasPerc: 0, despVarPerc: 0 });
+  const [config, setConfig] = useState({ despFixasPerc: 0, despVarPerc: 0, margemMeta: 0.15 });
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [totalProdutos, setTotalProdutos] = useState(0);
   // Mapa de cores por categoria ID
   const [catColorMap, setCatColorMap] = useState({});
   // Seções recolhidas
   const [collapsedSections, setCollapsedSections] = useState({});
+  // Desktop grid seções recolhidas
+  const [collapsedDesktop, setCollapsedDesktop] = useState({});
   const [loading, setLoading] = useState(true);
+
+  function toggleDesktopSection(key) { setCollapsedDesktop(prev => ({...prev, [key]: !prev[key]})); }
 
   useFocusEffect(useCallback(() => {
     loadData();
@@ -55,23 +77,49 @@ export default function ProdutosListScreen({ navigation }) {
     setLoading(true);
     const db = await getDatabase();
 
-    const [fixas, variaveis, fat, cats, prods, allIngs, allPreps, allEmbs] = await Promise.all([
+    const [fixas, variaveis, fat, cats, prods, rawProdIngs, rawMPs, rawProdPreps, rawPreparos, rawProdEmbs, rawEmbalagens, configRows] = await Promise.all([
       db.getAllAsync('SELECT * FROM despesas_fixas'),
       db.getAllAsync('SELECT * FROM despesas_variaveis'),
       db.getAllAsync('SELECT * FROM faturamento_mensal'),
       db.getAllAsync('SELECT * FROM categorias_produtos ORDER BY nome'),
       db.getAllAsync('SELECT * FROM produtos ORDER BY nome'),
-      db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
-      db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
-      db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
+      db.getAllAsync('SELECT * FROM produto_ingredientes'),
+      db.getAllAsync('SELECT * FROM materias_primas'),
+      db.getAllAsync('SELECT * FROM produto_preparos'),
+      db.getAllAsync('SELECT * FROM preparos'),
+      db.getAllAsync('SELECT * FROM produto_embalagens'),
+      db.getAllAsync('SELECT * FROM embalagens'),
+      db.getAllAsync('SELECT lucro_desejado FROM configuracao LIMIT 1'),
     ]);
+
+    // Build lookup maps for JOINs in JS
+    const mpMap = {};
+    (rawMPs || []).forEach(mp => { mpMap[mp.id] = mp; });
+    const prepMap = {};
+    (rawPreparos || []).forEach(pr => { prepMap[pr.id] = pr; });
+    const embMap = {};
+    (rawEmbalagens || []).forEach(em => { embMap[em.id] = em; });
+
+    const allIngs = (rawProdIngs || []).map(pi => {
+      const mp = mpMap[pi.materia_prima_id] || {};
+      return { produto_id: pi.produto_id, quantidade_utilizada: pi.quantidade_utilizada, preco_por_kg: mp.preco_por_kg || 0, unidade_medida: mp.unidade_medida || 'g' };
+    });
+    const allPreps = (rawProdPreps || []).map(pp => {
+      const pr = prepMap[pp.preparo_id] || {};
+      return { produto_id: pp.produto_id, quantidade_utilizada: pp.quantidade_utilizada, custo_por_kg: pr.custo_por_kg || 0, unidade_medida: pr.unidade_medida || 'g' };
+    });
+    const allEmbs = (rawProdEmbs || []).map(pe => {
+      const em = embMap[pe.embalagem_id] || {};
+      return { produto_id: pe.produto_id, quantidade_utilizada: pe.quantidade_utilizada, preco_unitario: em.preco_unitario || 0 };
+    });
 
     const totalFixas = fixas.reduce((a, d) => a + (d.valor || 0), 0);
     const totalVar = variaveis.reduce((a, d) => a + (d.percentual || 0), 0);
     const mesesComFat = fat.filter(f => f.valor > 0);
     const fatMedio = mesesComFat.length > 0 ? mesesComFat.reduce((a, f) => a + f.valor, 0) / mesesComFat.length : 0;
     const dfPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
-    setConfig({ despFixasPerc: dfPerc, despVarPerc: totalVar });
+    const margemMeta = (configRows && configRows.length > 0 && configRows[0].lucro_desejado) ? configRows[0].lucro_desejado : 0.15;
+    setConfig({ despFixasPerc: dfPerc, despVarPerc: totalVar, margemMeta });
 
     setCategorias(cats);
 
@@ -99,22 +147,19 @@ export default function ProdutosListScreen({ navigation }) {
     for (const p of prodsFiltrados) {
       const ings = ingsByProd[p.id] || [];
       const custoIng = ings.reduce((a, i) => {
-        const qtBase = converterParaBase(i.quantidade_utilizada, i.unidade_medida);
-        if (i.unidade_medida === 'un') return a + i.quantidade_utilizada * i.preco_por_kg;
-        return a + (qtBase / 1000) * i.preco_por_kg;
+        return a + calcCustoIngrediente(i.preco_por_kg, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida);
       }, 0);
 
       const preps = prepsByProd[p.id] || [];
       const custoPr = preps.reduce((a, pp) => {
-        const qtBase = converterParaBase(pp.quantidade_utilizada, pp.unidade_medida || 'g');
-        return a + (qtBase / 1000) * pp.custo_por_kg;
+        return a + calcCustoPreparo(pp.custo_por_kg, pp.quantidade_utilizada, pp.unidade_medida || 'g');
       }, 0);
 
       const embs = embsByProd[p.id] || [];
       const custoEmb = embs.reduce((a, e) => a + e.preco_unitario * e.quantidade_utilizada, 0);
 
       const custoTotal = custoIng + custoPr + custoEmb;
-      const custoUn = custoTotal / (p.rendimento_unidades || 1);
+      const custoUn = custoTotal / getDivisorRendimento(p);
       const precoVenda = p.preco_venda || 0;
       const despFixasVal = precoVenda * dfPerc;
       const despVarVal = precoVenda * totalVar;
@@ -198,18 +243,18 @@ export default function ProdutosListScreen({ navigation }) {
     );
     const newId = result?.lastInsertRowId;
     if (!newId) return;
-    const ings = await db.getAllAsync('SELECT * FROM produto_ingredientes WHERE produto_id = ?', [produto.id]);
-    for (const ing of ings) {
-      await db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)', [newId, ing.materia_prima_id, ing.quantidade_utilizada]);
-    }
-    const preps = await db.getAllAsync('SELECT * FROM produto_preparos WHERE produto_id = ?', [produto.id]);
-    for (const pr of preps) {
-      await db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)', [newId, pr.preparo_id, pr.quantidade_utilizada]);
-    }
-    const embs = await db.getAllAsync('SELECT * FROM produto_embalagens WHERE produto_id = ?', [produto.id]);
-    for (const em of embs) {
-      await db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)', [newId, em.embalagem_id, em.quantidade_utilizada]);
-    }
+    // Load all related data in parallel
+    const [ings, preps, embs] = await Promise.all([
+      db.getAllAsync('SELECT * FROM produto_ingredientes WHERE produto_id = ?', [produto.id]),
+      db.getAllAsync('SELECT * FROM produto_preparos WHERE produto_id = ?', [produto.id]),
+      db.getAllAsync('SELECT * FROM produto_embalagens WHERE produto_id = ?', [produto.id]),
+    ]);
+    // Insert all related data in parallel
+    await Promise.all([
+      ...ings.map(ing => db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)', [newId, ing.materia_prima_id, ing.quantidade_utilizada])),
+      ...preps.map(pr => db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)', [newId, pr.preparo_id, pr.quantidade_utilizada])),
+      ...embs.map(em => db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)', [newId, em.embalagem_id, em.quantidade_utilizada])),
+    ]);
     navigation.navigate('ProdutoForm', { id: newId });
   }
 
@@ -230,6 +275,46 @@ export default function ProdutosListScreen({ navigation }) {
         loadData();
       },
     });
+  }
+
+  const isWeb = Platform.OS === 'web';
+
+  function renderDesktopGrid() {
+    if (!isDesktop || sections.length === 0) return null;
+    return (
+      <View style={{ marginTop: spacing.xs }}>
+        {sections.map((section, catIdx) => (
+          <View key={section.catId} style={{ marginBottom: spacing.md }}>
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, marginTop: catIdx > 0 ? 16 : 0 }}
+              onPress={() => toggleDesktopSection(section.title)}
+            >
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: section.catColor }} />
+              <Text style={styles.gridCatTitle}>{section.title}</Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary }}>({section.totalCount})</Text>
+              <Feather name={collapsedDesktop[section.title] ? 'chevron-right' : 'chevron-down'} size={14} color={colors.disabled} />
+            </TouchableOpacity>
+            {!collapsedDesktop[section.title] && (<View style={styles.gridContainer}>
+              {section.data.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[styles.gridCard, { backgroundColor: getHealthBgColor(item.margem, config.margemMeta), borderLeftWidth: 3, borderLeftColor: getHealthBorderColor(item.margem, config.margemMeta) }, isWeb && { cursor: 'pointer' }]}
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate('ProdutoForm', { id: item.id })}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 }}>
+                    <Text style={styles.gridCardName} numberOfLines={1} {...(Platform.OS === 'web' ? { title: item.nome } : {})}>{item.nome}</Text>
+                  </View>
+                  <Text style={styles.gridCardPrice}>
+                    {formatCurrency(item.precoVenda)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>)}
+          </View>
+        ))}
+      </View>
+    );
   }
 
   return (
@@ -268,134 +353,183 @@ export default function ProdutosListScreen({ navigation }) {
           </TouchableOpacity>
         </ScrollView>
         <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar produto..." />
+        {/* Legenda do semáforo de lucro */}
+        {(() => {
+          const metaPct = Math.round(config.margemMeta * 100);
+          const limiteInf = Math.max(0, metaPct - 10);
+          return (
+            <View style={styles.legendRow}>
+              <View style={[styles.legendSwatch, { backgroundColor: colors.success + '12', borderLeftWidth: 3, borderLeftColor: colors.success + '50' }]} />
+              <Text style={styles.legendText}>Lucro ≥{metaPct}%</Text>
+              <View style={[styles.legendSwatch, { backgroundColor: YELLOW + '18', borderLeftWidth: 3, borderLeftColor: YELLOW + '60' }]} />
+              <Text style={styles.legendText}>Lucro {limiteInf}-{metaPct}%</Text>
+              <View style={[styles.legendSwatch, { backgroundColor: colors.error + '12', borderLeftWidth: 3, borderLeftColor: colors.error + '50' }]} />
+              <Text style={styles.legendText}>Lucro &lt;{limiteInf}%</Text>
+              <View style={[styles.legendSwatch, { backgroundColor: colors.disabled + '0C', borderLeftWidth: 3, borderLeftColor: colors.disabled + '40' }]} />
+              <Text style={styles.legendText}>Sem preço</Text>
+            </View>
+          );
+        })()}
       </View>
 
       <FinanceiroPendenteBanner />
 
-      {/* Combos bar */}
-      <TouchableOpacity style={styles.combosBar} onPress={() => navigation.navigate('CombosScreen')} activeOpacity={0.7}>
-        <View style={styles.combosBarIcon}>
-          <Feather name="layers" size={16} color={colors.purple} />
-        </View>
-        <View style={styles.combosBarInfo}>
-          <Text style={styles.combosBarTitle}>Combos</Text>
-          <Text style={styles.combosBarSub}>Monte combos com seus produtos</Text>
-        </View>
-        <Feather name="chevron-right" size={16} color={colors.disabled} />
+      {/* Botão Adicionar */}
+      <TouchableOpacity
+        style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '10', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14, marginHorizontal: 16, marginTop: 8, marginBottom: 4, borderWidth: 1, borderColor: colors.primary + '30', borderStyle: 'dashed' }}
+        onPress={() => navigation.navigate('ProdutoForm', {})}
+      >
+        <Feather name="plus-circle" size={18} color={colors.primary} style={{ marginRight: 8 }} />
+        <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 14 }}>Novo Produto</Text>
       </TouchableOpacity>
 
-      {/* Lista agrupada */}
-      <SectionList
-        sections={sections.map(s => ({
-          ...s,
-          data: collapsedSections[s.catId] ? [] : s.data,
-        }))}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={styles.list}
-        stickySectionHeadersEnabled={false}
-        ListEmptyComponent={
-          loading ? (
-            <View style={{ padding: 40, alignItems: 'center' }}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 13 }}>Carregando produtos...</Text>
+      {/* Content */}
+      {isDesktop ? (
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
+          <View style={styles.desktopContentWrap}>
+            <View style={styles.desktopContentInner}>
+              {sections.length === 0 ? (
+                loading ? (
+                  <View style={{ padding: 40, alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 13 }}>Carregando produtos...</Text>
+                  </View>
+                ) : (
+                  <EmptyState
+                    icon={busca.trim() ? 'search' : 'box'}
+                    title={busca.trim() ? 'Nenhum produto encontrado' : 'Nenhum produto cadastrado'}
+                    description={busca.trim()
+                      ? `Não encontramos resultados para "${busca}".`
+                      : 'Crie sua primeira ficha técnica com ingredientes, preparos e embalagens.'}
+                    ctaLabel={!busca.trim() ? 'Criar Produto' : undefined}
+                    onPress={!busca.trim() ? () => navigation.navigate('ProdutoForm', {}) : undefined}
+                  />
+                )
+              ) : (
+                renderDesktopGrid()
+              )}
             </View>
-          ) : (
-            <EmptyState
-              icon={busca.trim() ? 'search' : 'box'}
-              title={busca.trim() ? 'Nenhum produto encontrado' : 'Nenhum produto cadastrado'}
-              description={busca.trim()
-                ? `Não encontramos resultados para "${busca}".`
-                : 'Crie sua primeira ficha técnica com ingredientes, preparos e embalagens.'}
-              ctaLabel={!busca.trim() ? 'Criar Produto' : undefined}
-              onPress={!busca.trim() ? () => navigation.navigate('ProdutoForm', {}) : undefined}
-            />
-          )
-        }
-        renderSectionHeader={({ section }) => {
-          const isCollapsed = collapsedSections[section.catId];
-          return (
-            <TouchableOpacity
-              style={styles.sectionHeader}
-              onPress={() => setCollapsedSections(prev => ({ ...prev, [section.catId]: !prev[section.catId] }))}
-              activeOpacity={0.6}
-            >
-              <View style={[styles.sectionDot, { backgroundColor: section.catColor }]} />
-              <Text style={styles.sectionTitle}>{section.title}</Text>
-              <Text style={styles.sectionCount}>{section.totalCount}</Text>
-              <Feather
-                name={isCollapsed ? 'chevron-right' : 'chevron-down'}
-                size={14}
-                color={colors.disabled}
-                style={{ marginLeft: 6 }}
+          </View>
+        </ScrollView>
+      ) : (
+        <SectionList
+          sections={sections.map(s => ({
+            ...s,
+            data: collapsedSections[s.catId] ? [] : s.data,
+          }))}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={styles.list}
+          stickySectionHeadersEnabled={false}
+          ListEmptyComponent={
+            loading ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 13 }}>Carregando produtos...</Text>
+              </View>
+            ) : (
+              <EmptyState
+                icon={busca.trim() ? 'search' : 'box'}
+                title={busca.trim() ? 'Nenhum produto encontrado' : 'Nenhum produto cadastrado'}
+                description={busca.trim()
+                  ? `Não encontramos resultados para "${busca}".`
+                  : 'Crie sua primeira ficha técnica com ingredientes, preparos e embalagens.'}
+                ctaLabel={!busca.trim() ? 'Criar Produto' : undefined}
+                onPress={!busca.trim() ? () => navigation.navigate('ProdutoForm', {}) : undefined}
               />
-            </TouchableOpacity>
-          );
-        }}
-        renderItem={({ item, index, section }) => {
-          const isFirst = index === 0;
-          const isLast = index === section.data.length - 1;
-          const catColor = catColorMap[item.categoria_id] || catColorMap['null'] || colors.disabled;
-          const inicial = (item.nome || '?').charAt(0).toUpperCase();
-
-          return (
-            <TouchableOpacity
-              style={[
-                styles.row,
-                isFirst && styles.rowFirst,
-                isLast && styles.rowLast,
-                !isLast && styles.rowBorder,
-              ]}
-              onPress={() => navigation.navigate('ProdutoForm', { id: item.id })}
-              activeOpacity={0.6}
-            >
-              {/* Avatar com inicial */}
-              <View style={[styles.avatar, { backgroundColor: catColor + '18' }]}>
-                <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
-              </View>
-
-              {/* Info */}
-              <View style={styles.rowInfo}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <View style={[styles.healthDot, { backgroundColor: getHealthColor(item.margem) }]} />
-                  <Text style={styles.rowNome} numberOfLines={1}>{item.nome}</Text>
-                </View>
-                <View style={styles.itemMeta}>
-                  <Text style={styles.itemMetaText}>CMV {formatCurrency(item.custoTotal)}</Text>
-                  <Text style={styles.itemMetaSep}>•</Text>
-                  <Text style={styles.itemMetaText}>Venda {formatCurrency(item.precoVenda)}</Text>
-                </View>
-              </View>
-
-              {/* Lucro */}
-              <View style={styles.rowRight}>
-                <Text style={[styles.itemLucro, { color: item.lucro >= 0 ? colors.success : colors.error }]}>
-                  {formatCurrency(item.lucro)}
-                </Text>
-                <Text style={styles.itemLucroLabel}>lucro</Text>
-              </View>
-
-              {/* Duplicar */}
+            )
+          }
+          renderSectionHeader={({ section }) => {
+            const isCollapsed = collapsedSections[section.catId];
+            return (
               <TouchableOpacity
-                onPress={() => duplicarProduto(item)}
-                style={styles.copyBtn}
-                hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                style={styles.sectionHeader}
+                onPress={() => setCollapsedSections(prev => ({ ...prev, [section.catId]: !prev[section.catId] }))}
+                activeOpacity={0.6}
               >
-                <Feather name="copy" size={13} color={colors.disabled} />
+                <View style={[styles.sectionDot, { backgroundColor: section.catColor }]} />
+                <Text style={styles.sectionTitle}>{section.title}</Text>
+                <Text style={styles.sectionCount}>{section.totalCount}</Text>
+                <Feather
+                  name={isCollapsed ? 'chevron-right' : 'chevron-down'}
+                  size={14}
+                  color={colors.disabled}
+                  style={{ marginLeft: 6 }}
+                />
               </TouchableOpacity>
+            );
+          }}
+          renderItem={({ item, index, section }) => {
+            const isFirst = index === 0;
+            const isLast = index === section.data.length - 1;
+            const catColor = catColorMap[item.categoria_id] || catColorMap['null'] || colors.disabled;
+            const inicial = (item.nome || '?').charAt(0).toUpperCase();
 
-              {/* Excluir */}
+            return (
               <TouchableOpacity
-                onPress={() => solicitarExclusao(item.id, item.nome)}
-                style={styles.deleteBtn}
-                hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                style={[
+                  styles.row,
+                  { backgroundColor: getHealthBgColor(item.margem, config.margemMeta), borderLeftWidth: 3, borderLeftColor: getHealthBorderColor(item.margem, config.margemMeta) },
+                  isFirst && styles.rowFirst,
+                  isLast && styles.rowLast,
+                  !isLast && styles.rowBorder,
+                ]}
+                onPress={() => navigation.navigate('ProdutoForm', { id: item.id })}
+                activeOpacity={0.6}
               >
-                <Feather name="trash-2" size={13} color={colors.disabled} />
+                {/* Avatar com inicial */}
+                <View style={[styles.avatar, { backgroundColor: catColor + '18' }]}>
+                  <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
+                </View>
+
+                {/* Info */}
+                <View style={styles.rowInfo}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={styles.rowNome} numberOfLines={1}>{item.nome}</Text>
+                  </View>
+                  <View style={styles.itemMeta}>
+                    <Text style={styles.itemMetaText}>CMV {formatCurrency(item.custoTotal)}</Text>
+                    <Text style={styles.itemMetaSep}>•</Text>
+                    <Text style={styles.itemMetaText}>Venda {formatCurrency(item.precoVenda)}</Text>
+                  </View>
+                </View>
+
+                {/* Lucro */}
+                <View style={styles.rowRight}>
+                  <Text style={[styles.itemLucro, { color: item.lucro >= 0 ? colors.success : colors.error }]}>
+                    {formatCurrency(item.lucro)}
+                  </Text>
+                  <Text style={styles.itemLucroLabel}>lucro</Text>
+                </View>
+
+                {/* Duplicar */}
+                <TouchableOpacity
+                  onPress={() => duplicarProduto(item)}
+                  style={styles.copyBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Duplicar produto"
+                  {...(Platform.OS === 'web' ? { title: 'Duplicar produto' } : {})}
+                >
+                  <Feather name="copy" size={13} color={colors.disabled} />
+                </TouchableOpacity>
+
+                {/* Excluir */}
+                <TouchableOpacity
+                  onPress={() => solicitarExclusao(item.id, item.nome)}
+                  style={styles.deleteBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Excluir produto"
+                  {...(Platform.OS === 'web' ? { title: 'Excluir produto' } : {})}
+                >
+                  <Feather name="trash-2" size={13} color={colors.disabled} />
+                </TouchableOpacity>
               </TouchableOpacity>
-            </TouchableOpacity>
-          );
-        }}
-        ListFooterComponent={<View style={{ height: 20 }} />}
-      />
+            );
+          }}
+          ListFooterComponent={<View style={{ height: 20 }} />}
+        />
+      )}
 
       <FAB onPress={() => navigation.navigate('ProdutoForm', {})} />
 
@@ -503,7 +637,6 @@ const styles = StyleSheet.create({
   // Rows agrupados
   row: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.surface,
     paddingVertical: 10, paddingLeft: spacing.sm + 2, paddingRight: 4,
   },
   rowFirst: {
@@ -520,6 +653,14 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
 
+  // Legenda semáforo
+  legendRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: 2,
+  },
+  legendSwatch: { width: 20, height: 14, borderRadius: 3 },
+  legendText: { fontSize: 11, color: colors.text, fontFamily: fontFamily.medium, fontWeight: '500', marginRight: 10 },
+
   // Avatar
   avatar: {
     width: 36, height: 36, borderRadius: 18,
@@ -530,17 +671,12 @@ const styles = StyleSheet.create({
     fontSize: 15, fontFamily: fontFamily.bold, fontWeight: '700',
   },
 
-  // Health dot
-  healthDot: {
-    width: 8, height: 8, borderRadius: 4, marginRight: 6,
-  },
-
   // Info
   rowInfo: {
     flex: 1, marginRight: spacing.sm,
   },
   rowNome: {
-    fontSize: 14, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600',
     color: colors.text,
   },
   itemMeta: { flexDirection: 'row', alignItems: 'center', marginTop: 1 },
@@ -563,21 +699,66 @@ const styles = StyleSheet.create({
     padding: 8,
   },
 
-  // Combos bar (top)
-  combosBar: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.purple + '0D',
-    borderBottomWidth: 1, borderBottomColor: colors.purple + '25',
-    paddingVertical: 8, paddingHorizontal: spacing.md,
+  // Desktop grid
+  desktopContentWrap: {
+    flex: 1,
   },
-  combosBarIcon: {
-    width: 28, height: 28, borderRadius: 8,
-    backgroundColor: colors.purple + '18',
-    alignItems: 'center', justifyContent: 'center', marginRight: spacing.sm,
+  desktopContentInner: {
+    maxWidth: 1200,
+    width: '100%',
+    flex: 1,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.lg,
   },
-  combosBarInfo: { flex: 1 },
-  combosBarTitle: { fontSize: 13, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.purple },
-  combosBarSub: { fontSize: 10, fontFamily: fontFamily.regular, color: colors.purple, opacity: 0.65 },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'flex-start',
+  },
+  gridCard: {
+    position: 'relative',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 8,
+    width: '23.5%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  gridCardName: {
+    fontSize: 12,
+    fontFamily: fontFamily.medium,
+    fontWeight: '500',
+    color: colors.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  gridCardPrice: {
+    fontSize: 13,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.primary,
+    flexShrink: 0,
+  },
+  gridCatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  gridCatTitle: {
+    fontSize: 14,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
 
   // Modal
   modalOverlay: {

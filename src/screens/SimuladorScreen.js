@@ -1,76 +1,139 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
+import React, { useState, useCallback, useEffect } from 'react';
+import { View, Text, ScrollView, StyleSheet, TextInput, TouchableOpacity, Switch, ActivityIndicator, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase } from '../utils/calculations';
+import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import InfoTooltip from '../components/InfoTooltip';
+
+const TABS = [
+  { key: 'ese', label: 'Simulador de Impacto', icon: 'trending-up' },
+  { key: 'meta', label: 'Meta de Faturamento', icon: 'target' },
+];
+
+function normalizeStr(str) {
+  return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
 
 export default function SimuladorScreen({ navigation }) {
+  const { isDesktop } = useResponsiveLayout();
+  const isWeb = Platform.OS === 'web';
+  const [activeTab, setActiveTab] = useState('ese');
+  const [loading, setLoading] = useState(true);
+
+  // ── Shared data ──
   const [insumos, setInsumos] = useState([]);
   const [produtos, setProdutos] = useState([]);
-  const [ajuste, setAjuste] = useState('10'); // percentual de aumento
-  const [insumoSelecionado, setInsumoSelecionado] = useState(null); // null = todos
+
+  // ── "E se?" state ──
+  const [ajuste, setAjuste] = useState('10');
+  const [insumoSelecionado, setInsumoSelecionado] = useState(null);
   const [resultados, setResultados] = useState(null);
   const [busca, setBusca] = useState('');
+
+  // ── "Meta de Vendas" state ──
+  const [metaLucro, setMetaLucro] = useState('');
+  const [metaProdutos, setMetaProdutos] = useState([]);
+  const [custoFixoMensal, setCustoFixoMensal] = useState(0);
+  const [totalVarDecimal, setTotalVarDecimal] = useState(0);
+  const [metaCmvPercent, setMetaCmvPercent] = useState(0);
+  const [metaResultado, setMetaResultado] = useState(null);
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
   async function loadData() {
-    const db = await getDatabase();
-    const mps = await db.getAllAsync('SELECT * FROM materias_primas ORDER BY nome');
-    setInsumos(mps);
+    try {
+      setLoading(true);
+      const db = await getDatabase();
 
-    // Load all data in parallel batch
-    const [prods, allIngs, allPreps, allEmbs] = await Promise.all([
-      db.getAllAsync('SELECT * FROM produtos WHERE preco_venda > 0'),
-      db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida, mp.nome as mp_nome, mp.id as mp_id FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
-      db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida, pr.nome as pr_nome FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
-      db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario, em.nome as emb_nome FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
-    ]);
+      const [mps, prodsR, fixas, variaveis, allIngs, allPreps, allEmbs] = await Promise.all([
+        db.getAllAsync('SELECT * FROM materias_primas ORDER BY nome'),
+        db.getAllAsync('SELECT * FROM produtos WHERE preco_venda > 0'),
+        db.getAllAsync('SELECT * FROM despesas_fixas'),
+        db.getAllAsync('SELECT * FROM despesas_variaveis'),
+        db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida, mp.nome as mp_nome, mp.id as mp_id FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
+        db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida, pr.nome as pr_nome FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
+        db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario, em.nome as emb_nome FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
+      ]);
 
-    const ingsByProd = {};
-    allIngs.forEach(i => { (ingsByProd[i.produto_id] = ingsByProd[i.produto_id] || []).push(i); });
-    const prepsByProd = {};
-    allPreps.forEach(p => { (prepsByProd[p.produto_id] = prepsByProd[p.produto_id] || []).push(p); });
-    const embsByProd = {};
-    allEmbs.forEach(e => { (embsByProd[e.produto_id] = embsByProd[e.produto_id] || []).push(e); });
+      setInsumos(mps);
 
-    const prodData = prods.map(p => {
-      const ings = ingsByProd[p.id] || [];
-      const preps = prepsByProd[p.id] || [];
-      const embs = embsByProd[p.id] || [];
-      const custoIng = ings.reduce((a, ing) => a + (converterParaBase(ing.quantidade_utilizada, ing.unidade_medida || 'g') / 1000) * (ing.preco_por_kg || 0), 0);
-      const custoPr = preps.reduce((a, pp) => a + (converterParaBase(pp.quantidade_utilizada, pp.unidade_medida || 'g') / 1000) * (pp.custo_por_kg || 0), 0);
-      const custoEmb = embs.reduce((a, pe) => a + (pe.quantidade_utilizada || 0) * (pe.preco_unitario || 0), 0);
-      const custoUnit = (custoIng + custoPr + custoEmb) / (p.rendimento_unidades || 1);
-      const margem = p.preco_venda > 0 ? (p.preco_venda - custoUnit) / p.preco_venda : 0;
-      return { id: p.id, nome: p.nome, preco_venda: p.preco_venda, custoAtual: custoUnit, margemAtual: margem, ingredientes: ings, preparos: preps, embalagens: embs, rendimento_unidades: p.rendimento_unidades || 1 };
-    });
-    setProdutos(prodData);
+      const totalFixas = fixas.reduce((a, d) => a + (d.valor || 0), 0);
+      const totalVar = variaveis.reduce((a, d) => a + (d.percentual || 0), 0); // percentual already decimal (0.06 = 6%)
+      setCustoFixoMensal(totalFixas);
+      setTotalVarDecimal(totalVar);
+
+      // Build lookup maps
+      const ingsByProd = {};
+      allIngs.forEach(i => { (ingsByProd[i.produto_id] = ingsByProd[i.produto_id] || []).push(i); });
+      const prepsByProd = {};
+      allPreps.forEach(p => { (prepsByProd[p.produto_id] = prepsByProd[p.produto_id] || []).push(p); });
+      const embsByProd = {};
+      allEmbs.forEach(e => { (embsByProd[e.produto_id] = embsByProd[e.produto_id] || []).push(e); });
+
+      // Build "E se?" product data
+      const prodData = prodsR.map(p => {
+        const ings = ingsByProd[p.id] || [];
+        const preps = prepsByProd[p.id] || [];
+        const embs = embsByProd[p.id] || [];
+        const custoIng = ings.reduce((a, ing) => a + calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada, ing.unidade_medida, ing.unidade_medida || 'g'), 0);
+        const custoPr = preps.reduce((a, pp) => a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
+        const custoEmb = embs.reduce((a, pe) => a + (pe.quantidade_utilizada || 0) * (pe.preco_unitario || 0), 0);
+        const custoUnit = (custoIng + custoPr + custoEmb) / getDivisorRendimento(p);
+        const margem = p.preco_venda > 0 ? (p.preco_venda - custoUnit) / p.preco_venda : 0;
+        return { id: p.id, nome: p.nome, preco_venda: p.preco_venda, custoAtual: custoUnit, margemAtual: margem, ingredientes: ings, preparos: preps, embalagens: embs, rendimento_unidades: p.rendimento_unidades || 1, unidade_rendimento: p.unidade_rendimento, rendimento_total: p.rendimento_total };
+      });
+      setProdutos(prodData);
+
+      // Calculate average CMV% for Meta de Faturamento
+      let somaCmvPerc = 0;
+      let countCmv = 0;
+      for (const p of prodsR) {
+        const custoIng = (ingsByProd[p.id] || []).reduce((a, ing) => a + calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada, ing.unidade_medida, ing.unidade_medida || 'g'), 0);
+        const custoPr = (prepsByProd[p.id] || []).reduce((a, pp) => a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
+        const custoEmb = (embsByProd[p.id] || []).reduce((a, e) => a + (e.preco_unitario || 0) * (e.quantidade_utilizada || 0), 0);
+        const custoUnit = (custoIng + custoPr + custoEmb) / getDivisorRendimento(p);
+        if (p.preco_venda > 0) {
+          somaCmvPerc += custoUnit / p.preco_venda;
+          countCmv++;
+        }
+      }
+      const cmvMedioPerc = countCmv > 0 ? somaCmvPerc / countCmv : 0;
+      setMetaCmvPercent(cmvMedioPerc);
+      setMetaProdutos(prodsR); // keep only for empty state check
+    } catch (e) {
+    } finally {
+      setLoading(false);
+    }
   }
 
+  // Auto-simular quando ajuste ou insumo muda (se já existe resultado anterior)
+  useEffect(() => {
+    if (resultados !== null && produtos.length > 0) {
+      simular();
+    }
+  }, [ajuste, insumoSelecionado]);
+
+  // ── "E se?" logic ──
   function simular() {
     const pct = parseFloat(ajuste.replace(',', '.')) / 100;
     if (isNaN(pct)) return;
 
     const results = produtos.map(p => {
       let novoCustoIng = p.ingredientes.reduce((a, ing) => {
-        const qtBase = converterParaBase(ing.quantidade_utilizada, ing.unidade_medida || 'g');
         let preco = ing.preco_por_kg || 0;
-        // Aplicar ajuste se for o insumo selecionado ou todos
         if (!insumoSelecionado || ing.mp_id === insumoSelecionado) {
           preco = preco * (1 + pct);
         }
-        return a + (qtBase / 1000) * preco;
+        if ((ing.unidade_medida || '').toLowerCase() === 'un') return a + ing.quantidade_utilizada * preco;
+        return a + (converterParaBase(ing.quantidade_utilizada, ing.unidade_medida || 'g') / 1000) * preco;
       }, 0);
-      const custoPr = p.preparos.reduce((a, pp) => {
-        const qtBase = converterParaBase(pp.quantidade_utilizada, pp.unidade_medida || 'g');
-        return a + (qtBase / 1000) * (pp.custo_por_kg || 0);
-      }, 0);
+      const custoPr = p.preparos.reduce((a, pp) => a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
       const custoEmb = p.embalagens.reduce((a, pe) => a + (pe.quantidade_utilizada || 0) * (pe.preco_unitario || 0), 0);
 
-      const novoCusto = (novoCustoIng + custoPr + custoEmb) / p.rendimento_unidades;
+      const novoCusto = (novoCustoIng + custoPr + custoEmb) / getDivisorRendimento(p);
       const novaMargemVal = p.preco_venda - novoCusto;
       const novaMargem = p.preco_venda > 0 ? novaMargemVal / p.preco_venda : 0;
       const impacto = novoCusto - p.custoAtual;
@@ -82,19 +145,58 @@ export default function SimuladorScreen({ navigation }) {
         impacto,
         impactoPercent: p.custoAtual > 0 ? impacto / p.custoAtual : 0,
       };
-    }).sort((a, b) => a.margemNova - b.margemNova); // pior margem primeiro
+    }).sort((a, b) => a.margemNova - b.margemNova);
 
     setResultados(results);
   }
 
   const insumosFiltrados = busca
-    ? insumos.filter(i => i.nome.toLowerCase().includes(busca.toLowerCase()))
+    ? insumos.filter(i => normalizeStr(i.nome).includes(normalizeStr(busca)))
     : insumos;
 
-  return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        {/* Explicação */}
+  // ── "Meta de Vendas" logic ──
+  // Fórmula simplificada: Faturamento = (Fixos + Lucro) / (1 - CMV% - Var%)
+  function calcularMeta(valor) {
+    const lucro = parseFloat(valor) || 0;
+    if (lucro <= 0) {
+      setMetaResultado(null);
+      return;
+    }
+
+    const margemDisponivel = 1 - metaCmvPercent - totalVarDecimal;
+    if (margemDisponivel <= 0) {
+      setMetaResultado(null);
+      return;
+    }
+
+    const faturamentoMensal = (custoFixoMensal + lucro) / margemDisponivel;
+    const faturamentoDiario = faturamentoMensal / 30;
+
+    setMetaResultado({
+      faturamentoMensal,
+      faturamentoDiario,
+      cmvValor: faturamentoMensal * metaCmvPercent,
+      varValor: faturamentoMensal * totalVarDecimal,
+    });
+  }
+
+  function onChangeMeta(text) {
+    const numericOnly = text.replace(/[^0-9]/g, '');
+    setMetaLucro(numericOnly);
+    calcularMeta(numericOnly);
+  }
+
+  function onQuickValue(valor) {
+    const str = String(valor);
+    setMetaLucro(str);
+    calcularMeta(str);
+  }
+
+  // ── Tab content renderers ──
+  function renderEseTab() {
+    return (
+      <>
+        {/* Explicacao */}
         <View style={styles.infoCard}>
           <Feather name="zap" size={18} color={colors.primary} />
           <View style={{ flex: 1, marginLeft: 10 }}>
@@ -208,8 +310,8 @@ export default function SimuladorScreen({ navigation }) {
               </View>
             </View>
 
-            {/* Lista de produtos */}
-            {resultados.map(r => {
+            {/* Lista de produtos (filtrada pelo insumo selecionado) */}
+            {(insumoSelecionado ? resultados.filter(r => r.ingredientes.some(ing => ing.mp_id === insumoSelecionado)) : resultados).map(r => {
               const margemColor = r.margemNova >= 0.15 ? colors.success : r.margemNova >= 0.05 ? colors.warning : colors.error;
               return (
                 <View key={r.id} style={styles.produtoRow}>
@@ -230,6 +332,182 @@ export default function SimuladorScreen({ navigation }) {
             })}
           </View>
         )}
+      </>
+    );
+  }
+
+  function renderMetaTab() {
+    return (
+      <>
+        {/* Info card */}
+        <View style={styles.metaInfoCard}>
+          <View style={styles.metaInfoIconWrap}>
+            <Feather name="zap" size={20} color="#fff" />
+          </View>
+          <View style={{ flex: 1, marginLeft: spacing.sm }}>
+            <Text style={styles.metaInfoTitle}>Quanto preciso vender?</Text>
+            <Text style={styles.metaInfoDesc}>
+              Informe quanto deseja lucrar por mês. O cálculo já considera todos os custos: ingredientes (CMV), despesas fixas e variáveis (impostos, taxas).
+            </Text>
+          </View>
+        </View>
+
+        {/* Ponto de Equilíbrio */}
+        {metaProdutos.length > 0 && custoFixoMensal > 0 && (() => {
+          const margemDisp = 1 - metaCmvPercent - totalVarDecimal;
+          if (margemDisp <= 0) return null;
+          const pe = custoFixoMensal / margemDisp;
+          return (
+            <View style={[styles.metaCard, { borderLeftWidth: 3, borderLeftColor: colors.warning }]}>
+              <Text style={{ fontSize: 12, fontFamily: fontFamily.semiBold, color: colors.warning, marginBottom: 4 }}>Ponto de Equilíbrio</Text>
+              <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary, marginBottom: 6 }}>
+                Faturamento mínimo para cobrir todos os custos (lucro zero)
+              </Text>
+              <Text style={{ fontSize: 18, fontFamily: fontFamily.bold, color: colors.text }}>{formatCurrency(pe)}<Text style={{ fontSize: 12, color: colors.textSecondary }}>/mês</Text></Text>
+              <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 2 }}>{formatCurrency(pe / 30)}/dia · CMV médio {formatPercent(metaCmvPercent)} + {formatPercent(totalVarDecimal)} variáveis + {formatCurrency(custoFixoMensal)} fixos</Text>
+            </View>
+          );
+        })()}
+
+        {/* Meta input */}
+        <View style={styles.metaCard}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.metaCardLabel}>Meta de lucro líquido mensal</Text>
+            <InfoTooltip
+              title="Lucro Líquido"
+              text="É o valor que sobra depois de descontar TODOS os custos: ingredientes (CMV), despesas fixas (aluguel, energia, etc), despesas variáveis (impostos, taxas) e custos de entrega. É o dinheiro que realmente vai para o seu bolso."
+            />
+          </View>
+          <View style={styles.metaInputRow}>
+            <Text style={styles.metaInputPrefix}>R$</Text>
+            <TextInput
+              style={styles.metaInput}
+              value={metaLucro}
+              onChangeText={onChangeMeta}
+              keyboardType="numeric"
+              placeholder="0"
+              placeholderTextColor={colors.disabled}
+            />
+          </View>
+
+          {/* Quick buttons */}
+          <View style={styles.quickRow}>
+            {[3000, 5000, 8000, 10000].map(v => (
+              <TouchableOpacity
+                key={v}
+                style={[styles.quickBtn, metaLucro === String(v) && styles.quickBtnActive]}
+                onPress={() => onQuickValue(v)}
+              >
+                <Text style={[styles.quickBtnText, metaLucro === String(v) && styles.quickBtnTextActive]}>
+                  {formatCurrency(v)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Resultado */}
+        {metaResultado && (
+          <View style={styles.metaResultCard}>
+            <Text style={styles.metaResultLabel}>Você precisa faturar</Text>
+            <Text style={styles.metaResultBig}>{formatCurrency(metaResultado.faturamentoMensal)}<Text style={styles.metaResultSuffix}>/mês</Text></Text>
+            <Text style={styles.metaResultDaily}>{formatCurrency(metaResultado.faturamentoDiario)} por dia</Text>
+            <View style={styles.metaResultDivider} />
+
+            {/* Decomposição clara do cálculo */}
+            <View style={{ gap: 6, width: '100%' }}>
+              <Text style={{ fontSize: 12, fontFamily: fontFamily.bold, color: colors.text, marginBottom: 2 }}>Como chegamos nesse valor:</Text>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary }}>Faturamento necessário</Text>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.bold, color: colors.text }}>{formatCurrency(metaResultado.faturamentoMensal)}</Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.error }}>− CMV médio ({formatPercent(metaCmvPercent)})</Text>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.error }}>-{formatCurrency(metaResultado.cmvValor)}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.error }}>− Custos variáveis ({formatPercent(totalVarDecimal)})</Text>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.error }}>-{formatCurrency(metaResultado.varValor)}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.error }}>− Custos fixos mensais</Text>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.error }}>-{formatCurrency(custoFixoMensal)}</Text>
+              </View>
+
+              <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 4, marginTop: 2, flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: 12, fontFamily: fontFamily.bold, color: colors.success }}>= Lucro líquido</Text>
+                <Text style={{ fontSize: 12, fontFamily: fontFamily.bold, color: colors.success }}>{formatCurrency(parseFloat(metaLucro) || 0)}/mês</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Empty state */}
+        {metaProdutos.length === 0 && !loading && (
+          <View style={styles.emptyCard}>
+            <Feather name="package" size={40} color={colors.disabled} />
+            <Text style={styles.emptyText}>Nenhum produto com preço cadastrado.</Text>
+            <Text style={styles.emptySubtext}>Cadastre produtos com preço de venda para usar esta ferramenta.</Text>
+          </View>
+        )}
+
+        <View style={{ height: spacing.xl }} />
+      </>
+    );
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      {/* Tabs */}
+      <View style={[styles.tabsRow, isDesktop && styles.tabsRowDesktop]}>
+        {TABS.map(tab => {
+          const isActive = activeTab === tab.key;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={[
+                styles.tab,
+                isDesktop && styles.tabDesktop,
+                isActive && styles.tabActive,
+                isActive && isDesktop && styles.tabActiveDesktop,
+                isWeb && { cursor: 'pointer' },
+              ]}
+              onPress={() => setActiveTab(tab.key)}
+              activeOpacity={0.7}
+            >
+              {isDesktop && (
+                <Feather
+                  name={tab.icon}
+                  size={15}
+                  color={isActive ? colors.primary : colors.textSecondary}
+                  style={{ marginRight: 6 }}
+                />
+              )}
+              <Text style={[
+                styles.tabText,
+                isDesktop && styles.tabTextDesktop,
+                isActive && styles.tabTextActive,
+                isActive && isDesktop && styles.tabTextActiveDesktop,
+              ]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {activeTab === 'ese' ? renderEseTab() : renderMetaTab()}
       </ScrollView>
     </View>
   );
@@ -237,8 +515,82 @@ export default function SimuladorScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, maxWidth: 960, alignSelf: 'center', width: '100%' },
+  content: { padding: spacing.md, maxWidth: 1000, alignSelf: 'flex-start', width: '100%', paddingLeft: spacing.lg },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
 
+  // ── Tabs ──
+  tabsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
+    gap: 6,
+    marginBottom: 0,
+    flexWrap: 'wrap',
+    paddingTop: spacing.sm,
+  },
+  tabsRowDesktop: {
+    gap: 0,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    flexWrap: 'nowrap',
+    paddingTop: 0,
+  },
+  tab: {
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.inputBg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.xs,
+  },
+  tabDesktop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderRadius: 0,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.lg,
+    marginRight: spacing.sm,
+    marginBottom: 0,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  tabActiveDesktop: {
+    backgroundColor: 'transparent',
+    borderBottomColor: colors.primary,
+  },
+  tabText: {
+    fontSize: 11,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  tabTextDesktop: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  tabTextActive: {
+    color: '#fff',
+  },
+  tabTextActiveDesktop: {
+    color: colors.primary,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+  },
+
+  // ── "E se?" styles ──
   infoCard: {
     flexDirection: 'row', alignItems: 'flex-start',
     backgroundColor: colors.primary + '08', borderRadius: borderRadius.md,
@@ -327,4 +679,247 @@ const styles = StyleSheet.create({
   produtoDetalhe: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
   produtoMargens: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 12 },
   margemText: { fontSize: fonts.small, fontFamily: fontFamily.medium },
+
+  // ── "Meta de Vendas" styles ──
+  metaInfoCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.primaryDark,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    alignItems: 'flex-start',
+  },
+  metaInfoIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primaryLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  metaInfoTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: fonts.medium,
+    color: '#fff',
+    marginBottom: 4,
+  },
+  metaInfoDesc: {
+    fontFamily: fontFamily.regular,
+    fontSize: fonts.small,
+    color: colors.primaryPale,
+    lineHeight: 20,
+  },
+
+  metaCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  metaCardLabel: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: fonts.regular,
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+
+  metaInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.inputBg,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+  },
+  metaInputPrefix: {
+    fontFamily: fontFamily.bold,
+    fontSize: fonts.title,
+    color: colors.primary,
+    marginRight: spacing.sm,
+  },
+  metaInput: {
+    flex: 1,
+    fontFamily: fontFamily.bold,
+    fontSize: fonts.header,
+    color: colors.text,
+    paddingVertical: spacing.md,
+    textAlign: 'center',
+  },
+
+  quickRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  quickBtn: {
+    flex: 1,
+    minWidth: 80,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.inputBg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  quickBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  quickBtnText: {
+    fontFamily: fontFamily.medium,
+    fontSize: fonts.small,
+    color: colors.text,
+  },
+  quickBtnTextActive: {
+    color: '#fff',
+  },
+
+  metaResultCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    alignItems: 'center',
+  },
+  metaResultLabel: {
+    fontFamily: fontFamily.medium,
+    fontSize: fonts.regular,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  metaResultBig: {
+    fontFamily: fontFamily.bold,
+    fontSize: 32,
+    color: colors.primary,
+  },
+  metaResultSuffix: {
+    fontFamily: fontFamily.medium,
+    fontSize: fonts.regular,
+    color: colors.textSecondary,
+  },
+  metaResultDaily: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: fonts.large,
+    color: colors.text,
+    marginTop: spacing.xs,
+  },
+  metaResultDivider: {
+    width: '60%',
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: spacing.md,
+  },
+  metaResultDetail: {
+    fontFamily: fontFamily.regular,
+    fontSize: fonts.small,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+
+  // Table
+  tableTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: fonts.medium,
+    color: colors.text,
+    marginBottom: 2,
+  },
+  tableSubtitle: {
+    fontFamily: fontFamily.regular,
+    fontSize: fonts.tiny,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    marginBottom: spacing.xs,
+  },
+  thText: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: fonts.tiny,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.inputBg,
+  },
+  tableRowInactive: {
+    opacity: 0.5,
+  },
+  tdNome: {
+    flex: 1,
+    fontFamily: fontFamily.medium,
+    fontSize: fonts.small,
+    color: colors.text,
+  },
+  tdText: {
+    fontFamily: fontFamily.regular,
+    fontSize: fonts.small,
+    color: colors.text,
+  },
+  tdUnidades: {
+    fontFamily: fontFamily.bold,
+    fontSize: fonts.small,
+    color: colors.primary,
+  },
+  tdInactive: {
+    color: colors.disabled,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: spacing.md,
+    marginTop: spacing.xs,
+    borderTopWidth: 2,
+    borderTopColor: colors.border,
+  },
+  totalLabel: {
+    fontFamily: fontFamily.bold,
+    fontSize: fonts.regular,
+    color: colors.text,
+  },
+  totalValue: {
+    fontFamily: fontFamily.bold,
+    fontSize: fonts.regular,
+    color: colors.primary,
+  },
+
+  // Empty state
+  emptyCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xl,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  emptyText: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: fonts.regular,
+    color: colors.text,
+    marginTop: spacing.md,
+  },
+  emptySubtext: {
+    fontFamily: fontFamily.regular,
+    fontSize: fonts.small,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+  },
 });

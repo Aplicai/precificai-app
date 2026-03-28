@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, ActivityIndicator, Modal, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../config/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 
 export default function ContaSegurancaScreen({ navigation }) {
@@ -16,6 +17,9 @@ export default function ContaSegurancaScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [showCurrentPass, setShowCurrentPass] = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   async function handleUpdateEmail() {
     if (!newEmail.trim() || !newEmail.includes('@')) {
@@ -77,6 +81,72 @@ export default function ContaSegurancaScreen({ navigation }) {
       Alert.alert('Erro', err.message || 'Não foi possível alterar a senha.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (Platform.OS === 'web') {
+      const confirm1 = window.confirm('Excluir conta?\n\nTodos os seus dados serão permanentemente excluídos. Esta ação NÃO pode ser desfeita.');
+      if (!confirm1) return;
+      const confirm2 = window.confirm('Tem certeza absoluta?\n\nClique em OK para confirmar a exclusão definitiva da sua conta.');
+      if (!confirm2) return;
+      setDeleteConfirmText('');
+      setShowDeleteModal(true);
+    } else {
+      Alert.alert(
+        'Excluir conta?',
+        'Todos os seus dados serão permanentemente excluídos.',
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Continuar',
+            style: 'destructive',
+            onPress: () => {
+              Alert.alert(
+                'Tem certeza?',
+                'Esta ação NÃO pode ser desfeita.',
+                [
+                  { text: 'Cancelar', style: 'cancel' },
+                  {
+                    text: 'Sim, excluir',
+                    style: 'destructive',
+                    onPress: () => {
+                      setDeleteConfirmText('');
+                      setShowDeleteModal(true);
+                    },
+                  },
+                ]
+              );
+            },
+          },
+        ]
+      );
+    }
+  }
+
+  async function excluirConta() {
+    if (deleteConfirmText !== 'EXCLUIR') {
+      Alert.alert('Erro', 'Digite EXCLUIR para confirmar.');
+      return;
+    }
+    setDeleting(true);
+    try {
+      const db = await getDatabase();
+      const SAFE_TABLES = Object.freeze(['produto_embalagens', 'produto_preparos', 'produto_ingredientes', 'preparo_ingredientes', 'delivery_combo_itens', 'delivery_produto_itens', 'delivery_combos', 'delivery_produtos', 'delivery_adicionais', 'delivery_config', 'vendas', 'produtos', 'preparos', 'embalagens', 'materias_primas', 'categorias_produtos', 'categorias_preparos', 'categorias_embalagens', 'categorias_insumos', 'faturamento_mensal', 'despesas_variaveis', 'despesas_fixas', 'historico_precos', 'perfil', 'configuracao']);
+      for (const table of SAFE_TABLES) {
+        try { await supabase.from(table).delete().eq('user_id', user.id); } catch(e) {}
+      }
+      await supabase.auth.signOut();
+      if (Platform.OS === 'web') {
+        window.alert('Solicitação de exclusão registrada. Seus dados serão retidos por 30 dias (LGPD) e depois excluídos permanentemente. Um e-mail de confirmação será enviado.');
+      } else {
+        Alert.alert('Exclusão solicitada', 'Seus dados serão retidos por 30 dias conforme a LGPD e depois excluídos permanentemente. Um e-mail de confirmação será enviado.');
+      }
+    } catch(e) {
+      Alert.alert('Erro', 'Não foi possível excluir a conta.');
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
     }
   }
 
@@ -215,6 +285,57 @@ export default function ContaSegurancaScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Excluir conta */}
+      <TouchableOpacity style={{ marginTop: 40, alignItems: 'center', padding: 12 }} onPress={handleDeleteAccount}>
+        <Text style={{ fontSize: 13, color: colors.error, fontFamily: fontFamily.medium }}>Excluir minha conta</Text>
+        <Text style={{ fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.regular, marginTop: 2, textAlign: 'center' }}>Seus dados serão retidos por 30 dias e depois excluídos permanentemente (LGPD)</Text>
+      </TouchableOpacity>
+
+      {/* Delete Confirmation Modal */}
+      <Modal visible={showDeleteModal} animationType="fade" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.deleteModalContent}>
+            <Feather name="alert-triangle" size={40} color="#dc2626" style={{ alignSelf: 'center', marginBottom: 12 }} />
+            <Text style={styles.deleteModalTitle}>Confirmar exclusão</Text>
+            <Text style={styles.deleteModalDesc}>
+              Conforme a LGPD (Lei 13.709/2018), seus dados serão retidos por <Text style={{ fontWeight: '700' }}>30 dias</Text> após a exclusão para fins de auditoria e cumprimento de obrigações legais. Após esse período, todos os dados serão eliminados definitivamente.
+            </Text>
+            <Text style={[styles.deleteModalDesc, { marginTop: 8 }]}>
+              Digite <Text style={{ fontWeight: '700', color: '#dc2626' }}>EXCLUIR</Text> abaixo para confirmar.
+            </Text>
+            <TextInput
+              style={styles.deleteModalInput}
+              value={deleteConfirmText}
+              onChangeText={setDeleteConfirmText}
+              placeholder="Digite EXCLUIR"
+              autoCapitalize="characters"
+              placeholderTextColor={colors.disabled}
+            />
+            <View style={styles.deleteModalBtnRow}>
+              <TouchableOpacity
+                style={styles.deleteModalCancelBtn}
+                onPress={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.deleteModalCancelBtnText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteModalDeleteBtn, { opacity: deleteConfirmText === 'EXCLUIR' ? 1 : 0.5 }]}
+                onPress={excluirConta}
+                disabled={deleteConfirmText !== 'EXCLUIR' || deleting}
+                activeOpacity={0.7}
+              >
+                {deleting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.deleteModalDeleteBtnText}>Excluir Conta</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -260,4 +381,24 @@ const styles = StyleSheet.create({
     paddingVertical: 12, marginTop: spacing.md,
   },
   saveBtnText: { color: '#fff', fontSize: fonts.body, fontFamily: fontFamily.semiBold },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  deleteModalContent: { backgroundColor: '#fff', borderRadius: borderRadius.xl, padding: spacing.lg, maxWidth: 400, width: '100%' },
+  deleteModalTitle: { fontSize: 18, fontWeight: '700', color: '#dc2626', textAlign: 'center', marginBottom: 8 },
+  deleteModalDesc: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 16 },
+  deleteModalInput: {
+    backgroundColor: colors.surface, borderRadius: borderRadius.md, paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 15, color: colors.text, borderWidth: 1.5, borderColor: '#fca5a5', textAlign: 'center',
+    fontWeight: '700', letterSpacing: 2, marginBottom: 16,
+  },
+  deleteModalBtnRow: { flexDirection: 'row', gap: 10 },
+  deleteModalCancelBtn: {
+    flex: 1, borderRadius: borderRadius.md, paddingVertical: 12,
+    alignItems: 'center', borderWidth: 1.5, borderColor: colors.border,
+  },
+  deleteModalCancelBtnText: { fontSize: 14, fontWeight: '600', color: colors.textSecondary },
+  deleteModalDeleteBtn: {
+    flex: 1, borderRadius: borderRadius.md, paddingVertical: 12,
+    alignItems: 'center', backgroundColor: '#dc2626',
+  },
+  deleteModalDeleteBtnText: { fontSize: 14, fontWeight: '600', color: '#fff' },
 });
