@@ -20,6 +20,11 @@ function normalizeStr(str) {
   return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
+function isMobileWeb() {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
 export default function ExportPDFScreen({ navigation }) {
   const { isDesktop } = useResponsiveLayout();
   const [activeTab, setActiveTab] = useState('produtos');
@@ -181,6 +186,11 @@ export default function ExportPDFScreen({ navigation }) {
   const handleExport = async () => {
     if (activeTab === 'preparos') return handleExportPreparos();
     if (selectedCount === 0) return;
+    // Pré-abre a janela ANTES do await para evitar bloqueio de popup
+    let preOpenedWindow = null;
+    if (Platform.OS === 'web' && !isMobileWeb()) {
+      try { preOpenedWindow = window.open('', '_blank'); } catch(e) {}
+    }
     setExporting(true);
     try {
       const db = await getDatabase();
@@ -388,9 +398,10 @@ export default function ExportPDFScreen({ navigation }) {
       }
 
       const html = buildHTML(fichas, perfil, config, incluirAdicionais);
-      exportarPDF(html);
+      exportarPDF(html, preOpenedWindow);
     } catch (e) {
-      if (Platform.OS === 'web') alert('Erro ao exportar: ' + e.message);
+      if (preOpenedWindow && !preOpenedWindow.closed) preOpenedWindow.close();
+      if (Platform.OS === 'web') alert('Erro ao exportar: ' + (e.message || e));
     } finally {
       setExporting(false);
     }
@@ -1164,11 +1175,6 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
   </div>
 </body>
 </html>`;
-}
-
-function isMobileWeb() {
-  if (typeof navigator === 'undefined') return false;
-  return /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
 
 function exportarPDF(htmlContent, preOpenedWindow) {
