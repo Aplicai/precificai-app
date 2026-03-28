@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,6 +13,7 @@ export default function LoginScreen({ navigation }) {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const rateLimit = useRateLimit();
+  const passwordRef = useRef(null);
 
   const handleLogin = async () => {
     const limitMsg = rateLimit.checkLimit();
@@ -47,7 +48,7 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.inner}>
+      <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
         <View style={styles.logoArea}>
           <Image
             source={require('../../assets/images/logo-header-white.png')}
@@ -59,6 +60,7 @@ export default function LoginScreen({ navigation }) {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Entrar</Text>
+          <Text style={styles.cardSubtitle}>Bom te ver de novo!</Text>
 
           {error ? (
             <View style={styles.errorBox}>
@@ -76,17 +78,26 @@ export default function LoginScreen({ navigation }) {
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
+            autoComplete="email"
+            textContentType="emailAddress"
+            returnKeyType="next"
+            onSubmitEditing={() => passwordRef.current?.focus()}
             placeholderTextColor={colors.disabled}
           />
 
           <Text style={styles.label}>Senha</Text>
           <View style={styles.passwordContainer}>
             <TextInput
+              ref={passwordRef}
               style={styles.passwordInput}
               value={password}
               onChangeText={setPassword}
               placeholder="Sua senha"
               secureTextEntry={!showPassword}
+              autoComplete="password"
+              textContentType="password"
+              returnKeyType="done"
+              onSubmitEditing={handleLogin}
               placeholderTextColor={colors.disabled}
             />
             <TouchableOpacity
@@ -102,7 +113,7 @@ export default function LoginScreen({ navigation }) {
             <Text style={styles.forgotText}>Esqueci minha senha</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.primaryBtn} onPress={handleLogin} disabled={loading} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.primaryBtn} onPress={handleLogin} disabled={loading} activeOpacity={0.7}>
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
@@ -120,19 +131,20 @@ export default function LoginScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.primary, alignItems: 'center' },
-  inner: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.lg, maxWidth: 420, width: '100%' },
+  inner: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: spacing.lg, paddingVertical: 32, maxWidth: 420, width: '100%', alignSelf: 'center' },
   logoArea: { alignItems: 'center', marginBottom: 28 },
   logo: { width: 160, height: 36, marginBottom: 8 },
   subtitle: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontFamily: fontFamily.regular, textAlign: 'center', lineHeight: 19 },
   card: { backgroundColor: '#fff', borderRadius: borderRadius.xl, padding: spacing.lg, paddingTop: 24 },
-  cardTitle: { fontSize: 22, fontWeight: '700', fontFamily: fontFamily.bold, color: colors.text, marginBottom: 20, textAlign: 'center' },
+  cardTitle: { fontSize: 22, fontWeight: '700', fontFamily: fontFamily.bold, color: colors.text, marginBottom: 4, textAlign: 'center' },
+  cardSubtitle: { fontSize: 13, color: colors.textSecondary, textAlign: 'center', marginBottom: 16, fontFamily: fontFamily.regular },
   label: { fontSize: 13, fontFamily: fontFamily.medium, color: colors.textSecondary, marginBottom: 6, marginTop: 14 },
   input: {
     backgroundColor: colors.inputBg, borderRadius: borderRadius.sm, paddingHorizontal: 14, paddingVertical: 12,
