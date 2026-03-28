@@ -767,7 +767,7 @@ const styles = StyleSheet.create({
   customHeader: {
     backgroundColor: colors.primary,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.md, paddingBottom: 12,
+    paddingHorizontal: spacing.md, paddingBottom: 10,
     minHeight: 56,
   },
   headerIconBtn: {
