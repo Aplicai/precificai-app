@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   header: {
-    fontSize: 22,
+    fontSize: 20,
     fontFamily: fontFamily.bold,
     fontWeight: '700',
     color: colors.text,
@@ -258,8 +258,8 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: fonts.regular,
-    fontFamily: fontFamily.bold,
-    fontWeight: '700',
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
     color: colors.text,
     marginBottom: spacing.sm,
     marginTop: spacing.md,
@@ -308,9 +308,9 @@ const styles = StyleSheet.create({
   },
   faqQuestion: {
     flex: 1,
-    fontSize: fonts.regular,
-    fontFamily: fontFamily.semiBold,
-    fontWeight: '600',
+    fontSize: fonts.small,
+    fontFamily: fontFamily.medium,
+    fontWeight: '500',
     color: colors.text,
     marginRight: spacing.sm,
   },
@@ -403,9 +403,9 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   contactValue: {
-    fontSize: fonts.regular,
-    fontFamily: fontFamily.semiBold,
-    fontWeight: '600',
+    fontSize: fonts.small,
+    fontFamily: fontFamily.medium,
+    fontWeight: '500',
     color: colors.primary,
   },
   responseTimeRow: {
@@ -440,9 +440,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   contactCardTitle: {
-    fontSize: fonts.large || 18,
-    fontFamily: fontFamily.bold,
-    fontWeight: '700',
+    fontSize: fonts.regular,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
     color: colors.primary,
   },
   contactCardDesc: {

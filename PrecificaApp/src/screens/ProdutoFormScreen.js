@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Alert, Modal, TextInput, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Alert, Modal, TextInput, TouchableWithoutFeedback } from 'react-native';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import InputField from '../components/InputField';
@@ -39,8 +39,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
   const isFocused = useIsFocused();
   const { isDesktop } = useResponsiveLayout();
   const editId = route.params?.id;
+  const defaultCategoriaId = route.params?.categoriaId || null;
   const [form, setForm] = useState({
-    nome: '', categoria_id: null, rendimento_total: '', unidade_rendimento: 'g',
+    nome: '', categoria_id: defaultCategoriaId, rendimento_total: '', unidade_rendimento: 'g',
     rendimento_unidades: '1', tempo_preparo: '', unidade_tempo: 'Minutos',
     preco_venda: '', margem_lucro_produto: '',
     validade_dias: '', modo_preparo: '', observacoes: '',
@@ -613,7 +614,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 960, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}>
+      <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 960, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled">
         <View style={isDesktop ? styles.desktopRow : undefined}>
         <View style={isDesktop ? styles.desktopLeftCol : undefined}>
         {/* Bloco 1: Informações do Produto */}

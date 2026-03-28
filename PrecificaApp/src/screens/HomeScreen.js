@@ -10,12 +10,20 @@ import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { getSetupStatus } from '../utils/setupStatus';
 import InfoTooltip from '../components/InfoTooltip';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import { useAuth } from '../contexts/AuthContext';
 
-const { width } = Dimensions.get('window');
 const GAP = spacing.sm;
+
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Bom dia';
+  if (h < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
 
 export default function HomeScreen({ navigation }) {
   const { isDesktop } = useResponsiveLayout();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [d, setD] = useState({
     totalInsumos: 0, totalEmbalagens: 0, totalPreparos: 0, totalProdutos: 0,
@@ -350,7 +358,9 @@ export default function HomeScreen({ navigation }) {
         {!isDesktop && (
           <View style={[styles.customHeader, { paddingTop: insets.top + 8 }]}>
             <View style={{ width: 36 }} />
-            <Image source={require('../../assets/images/logo-header-white.png')} style={{ width: 130, height: 28 }} resizeMode="contain" />
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <Image source={require('../../assets/images/logo-header-white.png')} style={{ width: 150, height: 34 }} resizeMode="contain" />
+            </View>
             <View style={{ width: 36 }} />
           </View>
         )}
@@ -376,11 +386,13 @@ export default function HomeScreen({ navigation }) {
         <Feather name="user" size={20} color="#fff" />
       </TouchableOpacity>
 
-      <Image
-        source={require('../../assets/images/logo-header-white.png')}
-        style={{ width: 130, height: 28 }}
-        resizeMode="contain"
-      />
+      <View style={{ alignItems: 'center', flex: 1 }}>
+        <Image
+          source={require('../../assets/images/logo-header-white.png')}
+          style={{ width: 150, height: 34 }}
+          resizeMode="contain"
+        />
+      </View>
 
       {alertas.length > 0 ? (
         <TouchableOpacity onPress={() => setShowNotif(true)} style={styles.headerIconBtn} activeOpacity={0.7}>
@@ -396,6 +408,14 @@ export default function HomeScreen({ navigation }) {
     )}
 
     <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
+
+      {/* Greeting */}
+      <View style={styles.greetingRow}>
+        <Text style={styles.greetingText}>{getGreeting()} 👋</Text>
+        <Text style={styles.greetingDesc}>
+          {pendente ? 'Complete a configuração para começar' : d.totalProdutos === 0 ? 'Cadastre seus primeiros produtos' : 'Veja como está sua precificação'}
+        </Text>
+      </View>
 
       {/* Setup progress banner */}
       {emSetup && setupStatus && (
@@ -738,11 +758,17 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, paddingBottom: 40, maxWidth: 960, alignSelf: 'center', width: '100%' },
 
+  // Greeting
+  greetingRow: { marginBottom: spacing.md },
+  greetingText: { fontSize: 20, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.text },
+  greetingDesc: { fontSize: 13, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 2 },
+
   // Custom header
   customHeader: {
     backgroundColor: colors.primary,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingBottom: 12,
+    minHeight: 56,
   },
   headerIconBtn: {
     width: 36, height: 36, borderRadius: 18,
@@ -815,7 +841,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   kpiCard: {
-    width: (width - spacing.md * 2 - GAP) / 2 - 1, minWidth: 150,
+    width: '48.5%', minWidth: 150,
     backgroundColor: colors.surface, borderRadius: borderRadius.lg,
     padding: spacing.md + 4,
     shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 1,

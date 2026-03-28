@@ -363,7 +363,7 @@ export default function SimuladorScreen({ navigation }) {
               <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary, marginBottom: 6 }}>
                 Faturamento mínimo para cobrir todos os custos (lucro zero)
               </Text>
-              <Text style={{ fontSize: 18, fontFamily: fontFamily.bold, color: colors.text }}>{formatCurrency(pe)}<Text style={{ fontSize: 12, color: colors.textSecondary }}>/mês</Text></Text>
+              <Text style={{ fontSize: 16, fontFamily: fontFamily.bold, color: colors.text }}>{formatCurrency(pe)}<Text style={{ fontSize: 11, color: colors.textSecondary }}>/mês</Text></Text>
               <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 2 }}>{formatCurrency(pe / 30)}/dia · CMV médio {formatPercent(metaCmvPercent)} + {formatPercent(totalVarDecimal)} variáveis + {formatCurrency(custoFixoMensal)} fixos</Text>
             </View>
           );
@@ -515,7 +515,7 @@ export default function SimuladorScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, maxWidth: 1000, alignSelf: 'flex-start', width: '100%', paddingLeft: spacing.lg },
+  content: { padding: spacing.md, maxWidth: 1000, alignSelf: 'center', width: '100%' },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -669,7 +669,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.sm, padding: spacing.sm,
   },
   resumoLabel: { fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.medium, marginBottom: 4 },
-  resumoValue: { fontSize: fonts.large, fontFamily: fontFamily.bold, color: colors.text },
+  resumoValue: { fontSize: fonts.regular, fontFamily: fontFamily.bold, color: colors.text },
 
   produtoRow: {
     flexDirection: 'row', alignItems: 'center',
@@ -737,16 +737,16 @@ const styles = StyleSheet.create({
   },
   metaInputPrefix: {
     fontFamily: fontFamily.bold,
-    fontSize: fonts.title,
+    fontSize: fonts.large,
     color: colors.primary,
     marginRight: spacing.sm,
   },
   metaInput: {
     flex: 1,
     fontFamily: fontFamily.bold,
-    fontSize: fonts.header,
+    fontSize: fonts.title,
     color: colors.text,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm + 4,
     textAlign: 'center',
   },
 
@@ -782,7 +782,7 @@ const styles = StyleSheet.create({
   metaResultCard: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
-    padding: spacing.lg,
+    padding: spacing.md,
     marginBottom: spacing.md,
     borderWidth: 2,
     borderColor: colors.primary,
@@ -796,7 +796,7 @@ const styles = StyleSheet.create({
   },
   metaResultBig: {
     fontFamily: fontFamily.bold,
-    fontSize: 32,
+    fontSize: 24,
     color: colors.primary,
   },
   metaResultSuffix: {
@@ -806,7 +806,7 @@ const styles = StyleSheet.create({
   },
   metaResultDaily: {
     fontFamily: fontFamily.semiBold,
-    fontSize: fonts.large,
+    fontSize: fonts.regular,
     color: colors.text,
     marginTop: spacing.xs,
   },

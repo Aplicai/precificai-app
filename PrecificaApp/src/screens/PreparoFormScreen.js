@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Alert, Modal, TextInput, Keyboard, TouchableWithoutFeedback } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Alert, Modal, TextInput, TouchableWithoutFeedback } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import InputField from '../components/InputField';
@@ -291,7 +291,7 @@ export default function PreparoFormScreen({ route, navigation }) {
 
   return (
     <View style={styles.wrapper}>
-      <ScrollView style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 600, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled" onScrollBeginDrag={Keyboard.dismiss}>
+      <ScrollView style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 600, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled">
 
         {/* Bloco 1 — Dados do Preparo */}
         <Card title="Dados do Preparo">

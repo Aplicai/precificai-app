@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -30,14 +31,29 @@ export default function ForgotPasswordScreen({ navigation }) {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.inner}>
+        <View style={styles.logoArea}>
+          <Image
+            source={require('../../assets/images/logo-header-white.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </View>
+
         <View style={styles.card}>
           {sent ? (
             <>
-              <Text style={styles.successIcon}>✉</Text>
+              <View style={styles.successIconCircle}>
+                <Feather name="mail" size={28} color={colors.primary} />
+              </View>
               <Text style={styles.cardTitle}>Email enviado!</Text>
-              <Text style={styles.desc}>Verifique sua caixa de entrada em {email} e siga as instruções para redefinir sua senha.</Text>
+              <Text style={styles.desc}>
+                Verifique sua caixa de entrada em <Text style={{ fontFamily: fontFamily.semiBold, color: colors.text }}>{email}</Text> e siga as instruções para redefinir sua senha.
+              </Text>
               <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.navigate('Login')} activeOpacity={0.8}>
-                <Text style={styles.primaryBtnText}>Voltar ao Login</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={styles.primaryBtnText}>Voltar ao Login</Text>
+                  <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
+                </View>
               </TouchableOpacity>
             </>
           ) : (
@@ -45,7 +61,12 @@ export default function ForgotPasswordScreen({ navigation }) {
               <Text style={styles.cardTitle}>Recuperar Senha</Text>
               <Text style={styles.desc}>Digite seu email e enviaremos um link para redefinir sua senha.</Text>
 
-              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+              {error ? (
+                <View style={styles.errorBox}>
+                  <Feather name="alert-circle" size={14} color="#dc2626" style={{ marginRight: 6 }} />
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : null}
 
               <Text style={styles.label}>Email</Text>
               <TextInput
@@ -55,14 +76,23 @@ export default function ForgotPasswordScreen({ navigation }) {
                 placeholder="seu@email.com"
                 keyboardType="email-address"
                 autoCapitalize="none"
+                autoCorrect={false}
                 placeholderTextColor={colors.disabled}
               />
 
               <TouchableOpacity style={[styles.primaryBtn, { marginTop: 24 }]} onPress={handleReset} disabled={loading} activeOpacity={0.8}>
-                {loading ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.primaryBtnText}>Enviar Link</Text>}
+                {loading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={styles.primaryBtnText}>Enviar Link</Text>
+                    <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
+                  </View>
+                )}
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 16, alignItems: 'center' }}>
+              <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+                <Feather name="arrow-left" size={16} color={colors.primary} style={{ marginRight: 4 }} />
                 <Text style={styles.backText}>Voltar ao Login</Text>
               </TouchableOpacity>
             </>
@@ -76,12 +106,14 @@ export default function ForgotPasswordScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.primary },
   inner: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.lg, maxWidth: 420, alignSelf: 'center', width: '100%' },
-  card: { backgroundColor: '#fff', borderRadius: borderRadius.xl, padding: spacing.lg, paddingTop: 28 },
+  logoArea: { alignItems: 'center', marginBottom: 28 },
+  logo: { width: 160, height: 36 },
+  card: { backgroundColor: '#fff', borderRadius: borderRadius.xl, padding: spacing.lg, paddingTop: 24 },
   cardTitle: { fontSize: 22, fontWeight: '700', fontFamily: fontFamily.bold, color: colors.text, textAlign: 'center', marginBottom: 8 },
   desc: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 16, fontFamily: fontFamily.regular },
   label: { fontSize: 13, fontFamily: fontFamily.medium, color: colors.textSecondary, marginBottom: 6, marginTop: 12 },
   input: {
-    backgroundColor: colors.surface, borderRadius: borderRadius.md, paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: colors.inputBg, borderRadius: borderRadius.sm, paddingHorizontal: 14, paddingVertical: 12,
     fontSize: 15, fontFamily: fontFamily.regular, color: colors.text, borderWidth: 1, borderColor: colors.border,
   },
   primaryBtn: {
@@ -89,7 +121,16 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', minHeight: 48,
   },
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '600', fontFamily: fontFamily.semiBold },
+  backBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 16 },
   backText: { fontSize: 14, color: colors.primary, fontFamily: fontFamily.medium },
-  errorText: { backgroundColor: '#fef2f2', color: '#dc2626', fontSize: 13, padding: 10, borderRadius: borderRadius.sm, textAlign: 'center', marginBottom: 8 },
-  successIcon: { fontSize: 48, textAlign: 'center', marginBottom: 12 },
+  errorBox: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fef2f2', padding: 10, borderRadius: borderRadius.sm,
+    marginBottom: 8,
+  },
+  errorText: { color: '#dc2626', fontSize: 13, fontFamily: fontFamily.regular, flex: 1 },
+  successIconCircle: {
+    width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary + '10',
+    alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 12,
+  },
 });
