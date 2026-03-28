@@ -406,6 +406,17 @@ function AppContent() {
   );
 }
 
+const linking = {
+  prefixes: ['https://app.precificaiapp.com', 'precificaiapp://'],
+  config: {
+    screens: {
+      Register: 'register',
+      Login: 'login',
+      ForgotPassword: 'forgot-password',
+    },
+  },
+};
+
 export default function AppNavigator() {
   const { user, loading } = useAuth();
 
@@ -418,7 +429,7 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={!user ? linking : undefined}>
       {user ? <AppContent /> : <AuthNavigator />}
     </NavigationContainer>
   );
