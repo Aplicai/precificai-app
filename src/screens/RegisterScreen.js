@@ -1,57 +1,38 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Modal, Image } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
 import useRateLimit from '../hooks/useRateLimit';
 
-const PASSWORD_RULES = [
-  { key: 'length', label: '8+ caracteres', test: (p) => p.length >= 8 },
-  { key: 'upper', label: 'Letra maiúscula', test: (p) => /[A-Z]/.test(p) },
-  { key: 'number', label: 'Número', test: (p) => /[0-9]/.test(p) },
-  { key: 'special', label: 'Caractere especial', test: (p) => /[!@#$%^&*(),.?":{}|<>]/.test(p) },
-];
+const MIN_PASSWORD_LENGTH = 6;
 
 export default function RegisterScreen({ navigation }) {
   const { signUp } = useAuth();
   const rateLimit = useRateLimit();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-
-  const passwordStrength = useMemo(() => {
-    if (!password) return { passed: 0, total: PASSWORD_RULES.length, results: [] };
-    const results = PASSWORD_RULES.map(r => ({ ...r, ok: r.test(password) }));
-    return { passed: results.filter(r => r.ok).length, total: results.length, results };
-  }, [password]);
-
-  const allPasswordOk = passwordStrength.passed === passwordStrength.total;
 
   const handleRegister = async () => {
     const limitMsg = rateLimit.checkLimit();
     if (limitMsg) { setError(limitMsg); return; }
-    if (!acceptedTerms) {
-      setError('Você precisa aceitar os termos para criar sua conta.');
-      return;
-    }
     if (!email.trim() || !password.trim()) {
-      setError('Preencha todos os campos');
+      setError('Preencha email e senha');
       return;
     }
-    if (!allPasswordOk) {
-      setError('A senha não atende todos os requisitos');
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setError('Digite um email válido');
       return;
     }
-    if (password !== confirmPassword) {
-      setError('As senhas não coincidem');
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(`A senha precisa ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres`);
       return;
     }
     setError('');
@@ -62,7 +43,20 @@ export default function RegisterScreen({ navigation }) {
       setSuccess(true);
     } catch (err) {
       rateLimit.recordAttempt();
-      setError('Erro ao criar conta. Verifique seus dados e tente novamente.');
+      const raw = err?.message || err?.error_description || String(err);
+      const lower = raw.toLowerCase();
+      const msg = lower.includes('already registered') || lower.includes('already exists')
+        ? 'Este email já está cadastrado. Tente fazer login.'
+        : lower.includes('invalid email') || lower.includes('valid email')
+        ? 'Digite um email válido'
+        : lower.includes('weak password') || lower.includes('password')
+        ? 'A senha precisa ter pelo menos 6 caracteres'
+        : lower.includes('fetch') || lower.includes('network') || lower.includes('failed to fetch')
+        ? 'Sem conexão. Verifique sua internet.'
+        : lower.includes('too many requests') || lower.includes('rate limit')
+        ? 'Muitas tentativas. Aguarde alguns minutos.'
+        : `Erro ao criar conta: ${raw}`;
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -71,17 +65,21 @@ export default function RegisterScreen({ navigation }) {
   if (success) {
     return (
       <View style={styles.container}>
-        <View style={styles.inner}>
+        <View style={styles.innerCenter}>
           <View style={styles.card}>
             <View style={styles.successIconCircle}>
-              <Feather name="check" size={32} color={colors.success} />
+              <Feather name="mail" size={28} color={colors.primary} />
             </View>
-            <Text style={styles.cardTitle}>Conta criada!</Text>
+            <Text style={styles.cardTitle}>Verifique seu email</Text>
             <Text style={styles.successText}>
-              Enviamos um link de confirmação para <Text style={{ fontFamily: fontFamily.semiBold, color: colors.text }}>{email}</Text>. Verifique sua caixa de entrada e clique no link para ativar sua conta.
+              Enviamos um link de confirmação para{' '}
+              <Text style={{ fontFamily: fontFamily.semiBold, color: colors.text }}>{email}</Text>.
+              {'\n\n'}Clique no link para ativar sua conta e começar a usar.
             </Text>
+            <Text style={styles.successHint}>Não encontrou? Verifique a pasta de spam.</Text>
             <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.replace('Login')} activeOpacity={0.8}>
               <Text style={styles.primaryBtnText}>Ir para Login</Text>
+              <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
             </TouchableOpacity>
           </View>
         </View>
@@ -92,19 +90,17 @@ export default function RegisterScreen({ navigation }) {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
-        {/* Branding */}
         <View style={styles.logoArea}>
           <Image
             source={require('../../assets/images/logo-header-white.png')}
             style={styles.logo}
             resizeMode="contain"
           />
-          <Text style={styles.tagline}>Precificação inteligente{'\n'}para seu negócio</Text>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Criar Conta</Text>
-          <Text style={styles.cardSubtitle}>Comece gratuitamente com até 5 produtos</Text>
+          <Text style={styles.cardTitle}>Crie sua conta grátis</Text>
+          <Text style={styles.cardSubtitle}>Comece a precificar seus produtos em minutos</Text>
 
           {error ? (
             <View style={styles.errorBox}>
@@ -122,6 +118,7 @@ export default function RegisterScreen({ navigation }) {
             keyboardType="email-address"
             autoCapitalize="none"
             autoCorrect={false}
+            autoComplete="email"
             placeholderTextColor={colors.disabled}
           />
 
@@ -131,8 +128,9 @@ export default function RegisterScreen({ navigation }) {
               style={styles.passwordInput}
               value={password}
               onChangeText={setPassword}
-              placeholder="Crie uma senha forte"
+              placeholder="Mínimo 6 caracteres"
               secureTextEntry={!showPassword}
+              autoComplete="new-password"
               placeholderTextColor={colors.disabled}
             />
             <TouchableOpacity
@@ -144,91 +142,10 @@ export default function RegisterScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* Password strength indicator */}
-          {password.length > 0 && (
-            <View style={styles.strengthBox}>
-              <View style={styles.strengthBarBg}>
-                {[0, 1, 2, 3].map(i => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.strengthBarSegment,
-                      {
-                        backgroundColor: i < passwordStrength.passed
-                          ? (passwordStrength.passed <= 2 ? '#F59E0B' : '#22C55E')
-                          : colors.border,
-                      },
-                    ]}
-                  />
-                ))}
-              </View>
-              <View style={styles.strengthRules}>
-                {passwordStrength.results.map(r => (
-                  <View key={r.key} style={styles.strengthRule}>
-                    <Feather
-                      name={r.ok ? 'check-circle' : 'circle'}
-                      size={12}
-                      color={r.ok ? '#22C55E' : colors.disabled}
-                    />
-                    <Text style={[styles.strengthRuleText, r.ok && styles.strengthRuleOk]}>{r.label}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-
-          <Text style={styles.label}>Confirmar Senha</Text>
-          <View style={styles.passwordContainer}>
-            <TextInput
-              style={styles.passwordInput}
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              placeholder="Repita a senha"
-              secureTextEntry={!showConfirm}
-              placeholderTextColor={colors.disabled}
-            />
-            <TouchableOpacity
-              style={styles.eyeBtn}
-              onPress={() => setShowConfirm(!showConfirm)}
-              activeOpacity={0.7}
-            >
-              <Feather name={showConfirm ? 'eye-off' : 'eye'} size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-          {confirmPassword.length > 0 && password !== confirmPassword && (
-            <Text style={styles.matchError}>As senhas não coincidem</Text>
-          )}
-          {confirmPassword.length > 0 && password === confirmPassword && allPasswordOk && (
-            <View style={styles.matchOk}>
-              <Feather name="check-circle" size={12} color="#22C55E" />
-              <Text style={styles.matchOkText}>Senhas conferem</Text>
-            </View>
-          )}
-
           <TouchableOpacity
-            style={styles.termsRow}
-            onPress={() => setAcceptedTerms(!acceptedTerms)}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
-              {acceptedTerms && <Feather name="check" size={14} color="#fff" />}
-            </View>
-            <Text style={styles.termsText}>
-              Li e aceito os{' '}
-              <Text style={styles.termsLink} onPress={() => setShowTerms(true)}>
-                Termos de Uso
-              </Text>
-              {' '}e a{' '}
-              <Text style={styles.termsLink} onPress={() => setShowPrivacy(true)}>
-                Política de Privacidade
-              </Text>
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.primaryBtn, { marginTop: 20, opacity: acceptedTerms ? 1 : 0.5 }]}
+            style={[styles.primaryBtn, { marginTop: 20 }]}
             onPress={handleRegister}
-            disabled={loading || !acceptedTerms}
+            disabled={loading}
             activeOpacity={0.8}
           >
             {loading ? (
@@ -240,6 +157,29 @@ export default function RegisterScreen({ navigation }) {
               </View>
             )}
           </TouchableOpacity>
+
+          <Text style={styles.termsNotice}>
+            Ao criar sua conta, você concorda com os{' '}
+            <Text style={styles.termsLink} onPress={() => setShowTerms(true)}>Termos de Uso</Text>
+            {' '}e a{' '}
+            <Text style={styles.termsLink} onPress={() => setShowPrivacy(true)}>Política de Privacidade</Text>.
+          </Text>
+
+          {/* Trust signals */}
+          <View style={styles.trustRow}>
+            <View style={styles.trustItem}>
+              <Feather name="shield" size={13} color={colors.primaryMid} />
+              <Text style={styles.trustText}>Dados protegidos</Text>
+            </View>
+            <View style={styles.trustItem}>
+              <Feather name="credit-card" size={13} color={colors.primaryMid} />
+              <Text style={styles.trustText}>Sem cartão</Text>
+            </View>
+            <View style={styles.trustItem}>
+              <Feather name="zap" size={13} color={colors.primaryMid} />
+              <Text style={styles.trustText}>Pronto em 2min</Text>
+            </View>
+          </View>
 
           <View style={styles.registerRow}>
             <Text style={styles.registerText}>Já tem conta? </Text>
@@ -321,14 +261,14 @@ const styles = StyleSheet.create({
     flexGrow: 1, justifyContent: 'center', paddingHorizontal: spacing.lg,
     paddingVertical: 32, maxWidth: 420, alignSelf: 'center', width: '100%',
   },
+  innerCenter: {
+    flex: 1, justifyContent: 'center', paddingHorizontal: spacing.lg,
+    maxWidth: 420, alignSelf: 'center', width: '100%',
+  },
 
   // Branding
   logoArea: { alignItems: 'center', marginBottom: 24 },
-  logo: { width: 160, height: 36, marginBottom: 8 },
-  tagline: {
-    color: 'rgba(255,255,255,0.7)', fontSize: 13, fontFamily: fontFamily.regular,
-    textAlign: 'center', lineHeight: 19,
-  },
+  logo: { width: 160, height: 36 },
 
   // Card
   card: { backgroundColor: '#fff', borderRadius: borderRadius.xl, padding: spacing.lg, paddingTop: 24 },
@@ -355,36 +295,26 @@ const styles = StyleSheet.create({
   },
   eyeBtn: { paddingHorizontal: 12, paddingVertical: 12, justifyContent: 'center', alignItems: 'center' },
 
-  // Password strength
-  strengthBox: { marginTop: 8 },
-  strengthBarBg: { flexDirection: 'row', gap: 4, marginBottom: 8 },
-  strengthBarSegment: { flex: 1, height: 4, borderRadius: 2 },
-  strengthRules: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
-  strengthRule: { flexDirection: 'row', alignItems: 'center', width: '48%', gap: 4 },
-  strengthRuleText: { fontSize: 11, fontFamily: fontFamily.regular, color: colors.disabled },
-  strengthRuleOk: { color: '#22C55E' },
-
-  // Password match
-  matchError: { fontSize: 11, fontFamily: fontFamily.regular, color: colors.error, marginTop: 4 },
-  matchOk: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  matchOkText: { fontSize: 11, fontFamily: fontFamily.regular, color: '#22C55E' },
-
-  // Terms
-  termsRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 16, marginBottom: 4 },
-  checkbox: {
-    width: 20, height: 20, borderRadius: 4,
-    borderWidth: 2, borderColor: colors.border,
-    backgroundColor: 'transparent',
-    alignItems: 'center', justifyContent: 'center', marginRight: 10, marginTop: 1,
+  // Terms (now as notice text below button)
+  termsNotice: {
+    fontSize: 11, color: colors.disabled, textAlign: 'center',
+    marginTop: 12, lineHeight: 16, fontFamily: fontFamily.regular,
   },
-  checkboxChecked: { borderColor: colors.primary, backgroundColor: colors.primary },
-  termsText: { flex: 1, fontSize: 12, color: colors.textSecondary, fontFamily: fontFamily.regular, lineHeight: 18 },
-  termsLink: { color: colors.primary, textDecorationLine: 'underline' },
+  termsLink: { color: colors.primaryMid, textDecorationLine: 'underline' },
+
+  // Trust signals
+  trustRow: {
+    flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
+    marginTop: 16, gap: 16, flexWrap: 'wrap',
+  },
+  trustItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  trustText: { fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.regular },
 
   // Buttons
   primaryBtn: {
     backgroundColor: colors.primary, borderRadius: borderRadius.md, paddingVertical: 14,
     alignItems: 'center', justifyContent: 'center', minHeight: 48,
+    flexDirection: 'row',
   },
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '600', fontFamily: fontFamily.semiBold },
   registerRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
@@ -406,7 +336,11 @@ const styles = StyleSheet.create({
   },
   successText: {
     fontSize: 14, color: colors.textSecondary, textAlign: 'center',
-    lineHeight: 20, marginBottom: 24, fontFamily: fontFamily.regular,
+    lineHeight: 21, marginBottom: 8, fontFamily: fontFamily.regular,
+  },
+  successHint: {
+    fontSize: 12, color: colors.disabled, textAlign: 'center',
+    marginBottom: 24, fontFamily: fontFamily.regular,
   },
 
   // Modals
