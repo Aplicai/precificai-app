@@ -46,7 +46,7 @@ import PerfilScreen from '../screens/PerfilScreen';
 import MargemBaixaScreen from '../screens/MargemBaixaScreen';
 import ExportPDFScreen from '../screens/ExportPDFScreen';
 import SuporteScreen from '../screens/SuporteScreen';
-import LandingScreen from '../screens/LandingScreen';
+
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -328,9 +328,8 @@ const AuthStack = createNativeStackNavigator();
 function AuthNavigator() {
   return (
     <AuthStack.Navigator screenOptions={{ headerShown: false }}>
-      <AuthStack.Screen name="Landing" component={LandingScreen} />
-      <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="Register" component={RegisterScreen} />
+      <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
     </AuthStack.Navigator>
   );
