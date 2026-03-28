@@ -104,7 +104,6 @@ export default function SimuladorScreen({ navigation }) {
       setMetaCmvPercent(cmvMedioPerc);
       setMetaProdutos(prodsR); // keep only for empty state check
     } catch (e) {
-      console.error('SimuladorScreen loadData error:', e);
     } finally {
       setLoading(false);
     }

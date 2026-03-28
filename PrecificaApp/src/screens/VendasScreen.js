@@ -125,7 +125,6 @@ export default function VendasScreen({ navigation }) {
       setProdutos(result);
       setResumo({ totalQty, faturamento, lucro, ticketMedio });
     } catch (e) {
-      console.error('Erro ao carregar vendas:', e);
     } finally {
       setLoading(false);
     }

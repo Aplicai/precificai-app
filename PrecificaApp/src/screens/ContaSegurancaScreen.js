@@ -132,9 +132,9 @@ export default function ContaSegurancaScreen({ navigation }) {
     setDeleting(true);
     try {
       const db = await getDatabase();
-      const tables = ['produto_embalagens', 'produto_preparos', 'produto_ingredientes', 'preparo_ingredientes', 'delivery_combo_itens', 'delivery_produto_itens', 'delivery_combos', 'delivery_produtos', 'delivery_adicionais', 'delivery_config', 'vendas', 'produtos', 'preparos', 'embalagens', 'materias_primas', 'categorias_produtos', 'categorias_preparos', 'categorias_embalagens', 'categorias_insumos', 'faturamento_mensal', 'despesas_variaveis', 'despesas_fixas', 'historico_precos', 'perfil', 'configuracao'];
-      for (const table of tables) {
-        try { await db.runAsync(`DELETE FROM ${table}`); } catch(e) {}
+      const SAFE_TABLES = Object.freeze(['produto_embalagens', 'produto_preparos', 'produto_ingredientes', 'preparo_ingredientes', 'delivery_combo_itens', 'delivery_produto_itens', 'delivery_combos', 'delivery_produtos', 'delivery_adicionais', 'delivery_config', 'vendas', 'produtos', 'preparos', 'embalagens', 'materias_primas', 'categorias_produtos', 'categorias_preparos', 'categorias_embalagens', 'categorias_insumos', 'faturamento_mensal', 'despesas_variaveis', 'despesas_fixas', 'historico_precos', 'perfil', 'configuracao']);
+      for (const table of SAFE_TABLES) {
+        try { await supabase.from(table).delete().eq('user_id', user.id); } catch(e) {}
       }
       await supabase.auth.signOut();
       if (Platform.OS === 'web') {

@@ -39,7 +39,6 @@ export default function PerfilScreen({ navigation, route }) {
         });
       }
     } catch (err) {
-      console.warn('Error loading perfil:', err.message);
     }
     setLoaded(true);
   }

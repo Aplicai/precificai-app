@@ -212,7 +212,6 @@ export default function RelatorioSimplesScreen({ navigation }) {
         produtosComPreco: produtosComPreco.length,
       });
     } catch (e) {
-      console.error('RelatorioSimples error:', e);
     } finally {
       setLoading(false);
     }

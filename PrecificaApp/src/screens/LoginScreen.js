@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvo
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
+import useRateLimit from '../hooks/useRateLimit';
 
 export default function LoginScreen({ navigation }) {
   const { signIn } = useAuth();
@@ -11,8 +12,11 @@ export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const rateLimit = useRateLimit();
 
   const handleLogin = async () => {
+    const limitMsg = rateLimit.checkLimit();
+    if (limitMsg) { setError(limitMsg); return; }
     if (!email.trim() || !password.trim()) {
       setError('Preencha todos os campos');
       return;
@@ -21,7 +25,9 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
     try {
       await signIn(email.trim().toLowerCase(), password);
+      rateLimit.reset();
     } catch (err) {
+      rateLimit.recordAttempt();
       const msg = err.message?.includes('Invalid login')
         ? 'Email ou senha incorretos'
         : err.message?.includes('Email not confirmed')

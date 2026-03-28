@@ -1,13 +1,43 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useRef, useCallback } from 'react';
+import { AppState } from 'react-native';
 import { supabase } from '../config/supabase';
 import { resetDatabase } from '../database/database';
 
 const AuthContext = createContext({});
 
+const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  const lastActiveRef = useRef(Date.now());
+  const timeoutRef = useRef(null);
+
+  const handleInactivityLogout = useCallback(async () => {
+    if (user) {
+      resetDatabase();
+      await supabase.auth.signOut();
+    }
+  }, [user]);
+
+  // Track app state for inactivity timeout
+  useEffect(() => {
+    const handleAppStateChange = (nextState) => {
+      if (nextState === 'active') {
+        const elapsed = Date.now() - lastActiveRef.current;
+        if (elapsed >= INACTIVITY_TIMEOUT_MS && user) {
+          handleInactivityLogout();
+        }
+        lastActiveRef.current = Date.now();
+      } else if (nextState === 'background') {
+        lastActiveRef.current = Date.now();
+      }
+    };
+
+    const sub = AppState.addEventListener('change', handleAppStateChange);
+    return () => sub.remove();
+  }, [user, handleInactivityLogout]);
 
   useEffect(() => {
     // Get initial session

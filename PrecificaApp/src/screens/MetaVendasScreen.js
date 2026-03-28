@@ -64,7 +64,6 @@ export default function MetaVendasScreen({ navigation }) {
 
       setProdutos(prodsR); // keep for empty state check
     } catch (e) {
-      console.error('MetaVendasScreen loadData error:', e);
     } finally {
       setLoading(false);
     }

@@ -72,7 +72,6 @@ export default function ExportPDFScreen({ navigation }) {
 
       setProdutos([...rows, ...comboItems]);
     } catch (e) {
-      console.warn('Erro ao carregar produtos:', e);
     } finally {
       setLoading(false);
     }
@@ -91,7 +90,6 @@ export default function ExportPDFScreen({ navigation }) {
         .sort((a, b) => (a.categoria_nome || 'zzz').localeCompare(b.categoria_nome || 'zzz') || a.nome.localeCompare(b.nome));
       setPreparos(rows);
     } catch (e) {
-      console.warn('Erro ao carregar preparos:', e);
     }
   };
 
@@ -161,7 +159,6 @@ export default function ExportPDFScreen({ navigation }) {
       const html = buildPreparosHTML(fichas, perfil, incluirAdicionais);
       exportarPDF(html);
     } catch (e) {
-      console.warn('Erro ao exportar preparos:', e);
     } finally {
       setExporting(false);
     }
@@ -349,7 +346,6 @@ export default function ExportPDFScreen({ navigation }) {
         // Calculate despesas percentuais from actual data
         const despFixasPerc = fatMedio > 0 ? totalFixas / fatMedio : 0;
         const despVarPerc = totalVar; // totalVar already in decimal form (e.g. 0.18 = 18%)
-        console.log('[ExportPDF] totalVar:', totalVar, '| despVarPerc:', despVarPerc, '| variaveis:', variaveis.map(v => ({ d: v.descricao, p: v.percentual })));
         const lucroDesejado = config.lucro_desejado || 0.15;
 
         const despFixasVal = precoVenda * despFixasPerc;
@@ -380,7 +376,6 @@ export default function ExportPDFScreen({ navigation }) {
       const html = buildHTML(fichas, perfil, config, incluirAdicionais);
       exportarPDF(html);
     } catch (e) {
-      console.warn('Erro ao exportar:', e);
       if (Platform.OS === 'web') alert('Erro ao exportar: ' + e.message);
     } finally {
       setExporting(false);

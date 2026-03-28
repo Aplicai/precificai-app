@@ -1,7 +1,7 @@
 import { supabase } from '../config/supabase';
 import { createSupabaseDb } from './supabaseDb';
 
-console.log('[DB] database.js loaded - migration version v2');
+if (__DEV__) console.log('[DB] database.js loaded - migration version v2');
 
 let db = null;
 let cachedUserId = null;
@@ -29,7 +29,7 @@ async function runMigrations(database) {
           ['por_kg', p.id]
         );
       }
-      console.log('[Migration] tipo_venda: ' + legados.length + ' produto(s) migrado(s) para por_kg');
+      if (__DEV__) console.log('[Migration] tipo_venda: ' + legados.length + ' produto(s) migrado(s) para por_kg');
     }
 
     // Mesma lógica para Mililitro(s) → por_litro
@@ -45,10 +45,10 @@ async function runMigrations(database) {
           ['por_litro', p.id]
         );
       }
-      console.log('[Migration] tipo_venda: ' + legadosLitro.length + ' produto(s) migrado(s) para por_litro');
+      if (__DEV__) console.log('[Migration] tipo_venda: ' + legadosLitro.length + ' produto(s) migrado(s) para por_litro');
     }
   } catch (e) {
-    console.warn('[Migration] Erro na migração tipo_venda:', e);
+    if (__DEV__) console.warn('[Migration] Erro na migração tipo_venda:', e);
   }
 }
 

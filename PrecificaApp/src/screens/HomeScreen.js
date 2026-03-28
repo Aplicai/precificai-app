@@ -250,7 +250,7 @@ export default function HomeScreen({ navigation }) {
 
       setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, produtosMargBaixa: uniqueProds, produtosSemPreco, cmvPercent, pontoEquilibrio, fatMedio, insights });
       setAlertas(pendencias);
-    } catch (e) { console.error('[Home] Error:', e.message); }
+    } catch (e) { /* error handled silently */ }
     setLoading(false);
   }
 

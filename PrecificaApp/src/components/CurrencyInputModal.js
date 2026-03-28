@@ -22,7 +22,7 @@ export default function CurrencyInputModal({ visible, title, value, prefix, suff
     try {
       await onConfirm(inputValue);
     } catch (e) {
-      console.warn('CurrencyInputModal save error:', e);
+      if (__DEV__) console.warn('CurrencyInputModal save error:', e);
     } finally {
       setSaving(false);
     }

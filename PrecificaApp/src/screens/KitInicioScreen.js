@@ -42,7 +42,6 @@ export default function KitInicioScreen({ navigation, route }) {
         }
       }
     } catch (e) {
-      console.warn('navegarAposKit fallback:', e);
       navigation.replace('MainTabs');
     }
   }
@@ -62,7 +61,6 @@ export default function KitInicioScreen({ navigation, route }) {
         if (!confirm1) return;
         const confirm2 = window.confirm('Confirmação Final: Tem certeza? Esta ação não pode ser desfeita.');
         if (!confirm2) return;
-        console.log('[Kit] Confirmações OK, chamando executarKit(true)...');
         await executarKit(true);
         return;
       } else {
@@ -92,65 +90,49 @@ export default function KitInicioScreen({ navigation, route }) {
     }
 
     // Fluxo setup (primeiro uso) — sem confirmação
-    console.log('[Kit] Setup mode, chamando executarKit(false)...');
     await executarKit(false);
   }
 
   async function executarKit(resetar) {
     setLoading(true);
     try {
-      console.log('[Kit] Step 0: Getting user...');
       const { data: authData, error: authErr } = await supabase.auth.getUser();
       if (authErr) throw new Error('Erro de autenticação: ' + authErr.message);
       const userId = authData?.user?.id;
       if (!userId) throw new Error('Usuário não autenticado');
-      console.log('[Kit] User OK:', userId.substring(0, 8));
 
       const insumosTemplate = INSUMOS_POR_SEGMENTO[selected] || [];
       const categoriasTemplate = CATEGORIAS_POR_SEGMENTO[selected] || [];
 
       // Step 1: Clean existing data — sequential in FK-safe order
       if (resetar || isSetup) {
-        console.log('[Kit] Step 1: Cleaning data...');
         // Phase 1: Junction tables (no dependencies)
         const phase1 = ['produto_ingredientes', 'produto_preparos', 'produto_embalagens',
           'preparo_ingredientes', 'delivery_combo_itens', 'delivery_produto_itens'];
         await Promise.all(phase1.map(t =>
-          supabase.from(t).delete().eq('user_id', userId).then(r => {
-            if (r.error) console.warn('[Kit] delete', t, r.error.message);
-          }).catch(() => {})
+          supabase.from(t).delete().eq('user_id', userId).catch(() => {})
         ));
-        console.log('[Kit] Phase 1 done (junction tables)');
 
         // Phase 2: Main entity tables
         const phase2 = ['delivery_combos', 'delivery_produtos', 'delivery_adicionais',
           'delivery_config', 'produtos', 'preparos', 'embalagens'];
         await Promise.all(phase2.map(t =>
-          supabase.from(t).delete().eq('user_id', userId).then(r => {
-            if (r.error) console.warn('[Kit] delete', t, r.error.message);
-          }).catch(() => {})
+          supabase.from(t).delete().eq('user_id', userId).catch(() => {})
         ));
-        console.log('[Kit] Phase 2 done (entity tables)');
 
         // Phase 3: materias_primas (depends on preparo_ingredientes, produto_ingredientes)
-        const { error: mpErr } = await supabase.from('materias_primas').delete().eq('user_id', userId);
-        if (mpErr) console.warn('[Kit] delete materias_primas:', mpErr.message);
-        console.log('[Kit] Phase 3 done (materias_primas)');
+        await supabase.from('materias_primas').delete().eq('user_id', userId);
 
         // Phase 4: Category tables (materias_primas FK gone now)
         const phase4 = ['categorias_produtos', 'categorias_preparos', 'categorias_embalagens', 'categorias_insumos'];
         await Promise.all(phase4.map(t =>
-          supabase.from(t).delete().eq('user_id', userId).then(r => {
-            if (r.error) console.warn('[Kit] delete', t, r.error.message);
-          }).catch(() => {})
+          supabase.from(t).delete().eq('user_id', userId).catch(() => {})
         ));
-        console.log('[Kit] Phase 4 done (categories)');
       }
 
       // Step 2: Insert categories and build name→id map
       const catMap = {};
       if (categoriasTemplate.length > 0) {
-        console.log('[Kit] Step 2: Inserting', categoriasTemplate.length, 'categories...');
         const catRows = categoriasTemplate.map(nome => ({
           user_id: userId,
           nome,
@@ -161,17 +143,14 @@ export default function KitInicioScreen({ navigation, route }) {
           .insert(catRows)
           .select('id, nome');
         if (catErr) {
-          console.error('[Kit] categorias error:', catErr.message);
           throw new Error('Erro ao cadastrar categorias: ' + catErr.message);
         }
         (catData || []).forEach(cat => { catMap[cat.nome] = cat.id; });
-        console.log('[Kit] Categories OK, map:', Object.keys(catMap).length, 'entries');
       }
 
       // Step 3: Insert insumos with correct category mapping
       let criados = 0;
       if (insumosTemplate.length > 0) {
-        console.log('[Kit] Step 3: Inserting', insumosTemplate.length, 'insumos...');
         const firstCatId = Object.values(catMap)[0] || null;
         const insumoRows = insumosTemplate.map(insumo => {
           const fc = calcFatorCorrecao(insumo.quantidade_bruta, insumo.quantidade_liquida);
@@ -194,19 +173,15 @@ export default function KitInicioScreen({ navigation, route }) {
           .insert(insumoRows)
           .select('id');
         if (insErr) {
-          console.error('[Kit] insumos error:', insErr.message);
           throw new Error('Erro ao cadastrar insumos: ' + insErr.message);
         }
         criados = insData?.length || 0;
-        console.log('[Kit] Insumos OK, criados:', criados);
       }
 
-      console.log('[Kit] SUCCESS — navigating...');
       setDone(true);
       setLoading(false);
       setTimeout(() => navegarAposKit(), 300);
     } catch (e) {
-      console.error('[Kit] CATCH error:', e?.message || e);
       setLoading(false);
       const errMsg = `Não foi possível aplicar o kit.\n\nDetalhes: ${e?.message || String(e)}`;
       if (Platform.OS === 'web') {

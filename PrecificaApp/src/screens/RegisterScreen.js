@@ -3,9 +3,11 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingVi
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
+import useRateLimit from '../hooks/useRateLimit';
 
 export default function RegisterScreen({ navigation }) {
   const { signUp } = useAuth();
+  const rateLimit = useRateLimit();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -17,6 +19,8 @@ export default function RegisterScreen({ navigation }) {
   const [showPrivacy, setShowPrivacy] = useState(false);
 
   const handleRegister = async () => {
+    const limitMsg = rateLimit.checkLimit();
+    if (limitMsg) { setError(limitMsg); return; }
     if (!acceptedTerms) {
       setError('Você precisa aceitar os termos para criar sua conta.');
       return;
@@ -25,8 +29,8 @@ export default function RegisterScreen({ navigation }) {
       setError('Preencha todos os campos');
       return;
     }
-    if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
-      setError('A senha deve ter no mínimo 8 caracteres, incluindo pelo menos uma letra maiúscula, uma minúscula e um número');
+    if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+      setError('A senha deve ter no mínimo 8 caracteres, incluindo maiúscula, minúscula, número e caractere especial (!@#$%...)');
       return;
     }
     if (password !== confirmPassword) {
@@ -37,13 +41,11 @@ export default function RegisterScreen({ navigation }) {
     setLoading(true);
     try {
       await signUp(email.trim().toLowerCase(), password);
+      rateLimit.reset();
       setSuccess(true);
     } catch (err) {
-      console.error('Registration error:', err);
-      const msg = err.message?.includes('already registered')
-        ? 'Este email já está cadastrado'
-        : err.message || 'Erro ao criar conta. Tente novamente.';
-      setError(msg);
+      rateLimit.recordAttempt();
+      setError('Erro ao criar conta. Verifique seus dados e tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -94,7 +96,7 @@ export default function RegisterScreen({ navigation }) {
             style={styles.input}
             value={password}
             onChangeText={setPassword}
-            placeholder="Mín. 8 caracteres, maiúscula, minúscula e número"
+            placeholder="Mín. 8 caracteres, maiúscula, número e especial"
             secureTextEntry
             placeholderTextColor={colors.disabled}
           />

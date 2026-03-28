@@ -264,7 +264,6 @@ export default function ListaComprasScreen({ navigation }) {
 
       setLista({ grouped, categorias, custoTotal, totalItems: items.length });
     } catch (e) {
-      console.error('Erro ao gerar lista:', e.message);
     }
     setGerando(false);
   }

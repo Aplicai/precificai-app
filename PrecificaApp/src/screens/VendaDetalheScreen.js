@@ -98,7 +98,6 @@ export default function VendaDetalheScreen({ route }) {
       vendasFiltradas.sort((a, b) => b.data.localeCompare(a.data));
       setVendasDoMes(vendasFiltradas);
     } catch (e) {
-      console.error('Erro ao carregar detalhe de venda:', e);
     }
   }
 
