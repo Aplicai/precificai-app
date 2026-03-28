@@ -28,13 +28,16 @@ export default function LoginScreen({ navigation }) {
       rateLimit.reset();
     } catch (err) {
       rateLimit.recordAttempt();
-      const raw = err?.message || String(err);
-      const msg = raw.includes('Invalid login')
+      const raw = err?.message || err?.error_description || String(err);
+      const lower = raw.toLowerCase();
+      const msg = lower.includes('invalid login') || lower.includes('invalid credentials') || lower.includes('wrong password')
         ? 'Email ou senha incorretos'
-        : raw.includes('Email not confirmed')
+        : lower.includes('email not confirmed') || lower.includes('not confirmed')
         ? 'Confirme seu email antes de entrar'
-        : raw.includes('fetch')
+        : lower.includes('fetch') || lower.includes('network') || lower.includes('failed to fetch')
         ? 'Sem conexão com o servidor. Verifique sua internet.'
+        : lower.includes('too many requests') || lower.includes('rate limit')
+        ? 'Muitas tentativas. Aguarde alguns minutos.'
         : `Erro ao entrar: ${raw}`;
       setError(msg);
     } finally {
