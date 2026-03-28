@@ -377,7 +377,7 @@ export default function ProdutosListScreen({ navigation }) {
       {/* Botão Adicionar */}
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '10', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14, marginHorizontal: 16, marginTop: 8, marginBottom: 4, borderWidth: 1, borderColor: colors.primary + '30', borderStyle: 'dashed' }}
-        onPress={() => navigation.navigate('ProdutoForm', {})}
+        onPress={() => navigation.navigate('ProdutoForm', { categoriaId: filtroCategoria })}
       >
         <Feather name="plus-circle" size={18} color={colors.primary} style={{ marginRight: 8 }} />
         <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 14 }}>Novo Produto</Text>
@@ -402,7 +402,7 @@ export default function ProdutosListScreen({ navigation }) {
                       ? `Não encontramos resultados para "${busca}".`
                       : 'Crie sua primeira ficha técnica com ingredientes, preparos e embalagens.'}
                     ctaLabel={!busca.trim() ? 'Criar Produto' : undefined}
-                    onPress={!busca.trim() ? () => navigation.navigate('ProdutoForm', {}) : undefined}
+                    onPress={!busca.trim() ? () => navigation.navigate('ProdutoForm', { categoriaId: filtroCategoria }) : undefined}
                   />
                 )
               ) : (
@@ -434,7 +434,7 @@ export default function ProdutosListScreen({ navigation }) {
                   ? `Não encontramos resultados para "${busca}".`
                   : 'Crie sua primeira ficha técnica com ingredientes, preparos e embalagens.'}
                 ctaLabel={!busca.trim() ? 'Criar Produto' : undefined}
-                onPress={!busca.trim() ? () => navigation.navigate('ProdutoForm', {}) : undefined}
+                onPress={!busca.trim() ? () => navigation.navigate('ProdutoForm', { categoriaId: filtroCategoria }) : undefined}
               />
             )
           }
@@ -531,7 +531,7 @@ export default function ProdutosListScreen({ navigation }) {
         />
       )}
 
-      <FAB onPress={() => navigation.navigate('ProdutoForm', {})} />
+      <FAB onPress={() => navigation.navigate('ProdutoForm', { categoriaId: filtroCategoria })} />
 
       {/* Modal nova categoria */}
       <Modal visible={modalVisible} transparent animationType="fade">
