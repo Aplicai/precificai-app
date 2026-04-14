@@ -408,6 +408,25 @@ export default function ConfiguracaoScreen() {
             </View>
           </View>
         )}
+        {finStatus && finStatus.completo && (
+          <View style={[s.progressSection, { backgroundColor: colors.success + '10', borderColor: colors.success + '30' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <Feather name="check-circle" size={20} color={colors.success} />
+              <View style={{ flex: 1 }}>
+                <Text style={[s.progressLabel, { color: colors.success }]}>Configuração completa!</Text>
+                <Text style={{ fontSize: fonts.tiny, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 2 }}>
+                  Seus preços e margens serão calculados com base nestas configurações.
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={{ marginTop: spacing.sm, backgroundColor: colors.success, borderRadius: borderRadius.md, paddingVertical: spacing.sm, alignItems: 'center' }}
+              onPress={() => navigation.navigate('Início')}
+            >
+              <Text style={{ color: '#fff', fontFamily: fontFamily.semiBold, fontSize: fonts.small }}>Voltar ao Início</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* STEP 1: Margem de Lucro */}
         <View style={s.stepCard}>
@@ -647,20 +666,22 @@ export default function ConfiguracaoScreen() {
           <View style={s.stepBody}>
             <Text style={s.stepSubtitle}>Custos mensais independentes da produção</Text>
 
-            {/* Suggestions - always show 3, filtering already added */}
+            {/* Sugestões como lista selecionável */}
             {(() => {
               const existentes = despesasFixas.map(d => d.descricao?.toLowerCase());
               const disponiveis = SUGESTOES_FIXAS.filter(s => !existentes.includes(s.toLowerCase()));
-              const mostrar = disponiveis.slice(0, 3);
-              if (mostrar.length === 0) return null;
+              if (disponiveis.length === 0) return null;
               return (
-                <View style={s.suggestionsRow}>
-                  {mostrar.map(sug => (
-                    <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoFixa(sug)}>
-                      <Feather name="plus" size={12} color={colors.primary} />
-                      <Text style={s.suggestionChipText}>{sug}</Text>
-                    </TouchableOpacity>
-                  ))}
+                <View style={s.suggestionsList}>
+                  <Text style={s.suggestionsLabel}>Selecione para adicionar:</Text>
+                  <View style={s.suggestionsRow}>
+                    {disponiveis.map(sug => (
+                      <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoFixa(sug)}>
+                        <Feather name="plus" size={12} color={colors.primary} />
+                        <Text style={s.suggestionChipText}>{sug}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
               );
             })()}
@@ -778,20 +799,22 @@ export default function ConfiguracaoScreen() {
           <View style={s.stepBody}>
             <Text style={s.stepSubtitle}>Percentuais descontados sobre cada venda</Text>
 
-            {/* Suggestions - always show 3, filtering already added */}
+            {/* Sugestões como lista selecionável */}
             {(() => {
               const existentes = despesasVariaveis.map(d => d.descricao?.toLowerCase());
               const disponiveis = SUGESTOES_VARIAVEIS.filter(s => !existentes.includes(s.toLowerCase()));
-              const mostrar = disponiveis.slice(0, 3);
-              if (mostrar.length === 0) return null;
+              if (disponiveis.length === 0) return null;
               return (
-                <View style={s.suggestionsRow}>
-                  {mostrar.map(sug => (
-                    <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoVariavel(sug)}>
-                      <Feather name="plus" size={12} color={colors.primary} />
-                      <Text style={s.suggestionChipText}>{sug}</Text>
-                    </TouchableOpacity>
-                  ))}
+                <View style={s.suggestionsList}>
+                  <Text style={s.suggestionsLabel}>Selecione para adicionar:</Text>
+                  <View style={s.suggestionsRow}>
+                    {disponiveis.map(sug => (
+                      <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoVariavel(sug)}>
+                        <Feather name="plus" size={12} color={colors.primary} />
+                        <Text style={s.suggestionChipText}>{sug}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
               );
             })()}
@@ -1467,12 +1490,20 @@ const s = StyleSheet.create({
     fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.medium,
     marginBottom: spacing.xs,
   },
+  suggestionsList: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  suggestionsLabel: {
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.medium,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
   suggestionsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
   },
   suggestionChip: {
     flexDirection: 'row',

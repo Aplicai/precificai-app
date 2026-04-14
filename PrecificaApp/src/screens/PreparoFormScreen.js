@@ -7,7 +7,7 @@ import Card from '../components/Card';
 import PickerSelect from '../components/PickerSelect';
 import InfoTooltip from '../components/InfoTooltip';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import {
@@ -75,6 +75,11 @@ export default function PreparoFormScreen({ route, navigation }) {
       setLoaded(true);
     }
   }, [editId]);
+
+  // Recarregar lista de insumos ao voltar (ex: após criar novo insumo)
+  useFocusEffect(useCallback(() => {
+    loadMateriasPrimas();
+  }, []));
 
   // Intercepta saída para validar campos
   useEffect(() => {
