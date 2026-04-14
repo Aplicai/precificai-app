@@ -103,7 +103,7 @@ const TAB_ICONS = {
 
 function TabIcon({ label, focused, badge }) {
   const iconDef = TAB_ICONS[label] || { set: 'feather', name: 'file' };
-  const size = focused ? 20 : 18;
+  const size = focused ? 22 : 20;
   const color = focused ? colors.primary : colors.textSecondary;
 
   return (
@@ -280,9 +280,9 @@ function MainTabs() {
         tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: {
           ...(isDesktop ? { display: 'none' } : {}),
-          height: Platform.OS === 'ios' ? 86 : 62,
+          height: Platform.OS === 'ios' ? 88 : 66,
           paddingBottom: Platform.OS === 'ios' ? 28 : 8,
-          paddingTop: 6,
+          paddingTop: 8,
           backgroundColor: colors.surface,
           borderTopWidth: 1, borderTopColor: colors.border + '80',
           ...Platform.select({
@@ -290,7 +290,7 @@ function MainTabs() {
             default: { shadowColor: colors.shadow, shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 8 },
           }),
         },
-        tabBarLabelStyle: { fontSize: 8, fontWeight: '600', fontFamily: fontFamily.semiBold, marginTop: 1 },
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '600', fontFamily: fontFamily.semiBold, marginTop: 2 },
       })}
       screenListeners={({ navigation, route }) => ({
         state: checkFinanceiro,

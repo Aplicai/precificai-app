@@ -109,25 +109,25 @@ export default function KitInicioScreen({ navigation, route }) {
         // Phase 1: Junction tables (no dependencies)
         const phase1 = ['produto_ingredientes', 'produto_preparos', 'produto_embalagens',
           'preparo_ingredientes', 'delivery_combo_itens', 'delivery_produto_itens'];
-        await Promise.all(phase1.map(t =>
-          supabase.from(t).delete().eq('user_id', userId).catch(() => {})
-        ));
+        await Promise.all(phase1.map(async t => {
+          try { await supabase.from(t).delete().eq('user_id', userId); } catch {}
+        }));
 
         // Phase 2: Main entity tables
         const phase2 = ['delivery_combos', 'delivery_produtos', 'delivery_adicionais',
           'delivery_config', 'produtos', 'preparos', 'embalagens'];
-        await Promise.all(phase2.map(t =>
-          supabase.from(t).delete().eq('user_id', userId).catch(() => {})
-        ));
+        await Promise.all(phase2.map(async t => {
+          try { await supabase.from(t).delete().eq('user_id', userId); } catch {}
+        }));
 
         // Phase 3: materias_primas (depends on preparo_ingredientes, produto_ingredientes)
         await supabase.from('materias_primas').delete().eq('user_id', userId);
 
         // Phase 4: Category tables (materias_primas FK gone now)
         const phase4 = ['categorias_produtos', 'categorias_preparos', 'categorias_embalagens', 'categorias_insumos'];
-        await Promise.all(phase4.map(t =>
-          supabase.from(t).delete().eq('user_id', userId).catch(() => {})
-        ));
+        await Promise.all(phase4.map(async t => {
+          try { await supabase.from(t).delete().eq('user_id', userId); } catch {}
+        }));
       }
 
       // Step 2: Insert categories and build name→id map

@@ -646,8 +646,8 @@ export default function HomeScreen({ navigation }) {
                     <Feather name={ai.name} size={14} color={ai.color} />
                   </View>
                   <View style={styles.notifBody}>
-                    <Text style={styles.notifItemTitle} numberOfLines={1}>{a.texto}</Text>
-                    {a.descricao && <Text style={styles.notifItemDesc} numberOfLines={2}>{a.descricao}</Text>}
+                    <Text style={styles.notifItemTitle} numberOfLines={2}>{a.texto}</Text>
+                    {a.descricao && <Text style={styles.notifItemDesc} numberOfLines={3}>{a.descricao}</Text>}
                   </View>
                   {hasAction && <Feather name="chevron-right" size={14} color={colors.disabled} />}
                 </TouchableOpacity>
@@ -743,6 +743,7 @@ export default function HomeScreen({ navigation }) {
                 if (val > 0) await db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [val]);
               } catch (e) {}
               setShowMargemMeta(false);
+              loadAll();
             }} style={{ paddingVertical: 8, paddingHorizontal: 24, backgroundColor: colors.success, borderRadius: borderRadius.md }}>
               <Text style={{ color: '#fff', fontFamily: fontFamily.semiBold, fontSize: 14 }}>Salvar e Aplicar</Text>
             </TouchableOpacity>

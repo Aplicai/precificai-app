@@ -516,9 +516,10 @@ export default function ProdutoFormScreen({ route, navigation }) {
     try {
       const db = await getDatabase();
       const margemSalvar = form.margem_lucro_produto.trim() !== '' ? parseNum(form.margem_lucro_produto) / 100 : null;
+      const pv = parseFloat(String(form.preco_venda).replace(',', '.')) || 0;
       const params = [
         form.nome, form.categoria_id, parseNum(form.rendimento_total), form.unidade_rendimento,
-        rendUn, parseNum(form.tempo_preparo), precoVenda, margemSalvar,
+        rendUn, parseNum(form.tempo_preparo), pv, margemSalvar,
         parseNum(form.validade_dias),
         form.conserv_congelado ? form.temp_congelado : '', form.conserv_congelado ? form.tempo_congelado : '',
         form.conserv_refrigerado ? form.temp_refrigerado : '', form.conserv_refrigerado ? form.tempo_refrigerado : '',
@@ -673,7 +674,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                         label="Preço de Venda /un (R$) *"
                         value={form.preco_venda}
                         onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
-                        keyboardType="numeric"
+                        keyboardType="decimal-pad"
                         placeholder={precoSugerido > 0 ? precoSugerido.toFixed(2) : '0,00'}
                         error={errors.preco_venda}
                         errorText="Informe o preço de venda"
@@ -696,7 +697,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                         label={`Preço por ${tipoVenda === 'kg' ? 'kg' : 'litro'} (R$) *`}
                         value={form.preco_venda}
                         onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
-                        keyboardType="numeric"
+                        keyboardType="decimal-pad"
                         placeholder={precoSugerido > 0 ? precoSugerido.toFixed(2) : '0,00'}
                         error={errors.preco_venda}
                         errorText="Informe o preço de venda"

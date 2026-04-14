@@ -285,7 +285,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
           label="Preço Embalagem (R$)"
           value={form.preco_embalagem}
           onChangeText={(v) => { setForm(p => ({ ...p, preco_embalagem: v })); setErrors(p => ({ ...p, preco_embalagem: undefined })); }}
-          keyboardType="numeric"
+          keyboardType="decimal-pad"
           placeholder="Ex: 25,00"
           error={errors.preco_embalagem}
           style={styles.fieldCompact}

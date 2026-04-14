@@ -75,7 +75,13 @@ export default function ConfiguracaoScreen() {
       db.getAllAsync('SELECT * FROM despesas_variaveis ORDER BY id'),
       db.getAllAsync('SELECT * FROM faturamento_mensal ORDER BY id'),
     ]);
-    const config = configs?.[0];
+    let config = configs?.[0];
+    if (!config) {
+      // Criar row de configuração se não existir
+      await db.runAsync('INSERT INTO configuracao (lucro_desejado, margem_seguranca) VALUES (0.15, 0)');
+      const newConfigs = await db.getAllAsync('SELECT * FROM configuracao');
+      config = newConfigs?.[0];
+    }
     if (config) {
       setConfigId(config.id);
       const lucro = config.lucro_desejado;
@@ -449,7 +455,7 @@ export default function ConfiguracaoScreen() {
                   setLucroDesejado(val);
                   setCurrencyModal(null);
                   const db_val = parseFloat(val.replace(',', '.')) / 100;
-                  if (!isNaN(db_val) && db_val > 0 && configId) {
+                  if (!isNaN(db_val) && db_val > 0) {
                     getDatabase().then(db => {
                       db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [db_val]);
                       showSaved('Margem salva');
@@ -497,7 +503,7 @@ export default function ConfiguracaoScreen() {
                     setMargemSeguranca(val);
                     setCurrencyModal(null);
                     const parsed = parseFloat(val.replace(',', '.'));
-                    if (!isNaN(parsed) && parsed >= 0 && parsed <= 30 && configId) {
+                    if (!isNaN(parsed) && parsed >= 0 && parsed <= 30) {
                       getDatabase().then(db => {
                         db.runAsync('UPDATE configuracao SET margem_seguranca = ? WHERE id > 0', [parsed / 100]);
                         showSaved('Margem de segurança salva');
