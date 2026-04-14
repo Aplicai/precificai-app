@@ -261,7 +261,11 @@ function MaisStack() {
   );
 }
 
-function MainTabs() {
+const LAST_TAB_KEY = 'precificai_last_tab';
+const VALID_TABS = ['Início', 'Insumos', 'Preparos', 'Embalagens', 'Produtos', 'Ferramentas'];
+
+function MainTabs({ route }) {
+  const savedTab = route.params?.initialTab;
   const [finPendente, setFinPendente] = useState(false);
   const { isDesktop } = useResponsiveLayout();
 
@@ -271,6 +275,7 @@ function MainTabs() {
 
   const tabNavigator = (
     <Tab.Navigator
+      initialRouteName={savedTab && VALID_TABS.includes(savedTab) ? savedTab : 'Início'}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ focused }) => (
@@ -293,7 +298,15 @@ function MainTabs() {
         tabBarLabelStyle: { fontSize: 10, fontWeight: '600', fontFamily: fontFamily.semiBold, marginTop: 2 },
       })}
       screenListeners={({ navigation, route }) => ({
-        state: checkFinanceiro,
+        state: (e) => {
+          checkFinanceiro();
+          // Save last active tab
+          const state = navigation.getState();
+          const currentTab = state?.routes?.[state.index]?.name;
+          if (currentTab && VALID_TABS.includes(currentTab)) {
+            AsyncStorage.setItem(LAST_TAB_KEY, currentTab).catch(() => {});
+          }
+        },
         tabPress: (e) => {
           const state = navigation.getState();
           const currentRoute = state.routes.find(r => r.name === route.name);
@@ -337,6 +350,7 @@ function AuthNavigator() {
 
 function AppContent() {
   const [initialRoute, setInitialRoute] = useState(null);
+  const [savedTab, setSavedTab] = useState(null);
 
   useEffect(() => {
     const timeout = setTimeout(() => setInitialRoute('MainTabs'), 5000);
@@ -347,6 +361,10 @@ function AppContent() {
       clearTimeout(timeout);
       setInitialRoute('MainTabs');
     });
+    // Load last active tab
+    AsyncStorage.getItem(LAST_TAB_KEY).then(tab => {
+      if (tab && VALID_TABS.includes(tab)) setSavedTab(tab);
+    }).catch(() => {});
     return () => clearTimeout(timeout);
   }, []);
 
@@ -396,7 +414,7 @@ function AppContent() {
           ...screenOptions, headerShown: true, title: 'Configuração Inicial',
         }} />
       )}
-      <RootStack.Screen name="MainTabs" component={MainTabs} />
+      <RootStack.Screen name="MainTabs" component={MainTabs} initialParams={{ initialTab: savedTab }} />
       {initialRoute === 'MainTabs' && (
         <RootStack.Screen name="Onboarding" component={OnboardingScreen} options={{
           ...screenOptions, headerShown: true, title: 'Configuração Inicial',

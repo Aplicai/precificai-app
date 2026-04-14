@@ -739,7 +739,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </View>
               <View style={styles.costsItem}>
                 <Text style={styles.costsItemLabel}>Margem</Text>
-                <Text style={[styles.costsItemValue, { color: lucroPerc >= 0.1 ? colors.success : colors.coral }]}>
+                <Text style={[styles.costsItemValue, { color: lucroPerc >= config.lucroDesejado ? colors.success : lucroPerc >= (config.lucroDesejado - 0.10) ? '#E6A800' : colors.error }]}>
                   {formatPercent(lucroPerc)}
                 </Text>
               </View>
@@ -1210,7 +1210,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 </View>
                 <View style={[styles.costsItem, { minWidth: '45%' }]}>
                   <Text style={styles.costsItemLabel}>Margem</Text>
-                  <Text style={[styles.costsItemValue, { color: lucroPerc >= 0.1 ? colors.success : colors.coral }]}>
+                  <Text style={[styles.costsItemValue, { color: lucroPerc >= config.lucroDesejado ? colors.success : lucroPerc >= (config.lucroDesejado - 0.10) ? '#E6A800' : colors.error }]}>
                     {formatPercent(lucroPerc)}
                   </Text>
                 </View>

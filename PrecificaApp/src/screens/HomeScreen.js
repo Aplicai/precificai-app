@@ -417,6 +417,28 @@ export default function HomeScreen({ navigation }) {
         </Text>
       </View>
 
+      {/* Kit de Início banner — prominent for new users with no data */}
+      {d.totalInsumos === 0 && d.totalProdutos === 0 && !loading && (
+        <TouchableOpacity
+          style={[styles.setupBanner, { backgroundColor: colors.primary + '08', borderColor: colors.primary + '30' }]}
+          activeOpacity={0.7}
+          onPress={() => navigation.getParent()?.navigate('Ferramentas', { screen: 'KitInicio', params: { setup: false } })}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <View style={[styles.setupIconCircle, { backgroundColor: colors.primary + '20' }]}>
+              <Feather name="gift" size={20} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.setupBannerTitle, { fontSize: fonts.medium }]}>Comece com o Kit de Início</Text>
+              <Text style={styles.setupBannerDetail}>
+                Escolha seu segmento e receba insumos prontos para começar a precificar em minutos
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={20} color={colors.primary} />
+          </View>
+        </TouchableOpacity>
+      )}
+
       {/* Setup progress banner */}
       {emSetup && setupStatus && (
         <TouchableOpacity style={styles.setupBanner} activeOpacity={0.7} onPress={() => nav('Onboarding')}>
@@ -503,7 +525,7 @@ export default function HomeScreen({ navigation }) {
             ? (d.fatMedio > 0 && d.resultadoFinanceiro / d.fatMedio < 0.10 ? 'yellow' : 'green')
             : 'red';
           const margTarget = parseFloat(margemMetaValue) / 100 || 0.15;
-          const margBench = d.margemMedia >= margTarget ? 'green' : d.margemMedia >= (margTarget * 0.33) ? 'yellow' : 'red';
+          const margBench = d.margemMedia >= margTarget ? 'green' : d.margemMedia >= (margTarget - 0.10) ? 'yellow' : 'red';
           const benchColors = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
           return [
           { label: 'CMV Médio', value: formatPercent(d.cmvPercent), icon: 'tag', color: colors.accent,
