@@ -96,6 +96,10 @@ export default function ProdutoFormScreen({ route, navigation }) {
   const [novaEmbModalVisible, setNovaEmbModalVisible] = useState(false);
   const [novaEmbForm, setNovaEmbForm] = useState({ nome: '', quantidade: '', preco_embalagem: '' });
 
+  // New preparo modal state
+  const [novoPreparoModalVisible, setNovoPreparoModalVisible] = useState(false);
+  const [novoPreparoForm, setNovoPreparoForm] = useState({ nome: '', rendimento_total: '', unidade_medida: 'g' });
+
   // Delete modal
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [historicoPrecos, setHistoricoPrecos] = useState([]);
@@ -271,6 +275,33 @@ export default function ProdutoFormScreen({ route, navigation }) {
     // Open quantity prompt for the newly created embalagem
     const newItem = updated.find(e => e.id === newId);
     if (newItem) openQuantityPrompt('embalagem', newItem);
+  }
+
+  async function salvarNovoPreparo() {
+    if (!novoPreparoForm.nome.trim()) return Alert.alert('Erro', 'Informe o nome do preparo');
+    const rendimento = parseNum(novoPreparoForm.rendimento_total);
+    if (rendimento <= 0) return Alert.alert('Erro', 'Informe o rendimento');
+    const db = await getDatabase();
+    const result = await db.runAsync(
+      'INSERT INTO preparos (nome, rendimento_total, unidade_medida) VALUES (?,?,?)',
+      [novoPreparoForm.nome.trim(), rendimento, novoPreparoForm.unidade_medida]
+    );
+    const newId = result.lastInsertRowId;
+    const updated = await db.getAllAsync(
+      `SELECT p.*, COALESCE(SUM(pi.quantidade_utilizada * m.preco_por_kg / 1000), 0) as custo_total
+       FROM preparos p LEFT JOIN preparo_ingredientes pi ON pi.preparo_id = p.id
+       LEFT JOIN materias_primas m ON m.id = pi.materia_prima_id
+       GROUP BY p.id ORDER BY p.nome`
+    );
+    const mapped = updated.map(p => ({
+      ...p,
+      custo_por_kg: p.rendimento_total > 0 ? (p.custo_total / p.rendimento_total) * 1000 : 0,
+    }));
+    setPreparosList(mapped);
+    setNovoPreparoForm({ nome: '', rendimento_total: '', unidade_medida: 'g' });
+    setNovoPreparoModalVisible(false);
+    const newItem = mapped.find(p => p.id === newId);
+    if (newItem) openQuantityPrompt('preparo', newItem);
   }
 
   async function loadProduto() {
@@ -779,7 +810,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               onChangeText={setBuscaPreparo}
             />
           </View>
-          <TouchableOpacity style={styles.novoIngBtn} onPress={() => navigation.navigate('PreparoForm')}>
+          <TouchableOpacity style={styles.novoIngBtn} onPress={() => setNovoPreparoModalVisible(true)}>
             <Text style={styles.novoIngBtnIcon}>+</Text>
             <Text style={styles.novoIngBtnText}>Criar novo preparo</Text>
           </TouchableOpacity>
@@ -924,7 +955,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               onChangeText={setBuscaEmb}
             />
           </View>
-          <TouchableOpacity style={styles.novoIngBtn} onPress={() => navigation.navigate('EmbalagemForm')}>
+          <TouchableOpacity style={styles.novoIngBtn} onPress={() => setNovaEmbModalVisible(true)}>
             <Text style={styles.novoIngBtnIcon}>+</Text>
             <Text style={styles.novoIngBtnText}>Criar nova embalagem</Text>
           </TouchableOpacity>
@@ -1407,8 +1438,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
           </View>
           )}
           <TouchableOpacity style={styles.saveBackBtn} onPress={async () => {
-            allowExit.current = true;
-            // Save price to history
+            // Save price to history before full save
             const price = parseFloat(String(formRef.current.preco_venda).replace(',','.')) || 0;
             if (price > 0 && editId) {
               try {
@@ -1420,12 +1450,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 }
               } catch(e) {}
             }
-            const returnTo = route.params?.returnTo;
-            if (returnTo) {
-              navigation.navigate(returnTo);
-            } else {
-              navigation.navigate('ProdutosList');
-            }
+            // Full save (product + ingredientes + preparos + embalagens)
+            salvar();
           }}>
             <Feather name="check" size={16} color="#fff" />
             <Text style={styles.saveBackBtnText}>Salvar e Voltar</Text>
@@ -1587,6 +1613,63 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 <Text style={styles.modalCancelText}>Cancelar</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.modalSaveBtn} onPress={salvarNovaEmbalagem}>
+                <Text style={styles.modalSaveText}>Criar e Selecionar</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Modal Novo Preparo */}
+      <Modal visible={novoPreparoModalVisible} transparent animationType="fade">
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setNovoPreparoModalVisible(false)}>
+          <TouchableOpacity activeOpacity={1} style={styles.modalContent} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Novo Preparo</Text>
+
+            <Text style={styles.modalLabel}>Nome *</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={novoPreparoForm.nome}
+              onChangeText={(v) => setNovoPreparoForm(p => ({ ...p, nome: v }))}
+              placeholder="Ex: Ganache de chocolate"
+              placeholderTextColor={colors.disabled}
+              autoFocus
+            />
+
+            <Text style={styles.modalLabel}>Unidade de Medida</Text>
+            <View style={styles.novoIngUnidades}>
+              {UNIDADES_MEDIDA.map(u => (
+                <TouchableOpacity
+                  key={u.value}
+                  style={[styles.novoIngUnidadeChip, novoPreparoForm.unidade_medida === u.value && styles.novoIngUnidadeChipAtivo]}
+                  onPress={() => setNovoPreparoForm(p => ({ ...p, unidade_medida: u.value }))}
+                >
+                  <Text style={[styles.novoIngUnidadeText, novoPreparoForm.unidade_medida === u.value && styles.novoIngUnidadeTextAtivo]}>{u.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.modalLabel}>Rendimento Total ({novoPreparoForm.unidade_medida})</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={novoPreparoForm.rendimento_total}
+              onChangeText={(v) => setNovoPreparoForm(p => ({ ...p, rendimento_total: v }))}
+              keyboardType="numeric"
+              placeholder="Ex: 1000"
+              placeholderTextColor={colors.disabled}
+            />
+
+            <View style={styles.novoIngCalc}>
+              <Text style={[styles.novoIngCalcLabel, { color: colors.textSecondary }]}>
+                💡 Ingredientes podem ser adicionados depois na aba Preparos
+              </Text>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setNovoPreparoModalVisible(false)}>
+                <Text style={styles.modalCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalSaveBtn} onPress={salvarNovoPreparo}>
                 <Text style={styles.modalSaveText}>Criar e Selecionar</Text>
               </TouchableOpacity>
             </View>

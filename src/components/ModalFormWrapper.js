@@ -1,0 +1,149 @@
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Pressable } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
+
+/**
+ * Wraps a form screen to render as a modal popup on desktop web
+ * and as a full-screen with custom header on mobile.
+ *
+ * Usage:
+ * <ModalFormWrapper title="Novo Insumo" onClose={() => navigation.goBack()}>
+ *   <ScrollView>...</ScrollView>
+ *   <Footer>...</Footer>
+ * </ModalFormWrapper>
+ */
+export default function ModalFormWrapper({ children, title, onClose }) {
+  const { isDesktop } = useResponsiveLayout();
+
+  if (!isDesktop) {
+    // Mobile: full-screen with custom header
+    return (
+      <View style={styles.mobileWrapper}>
+        <View style={styles.mobileHeader}>
+          <TouchableOpacity onPress={onClose} style={styles.backBtn} activeOpacity={0.7}>
+            <Feather name="arrow-left" size={22} color={colors.textLight} />
+          </TouchableOpacity>
+          <Text style={styles.mobileTitle} numberOfLines={1}>{title}</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={{ flex: 1 }}>
+          {children}
+        </View>
+      </View>
+    );
+  }
+
+  // Desktop: modal popup overlay
+  return (
+    <View style={styles.overlay}>
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
+        <View style={styles.backdrop} />
+      </Pressable>
+      <View style={styles.card}>
+        <View style={styles.desktopHeader}>
+          <Text style={styles.desktopTitle} numberOfLines={1}>{title}</Text>
+          <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
+            <Feather name="x" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+        <View style={{ flex: 1 }}>
+          {children}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  // Mobile
+  mobileWrapper: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  mobileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm + 2,
+    ...Platform.select({
+      ios: { paddingTop: 50 },
+      default: {},
+    }),
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mobileTitle: {
+    flex: 1,
+    textAlign: 'center',
+    color: colors.textLight,
+    fontSize: fonts.large,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+  },
+
+  // Desktop overlay
+  overlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  card: {
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.lg,
+    width: '90%',
+    maxWidth: 640,
+    maxHeight: '90%',
+    overflow: 'hidden',
+    ...Platform.select({
+      web: {
+        boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+      },
+      default: {
+        elevation: 24,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+      },
+    }),
+  },
+  desktopHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  desktopTitle: {
+    flex: 1,
+    fontSize: fonts.large,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+});

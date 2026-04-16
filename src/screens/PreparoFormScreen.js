@@ -7,6 +7,7 @@ import Card from '../components/Card';
 import PickerSelect from '../components/PickerSelect';
 import InfoTooltip from '../components/InfoTooltip';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import ModalFormWrapper from '../components/ModalFormWrapper';
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
@@ -294,9 +295,11 @@ export default function PreparoFormScreen({ route, navigation }) {
     });
   }
 
+  const formTitle = editId ? 'Editar Preparo' : 'Novo Preparo';
+
   return (
-    <View style={styles.wrapper}>
-      <ScrollView style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 600, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled">
+    <ModalFormWrapper title={formTitle} onClose={() => navigation.goBack()}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
         {/* Bloco 1 — Dados do Preparo */}
         <Card title="Dados do Preparo">
@@ -707,7 +710,7 @@ export default function PreparoFormScreen({ route, navigation }) {
           </View>
         </View>
       </Modal>
-    </View>
+    </ModalFormWrapper>
   );
 }
 

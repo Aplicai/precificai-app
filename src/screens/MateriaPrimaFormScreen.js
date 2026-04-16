@@ -8,6 +8,7 @@ import PickerSelect from '../components/PickerSelect';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import InfoTooltip from '../components/InfoTooltip';
+import ModalFormWrapper from '../components/ModalFormWrapper';
 import { useIsFocused } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import {
@@ -197,6 +198,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   const labelPreco = getLabelPrecoBase(form.unidade_medida);
 
   const temDadosCalculo = qtBruta > 0 && qtLiquida > 0 && valorPago > 0;
+  const formTitle = editId ? 'Editar Insumo' : 'Novo Insumo';
   const perdaPercent = qtBruta > 0 ? ((1 - qtLiquida / qtBruta) * 100) : 0;
 
   function sufixoUnidade() {
@@ -332,8 +334,9 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.wrapper} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 600, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled">
+    <ModalFormWrapper title={formTitle} onClose={goBackSafe}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View>
 
         {/* Nome do insumo */}
@@ -745,6 +748,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
       </Modal>
     </ScrollView>
     </KeyboardAvoidingView>
+    </ModalFormWrapper>
   );
 }
 

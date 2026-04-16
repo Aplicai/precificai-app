@@ -151,9 +151,9 @@ function ProdutosStack() {
       <Stack.Screen name="ProdutosList" component={ProdutosListScreen} options={({ navigation }) => ({ title: 'Produtos', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="ProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
       <Stack.Screen name="CombosScreen" component={DeliveryCombosScreen} options={{ title: 'Combos' }} />
-      <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo' }} />
-      <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Novo Preparo' }} />
-      <Stack.Screen name="EmbalagemForm" component={EmbalagemFormScreen} options={{ title: 'Nova Embalagem' }} />
+      <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo', presentation: 'transparentModal', headerShown: false }} />
+      <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Novo Preparo', presentation: 'transparentModal', headerShown: false }} />
+      <Stack.Screen name="EmbalagemForm" component={EmbalagemFormScreen} options={{ title: 'Nova Embalagem', presentation: 'transparentModal', headerShown: false }} />
     </Stack.Navigator>
   );
 }
@@ -182,7 +182,7 @@ function InsumosStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen name="MateriasPrimas" component={MateriasPrimasScreen} options={({ navigation }) => ({ title: 'Insumos', ...backToHomeOption(navigation) })} />
-      <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Insumo' }} />
+      <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Insumo', presentation: 'transparentModal', headerShown: false }} />
     </Stack.Navigator>
   );
 }
@@ -191,7 +191,7 @@ function EmbalagensStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen name="Embalagens" component={EmbalagensScreen} options={({ navigation }) => ({ title: 'Embalagens', ...backToHomeOption(navigation) })} />
-      <Stack.Screen name="EmbalagemForm" component={EmbalagemFormScreen} options={{ title: 'Embalagem' }} />
+      <Stack.Screen name="EmbalagemForm" component={EmbalagemFormScreen} options={{ title: 'Embalagem', presentation: 'transparentModal', headerShown: false }} />
     </Stack.Navigator>
   );
 }
@@ -200,8 +200,8 @@ function PreparosStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen name="Preparos" component={PreparosScreen} options={({ navigation }) => ({ title: 'Preparos', ...backToHomeOption(navigation) })} />
-      <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Preparo' }} />
-      <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo' }} />
+      <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Preparo', presentation: 'transparentModal', headerShown: false }} />
+      <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo', presentation: 'transparentModal', headerShown: false }} />
     </Stack.Navigator>
   );
 }

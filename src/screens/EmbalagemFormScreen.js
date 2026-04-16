@@ -5,6 +5,7 @@ import { getDatabase } from '../database/database';
 import InputField from '../components/InputField';
 import PickerSelect from '../components/PickerSelect';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import ModalFormWrapper from '../components/ModalFormWrapper';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { useIsFocused } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -141,6 +142,9 @@ export default function EmbalagemFormScreen({ route, navigation }) {
   const precoUn = calcPrecoUnitarioEmbalagem(preco, qtd);
   const temDadosCalculo = qtd > 0 && preco > 0;
 
+  const formTitle = editId ? 'Editar Embalagem' : 'Nova Embalagem';
+  const goBack = () => navigation.goBack();
+
   // Auto-save para modo edição
   async function autoSave() {
     const f = formRef.current;
@@ -217,8 +221,8 @@ export default function EmbalagemFormScreen({ route, navigation }) {
   }
 
   return (
-    <View style={styles.wrapper}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 600, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled">
+    <ModalFormWrapper title={formTitle} onClose={goBack}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
         {/* Nome da embalagem */}
         <InputField
@@ -565,7 +569,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
           </View>
         </View>
       </Modal>
-    </View>
+    </ModalFormWrapper>
   );
 }
 
