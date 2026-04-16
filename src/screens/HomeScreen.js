@@ -358,7 +358,9 @@ export default function HomeScreen({ navigation }) {
         {!isDesktop && (
           <View style={[styles.customHeader, { paddingTop: insets.top + 8 }]}>
             <View style={{ width: 36 }} />
-            <Image source={require('../../assets/images/logo-header-white.png')} style={{ width: 130, height: 28 }} resizeMode="contain" />
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <Image source={require('../../assets/images/logo-header-white.png')} style={{ width: 150, height: 34 }} resizeMode="contain" />
+            </View>
             <View style={{ width: 36 }} />
           </View>
         )}
@@ -384,10 +386,10 @@ export default function HomeScreen({ navigation }) {
         <Feather name="user" size={20} color="#fff" />
       </TouchableOpacity>
 
-      <View style={{ alignItems: 'center' }}>
+      <View style={{ alignItems: 'center', flex: 1 }}>
         <Image
           source={require('../../assets/images/logo-header-white.png')}
-          style={{ width: 120, height: 26 }}
+          style={{ width: 150, height: 34 }}
           resizeMode="contain"
         />
       </View>
@@ -414,6 +416,69 @@ export default function HomeScreen({ navigation }) {
           {pendente ? 'Complete a configuração para começar' : d.totalProdutos === 0 ? 'Cadastre seus primeiros produtos' : 'Veja como está sua precificação'}
         </Text>
       </View>
+
+      {/* Kit de Início banner — prominent for new users with no data */}
+      {d.totalInsumos === 0 && d.totalProdutos === 0 && !loading && (
+        <TouchableOpacity
+          style={[styles.setupBanner, { backgroundColor: colors.primary + '08', borderColor: colors.primary + '30' }]}
+          activeOpacity={0.7}
+          onPress={() => navigation.getParent()?.navigate('Ferramentas', { screen: 'KitInicio', params: { setup: false } })}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <View style={[styles.setupIconCircle, { backgroundColor: colors.primary + '20' }]}>
+              <Feather name="gift" size={20} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.setupBannerTitle, { fontSize: fonts.medium }]}>Comece com o Kit de Início</Text>
+              <Text style={styles.setupBannerDetail}>
+                Escolha seu segmento e receba insumos prontos para começar a precificar em minutos
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={20} color={colors.primary} />
+          </View>
+        </TouchableOpacity>
+      )}
+
+      {/* Step-by-step guide for new users */}
+      {(d.totalProdutos === 0 || d.totalInsumos === 0) && !loading && (
+        <View style={styles.setupBanner}>
+          <Text style={[styles.setupBannerTitle, { fontSize: fonts.medium, marginBottom: spacing.sm }]}>
+            Como começar a precificar
+          </Text>
+          <Text style={[styles.setupBannerDetail, { marginBottom: spacing.md }]}>
+            Siga os passos na ordem para montar seus produtos corretamente
+          </Text>
+          {[
+            { step: 1, label: 'Cadastre seus insumos', desc: 'Ingredientes e matérias-primas', icon: 'package', tab: 'Insumos', done: d.totalInsumos > 0, count: d.totalInsumos },
+            { step: 2, label: 'Cadastre suas embalagens', desc: 'Caixas, potes, sacos, etc', icon: 'box', tab: 'Embalagens', done: d.totalEmbalagens > 0, count: d.totalEmbalagens },
+            { step: 3, label: 'Crie seus preparos', desc: 'Receitas base com insumos', icon: 'layers', tab: 'Preparos', done: d.totalPreparos > 0, count: d.totalPreparos, optional: true },
+            { step: 4, label: 'Monte seus produtos', desc: 'Combine tudo e defina preços', icon: 'shopping-bag', tab: 'Produtos', done: d.totalProdutos > 0, count: d.totalProdutos },
+          ].map((s, i) => {
+            const isNext = !s.done && (i === 0 || [d.totalInsumos > 0, d.totalEmbalagens > 0, d.totalPreparos > 0 || true, d.totalProdutos > 0][i - 1]);
+            return (
+              <TouchableOpacity
+                key={s.step}
+                style={[styles.stepItem, isNext && styles.stepItemActive]}
+                activeOpacity={0.7}
+                onPress={() => navigation.getParent()?.navigate(s.tab)}
+              >
+                <View style={[styles.stepNumber, s.done && styles.stepNumberDone, isNext && styles.stepNumberActive]}>
+                  {s.done ? <Feather name="check" size={14} color="#fff" /> : <Text style={[styles.stepNumberText, isNext && { color: '#fff' }]}>{s.step}</Text>}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Text style={[styles.stepLabel, s.done && styles.stepLabelDone]}>{s.label}</Text>
+                    {s.optional && <Text style={{ fontSize: fonts.tiny, color: colors.disabled }}>(opcional)</Text>}
+                  </View>
+                  <Text style={styles.stepDesc}>{s.done ? `${s.count} cadastrado${s.count !== 1 ? 's' : ''}` : s.desc}</Text>
+                </View>
+                {isNext && <Feather name="arrow-right" size={16} color={colors.primary} />}
+                {s.done && <Feather name="check-circle" size={16} color={colors.success} />}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
 
       {/* Setup progress banner */}
       {emSetup && setupStatus && (
@@ -501,17 +566,17 @@ export default function HomeScreen({ navigation }) {
             ? (d.fatMedio > 0 && d.resultadoFinanceiro / d.fatMedio < 0.10 ? 'yellow' : 'green')
             : 'red';
           const margTarget = parseFloat(margemMetaValue) / 100 || 0.15;
-          const margBench = d.margemMedia >= margTarget ? 'green' : d.margemMedia >= (margTarget * 0.33) ? 'yellow' : 'red';
+          const margBench = d.margemMedia >= margTarget ? 'green' : d.margemMedia >= (margTarget - 0.10) ? 'yellow' : 'red';
           const benchColors = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
           return [
           { label: 'CMV Médio', value: formatPercent(d.cmvPercent), icon: 'tag', color: colors.accent,
             tip: { title: 'CMV Médio', text: 'Custo de Mercadoria Vendida em % do preço de venda. Toque para alterar a meta.', examples: ['Referência do setor alimentício:', 'Restaurantes: 28-35%', 'Pizzarias: 25-32%', 'Confeitarias: 20-30%', 'Fast food: 25-35%', `Sua meta: < ${cmvMetaValue}%`] },
             meta: `Atual: ${formatPercent(d.cmvPercent)} · Meta: < ${cmvMetaValue}%`, bench: pendente ? null : cmvBench, onPress: () => setShowCmvMeta(true) },
           { label: 'Resultado Operacional', value: pendente ? '--' : formatCurrency(d.resultadoFinanceiro), icon: 'dollar-sign', color: pendente ? colors.disabled : (d.resultadoFinanceiro >= 0 ? colors.success : colors.error),
-            tip: { title: 'Resultado Operacional', text: 'Faturamento médio mensal menos as despesas fixas. Mostra o resultado da operação antes dos custos variáveis.', examples: ['Fórmula: Faturamento − Despesas Fixas', 'Positivo: receita cobre despesas fixas', 'Negativo: despesas fixas maiores que o faturamento'] },
+            tip: { title: 'Resultado Operacional', text: 'Calculado automaticamente: faturamento médio mensal menos as despesas fixas. Para alterar, ajuste o faturamento ou as despesas fixas no Financeiro.', examples: ['Fórmula: Faturamento − Despesas Fixas', 'Positivo: receita cobre despesas fixas', 'Negativo: despesas fixas maiores que o faturamento', '💡 Ajuste no Financeiro (Ferramentas)'] },
             meta: d.resultadoFinanceiro >= 0 ? 'Receita cobre despesas' : 'Receita abaixo das despesas', bench: pendente ? null : resBench },
           { label: 'Ponto de Equilíbrio', value: pendente ? '--' : formatCurrency(d.pontoEquilibrio), icon: 'target', color: pendente ? colors.disabled : colors.purple,
-            tip: { title: 'Ponto de Equilíbrio', text: 'Faturamento mensal mínimo para cobrir todos os custos (fixos, variáveis e CMV). É a meta mínima de faturamento — abaixo disso, há prejuízo.', examples: ['Fórmula: Custos Fixos / (1 - CMV% - Desp. Variáveis%)', 'Compare com seu faturamento médio'] },
+            tip: { title: 'Ponto de Equilíbrio', text: 'Calculado automaticamente: faturamento mensal mínimo para cobrir todos os custos. Para alterar, ajuste suas despesas e CMV no Financeiro.', examples: ['Fórmula: Custos Fixos / (1 - CMV% - Desp. Variáveis%)', 'Compare com seu faturamento médio', '💡 Ajuste no Financeiro (Ferramentas)'] },
             meta: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0
               ? (d.fatMedio >= d.pontoEquilibrio ? `Faturamento ${formatPercent(d.fatMedio / d.pontoEquilibrio - 1)} acima` : `Falta ${formatCurrency(d.pontoEquilibrio - d.fatMedio)}`)
               : 'Configure o financeiro', bench: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0
@@ -644,8 +709,8 @@ export default function HomeScreen({ navigation }) {
                     <Feather name={ai.name} size={14} color={ai.color} />
                   </View>
                   <View style={styles.notifBody}>
-                    <Text style={styles.notifItemTitle} numberOfLines={1}>{a.texto}</Text>
-                    {a.descricao && <Text style={styles.notifItemDesc} numberOfLines={2}>{a.descricao}</Text>}
+                    <Text style={styles.notifItemTitle} numberOfLines={2}>{a.texto}</Text>
+                    {a.descricao && <Text style={styles.notifItemDesc} numberOfLines={3}>{a.descricao}</Text>}
                   </View>
                   {hasAction && <Feather name="chevron-right" size={14} color={colors.disabled} />}
                 </TouchableOpacity>
@@ -741,6 +806,7 @@ export default function HomeScreen({ navigation }) {
                 if (val > 0) await db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [val]);
               } catch (e) {}
               setShowMargemMeta(false);
+              loadAll();
             }} style={{ paddingVertical: 8, paddingHorizontal: 24, backgroundColor: colors.success, borderRadius: borderRadius.md }}>
               <Text style={{ color: '#fff', fontFamily: fontFamily.semiBold, fontSize: 14 }}>Salvar e Aplicar</Text>
             </TouchableOpacity>
@@ -765,7 +831,8 @@ const styles = StyleSheet.create({
   customHeader: {
     backgroundColor: colors.primary,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.md, paddingBottom: 12,
+    paddingHorizontal: spacing.md, paddingBottom: 10,
+    minHeight: 56,
   },
   headerIconBtn: {
     width: 36, height: 36, borderRadius: 18,
@@ -802,6 +869,27 @@ const styles = StyleSheet.create({
     padding: spacing.sm, flexDirection: 'row', alignItems: 'center',
   },
   setupFinAlertText: { fontSize: fonts.tiny, fontFamily: fontFamily.medium, color: colors.coral, flex: 1 },
+
+  // Step-by-step guide
+  stepItem: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingVertical: spacing.sm + 2, borderBottomWidth: 1, borderBottomColor: colors.border + '40',
+  },
+  stepItemActive: {
+    backgroundColor: colors.primary + '06', marginHorizontal: -spacing.md,
+    paddingHorizontal: spacing.md, borderRadius: borderRadius.sm,
+    borderBottomWidth: 0,
+  },
+  stepNumber: {
+    width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  stepNumberDone: { backgroundColor: colors.success, borderColor: colors.success },
+  stepNumberActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  stepNumberText: { fontSize: fonts.small, fontWeight: '700', color: colors.textSecondary },
+  stepLabel: { fontSize: fonts.small, fontWeight: '600', color: colors.text, fontFamily: fontFamily.semiBold },
+  stepLabelDone: { color: colors.textSecondary, textDecorationLine: 'line-through' },
+  stepDesc: { fontSize: fonts.tiny, color: colors.textSecondary, fontFamily: fontFamily.regular, marginTop: 1 },
 
   // Status
   statusCard: {

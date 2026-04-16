@@ -9,7 +9,7 @@ let currentUserId = null;
 
 // In-memory cache for read queries (5 second TTL)
 const queryCache = new Map();
-const CACHE_TTL = 5000;
+const CACHE_TTL = 2000;
 
 function getCacheKey(sql, params) {
   return sql + '|' + JSON.stringify(params);
@@ -148,8 +148,8 @@ async function executeRun(sql, params = []) {
 
     const { data, error } = await supabase.from(table).insert(row).select('id').single();
     if (error) {
-      if (__DEV__) console.error('[SupabaseDb] Insert error:', error.message, sql);
-      return { lastInsertRowId: null, changes: 0 };
+      console.error('[SupabaseDb] Insert error:', error.message, table, JSON.stringify(row));
+      throw new Error(`Erro ao salvar em ${table}: ${error.message}`);
     }
     return { lastInsertRowId: data?.id, changes: 1 };
   }
@@ -187,8 +187,8 @@ async function executeRun(sql, params = []) {
 
     const { error } = await query;
     if (error) {
-      if (__DEV__) console.error('[SupabaseDb] Update error:', error.message, sql);
-      return { changes: 0 };
+      console.error('[SupabaseDb] Update error:', error.message, table, JSON.stringify(updates));
+      throw new Error(`Erro ao atualizar ${table}: ${error.message}`);
     }
     return { changes: 1 };
   }
@@ -212,8 +212,8 @@ async function executeRun(sql, params = []) {
 
     const { error } = await query;
     if (error) {
-      if (__DEV__) console.error('[SupabaseDb] Delete error:', error.message, sql);
-      return { changes: 0 };
+      console.error('[SupabaseDb] Delete error:', error.message, table);
+      throw new Error(`Erro ao excluir de ${table}: ${error.message}`);
     }
     return { changes: 1 };
   }

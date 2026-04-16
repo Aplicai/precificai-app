@@ -39,8 +39,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
   const isFocused = useIsFocused();
   const { isDesktop } = useResponsiveLayout();
   const editId = route.params?.id;
+  const defaultCategoriaId = route.params?.categoriaId || null;
   const [form, setForm] = useState({
-    nome: '', categoria_id: null, rendimento_total: '', unidade_rendimento: 'g',
+    nome: '', categoria_id: defaultCategoriaId, rendimento_total: '', unidade_rendimento: 'g',
     rendimento_unidades: '1', tempo_preparo: '', unidade_tempo: 'Minutos',
     preco_venda: '', margem_lucro_produto: '',
     validade_dias: '', modo_preparo: '', observacoes: '',
@@ -515,9 +516,10 @@ export default function ProdutoFormScreen({ route, navigation }) {
     try {
       const db = await getDatabase();
       const margemSalvar = form.margem_lucro_produto.trim() !== '' ? parseNum(form.margem_lucro_produto) / 100 : null;
+      const pv = parseFloat(String(form.preco_venda).replace(',', '.')) || 0;
       const params = [
         form.nome, form.categoria_id, parseNum(form.rendimento_total), form.unidade_rendimento,
-        rendUn, parseNum(form.tempo_preparo), precoVenda, margemSalvar,
+        rendUn, parseNum(form.tempo_preparo), pv, margemSalvar,
         parseNum(form.validade_dias),
         form.conserv_congelado ? form.temp_congelado : '', form.conserv_congelado ? form.tempo_congelado : '',
         form.conserv_refrigerado ? form.temp_refrigerado : '', form.conserv_refrigerado ? form.tempo_refrigerado : '',
@@ -672,7 +674,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                         label="Preço de Venda /un (R$) *"
                         value={form.preco_venda}
                         onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
-                        keyboardType="numeric"
+                        keyboardType="decimal-pad"
                         placeholder={precoSugerido > 0 ? precoSugerido.toFixed(2) : '0,00'}
                         error={errors.preco_venda}
                         errorText="Informe o preço de venda"
@@ -695,7 +697,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                         label={`Preço por ${tipoVenda === 'kg' ? 'kg' : 'litro'} (R$) *`}
                         value={form.preco_venda}
                         onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
-                        keyboardType="numeric"
+                        keyboardType="decimal-pad"
                         placeholder={precoSugerido > 0 ? precoSugerido.toFixed(2) : '0,00'}
                         error={errors.preco_venda}
                         errorText="Informe o preço de venda"
@@ -737,7 +739,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </View>
               <View style={styles.costsItem}>
                 <Text style={styles.costsItemLabel}>Margem</Text>
-                <Text style={[styles.costsItemValue, { color: lucroPerc >= 0.1 ? colors.success : colors.coral }]}>
+                <Text style={[styles.costsItemValue, { color: lucroPerc >= config.lucroDesejado ? colors.success : lucroPerc >= (config.lucroDesejado - 0.10) ? '#E6A800' : colors.error }]}>
                   {formatPercent(lucroPerc)}
                 </Text>
               </View>
@@ -1208,7 +1210,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 </View>
                 <View style={[styles.costsItem, { minWidth: '45%' }]}>
                   <Text style={styles.costsItemLabel}>Margem</Text>
-                  <Text style={[styles.costsItemValue, { color: lucroPerc >= 0.1 ? colors.success : colors.coral }]}>
+                  <Text style={[styles.costsItemValue, { color: lucroPerc >= config.lucroDesejado ? colors.success : lucroPerc >= (config.lucroDesejado - 0.10) ? '#E6A800' : colors.error }]}>
                     {formatPercent(lucroPerc)}
                   </Text>
                 </View>

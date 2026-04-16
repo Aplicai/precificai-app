@@ -292,7 +292,7 @@ export default function PreparosScreen({ navigation }) {
                     title={busca.trim() ? 'Nenhum preparo encontrado' : 'Nenhum preparo cadastrado'}
                     description={busca.trim()
                       ? `Não encontramos resultados para "${busca}".`
-                      : 'Cadastre suas receitas base para calcular custos automaticamente.'}
+                      : 'Passo 3 · Crie receitas base combinando seus insumos. Cadastre insumos primeiro se ainda não fez.'}
                     ctaLabel={!busca.trim() ? 'Cadastrar preparo' : undefined}
                     onPress={!busca.trim() ? () => navigation.navigate('PreparoForm', {}) : undefined}
                   />
@@ -415,7 +415,7 @@ export default function PreparosScreen({ navigation }) {
         />
       )}
 
-      <FAB onPress={() => navigation.navigate('PreparoForm', {})} />
+      <FAB onPress={() => navigation.navigate('PreparoForm', {})} label={isDesktop ? 'Novo Preparo' : undefined} />
 
       {/* Modal nova categoria */}
       <Modal visible={modalVisible} transparent animationType="fade">

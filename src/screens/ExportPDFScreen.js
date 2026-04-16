@@ -20,6 +20,11 @@ function normalizeStr(str) {
   return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
+function isMobileWeb() {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
 export default function ExportPDFScreen({ navigation }) {
   const { isDesktop } = useResponsiveLayout();
   const [activeTab, setActiveTab] = useState('produtos');
@@ -114,6 +119,12 @@ export default function ExportPDFScreen({ navigation }) {
 
   const handleExportPreparos = async () => {
     if (selectedCount === 0) return;
+    // Pré-abre a janela ANTES do await (dentro do handler de clique síncrono)
+    // para evitar bloqueio de popup no mobile e desktop
+    let preOpenedWindow = null;
+    if (Platform.OS === 'web' && !isMobileWeb()) {
+      try { preOpenedWindow = window.open('', '_blank'); } catch(e) {}
+    }
     setExporting(true);
     try {
       const db = await getDatabase();
@@ -156,9 +167,17 @@ export default function ExportPDFScreen({ navigation }) {
         fichas.push({ preparo, ings, custoTotal, rendimento, custoPorKg });
       }
 
+      if (fichas.length === 0) {
+        if (preOpenedWindow && !preOpenedWindow.closed) preOpenedWindow.close();
+        if (Platform.OS === 'web') alert('Nenhum preparo válido foi encontrado para exportar.');
+        return;
+      }
+
       const html = buildPreparosHTML(fichas, perfil, incluirAdicionais);
-      exportarPDF(html);
+      exportarPDF(html, preOpenedWindow);
     } catch (e) {
+      if (preOpenedWindow && !preOpenedWindow.closed) preOpenedWindow.close();
+      if (Platform.OS === 'web') alert('Erro ao exportar: ' + (e.message || e));
     } finally {
       setExporting(false);
     }
@@ -167,6 +186,11 @@ export default function ExportPDFScreen({ navigation }) {
   const handleExport = async () => {
     if (activeTab === 'preparos') return handleExportPreparos();
     if (selectedCount === 0) return;
+    // Pré-abre a janela ANTES do await para evitar bloqueio de popup
+    let preOpenedWindow = null;
+    if (Platform.OS === 'web' && !isMobileWeb()) {
+      try { preOpenedWindow = window.open('', '_blank'); } catch(e) {}
+    }
     setExporting(true);
     try {
       const db = await getDatabase();
@@ -374,9 +398,10 @@ export default function ExportPDFScreen({ navigation }) {
       }
 
       const html = buildHTML(fichas, perfil, config, incluirAdicionais);
-      exportarPDF(html);
+      exportarPDF(html, preOpenedWindow);
     } catch (e) {
-      if (Platform.OS === 'web') alert('Erro ao exportar: ' + e.message);
+      if (preOpenedWindow && !preOpenedWindow.closed) preOpenedWindow.close();
+      if (Platform.OS === 'web') alert('Erro ao exportar: ' + (e.message || e));
     } finally {
       setExporting(false);
     }
@@ -1152,9 +1177,55 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
 </html>`;
 }
 
-function exportarPDF(htmlContent) {
-  if (Platform.OS === 'web') {
-    // Tenta window.open primeiro; fallback para iframe se popup bloqueado
+function exportarPDF(htmlContent, preOpenedWindow) {
+  if (Platform.OS !== 'web') return;
+
+  // Se já temos uma janela pré-aberta (aberta antes do await), usar ela
+  if (preOpenedWindow && !preOpenedWindow.closed) {
+    preOpenedWindow.document.write(htmlContent);
+    preOpenedWindow.document.close();
+    setTimeout(() => {
+      try { preOpenedWindow.print(); } catch(e) {}
+    }, 600);
+    return;
+  }
+
+  if (isMobileWeb()) {
+    // Mobile: usar iframe fullscreen como overlay para não sair da página
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;';
+
+    // Barra de ações no topo
+    const toolbar = document.createElement('div');
+    toolbar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#004d47;';
+
+    const printBtn = document.createElement('button');
+    printBtn.textContent = 'Imprimir / Salvar PDF';
+    printBtn.style.cssText = 'background:#fff;color:#004d47;border:none;padding:8px 18px;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;';
+    printBtn.onclick = () => {
+      try { iframe.contentWindow.print(); } catch(e) {}
+    };
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Fechar';
+    closeBtn.style.cssText = 'background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.4);padding:8px 18px;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;';
+    closeBtn.onclick = () => document.body.removeChild(overlay);
+
+    toolbar.appendChild(printBtn);
+    toolbar.appendChild(closeBtn);
+    overlay.appendChild(toolbar);
+
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'flex:1;width:100%;border:none;background:#fff;border-radius:0;';
+    overlay.appendChild(iframe);
+    document.body.appendChild(overlay);
+
+    const doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+  } else {
+    // Desktop: abrir nova aba
     const win = window.open('', '_blank');
     if (win) {
       win.document.write(htmlContent);
@@ -1163,12 +1234,7 @@ function exportarPDF(htmlContent) {
     } else {
       // Fallback: iframe oculto para impressão
       const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = 'none';
+      iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:none;';
       document.body.appendChild(iframe);
       const doc = iframe.contentDocument || iframe.contentWindow.document;
       doc.open();

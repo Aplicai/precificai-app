@@ -430,7 +430,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
           label="Valor Pago (R$)"
           value={form.valor_pago}
           onChangeText={(v) => { setForm(p => ({ ...p, valor_pago: v })); setErrors(p => ({ ...p, valor_pago: undefined })); }}
-          keyboardType="numeric"
+          keyboardType="decimal-pad"
           placeholder="Ex: 5,00"
           error={errors.valor_pago}
           style={styles.fieldCompact}

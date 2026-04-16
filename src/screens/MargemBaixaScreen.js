@@ -10,6 +10,7 @@ import { getFinanceiroStatus } from '../utils/financeiroStatus';
 export default function MargemBaixaScreen({ navigation }) {
   const [produtos, setProdutos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [margemMeta, setMargemMeta] = useState(0.15);
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
@@ -18,7 +19,7 @@ export default function MargemBaixaScreen({ navigation }) {
       const db = await getDatabase();
       const status = await getFinanceiroStatus();
 
-      const [fixas, variaveis, fat, prodsR, allIngs, allPreps, allEmbs] = await Promise.all([
+      const [fixas, variaveis, fat, prodsR, allIngs, allPreps, allEmbs, cfgs] = await Promise.all([
         db.getAllAsync('SELECT * FROM despesas_fixas'),
         db.getAllAsync('SELECT * FROM despesas_variaveis'),
         db.getAllAsync('SELECT * FROM faturamento_mensal'),
@@ -26,7 +27,10 @@ export default function MargemBaixaScreen({ navigation }) {
         db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
         db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
         db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
+        db.getAllAsync('SELECT lucro_desejado FROM configuracao LIMIT 1'),
       ]);
+      const meta = cfgs?.[0]?.lucro_desejado || 0.15;
+      setMargemMeta(meta);
       const totalFixas = fixas.reduce((a, x) => a + (x.valor || 0), 0);
       const totalVar = variaveis.reduce((a, x) => a + (x.percentual || 0), 0);
       const mesesComFat = fat.filter(f => f.valor > 0);
@@ -65,7 +69,7 @@ export default function MargemBaixaScreen({ navigation }) {
           const lucro = p.preco_venda - custoUnit - despFixasVal - despVarVal;
           const margem = lucro / p.preco_venda;
 
-          if (margem < 0.10) {
+          if (margem < meta) {
             result.push({
               id: p.id,
               nome: p.nome,
@@ -84,9 +88,8 @@ export default function MargemBaixaScreen({ navigation }) {
   }
 
   const getMargemColor = (m) => {
-    if (m < 0) return colors.error;
-    if (m < 0.05) return colors.coral;
-    return colors.yellow;
+    if (m < margemMeta - 0.10) return colors.error;
+    return '#E6A800';
   };
 
   const renderItem = ({ item }) => {

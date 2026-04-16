@@ -241,7 +241,7 @@ export default function EmbalagensScreen({ navigation }) {
                     : 'Nenhuma embalagem cadastrada'}
                   description={busca.trim()
                     ? `Não encontramos resultados para "${busca}".`
-                    : 'Cadastre suas embalagens para incluí-las no custo dos seus produtos.'}
+                    : 'Passo 2 · Cadastre caixas, potes e sacos para incluí-los no custo final dos produtos.'}
                   ctaLabel={!busca.trim() ? 'Cadastrar embalagem' : undefined}
                   onPress={!busca.trim() ? () => navigation.navigate('EmbalagemForm', {}) : undefined}
                 />
@@ -301,7 +301,7 @@ export default function EmbalagensScreen({ navigation }) {
                   : 'Nenhuma embalagem cadastrada'}
                 description={busca.trim()
                   ? `Não encontramos resultados para "${busca}".`
-                  : 'Cadastre suas embalagens para incluí-las no custo dos seus produtos.'}
+                  : 'Passo 2 · Cadastre caixas, potes e sacos para incluí-los no custo final dos produtos.'}
                 ctaLabel={!busca.trim() ? 'Cadastrar embalagem' : undefined}
                 onPress={!busca.trim() ? () => navigation.navigate('EmbalagemForm', {}) : undefined}
               />
@@ -390,7 +390,7 @@ export default function EmbalagensScreen({ navigation }) {
         />
       )}
 
-      <FAB onPress={() => navigation.navigate('EmbalagemForm', {})} />
+      <FAB onPress={() => navigation.navigate('EmbalagemForm', {})} label={isDesktop ? 'Nova Embalagem' : undefined} />
 
       {/* Modal nova categoria */}
       <Modal visible={modalVisible} transparent animationType="fade">

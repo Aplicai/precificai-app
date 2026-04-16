@@ -217,9 +217,8 @@ export default function EmbalagemFormScreen({ route, navigation }) {
   }
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={styles.wrapper}>
-      <View style={[styles.content, isDesktop && { maxWidth: 600, alignSelf: 'center', width: '100%' }]}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 600, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled">
 
         {/* Nome da embalagem */}
         <InputField
@@ -286,7 +285,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
           label="Preço Embalagem (R$)"
           value={form.preco_embalagem}
           onChangeText={(v) => { setForm(p => ({ ...p, preco_embalagem: v })); setErrors(p => ({ ...p, preco_embalagem: undefined })); }}
-          keyboardType="numeric"
+          keyboardType="decimal-pad"
           placeholder="Ex: 25,00"
           error={errors.preco_embalagem}
           style={styles.fieldCompact}
@@ -403,7 +402,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
           </View>
         )}
 
-      </View>
+      </ScrollView>
 
       {/* Footer: save+back (edição) ou botão salvar (novo) */}
       {editId ? (
@@ -567,13 +566,12 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         </View>
       </Modal>
     </View>
-    </TouchableWithoutFeedback>
   );
 }
 
 const styles = StyleSheet.create({
   wrapper: { flex: 1, backgroundColor: colors.background },
-  content: { flex: 1, padding: spacing.md, paddingTop: spacing.sm },
+  content: { padding: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.md },
   row: { flexDirection: 'row', gap: spacing.sm },
   fieldCompact: { marginBottom: spacing.sm },
 

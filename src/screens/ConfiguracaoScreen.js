@@ -26,9 +26,8 @@ const SUGESTOES_FIXAS = [
 ];
 const SUGESTOES_VARIAVEIS = [
   'Impostos (Simples)', 'Taxa maquininha', 'Taxa PIX', 'Perdas e desperdícios',
-  'Comissão vendedores', 'Comissão garçom', 'Taxa marketplace', 'Embalagens delivery',
-  'Sacolas', 'Gorjeta', 'Frete por pedido', 'Taxa iFood', 'Taxa Rappi',
-  'Devoluções', 'Bonificações', 'Royalties', 'Taxa antecipação cartão',
+  'Comissão vendedores', 'Comissão garçom', 'Taxa marketplace',
+  'Gorjeta', 'Devoluções', 'Bonificações', 'Royalties', 'Taxa antecipação cartão',
   'Imposto sobre serviço', 'ICMS', 'Contribuição sindical',
 ];
 
@@ -75,7 +74,13 @@ export default function ConfiguracaoScreen() {
       db.getAllAsync('SELECT * FROM despesas_variaveis ORDER BY id'),
       db.getAllAsync('SELECT * FROM faturamento_mensal ORDER BY id'),
     ]);
-    const config = configs?.[0];
+    let config = configs?.[0];
+    if (!config) {
+      // Criar row de configuração se não existir
+      await db.runAsync('INSERT INTO configuracao (lucro_desejado, margem_seguranca) VALUES (0.15, 0)');
+      const newConfigs = await db.getAllAsync('SELECT * FROM configuracao');
+      config = newConfigs?.[0];
+    }
     if (config) {
       setConfigId(config.id);
       const lucro = config.lucro_desejado;
@@ -402,6 +407,25 @@ export default function ConfiguracaoScreen() {
             </View>
           </View>
         )}
+        {finStatus && finStatus.completo && (
+          <View style={[s.progressSection, { backgroundColor: colors.success + '10', borderColor: colors.success + '30' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <Feather name="check-circle" size={20} color={colors.success} />
+              <View style={{ flex: 1 }}>
+                <Text style={[s.progressLabel, { color: colors.success }]}>Configuração completa!</Text>
+                <Text style={{ fontSize: fonts.tiny, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 2 }}>
+                  Seus preços e margens serão calculados com base nestas configurações.
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={{ marginTop: spacing.sm, backgroundColor: colors.success, borderRadius: borderRadius.md, paddingVertical: spacing.sm, alignItems: 'center' }}
+              onPress={() => navigation.navigate('Início')}
+            >
+              <Text style={{ color: '#fff', fontFamily: fontFamily.semiBold, fontSize: fonts.small }}>Voltar ao Início</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* STEP 1: Margem de Lucro */}
         <View style={s.stepCard}>
@@ -449,7 +473,7 @@ export default function ConfiguracaoScreen() {
                   setLucroDesejado(val);
                   setCurrencyModal(null);
                   const db_val = parseFloat(val.replace(',', '.')) / 100;
-                  if (!isNaN(db_val) && db_val > 0 && configId) {
+                  if (!isNaN(db_val) && db_val > 0) {
                     getDatabase().then(db => {
                       db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [db_val]);
                       showSaved('Margem salva');
@@ -497,7 +521,7 @@ export default function ConfiguracaoScreen() {
                     setMargemSeguranca(val);
                     setCurrencyModal(null);
                     const parsed = parseFloat(val.replace(',', '.'));
-                    if (!isNaN(parsed) && parsed >= 0 && parsed <= 30 && configId) {
+                    if (!isNaN(parsed) && parsed >= 0 && parsed <= 30) {
                       getDatabase().then(db => {
                         db.runAsync('UPDATE configuracao SET margem_seguranca = ? WHERE id > 0', [parsed / 100]);
                         showSaved('Margem de segurança salva');
@@ -641,20 +665,22 @@ export default function ConfiguracaoScreen() {
           <View style={s.stepBody}>
             <Text style={s.stepSubtitle}>Custos mensais independentes da produção</Text>
 
-            {/* Suggestions - always show 3, filtering already added */}
+            {/* Sugestões como lista selecionável */}
             {(() => {
               const existentes = despesasFixas.map(d => d.descricao?.toLowerCase());
               const disponiveis = SUGESTOES_FIXAS.filter(s => !existentes.includes(s.toLowerCase()));
-              const mostrar = disponiveis.slice(0, 3);
-              if (mostrar.length === 0) return null;
+              if (disponiveis.length === 0) return null;
               return (
-                <View style={s.suggestionsRow}>
-                  {mostrar.map(sug => (
-                    <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoFixa(sug)}>
-                      <Feather name="plus" size={12} color={colors.primary} />
-                      <Text style={s.suggestionChipText}>{sug}</Text>
-                    </TouchableOpacity>
-                  ))}
+                <View style={s.suggestionsList}>
+                  <Text style={s.suggestionsLabel}>Selecione para adicionar:</Text>
+                  <View style={s.suggestionsRow}>
+                    {disponiveis.map(sug => (
+                      <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoFixa(sug)}>
+                        <Feather name="plus" size={12} color={colors.primary} />
+                        <Text style={s.suggestionChipText}>{sug}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
               );
             })()}
@@ -772,20 +798,22 @@ export default function ConfiguracaoScreen() {
           <View style={s.stepBody}>
             <Text style={s.stepSubtitle}>Percentuais descontados sobre cada venda</Text>
 
-            {/* Suggestions - always show 3, filtering already added */}
+            {/* Sugestões como lista selecionável */}
             {(() => {
               const existentes = despesasVariaveis.map(d => d.descricao?.toLowerCase());
               const disponiveis = SUGESTOES_VARIAVEIS.filter(s => !existentes.includes(s.toLowerCase()));
-              const mostrar = disponiveis.slice(0, 3);
-              if (mostrar.length === 0) return null;
+              if (disponiveis.length === 0) return null;
               return (
-                <View style={s.suggestionsRow}>
-                  {mostrar.map(sug => (
-                    <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoVariavel(sug)}>
-                      <Feather name="plus" size={12} color={colors.primary} />
-                      <Text style={s.suggestionChipText}>{sug}</Text>
-                    </TouchableOpacity>
-                  ))}
+                <View style={s.suggestionsList}>
+                  <Text style={s.suggestionsLabel}>Selecione para adicionar:</Text>
+                  <View style={s.suggestionsRow}>
+                    {disponiveis.map(sug => (
+                      <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoVariavel(sug)}>
+                        <Feather name="plus" size={12} color={colors.primary} />
+                        <Text style={s.suggestionChipText}>{sug}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
               );
             })()}
@@ -1461,12 +1489,20 @@ const s = StyleSheet.create({
     fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.medium,
     marginBottom: spacing.xs,
   },
+  suggestionsList: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  suggestionsLabel: {
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.medium,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
   suggestionsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
   },
   suggestionChip: {
     flexDirection: 'row',

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
+import useRateLimit from '../hooks/useRateLimit';
 
 export default function ForgotPasswordScreen({ navigation }) {
   const { resetPassword } = useAuth();
@@ -10,19 +11,36 @@ export default function ForgotPasswordScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
+  const rateLimit = useRateLimit();
 
   const handleReset = async () => {
+    const limitMsg = rateLimit.checkLimit();
+    if (limitMsg) { setError(limitMsg); return; }
     if (!email.trim()) {
       setError('Digite seu email');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setError('Digite um email válido');
       return;
     }
     setError('');
     setLoading(true);
     try {
       await resetPassword(email.trim().toLowerCase());
+      rateLimit.reset();
       setSent(true);
     } catch (err) {
-      setError('Erro ao enviar email. Verifique o endereço.');
+      rateLimit.recordAttempt();
+      const raw = err?.message || err?.error_description || String(err);
+      const lower = raw.toLowerCase();
+      const msg = lower.includes('fetch') || lower.includes('network') || lower.includes('failed to fetch')
+        ? 'Sem conexão. Verifique sua internet.'
+        : lower.includes('too many requests') || lower.includes('rate limit')
+        ? 'Muitas tentativas. Aguarde alguns minutos.'
+        : 'Erro ao enviar email. Verifique o endereço.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -30,7 +48,7 @@ export default function ForgotPasswordScreen({ navigation }) {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.inner}>
+      <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
         <View style={styles.logoArea}>
           <Image
             source={require('../../assets/images/logo-header-white.png')}
@@ -77,6 +95,10 @@ export default function ForgotPasswordScreen({ navigation }) {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
+                autoComplete="email"
+                textContentType="emailAddress"
+                returnKeyType="done"
+                onSubmitEditing={handleReset}
                 placeholderTextColor={colors.disabled}
               />
 
@@ -91,21 +113,21 @@ export default function ForgotPasswordScreen({ navigation }) {
                 )}
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+              <TouchableOpacity onPress={() => navigation.navigate('Login')} style={styles.backBtn}>
                 <Feather name="arrow-left" size={16} color={colors.primary} style={{ marginRight: 4 }} />
                 <Text style={styles.backText}>Voltar ao Login</Text>
               </TouchableOpacity>
             </>
           )}
         </View>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.primary },
-  inner: { flex: 1, justifyContent: 'center', paddingHorizontal: spacing.lg, maxWidth: 420, alignSelf: 'center', width: '100%' },
+  inner: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: spacing.lg, paddingVertical: 32, maxWidth: 420, alignSelf: 'center', width: '100%' },
   logoArea: { alignItems: 'center', marginBottom: 28 },
   logo: { width: 160, height: 36 },
   card: { backgroundColor: '#fff', borderRadius: borderRadius.xl, padding: spacing.lg, paddingTop: 24 },

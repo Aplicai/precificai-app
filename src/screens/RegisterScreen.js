@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Modal, Image } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
@@ -18,6 +18,7 @@ export default function RegisterScreen({ navigation }) {
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const passwordRef = useRef(null);
 
   const handleRegister = async () => {
     const limitMsg = rateLimit.checkLimit();
@@ -119,18 +120,25 @@ export default function RegisterScreen({ navigation }) {
             autoCapitalize="none"
             autoCorrect={false}
             autoComplete="email"
+            textContentType="emailAddress"
+            returnKeyType="next"
+            onSubmitEditing={() => passwordRef.current?.focus()}
             placeholderTextColor={colors.disabled}
           />
 
           <Text style={styles.label}>Senha</Text>
           <View style={styles.passwordContainer}>
             <TextInput
+              ref={passwordRef}
               style={styles.passwordInput}
               value={password}
               onChangeText={setPassword}
               placeholder="Mínimo 6 caracteres"
               secureTextEntry={!showPassword}
               autoComplete="new-password"
+              textContentType="newPassword"
+              returnKeyType="done"
+              onSubmitEditing={handleRegister}
               placeholderTextColor={colors.disabled}
             />
             <TouchableOpacity

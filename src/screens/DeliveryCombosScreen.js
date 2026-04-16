@@ -584,7 +584,7 @@ export default function DeliveryCombosScreen() {
       )}
 
       {/* FAB */}
-      <FAB onPress={abrirCriarCombo} />
+      <FAB onPress={abrirCriarCombo} label={isDesktop ? 'Novo Combo' : undefined} />
 
       {/* Delete confirmation */}
       <ConfirmDeleteModal

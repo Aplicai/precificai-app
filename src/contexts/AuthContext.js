@@ -1,11 +1,11 @@
 import React, { createContext, useState, useEffect, useContext, useRef, useCallback } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { supabase } from '../config/supabase';
 import { resetDatabase } from '../database/database';
 
 const AuthContext = createContext({});
 
-const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -21,8 +21,10 @@ export function AuthProvider({ children }) {
     }
   }, [user]);
 
-  // Track app state for inactivity timeout
+  // Track app state for inactivity timeout (native only — web uses Supabase's built-in session persistence)
   useEffect(() => {
+    if (Platform.OS === 'web') return; // Supabase handles web session via autoRefreshToken + persistSession
+
     const handleAppStateChange = (nextState) => {
       if (nextState === 'active') {
         const elapsed = Date.now() - lastActiveRef.current;

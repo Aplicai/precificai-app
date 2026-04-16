@@ -292,16 +292,16 @@ const styles = StyleSheet.create({
   },
   inputPrefix: {
     fontFamily: fontFamily.bold,
-    fontSize: fonts.title,
+    fontSize: fonts.large,
     color: colors.primary,
     marginRight: spacing.sm,
   },
   metaInput: {
     flex: 1,
     fontFamily: fontFamily.bold,
-    fontSize: fonts.header,
+    fontSize: fonts.title,
     color: colors.text,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm + 4,
     textAlign: 'center',
   },
 
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
   resultCard: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
-    padding: spacing.lg,
+    padding: spacing.md,
     marginBottom: spacing.md,
     borderWidth: 2,
     borderColor: colors.primary,
@@ -347,23 +347,23 @@ const styles = StyleSheet.create({
   },
   resultLabel: {
     fontFamily: fontFamily.medium,
-    fontSize: fonts.regular,
+    fontSize: fonts.small,
     color: colors.textSecondary,
     marginBottom: spacing.xs,
   },
   resultBig: {
     fontFamily: fontFamily.bold,
-    fontSize: 32,
+    fontSize: 24,
     color: colors.primary,
   },
   resultSuffix: {
     fontFamily: fontFamily.medium,
-    fontSize: fonts.regular,
+    fontSize: fonts.small,
     color: colors.textSecondary,
   },
   resultDaily: {
     fontFamily: fontFamily.semiBold,
-    fontSize: fonts.large,
+    fontSize: fonts.regular,
     color: colors.text,
     marginTop: spacing.xs,
   },

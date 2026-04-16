@@ -245,7 +245,7 @@ export default function MateriasPrimasScreen({ navigation }) {
                   title={busca.trim() ? 'Nenhum insumo encontrado' : 'Nenhum insumo cadastrado'}
                   description={busca.trim()
                     ? `Não encontramos resultados para "${busca}".`
-                    : 'Cadastre seus insumos para calcular o custo real das suas receitas.'}
+                    : 'Passo 1 · Comece por aqui! Cadastre ingredientes e matérias-primas — eles são a base de toda precificação.'}
                   ctaLabel={!busca.trim() ? 'Cadastrar primeiro insumo' : undefined}
                   onPress={!busca.trim() ? () => navigation.navigate('MateriaPrimaForm', {}) : undefined}
                 />
@@ -303,7 +303,7 @@ export default function MateriasPrimasScreen({ navigation }) {
                 title={busca.trim() ? 'Nenhum insumo encontrado' : 'Nenhum insumo cadastrado'}
                 description={busca.trim()
                   ? `Não encontramos resultados para "${busca}".`
-                  : 'Cadastre seus insumos para calcular o custo real das suas receitas.'}
+                  : 'Passo 1 · Comece por aqui! Cadastre ingredientes e matérias-primas — eles são a base de toda precificação.'}
                 ctaLabel={!busca.trim() ? 'Cadastrar primeiro insumo' : undefined}
                 onPress={!busca.trim() ? () => navigation.navigate('MateriaPrimaForm', {}) : undefined}
               />
@@ -401,7 +401,7 @@ export default function MateriasPrimasScreen({ navigation }) {
         />
       )}
 
-      <FAB onPress={() => navigation.navigate('MateriaPrimaForm', {})} />
+      <FAB onPress={() => navigation.navigate('MateriaPrimaForm', {})} label={isDesktop ? 'Novo Insumo' : undefined} />
 
       {/* Modal nova categoria */}
       <Modal visible={modalVisible} transparent animationType="fade">
