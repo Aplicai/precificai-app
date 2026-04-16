@@ -9,8 +9,8 @@ const NAV_SECTIONS = [
     items: [
       { key: 'home', label: 'Painel Geral', icon: 'home', iconSet: 'feather', tab: 'Início' },
       { key: 'insumos', label: 'Insumos', icon: 'shopping-bag', iconSet: 'feather', tab: 'Insumos', screen: 'MateriasPrimas' },
-      { key: 'preparos', label: 'Preparos', icon: 'pot-steam-outline', iconSet: 'material', tab: 'Preparos', screen: 'Preparos' },
       { key: 'embalagens', label: 'Embalagens', icon: 'package', iconSet: 'feather', tab: 'Embalagens', screen: 'Embalagens' },
+      { key: 'preparos', label: 'Preparos', icon: 'pot-steam-outline', iconSet: 'material', tab: 'Preparos', screen: 'Preparos' },
       { key: 'produtos', label: 'Produtos', icon: 'tag', iconSet: 'feather', tab: 'Produtos', screen: 'ProdutosList' },
       { key: 'combos', label: 'Combos', icon: 'layers', iconSet: 'feather', tab: 'Produtos', screen: 'CombosScreen' },
     ],
