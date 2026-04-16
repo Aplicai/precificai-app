@@ -26,9 +26,8 @@ const SUGESTOES_FIXAS = [
 ];
 const SUGESTOES_VARIAVEIS = [
   'Impostos (Simples)', 'Taxa maquininha', 'Taxa PIX', 'Perdas e desperdícios',
-  'Comissão vendedores', 'Comissão garçom', 'Taxa marketplace', 'Embalagens delivery',
-  'Sacolas', 'Gorjeta', 'Frete por pedido', 'Taxa iFood', 'Taxa Rappi',
-  'Devoluções', 'Bonificações', 'Royalties', 'Taxa antecipação cartão',
+  'Comissão vendedores', 'Comissão garçom', 'Taxa marketplace',
+  'Gorjeta', 'Devoluções', 'Bonificações', 'Royalties', 'Taxa antecipação cartão',
   'Imposto sobre serviço', 'ICMS', 'Contribuição sindical',
 ];
 

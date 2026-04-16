@@ -401,7 +401,7 @@ export default function MateriasPrimasScreen({ navigation }) {
         />
       )}
 
-      <FAB onPress={() => navigation.navigate('MateriaPrimaForm', {})} />
+      <FAB onPress={() => navigation.navigate('MateriaPrimaForm', {})} label={isDesktop ? 'Novo Insumo' : undefined} />
 
       {/* Modal nova categoria */}
       <Modal visible={modalVisible} transparent animationType="fade">

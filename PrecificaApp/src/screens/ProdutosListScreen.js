@@ -531,7 +531,7 @@ export default function ProdutosListScreen({ navigation }) {
         />
       )}
 
-      <FAB onPress={() => navigation.navigate('ProdutoForm', { categoriaId: filtroCategoria })} />
+      <FAB onPress={() => navigation.navigate('ProdutoForm', { categoriaId: filtroCategoria })} label={isDesktop ? 'Novo Produto' : undefined} />
 
       {/* Modal nova categoria */}
       <Modal visible={modalVisible} transparent animationType="fade">

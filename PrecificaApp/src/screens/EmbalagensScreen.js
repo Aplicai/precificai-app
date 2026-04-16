@@ -390,7 +390,7 @@ export default function EmbalagensScreen({ navigation }) {
         />
       )}
 
-      <FAB onPress={() => navigation.navigate('EmbalagemForm', {})} />
+      <FAB onPress={() => navigation.navigate('EmbalagemForm', {})} label={isDesktop ? 'Nova Embalagem' : undefined} />
 
       {/* Modal nova categoria */}
       <Modal visible={modalVisible} transparent animationType="fade">

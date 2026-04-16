@@ -9,7 +9,7 @@ let currentUserId = null;
 
 // In-memory cache for read queries (5 second TTL)
 const queryCache = new Map();
-const CACHE_TTL = 5000;
+const CACHE_TTL = 2000;
 
 function getCacheKey(sql, params) {
   return sql + '|' + JSON.stringify(params);

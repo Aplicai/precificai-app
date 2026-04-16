@@ -415,7 +415,7 @@ export default function PreparosScreen({ navigation }) {
         />
       )}
 
-      <FAB onPress={() => navigation.navigate('PreparoForm', {})} />
+      <FAB onPress={() => navigation.navigate('PreparoForm', {})} label={isDesktop ? 'Novo Preparo' : undefined} />
 
       {/* Modal nova categoria */}
       <Modal visible={modalVisible} transparent animationType="fade">
