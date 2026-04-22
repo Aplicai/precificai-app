@@ -9,6 +9,7 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import WebLayout from '../components/web/WebLayout';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { getSetupStatus } from '../utils/setupStatus';
+import { determineInitialRoute } from '../utils/initialRoute';
 import { useAuth } from '../contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -40,6 +41,7 @@ import RelatorioSimplesScreen from '../screens/RelatorioSimplesScreen';
 import FornecedoresScreen from '../screens/FornecedoresScreen';
 import ListaComprasScreen from '../screens/ListaComprasScreen';
 import KitInicioScreen from '../screens/KitInicioScreen';
+import WelcomeTourScreen from '../screens/WelcomeTourScreen';
 import SobreScreen from '../screens/SobreScreen';
 import ContaSegurancaScreen from '../screens/ContaSegurancaScreen';
 import PerfilScreen from '../screens/PerfilScreen';
@@ -262,6 +264,7 @@ function MaisStack() {
 }
 
 const LAST_TAB_KEY = 'precificai_last_tab';
+// Ordem segue o fluxo de composição (audit P1-08): Insumos→Preparos→Embalagens→Produtos.
 const VALID_TABS = ['Início', 'Insumos', 'Preparos', 'Embalagens', 'Produtos', 'Ferramentas'];
 
 function MainTabs({ route }) {
@@ -320,10 +323,18 @@ function MainTabs({ route }) {
         },
       })}
     >
+      {/*
+        Ordem das tabs reorganizada (audit P1-08):
+        Reflete o fluxo de composição do mais simples (insumo cru) ao mais
+        composto (produto vendável):
+          Insumos → Preparos (combina insumos) → Embalagens (wrapper) → Produtos (final)
+        Antes Embalagens vinha antes de Preparos, o que sugeria que se embala
+        um preparo — confundia o modelo mental do usuário.
+      */}
       <Tab.Screen name="Início" component={HomeStack} />
       <Tab.Screen name="Insumos" component={InsumosStack} />
-      <Tab.Screen name="Embalagens" component={EmbalagensStack} />
       <Tab.Screen name="Preparos" component={PreparosStack} />
+      <Tab.Screen name="Embalagens" component={EmbalagensStack} />
       <Tab.Screen name="Produtos" component={ProdutosStack} />
       <Tab.Screen name="Ferramentas" component={MaisStack} />
     </Tab.Navigator>
@@ -354,7 +365,7 @@ function AppContent() {
 
   useEffect(() => {
     const timeout = setTimeout(() => setInitialRoute('MainTabs'), 5000);
-    checkInitialRoute().then(route => {
+    determineInitialRoute().then(route => {
       clearTimeout(timeout);
       setInitialRoute(route);
     }).catch(() => {
@@ -368,48 +379,24 @@ function AppContent() {
     return () => clearTimeout(timeout);
   }, []);
 
-  async function checkInitialRoute() {
-    try {
-      // If onboarding was already completed, always go to MainTabs
-      const onboardingDone = await AsyncStorage.getItem('onboarding_done');
-      if (onboardingDone === 'true') return 'MainTabs';
-
-      const { getDatabase } = require('../database/database');
-      const db = await getDatabase();
-      // Check if profile is filled
-      const perfil = await db.getFirstAsync('SELECT * FROM perfil LIMIT 1');
-      if (!perfil || !perfil.nome_negocio || perfil.nome_negocio.trim() === '') {
-        return 'ProfileSetup';
-      }
-      // If user already has data, mark onboarding done and go to app
-      const insumos = await db.getAllAsync('SELECT id FROM materias_primas LIMIT 1');
-      if (insumos && insumos.length > 0) {
-        await AsyncStorage.setItem('onboarding_done', 'true');
-        return 'MainTabs';
-      }
-      // First-time user: check financeiro setup
-      const status = await getSetupStatus();
-      return status.financeiroCompleto ? 'MainTabs' : 'Onboarding';
-    } catch {
-      return 'MainTabs';
-    }
-  }
-
   if (!initialRoute) return <View style={{ flex: 1, backgroundColor: colors.background }} />;
 
   return (
-    <RootStack.Navigator screenOptions={{ headerShown: false }}>
-      {initialRoute === 'ProfileSetup' && (
+    <RootStack.Navigator initialRouteName={initialRoute} screenOptions={{ headerShown: false }}>
+      {initialRoute === 'WelcomeTour' && (
+        <RootStack.Screen name="WelcomeTour" component={WelcomeTourScreen} />
+      )}
+      {(initialRoute === 'WelcomeTour' || initialRoute === 'ProfileSetup') && (
         <RootStack.Screen name="ProfileSetup" component={PerfilScreen} options={{
           ...screenOptions, headerShown: true, title: 'Perfil do Negócio',
         }} />
       )}
-      {(initialRoute === 'Onboarding' || initialRoute === 'ProfileSetup') && (
+      {(initialRoute === 'WelcomeTour' || initialRoute === 'Onboarding' || initialRoute === 'ProfileSetup') && (
         <RootStack.Screen name="KitInicio" component={KitInicioScreen} options={{
           ...screenOptions, headerShown: true, title: 'Kit de Início',
         }} />
       )}
-      {(initialRoute === 'Onboarding' || initialRoute === 'ProfileSetup') && (
+      {(initialRoute === 'WelcomeTour' || initialRoute === 'Onboarding' || initialRoute === 'ProfileSetup') && (
         <RootStack.Screen name="Onboarding" component={OnboardingScreen} options={{
           ...screenOptions, headerShown: true, title: 'Configuração Inicial',
         }} />
