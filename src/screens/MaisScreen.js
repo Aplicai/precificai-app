@@ -38,6 +38,15 @@ const MENU_GROUPS = [
         screen: 'ListaCompras',
       },
       {
+        key: 'estoque',
+        title: 'Estoque',
+        desc: 'Saldos, entradas, ajustes e movimentos',
+        icon: 'package',
+        set: 'feather',
+        color: colors.primaryMid,
+        screen: 'EstoqueHub',
+      },
+      {
         key: 'fornecedores',
         title: 'Comparar Fornecedores',
         desc: 'Compare preços e descubra onde economizar',
@@ -63,7 +72,7 @@ const MENU_GROUPS = [
     items: [
       {
         key: 'bcg',
-        title: 'Engenharia de Cardápio',
+        title: 'Engenharia do Cardápio',
         desc: 'Veja quais produtos vendem mais e dão mais lucro',
         icon: 'bar-chart-2',
         set: 'feather',
@@ -124,6 +133,15 @@ const MENU_GROUPS = [
     key: 'conta',
     title: 'Conta & Ajuda',
     items: [
+      {
+        key: 'notificacoes',
+        title: 'Notificações',
+        desc: 'Estoque baixo, margem crítica e resumo diário',
+        icon: 'bell',
+        set: 'feather',
+        color: colors.coral,
+        screen: 'Notificacoes',
+      },
       {
         key: 'config',
         title: 'Configurações',

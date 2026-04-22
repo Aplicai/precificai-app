@@ -5,11 +5,13 @@ import { getDatabase } from '../database/database';
 import InputField from '../components/InputField';
 import PickerSelect from '../components/PickerSelect';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import SaveStatus from '../components/SaveStatus';
 import ModalFormWrapper from '../components/ModalFormWrapper';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { useIsFocused } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { calcPrecoUnitarioEmbalagem, formatCurrency } from '../utils/calculations';
+import { t } from '../i18n/pt-BR';
 
 const UNIDADES_EMBALAGEM = [
   { label: 'Unidades', value: 'Unidades' },
@@ -406,17 +408,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         <View style={styles.editFooter}>
           {saveStatus && (
             <View style={styles.autoSaveBar}>
-              {saveStatus === 'saving' ? (
-                <>
-                  <Feather name="loader" size={13} color={colors.textSecondary} />
-                  <Text style={styles.autoSaveText}>Salvando...</Text>
-                </>
-              ) : (
-                <>
-                  <Feather name="check-circle" size={13} color={colors.success} />
-                  <Text style={[styles.autoSaveText, { color: colors.success }]}>Salvo</Text>
-                </>
-              )}
+              <SaveStatus status={saveStatus} variant="badge" />
             </View>
           )}
           <TouchableOpacity style={styles.saveBackBtn} onPress={async () => {
@@ -512,7 +504,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
                     <Text style={styles.modalCancelText}>Voltar</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.modalSaveBtn} onPress={async () => {
-                    if (!novaCatNome.trim()) return Alert.alert('Erro', 'Informe o nome da categoria');
+                    if (!novaCatNome.trim()) return Alert.alert(t.alertAttention, t.validation.requiredCategoryName);
                     const db = await getDatabase();
                     const result = await db.runAsync('INSERT INTO categorias_embalagens (nome, icone) VALUES (?, ?)', [novaCatNome.trim(), 'tag']);
                     const newId = result.lastInsertRowId;

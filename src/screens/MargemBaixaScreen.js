@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
@@ -11,8 +11,14 @@ export default function MargemBaixaScreen({ navigation }) {
   const [produtos, setProdutos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [margemMeta, setMargemMeta] = useState(0.15);
+  const [refreshing, setRefreshing] = useState(false);
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try { await loadData(); } finally { setRefreshing(false); }
+  }
 
   async function loadData() {
     try {
@@ -139,6 +145,9 @@ export default function MargemBaixaScreen({ navigation }) {
         renderItem={renderItem}
         contentContainerStyle={styles.list}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
+        refreshControl={Platform.OS !== 'web' ? (
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} colors={[colors.primary]} />
+        ) : undefined}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Feather name="check-circle" size={48} color={colors.success} />

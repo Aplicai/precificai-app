@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Dimensions, ActivityIndicator, Modal, Animated, Image, Platform, StatusBar, TextInput } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Dimensions, ActivityIndicator, Modal, Animated, Image, Platform, StatusBar, TextInput, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -8,7 +8,9 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { getSetupStatus } from '../utils/setupStatus';
+import { contarAlertasEstoque } from '../services/estoque';
 import InfoTooltip from '../components/InfoTooltip';
+import Loader from '../components/Loader';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -30,7 +32,7 @@ export default function HomeScreen({ navigation }) {
     margemMedia: 0, custoTotal: 0, impactoDelivery: 0, resultadoFinanceiro: 0,
     produtosMargBaixa: [], produtosSemPreco: [],
     cmvPercent: 0, pontoEquilibrio: 0, fatMedio: 0,
-    insights: [],
+    insights: [], featuredInsight: null,
   });
   const [alertas, setAlertas] = useState([]);
   const [finStatus, setFinStatus] = useState(null);
@@ -41,8 +43,14 @@ export default function HomeScreen({ navigation }) {
   const [showMargemMeta, setShowMargemMeta] = useState(false);
   const [margemMetaValue, setMargemMetaValue] = useState('15');
   const insets = useSafeAreaInsets();
+  const [refreshing, setRefreshing] = useState(false);
 
   useFocusEffect(useCallback(() => { loadAll(); }, []));
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try { await loadAll(); } finally { setRefreshing(false); }
+  }
 
   async function loadAll() {
     try {
@@ -76,8 +84,8 @@ export default function HomeScreen({ navigation }) {
       const status = {
         etapas: [
           { key: 'faturamento', label: 'Faturamento mensal', done: faturamentoOk },
-          { key: 'fixas', label: 'Despesas fixas', done: fixasOk },
-          { key: 'variaveis', label: 'Despesas variáveis', done: variaveisOk },
+          { key: 'fixas', label: 'Custos do mês', done: fixasOk },
+          { key: 'variaveis', label: 'Custos por venda', done: variaveisOk },
           { key: 'lucro', label: 'Margem de lucro', done: lucroOk },
         ],
         concluidas: finConcluidas, total: 4, completo: finCompleto, progresso: finConcluidas / 4,
@@ -192,12 +200,32 @@ export default function HomeScreen({ navigation }) {
       if (diaDoMes <= 3 && finCompleto && fixas.length > 0) {
         pendencias.push({
           tipo: 'info',
-          texto: 'Revise suas despesas fixas',
-          descricao: 'Início do mês: verifique se houve alteração no aluguel, contas ou outros custos fixos.',
+          texto: 'Revise seus custos do mês',
+          descricao: 'Início do mês: verifique se houve alteração no aluguel, contas ou outros custos mensais.',
           acao: 'Financeiro',
         });
       }
-      if (!status.completo) pendencias.push({ tipo: 'error', texto: 'Configure o Financeiro para cálculos precisos', descricao: 'Preencha margem, faturamento e despesas', acao: 'Financeiro' });
+      if (!status.completo) pendencias.push({ tipo: 'error', texto: 'Configure o Financeiro para cálculos precisos', descricao: 'Preencha margem, faturamento e custos', acao: 'Financeiro' });
+      // M1-Estoque: alerta de estoque baixo/zerado
+      try {
+        const alertasEst = await contarAlertasEstoque(db);
+        if (alertasEst.zerado > 0) {
+          pendencias.push({
+            tipo: 'error',
+            texto: `${alertasEst.zerado} item(ns) zerado(s) em estoque`,
+            descricao: 'Você definiu estoque mínimo, mas o saldo está em zero. Faça uma entrada para reabastecer.',
+            acao: 'EstoqueHub',
+          });
+        }
+        if (alertasEst.baixo > 0) {
+          pendencias.push({
+            tipo: 'warning',
+            texto: `${alertasEst.baixo} item(ns) com estoque baixo`,
+            descricao: 'Saldo abaixo do mínimo configurado. Reponha antes de faltar.',
+            acao: 'EstoqueHub',
+          });
+        }
+      } catch {}
       if (produtosSemPreco.length > 0) pendencias.push({ tipo: 'warning', texto: `${produtosSemPreco.length} produto(s) sem preço de venda`, descricao: 'Defina os preços para calcular margens', acao: 'Produtos' });
       if (impactoDelivery === 0 && totalProdutos > 0) pendencias.push({ tipo: 'info', texto: 'Delivery ainda não configurado', descricao: 'Configure plataformas e preços de delivery', acao: 'Delivery' });
       // Add top 5 products with worst margin
@@ -245,18 +273,34 @@ export default function HomeScreen({ navigation }) {
           if (marg >= 0.15) healthyCount++;
         }
 
-        if (bestProd) insights.push({ icon: 'award', color: colors.success, text: `Seu produto mais lucrativo é o ${bestProd.nome} com margem de ${formatPercent(bestMargem)}` });
-        if (worstProd && worstMargem < 0.15) insights.push({ icon: 'alert-triangle', color: colors.coral, text: `Atenção: ${worstProd.nome} tem margem de apenas ${formatPercent(worstMargem)}. Considere aumentar o preço.` });
-        insights.push({ icon: 'pie-chart', color: colors.accent, text: `${healthyCount} de ${prodsComPreco} produtos estão com margem saudável (>15%)` });
+        // Priority: 1 = critical (color coral/red, push for action), 2 = warning, 3 = positive/info
+        if (worstProd && worstMargem < 0) {
+          insights.push({ priority: 1, icon: 'alert-triangle', color: colors.error, title: 'Margem negativa detectada', text: `${worstProd.nome} está com margem de ${formatPercent(worstMargem)} — você está pagando para vender. Aumente o preço ou reduza custos.`, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ajustar preço' } });
+        } else if (worstProd && worstMargem < 0.10) {
+          insights.push({ priority: 1, icon: 'alert-triangle', color: colors.coral, title: 'Margem crítica', text: `${worstProd.nome} tem margem de apenas ${formatPercent(worstMargem)}. Considere aumentar o preço.`, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ajustar preço' } });
+        } else if (worstProd && worstMargem < 0.15) {
+          insights.push({ priority: 2, icon: 'alert-triangle', color: colors.coral, title: 'Margem baixa', text: `${worstProd.nome} está com margem de ${formatPercent(worstMargem)}, abaixo do ideal (15%).`, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ver produto' } });
+        }
+        if (bestProd) insights.push({ priority: 3, icon: 'award', color: colors.success, title: 'Produto campeão', text: `${bestProd.nome} é seu mais lucrativo com margem de ${formatPercent(bestMargem)}.` });
+        insights.push({ priority: 3, icon: 'pie-chart', color: colors.accent, title: 'Carteira saudável', text: `${healthyCount} de ${prodsComPreco} produtos com margem saudável (>15%).` });
       }
-      if (pontoEquilibrio > 0) {
-        insights.push({ icon: 'target', color: colors.purple, text: `Você precisa faturar ${formatCurrency(pontoEquilibrio / 30)} por dia para cobrir seus custos` });
+      if (produtosSemPreco.length > 0) {
+        insights.push({ priority: 1, icon: 'tag', color: colors.warning, title: `${produtosSemPreco.length} produto(s) sem preço`, text: 'Defina o preço de venda para começar a calcular sua margem real.', action: { tab: 'Produtos', label: 'Definir preços' } });
+      }
+      if (pontoEquilibrio > 0 && fatMedio > 0 && fatMedio < pontoEquilibrio) {
+        insights.push({ priority: 1, icon: 'target', color: colors.coral, title: 'Faturamento abaixo do equilíbrio', text: `Faltam ${formatCurrency(pontoEquilibrio - fatMedio)} por mês para cobrir seus custos. Você precisa faturar ${formatCurrency(pontoEquilibrio / 30)}/dia.` });
+      } else if (pontoEquilibrio > 0) {
+        insights.push({ priority: 3, icon: 'target', color: colors.purple, title: 'Ponto de equilíbrio', text: `Você precisa faturar ${formatCurrency(pontoEquilibrio / 30)} por dia para cobrir seus custos.` });
       }
       if (cmvPercent > 0.35) {
-        insights.push({ icon: 'trending-up', color: colors.coral, text: `Seu CMV está em ${formatPercent(cmvPercent)}, acima da média do setor (30-35%)` });
+        insights.push({ priority: 2, icon: 'trending-up', color: colors.coral, title: 'CMV acima da média', text: `Seu CMV está em ${formatPercent(cmvPercent)}, acima da referência do setor (30-35%). Renegocie ingredientes-chave.` });
       }
 
-      setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, produtosMargBaixa: uniqueProds, produtosSemPreco, cmvPercent, pontoEquilibrio, fatMedio, insights });
+      // Sort by priority (1 = most critical first)
+      insights.sort((a, b) => (a.priority || 3) - (b.priority || 3));
+      const featuredInsight = insights[0] || null;
+
+      setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, produtosMargBaixa: uniqueProds, produtosSemPreco, cmvPercent, pontoEquilibrio, fatMedio, insights, featuredInsight });
       setAlertas(pendencias);
     } catch (e) { /* error handled silently */ }
     setLoading(false);
@@ -267,8 +311,8 @@ export default function HomeScreen({ navigation }) {
     if (tab === 'MargemBaixa') { navigation.navigate('MargemBaixa'); return; }
     if (tab === 'ProdutoFormHome') { navigation.navigate('ProdutoFormHome'); return; }
     if (tab === 'Onboarding') { navigation.getParent()?.navigate('Onboarding'); return; }
-    const ferramentasScreens = ['Financeiro', 'BCG', 'Delivery', 'AtualizarPrecos'];
-    const screenMap = { 'Financeiro': 'FinanceiroMain', 'BCG': 'MatrizBCG', 'Delivery': 'DeliveryHub', 'AtualizarPrecos': 'AtualizarPrecos' };
+    const ferramentasScreens = ['Financeiro', 'BCG', 'Delivery', 'AtualizarPrecos', 'EstoqueHub'];
+    const screenMap = { 'Financeiro': 'FinanceiroMain', 'BCG': 'MatrizBCG', 'Delivery': 'DeliveryHub', 'AtualizarPrecos': 'AtualizarPrecos', 'EstoqueHub': 'EstoqueHub' };
     if (ferramentasScreens.includes(tab)) {
       navigation.getParent()?.navigate('Ferramentas', { screen: screenMap[tab] });
       return;
@@ -329,7 +373,7 @@ export default function HomeScreen({ navigation }) {
   const defaults = [
     { label: 'Atualizar Preços', icon: 'refresh-cw', set: 'feather', tab: 'AtualizarPrecos' },
     { label: 'Novo Produto', icon: 'box', set: 'feather', tab: 'ProdutoFormHome' },
-    { label: 'Engenharia de Cardápio', icon: 'bar-chart-2', set: 'feather', tab: 'BCG' },
+    { label: 'Engenharia do Cardápio', icon: 'bar-chart-2', set: 'feather', tab: 'BCG' },
     { label: 'Delivery', icon: 'moped-outline', set: 'material', tab: 'Delivery' },
   ];
   for (const def of defaults) {
@@ -364,15 +408,7 @@ export default function HomeScreen({ navigation }) {
             <View style={{ width: 36 }} />
           </View>
         )}
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg }}>
-          <View style={{ width: 200, height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
-            <Animated.View style={{
-              height: 4, backgroundColor: colors.primary, borderRadius: 2,
-              width: '60%',
-            }} />
-          </View>
-          <Text style={{ marginTop: 12, fontSize: 13, color: colors.textSecondary, fontFamily: fontFamily.medium }}>Carregando dados...</Text>
-        </View>
+        <Loader message="Calculando seus indicadores..." />
       </View>
     );
   }
@@ -407,7 +443,13 @@ export default function HomeScreen({ navigation }) {
     </View>
     )}
 
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={styles.content}
+      refreshControl={Platform.OS !== 'web' ? (
+        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} colors={[colors.primary]} />
+      ) : undefined}
+    >
 
       {/* Greeting */}
       <View style={styles.greetingRow}>
@@ -549,6 +591,36 @@ export default function HomeScreen({ navigation }) {
         )}
       </TouchableOpacity>
 
+      {/* Featured Insight Banner (audit P1-12) — destaca o insight mais acionável
+          do momento (margem negativa, produtos sem preço, CMV alto, etc.).
+          Aparece logo após o status para que o usuário veja o problema/destaque
+          antes de explorar os KPIs e a base de cadastro. */}
+      {d.featuredInsight && !pendente && !baseIncompleta && (
+        <TouchableOpacity
+          style={[styles.featuredInsight, { borderLeftColor: d.featuredInsight.color, backgroundColor: d.featuredInsight.color + '0C' }]}
+          activeOpacity={d.featuredInsight.action ? 0.7 : 1}
+          onPress={() => {
+            const a = d.featuredInsight.action;
+            if (!a) return;
+            if (a.id) navToProduto(a.id);
+            else nav(a.tab);
+          }}
+        >
+          <View style={[styles.featuredInsightIcon, { backgroundColor: d.featuredInsight.color + '22' }]}>
+            <Feather name={d.featuredInsight.icon} size={18} color={d.featuredInsight.color} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.featuredInsightTitle}>{d.featuredInsight.title}</Text>
+            <Text style={styles.featuredInsightText}>{d.featuredInsight.text}</Text>
+            {d.featuredInsight.action && (
+              <Text style={[styles.featuredInsightCta, { color: d.featuredInsight.color }]}>
+                {d.featuredInsight.action.label} →
+              </Text>
+            )}
+          </View>
+        </TouchableOpacity>
+      )}
+
       {/* KPIs - Saúde da Precificação */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Text style={styles.sectionTitle}>Saúde da Precificação</Text>
@@ -573,16 +645,16 @@ export default function HomeScreen({ navigation }) {
             tip: { title: 'CMV Médio', text: 'Custo de Mercadoria Vendida em % do preço de venda. Abra o card para alterar a meta.', examples: ['Referência do setor alimentício:', 'Restaurantes: 28-35%', 'Pizzarias: 25-32%', 'Confeitarias: 20-30%', 'Fast food: 25-35%', `Sua meta: < ${cmvMetaValue}%`] },
             meta: `Atual: ${formatPercent(d.cmvPercent)} · Meta: < ${cmvMetaValue}%`, bench: pendente ? null : cmvBench, onPress: () => setShowCmvMeta(true) },
           { label: 'Resultado Operacional', value: pendente ? '--' : formatCurrency(d.resultadoFinanceiro), icon: 'dollar-sign', color: pendente ? colors.disabled : (d.resultadoFinanceiro >= 0 ? colors.success : colors.error),
-            tip: { title: 'Resultado Operacional', text: 'Calculado automaticamente: faturamento médio mensal menos as despesas fixas. Para alterar, ajuste o faturamento ou as despesas fixas no Financeiro.', examples: ['Fórmula: Faturamento − Despesas Fixas', 'Positivo: receita cobre despesas fixas', 'Negativo: despesas fixas maiores que o faturamento', '💡 Ajuste no Financeiro (Ferramentas)'] },
-            meta: d.resultadoFinanceiro >= 0 ? 'Receita cobre despesas' : 'Receita abaixo das despesas', bench: pendente ? null : resBench },
+            tip: { title: 'Resultado Operacional', text: 'Calculado automaticamente: faturamento médio mensal menos os custos do mês. Para alterar, ajuste o faturamento ou os custos do mês no Financeiro.', examples: ['Fórmula: Faturamento − Custos do mês', 'Positivo: receita cobre os custos mensais', 'Negativo: custos do mês maiores que o faturamento', '💡 Ajuste no Financeiro (Ferramentas)'] },
+            meta: d.resultadoFinanceiro >= 0 ? 'Receita cobre custos' : 'Receita abaixo dos custos', bench: pendente ? null : resBench },
           { label: 'Ponto de Equilíbrio', value: pendente ? '--' : formatCurrency(d.pontoEquilibrio), icon: 'target', color: pendente ? colors.disabled : colors.purple,
-            tip: { title: 'Ponto de Equilíbrio', text: 'Calculado automaticamente: faturamento mensal mínimo para cobrir todos os custos. Para alterar, ajuste suas despesas e CMV no Financeiro.', examples: ['Fórmula: Custos Fixos / (1 - CMV% - Desp. Variáveis%)', 'Compare com seu faturamento médio', '💡 Ajuste no Financeiro (Ferramentas)'] },
+            tip: { title: 'Ponto de Equilíbrio', text: 'Calculado automaticamente: faturamento mensal mínimo para cobrir todos os custos. Para alterar, ajuste seus custos e CMV no Financeiro.', examples: ['Fórmula: Custos do mês / (1 - CMV% - Custos por venda%)', 'Compare com seu faturamento médio', '💡 Ajuste no Financeiro (Ferramentas)'] },
             meta: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0
               ? (d.fatMedio >= d.pontoEquilibrio ? `Faturamento ${formatPercent(d.fatMedio / d.pontoEquilibrio - 1)} acima` : `Falta ${formatCurrency(d.pontoEquilibrio - d.fatMedio)}`)
               : 'Configure o financeiro', bench: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0
               ? (d.fatMedio >= d.pontoEquilibrio * 1.2 ? 'green' : d.fatMedio >= d.pontoEquilibrio ? 'yellow' : 'red') : null },
           { label: 'Margem Líquida', value: pendente ? '--' : formatPercent(d.margemMedia), icon: 'trending-up', color: pendente ? colors.disabled : (d.margemMedia >= parseFloat(margemMetaValue)/100 ? colors.success : colors.coral),
-            tip: { title: 'Margem Líquida Média', text: 'Margem de lucro média já descontando CMV, despesas fixas e variáveis. Abra o card para alterar a meta.', examples: ['Acima de 15%: saudável', '5-15%: atenção', `Meta atual: > ${margemMetaValue}%`] },
+            tip: { title: 'Margem Líquida Média', text: 'Margem de lucro média já descontando CMV, custos do mês e custos por venda. Abra o card para alterar a meta.', examples: ['Acima de 15%: saudável', '5-15%: atenção', `Meta atual: > ${margemMetaValue}%`] },
             meta: d.margemMedia >= parseFloat(margemMetaValue)/100 ? `Meta: > ${margemMetaValue}%  ✓` : `Meta: > ${margemMetaValue}%`, bench: pendente ? null : margBench, onPress: () => setShowMargemMeta(true) },
         ].map(k => {
           const Wrapper = k.onPress ? TouchableOpacity : View;
@@ -653,14 +725,18 @@ export default function HomeScreen({ navigation }) {
         ))}
       </View>
 
-      {/* Insights */}
+      {/* Insights — lista completa de análises rápidas (P1-12: o featured banner
+          já mostra o mais urgente acima; aqui o usuário vê todos os outros). */}
       {d.insights?.length > 0 && (
         <>
           <Text style={styles.sectionTitle}>Análises Rápidas</Text>
           {d.insights.map((insight, i) => (
             <View key={i} style={[styles.insightCard, { borderLeftColor: insight.color }]}>
-              <Feather name={insight.icon} size={16} color={insight.color} />
-              <Text style={styles.insightText}>{insight.text}</Text>
+              <Feather name={insight.icon} size={16} color={insight.color} style={{ marginTop: 2 }} />
+              <View style={{ flex: 1 }}>
+                {insight.title && <Text style={styles.insightTitle}>{insight.title}</Text>}
+                <Text style={styles.insightText}>{insight.text}</Text>
+              </View>
             </View>
           ))}
         </>
@@ -1010,11 +1086,38 @@ const styles = StyleSheet.create({
 
   // Insights
   insightCard: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
     padding: 12, backgroundColor: colors.surface, borderRadius: 10,
     marginBottom: 6, borderLeftWidth: 3,
   },
-  insightText: { fontSize: 13, fontFamily: fontFamily.medium, color: colors.text, flex: 1, lineHeight: 18 },
+  insightTitle: {
+    fontSize: 13, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    color: colors.text, marginBottom: 2, lineHeight: 18,
+  },
+  insightText: { fontSize: 12, fontFamily: fontFamily.regular, color: colors.textSecondary, lineHeight: 17 },
+
+  // Featured Insight Banner (P1-12) — destaque visual no topo da Home
+  featuredInsight: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm,
+    padding: spacing.md, borderRadius: borderRadius.md,
+    borderLeftWidth: 4, marginBottom: spacing.md,
+  },
+  featuredInsightIcon: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  featuredInsightTitle: {
+    fontSize: fonts.medium, fontFamily: fontFamily.bold, fontWeight: '700',
+    color: colors.text, marginBottom: 3,
+  },
+  featuredInsightText: {
+    fontSize: fonts.small, fontFamily: fontFamily.regular,
+    color: colors.textSecondary, lineHeight: 18,
+  },
+  featuredInsightCta: {
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    marginTop: 6,
+  },
 
   // Notification panel
   notifOverlay: {

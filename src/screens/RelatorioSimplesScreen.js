@@ -6,6 +6,7 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 import EmptyState from '../components/EmptyState';
+import Loader from '../components/Loader';
 
 function escapeHtml(text) {
   if (!text) return '';
@@ -221,8 +222,7 @@ export default function RelatorioSimplesScreen({ navigation }) {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>Preparando seu relatório...</Text>
+        <Loader message="Traduzindo seus números em palavras..." />
       </View>
     );
   }
@@ -235,7 +235,7 @@ export default function RelatorioSimplesScreen({ navigation }) {
     if (data.resumo) {
       sections.push({
         title: 'Resumo Geral',
-        text: `De cada R$ 10,00 que entra no caixa: R$ ${data.resumo.ingredientes} vai pra ingredientes, R$ ${data.resumo.fixas} vai pra despesas fixas, R$ ${data.resumo.variaveis} vai pra despesas variáveis, e ${data.resumo.lucroPositivo ? 'sobram' : 'faltam'} R$ ${data.resumo.lucro} ${data.resumo.lucroPositivo ? 'de lucro' : '(prejuízo)'}.`,
+        text: `De cada R$ 10,00 que entra no caixa: R$ ${data.resumo.ingredientes} vai pra ingredientes, R$ ${data.resumo.fixas} vai pra custos do mês, R$ ${data.resumo.variaveis} vai pra custos por venda, e ${data.resumo.lucroPositivo ? 'sobram' : 'faltam'} R$ ${data.resumo.lucro} ${data.resumo.lucroPositivo ? 'de lucro' : '(prejuízo)'}.`,
       });
     }
 
@@ -365,13 +365,13 @@ export default function RelatorioSimplesScreen({ navigation }) {
             <View style={styles.breakdownItem}>
               <View style={[styles.breakdownDot, { backgroundColor: colors.accent }]} />
               <Text style={styles.breakdownText}>
-                <Text style={styles.breakdownValue}>R$ {data.resumo.fixas}</Text> vai pra despesas fixas
+                <Text style={styles.breakdownValue}>R$ {data.resumo.fixas}</Text> vai pra custos do mês
               </Text>
             </View>
             <View style={styles.breakdownItem}>
               <View style={[styles.breakdownDot, { backgroundColor: colors.purple }]} />
               <Text style={styles.breakdownText}>
-                <Text style={styles.breakdownValue}>R$ {data.resumo.variaveis}</Text> vai pra despesas variáveis
+                <Text style={styles.breakdownValue}>R$ {data.resumo.variaveis}</Text> vai pra custos por venda
               </Text>
             </View>
             <View style={styles.breakdownItem}>
@@ -423,8 +423,8 @@ export default function RelatorioSimplesScreen({ navigation }) {
                 <View style={styles.chartLegend}>
                   {[
                     { label: 'CMV (Ingredientes)', color: colors.coral, pct: (data.resumo.percIng * 100).toFixed(1) },
-                    { label: 'Despesas Fixas', color: colors.accent, pct: (data.resumo.percFixas * 100).toFixed(1) },
-                    { label: 'Despesas Variáveis', color: colors.purple, pct: (data.resumo.percVar * 100).toFixed(1) },
+                    { label: 'Custos do mês', color: colors.accent, pct: (data.resumo.percFixas * 100).toFixed(1) },
+                    { label: 'Custos por venda', color: colors.purple, pct: (data.resumo.percVar * 100).toFixed(1) },
                     { label: data.resumo.lucroPositivo ? 'Lucro' : 'Prejuízo', color: data.resumo.lucroPositivo ? colors.success : colors.error, pct: (Math.abs(data.resumo.percLucro) * 100).toFixed(1) },
                   ].map(item => (
                     <View key={item.label} style={styles.chartLegendItem}>

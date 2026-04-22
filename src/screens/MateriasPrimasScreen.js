@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, FlatList, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform, RefreshControl } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
@@ -10,7 +10,24 @@ import { formatCurrency, getTipoUnidade, normalizeSearch } from '../utils/calcul
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
 import Skeleton from '../components/Skeleton';
+import UndoToast from '../components/UndoToast';
+import SortMenu from '../components/SortMenu';
+import BulkActionBar from '../components/BulkActionBar';
+import CategoryPickerModal from '../components/CategoryPickerModal';
+import InfoToast from '../components/InfoToast';
+import HighlightedText from '../components/HighlightedText';
+import usePersistedState from '../hooks/usePersistedState';
+import useListDensity from '../hooks/useListDensity';
+import BulkPriceAdjustModal from '../components/BulkPriceAdjustModal';
+import ListStatsStrip from '../components/ListStatsStrip';
+import { exportToCSV, isCsvExportSupported } from '../utils/exportCsv';
+import ItemPreviewModal from '../components/ItemPreviewModal';
+import ViewModeToggle from '../components/ViewModeToggle';
+import { formatTimeAgo } from '../utils/timeAgo';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import useUndoableDelete from '../hooks/useUndoableDelete';
+import useBulkSelection from '../hooks/useBulkSelection';
+import { t } from '../i18n/pt-BR';
 
 // Cores para categorias
 const CATEGORY_COLORS = [
@@ -56,13 +73,34 @@ export default function MateriasPrimasScreen({ navigation }) {
   // Desktop grid seções recolhidas
   const [collapsedDesktop, setCollapsedDesktop] = useState({});
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  // Soft-delete via UndoToast (P1-11)
+  const undoDelete = useUndoableDelete();
+  // Ordenação (P1-22)
+  const [sortBy, setSortBy] = usePersistedState('insumos.sortBy', 'nome_asc');
+  const [viewMode, setViewMode] = usePersistedState('insumos.viewMode', 'list');
+  const isGrid = isDesktop || viewMode === 'grid';
+  // Densidade global (P3-G)
+  const { rowOverride, nameOverride, avatarSize } = useListDensity();
+  // Seleção múltipla (P1-21)
+  const bulk = useBulkSelection();
+  // Mover em massa (P2-B)
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [showPriceModal, setShowPriceModal] = useState(false);
+  const [previewItem, setPreviewItem] = useState(null);
+  const [infoToast, setInfoToast] = useState(null);
 
   function toggleDesktopSection(key) { setCollapsedDesktop(prev => ({...prev, [key]: !prev[key]})); }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try { await loadData(); } finally { setRefreshing(false); }
+  }
 
   useFocusEffect(useCallback(() => {
     loadData();
     return () => setConfirmDelete(null);
-  }, [filtroCategoria, busca]));
+  }, [filtroCategoria, busca, sortBy]));
 
   async function loadData() {
     setLoading(true);
@@ -76,7 +114,26 @@ export default function MateriasPrimasScreen({ navigation }) {
     colorMap['null'] = colors.disabled;
     setCatColorMap(colorMap);
 
-    const materias = await db.getAllAsync('SELECT * FROM materias_primas ORDER BY nome');
+    // Ordenação dinâmica via sortBy (P1-22 + P3-H/I)
+    const orderClauses = {
+      nome_asc: 'nome COLLATE NOCASE ASC',
+      nome_desc: 'nome COLLATE NOCASE DESC',
+      recentes: 'id DESC',
+      preco_desc: 'preco_por_kg DESC',
+      preco_asc: 'preco_por_kg ASC',
+      modificados: 'updated_at DESC', // P3-I
+      favoritos: 'nome COLLATE NOCASE ASC', // P3-H — busca por nome, sort final em JS
+    };
+    const orderBy = orderClauses[sortBy] || orderClauses.nome_asc;
+    let materias = await db.getAllAsync(`SELECT * FROM materias_primas ORDER BY ${orderBy}`);
+    // P3-H: re-sort em JS para colocar favoritos no topo (parser SQL não suporta multi-col ORDER BY)
+    if (sortBy === 'favoritos') {
+      materias = [...materias].sort((a, b) => {
+        const fa = a.favorito ? 1 : 0, fb = b.favorito ? 1 : 0;
+        if (fa !== fb) return fb - fa;
+        return String(a.nome || '').localeCompare(String(b.nome || ''));
+      });
+    }
     setTotalInsumos(materias.length);
 
     let materiasFiltradas = materias;
@@ -146,16 +203,185 @@ export default function MateriasPrimasScreen({ navigation }) {
       titulo: 'Excluir Insumo',
       nome,
       onConfirm: async () => {
-        const db = await getDatabase();
-        await db.runAsync('DELETE FROM materias_primas WHERE id = ?', [id]);
         setConfirmDelete(null);
-        loadData();
+        // Soft-delete: esconde imediatamente, oferece desfazer por 5s (P1-11)
+        await undoDelete.requestDelete({
+          id,
+          message: `Insumo "${nome}" excluído`,
+          commit: async () => {
+            const db = await getDatabase();
+            await db.runAsync('DELETE FROM materias_primas WHERE id = ?', [id]);
+          },
+          onCommitted: () => loadData(),
+        });
       },
     });
   }
 
+  // Exclusão em massa (P1-21)
+  function solicitarExclusaoEmMassa() {
+    const ids = Array.from(bulk.selectedIds);
+    if (ids.length === 0) return;
+    setConfirmDelete({
+      titulo: ids.length === 1 ? 'Excluir Insumo' : `Excluir ${ids.length} insumos`,
+      nome: ids.length === 1 ? null : `${ids.length} itens selecionados`,
+      onConfirm: async () => {
+        setConfirmDelete(null);
+        // Hook já adiciona todos os ids ao hiddenIds (suporta array)
+        await undoDelete.requestDelete({
+          id: ids,
+          message: ids.length === 1 ? '1 insumo excluído' : `${ids.length} insumos excluídos`,
+          commit: async () => {
+            const db = await getDatabase();
+            const placeholders = ids.map(() => '?').join(',');
+            await db.runAsync(`DELETE FROM materias_primas WHERE id IN (${placeholders})`, ids);
+          },
+          onCommitted: () => loadData(),
+        });
+        bulk.clear();
+      },
+    });
+  }
+
+  // Handlers de tap/long-press considerando modo bulk (P1-21)
+  function handleRowPress(item) {
+    if (bulk.active) {
+      bulk.toggle(item.id);
+    } else {
+      navigation.navigate('MateriaPrimaForm', { id: item.id });
+    }
+  }
+  function handleRowLongPress(item) {
+    bulk.enter(item.id);
+  }
+
+  async function moverEmMassa(catId) {
+    const ids = Array.from(bulk.selectedIds);
+    setShowMoveModal(false);
+    if (ids.length === 0) return;
+    const db = await getDatabase();
+    const placeholders = ids.map(() => '?').join(',');
+    await db.runAsync(
+      `UPDATE materias_primas SET categoria_id = ? WHERE id IN (${placeholders})`,
+      [catId, ...ids]
+    );
+    bulk.clear();
+    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'insumo movido' : 'insumos movidos'}`, icon: 'folder' });
+    loadData();
+  }
+
+  async function duplicarEmMassa() {
+    const ids = Array.from(bulk.selectedIds);
+    if (ids.length === 0) return;
+    const db = await getDatabase();
+    const placeholders = ids.map(() => '?').join(',');
+    const itens = await db.getAllAsync(
+      `SELECT * FROM materias_primas WHERE id IN (${placeholders})`, ids
+    );
+    await Promise.all(itens.map(item => db.runAsync(
+      'INSERT INTO materias_primas (nome, marca, categoria_id, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg) VALUES (?,?,?,?,?,?,?,?,?)',
+      [item.nome + ' (cópia)', item.marca, item.categoria_id, item.quantidade_bruta, item.quantidade_liquida, item.fator_correcao, item.unidade_medida, item.valor_pago, item.preco_por_kg]
+    )));
+    bulk.clear();
+    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'insumo duplicado' : 'insumos duplicados'}`, icon: 'copy' });
+    loadData();
+  }
+
+  async function reajustarEmMassa({ mode, value, sign }) {
+    const ids = Array.from(bulk.selectedIds);
+    setShowPriceModal(false);
+    if (ids.length === 0 || !value) return;
+    const db = await getDatabase();
+    const placeholders = ids.map(() => '?').join(',');
+    const itens = await db.getAllAsync(`SELECT * FROM materias_primas WHERE id IN (${placeholders})`, ids);
+    const factor = mode === 'percent' ? 1 + (sign * value) / 100 : null;
+    await Promise.all(itens.map((item) => {
+      const oldValor = Number(item.valor_pago) || 0;
+      let novoValor = mode === 'percent' ? oldValor * factor : oldValor + sign * value;
+      if (novoValor < 0) novoValor = 0;
+      const qtdLiq = Number(item.quantidade_liquida) || 1;
+      const novoPrecoKg = qtdLiq > 0 ? novoValor / qtdLiq : 0;
+      return db.runAsync(
+        'UPDATE materias_primas SET valor_pago = ?, preco_por_kg = ? WHERE id = ?',
+        [novoValor, novoPrecoKg, item.id]
+      );
+    }));
+    bulk.clear();
+    const sigStr = sign === 1 ? '+' : '−';
+    const valStr = mode === 'percent' ? `${value}%` : `R$ ${value.toFixed(2).replace('.', ',')}`;
+    setInfoToast({
+      message: `${ids.length} ${ids.length === 1 ? 'insumo reajustado' : 'insumos reajustados'} (${sigStr}${valStr})`,
+      icon: 'trending-up',
+    });
+    loadData();
+  }
+
+  // P3-H Favoritar/Desfavoritar em massa
+  async function favoritarEmMassa() {
+    const ids = Array.from(bulk.selectedIds);
+    if (ids.length === 0) return;
+    const db = await getDatabase();
+    const itens = visibleItems.filter((i) => bulk.isSelected(i.id));
+    // Se TODOS os selecionados já são favoritos, desfavorita; senão, favorita todos
+    const allFav = itens.every((i) => Number(i.favorito) === 1);
+    const novoVal = allFav ? 0 : 1;
+    await Promise.all(ids.map((id) =>
+      db.runAsync('UPDATE materias_primas SET favorito = ? WHERE id = ?', [novoVal, id])
+    ));
+    bulk.clear();
+    setInfoToast({
+      message: novoVal === 1
+        ? `${ids.length} ${ids.length === 1 ? 'insumo favoritado' : 'insumos favoritados'}`
+        : `${ids.length} ${ids.length === 1 ? 'insumo desfavoritado' : 'insumos desfavoritados'}`,
+      icon: 'star',
+    });
+    loadData();
+  }
+
+  async function toggleFavoritoSingular(item) {
+    if (!item) return;
+    const db = await getDatabase();
+    const novo = Number(item.favorito) === 1 ? 0 : 1;
+    await db.runAsync('UPDATE materias_primas SET favorito = ? WHERE id = ?', [novo, item.id]);
+    setPreviewItem({ ...item, favorito: novo });
+    loadData();
+  }
+
+  async function exportarCSVEmMassa() {
+    const ids = Array.from(bulk.selectedIds);
+    if (ids.length === 0) return;
+    const db = await getDatabase();
+    const placeholders = ids.map(() => '?').join(',');
+    const itens = await db.getAllAsync(
+      `SELECT m.*, c.nome AS categoria_nome FROM materias_primas m LEFT JOIN categorias_insumos c ON c.id = m.categoria_id WHERE m.id IN (${placeholders}) ORDER BY m.nome`,
+      ids
+    );
+    const rows = itens.map((it) => ({
+      nome: it.nome,
+      marca: it.marca || '',
+      categoria: it.categoria_nome || 'Sem categoria',
+      unidade: it.unidade_medida,
+      quantidade_liquida: it.quantidade_liquida,
+      valor_pago: it.valor_pago,
+      preco_por_kg: it.preco_por_kg,
+    }));
+    const ok = exportToCSV('insumos.csv', rows, [
+      { key: 'nome', label: 'Nome' },
+      { key: 'marca', label: 'Marca' },
+      { key: 'categoria', label: 'Categoria' },
+      { key: 'unidade', label: 'Unidade' },
+      { key: 'quantidade_liquida', label: 'Quantidade líquida' },
+      { key: 'valor_pago', label: 'Valor pago (R$)' },
+      { key: 'preco_por_kg', label: 'Preço por kg/L (R$)' },
+    ]);
+    if (ok) {
+      bulk.clear();
+      setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'insumo exportado' : 'insumos exportados'}`, icon: 'download' });
+    }
+  }
+
   async function adicionarCategoria() {
-    if (!novaCategoria.trim()) return Alert.alert('Erro', 'Informe o nome da categoria');
+    if (!novaCategoria.trim()) return Alert.alert(t.alertAttention, t.validation.requiredCategoryName);
     const db = await getDatabase();
     await db.runAsync('INSERT INTO categorias_insumos (nome, icone) VALUES (?, ?)', [novaCategoria.trim(), novoIcone]);
     setNovaCategoria('');
@@ -182,6 +408,24 @@ export default function MateriasPrimasScreen({ navigation }) {
       },
     });
   }
+
+  // Filtra linhas em janela de undo (P1-11)
+  const visibleSections = sections
+    .map((s) => ({ ...s, data: s.data.filter((it) => !undoDelete.hiddenIds.has(it.id)) }))
+    .filter((s) => s.data.length > 0 || filtroCategoria === s.catId);
+
+  // P3-B Stats summary
+  const visibleItems = visibleSections.flatMap((s) => s.data);
+  const visCount = visibleItems.length;
+  const avgKg = visCount
+    ? visibleItems.reduce((acc, it) => acc + (Number(it.preco_por_kg) || 0), 0) / visCount
+    : 0;
+  const totalPago = visibleItems.reduce((acc, it) => acc + (Number(it.valor_pago) || 0), 0);
+  const statsList = visCount > 0 ? [
+    { icon: 'box', label: 'Insumos', value: String(visCount), color: colors.primary },
+    { icon: 'tag', label: 'Médio/kg', value: formatCurrency(avgKg), color: colors.accent || '#FFD37A' },
+    { icon: 'shopping-cart', label: 'Total compras', value: formatCurrency(totalPago), color: colors.success || '#1a8a4f' },
+  ] : [];
 
   return (
     <View style={styles.container}>
@@ -218,7 +462,31 @@ export default function MateriasPrimasScreen({ navigation }) {
             <Feather name="plus" size={12} color={colors.primary} />
           </TouchableOpacity>
         </ScrollView>
-        <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar por nome ou marca..." />
+        <View style={styles.searchSortRow}>
+          <View style={{ flex: 1 }}>
+            <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar por nome ou marca..." />
+          </View>
+          <View style={styles.sortMenuWrap}>
+            <SortMenu
+              value={sortBy}
+              onChange={setSortBy}
+              options={[
+                { key: 'favoritos', label: 'Favoritos primeiro', icon: 'star' },
+                { key: 'nome_asc', label: 'Nome (A→Z)', icon: 'arrow-down' },
+                { key: 'nome_desc', label: 'Nome (Z→A)', icon: 'arrow-up' },
+                { key: 'recentes', label: 'Mais recentes', icon: 'clock' },
+                { key: 'modificados', label: 'Editados recentemente', icon: 'edit-2' },
+                { key: 'preco_desc', label: 'Maior preço/kg', icon: 'trending-up' },
+                { key: 'preco_asc', label: 'Menor preço/kg', icon: 'trending-down' },
+              ]}
+            />
+          </View>
+          {!isDesktop && (
+            <View style={{ marginLeft: 6 }}>
+              <ViewModeToggle value={viewMode} onChange={setViewMode} />
+            </View>
+          )}
+        </View>
       </View>
 
       {/* Botão Adicionar */}
@@ -231,7 +499,7 @@ export default function MateriasPrimasScreen({ navigation }) {
       </TouchableOpacity>
 
       {/* Lista agrupada */}
-      {isDesktop ? (
+      {isGrid ? (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
           <View style={styles.desktopContentWrap}>
             <View style={styles.desktopContentInner}>
@@ -249,7 +517,7 @@ export default function MateriasPrimasScreen({ navigation }) {
                 />
               ) : (
                 <View style={styles.desktopGrid}>
-                  {sections.map((section, catIdx) => (
+                  {visibleSections.map((section, catIdx) => (
                     <View key={section.catId} style={{ marginBottom: spacing.md }}>
                       <TouchableOpacity
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, marginTop: catIdx > 0 ? 16 : 0 }}
@@ -261,17 +529,38 @@ export default function MateriasPrimasScreen({ navigation }) {
                         <Feather name={collapsedDesktop[section.title] ? 'chevron-right' : 'chevron-down'} size={14} color={colors.disabled} />
                       </TouchableOpacity>
                       {!collapsedDesktop[section.title] && (<View style={styles.gridContainer}>
-                        {section.data.map((item) => (
+                        {section.data.map((item) => {
+                          const selected = bulk.isSelected(item.id);
+                          return (
                           <TouchableOpacity
                             key={item.id}
-                            style={[styles.gridCard, isWeb && { cursor: 'pointer' }]}
+                            style={[
+                              styles.gridCard,
+                              isWeb && { cursor: 'pointer' },
+                              selected && styles.rowSelected,
+                              selected && { borderColor: colors.primary },
+                            ]}
                             activeOpacity={0.7}
-                            onPress={() => navigation.navigate('MateriaPrimaForm', { id: item.id })}
+                            onPress={() => handleRowPress(item)}
+                            onLongPress={() => handleRowLongPress(item)}
+                            delayLongPress={300}
                           >
-                            <Text style={styles.gridCardName} numberOfLines={1} {...(Platform.OS === 'web' ? { title: item.nome + (item.marca ? ' (' + item.marca + ')' : '') } : {})}>{item.nome}{item.marca ? <Text style={{ color: colors.textSecondary, fontWeight: '400' }}> ({item.marca})</Text> : null}</Text>
+                            {bulk.active && (
+                              <View style={[styles.checkbox, selected && styles.checkboxChecked, { marginRight: 8, marginLeft: 0 }]}>
+                                {selected && <Feather name="check" size={12} color="#fff" />}
+                              </View>
+                            )}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }} {...(Platform.OS === 'web' ? { title: item.nome + (item.marca ? ' (' + item.marca + ')' : '') } : {})}>
+                              {Number(item.favorito) === 1 && (
+                                <Feather name="star" size={11} color={colors.yellow || '#FFC83A'} style={{ marginRight: 4 }} />
+                              )}
+                              <HighlightedText text={item.nome} query={busca} style={styles.gridCardName} numberOfLines={1} />
+                              {item.marca ? <Text style={[styles.gridCardName, { color: colors.textSecondary, fontWeight: '400' }]} numberOfLines={1}> ({item.marca})</Text> : null}
+                            </View>
                             <Text style={styles.gridCardPrice}>{formatCurrency(item.preco_por_kg)}</Text>
                           </TouchableOpacity>
-                        ))}
+                          );
+                        })}
                       </View>)}
                     </View>
                   ))}
@@ -282,13 +571,22 @@ export default function MateriasPrimasScreen({ navigation }) {
         </ScrollView>
       ) : (
         <SectionList
-          sections={sections.map(s => ({
+          sections={visibleSections.map(s => ({
             ...s,
             data: collapsedSections[s.catId] ? [] : s.data,
           }))}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
-          stickySectionHeadersEnabled={false}
+          stickySectionHeadersEnabled={true}
+          ListHeaderComponent={statsList.length > 0 ? <ListStatsStrip stats={statsList} /> : null}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
           ListEmptyComponent={
             loading ? (
               <Skeleton.List count={6} />
@@ -340,6 +638,7 @@ export default function MateriasPrimasScreen({ navigation }) {
             const inicial = (item.nome || '?').charAt(0).toUpperCase();
             const unidadeInfo = getUnidadeInfo(item.unidade_medida);
 
+            const selected = bulk.isSelected(item.id);
             return (
               <TouchableOpacity
                 style={[
@@ -347,20 +646,35 @@ export default function MateriasPrimasScreen({ navigation }) {
                   isFirst && styles.rowFirst,
                   isLast && styles.rowLast,
                   !isLast && styles.rowBorder,
+                  selected && styles.rowSelected,
+                  rowOverride,
                 ]}
-                onPress={() => navigation.navigate('MateriaPrimaForm', { id: item.id })}
+                onPress={() => handleRowPress(item)}
+                onLongPress={() => handleRowLongPress(item)}
+                delayLongPress={300}
                 activeOpacity={0.6}
               >
-                {/* Avatar com inicial */}
-                <View style={[styles.avatar, { backgroundColor: catColor + '18' }]}>
-                  <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
-                </View>
+                {/* Checkbox em modo bulk OU Avatar */}
+                {bulk.active ? (
+                  <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
+                    {selected && <Feather name="check" size={14} color="#fff" />}
+                  </View>
+                ) : (
+                  <View style={[styles.avatar, { backgroundColor: catColor + '18', width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}>
+                    <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
+                  </View>
+                )}
 
                 {/* Info */}
                 <View style={styles.rowInfo}>
-                  <Text style={styles.rowNome} numberOfLines={1}>{item.nome}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    {Number(item.favorito) === 1 && (
+                      <Feather name="star" size={11} color={colors.yellow || '#FFC83A'} />
+                    )}
+                    <HighlightedText text={item.nome} query={busca} style={[styles.rowNome, nameOverride, { flexShrink: 1 }]} numberOfLines={1} />
+                  </View>
                   {item.marca ? (
-                    <Text style={styles.rowMarca} numberOfLines={1}>{item.marca}</Text>
+                    <HighlightedText text={item.marca} query={busca} style={styles.rowMarca} numberOfLines={1} />
                   ) : null}
                 </View>
 
@@ -372,7 +686,8 @@ export default function MateriasPrimasScreen({ navigation }) {
                   </View>
                 </View>
 
-                {/* Duplicar */}
+                {/* Duplicar (oculto em modo bulk) */}
+                {!bulk.active && (
                 <TouchableOpacity
                   onPress={() => duplicarInsumo(item)}
                   style={styles.copyBtn}
@@ -380,8 +695,10 @@ export default function MateriasPrimasScreen({ navigation }) {
                 >
                   <Feather name="copy" size={13} color={colors.disabled} />
                 </TouchableOpacity>
+                )}
 
-                {/* Excluir */}
+                {/* Excluir (oculto em modo bulk) */}
+                {!bulk.active && (
                 <TouchableOpacity
                   onPress={() => solicitarExclusao(item.id, item.nome)}
                   style={styles.deleteBtn}
@@ -389,6 +706,7 @@ export default function MateriasPrimasScreen({ navigation }) {
                 >
                   <Feather name="trash-2" size={13} color={colors.disabled} />
                 </TouchableOpacity>
+                )}
               </TouchableOpacity>
             );
           }}
@@ -396,7 +714,9 @@ export default function MateriasPrimasScreen({ navigation }) {
         />
       )}
 
-      <FAB onPress={() => navigation.navigate('MateriaPrimaForm', {})} label={isDesktop ? 'Novo Insumo' : undefined} />
+      {!bulk.active && (
+        <FAB onPress={() => navigation.navigate('MateriaPrimaForm', {})} label={isDesktop ? 'Novo Insumo' : undefined} />
+      )}
 
       {/* Modal nova categoria */}
       <Modal visible={modalVisible} transparent animationType="fade">
@@ -438,6 +758,90 @@ export default function MateriasPrimasScreen({ navigation }) {
         onConfirm={confirmDelete?.onConfirm}
         onCancel={() => setConfirmDelete(null)}
       />
+
+      <UndoToast
+        visible={!!undoDelete.pending}
+        message={undoDelete.pending?.message}
+        onUndo={undoDelete.undo}
+        onTimeout={undoDelete.onTimeout}
+      />
+
+      {/* Barra de ações em massa (P1-21) */}
+      <BulkActionBar
+        visible={bulk.active}
+        count={bulk.count}
+        totalVisible={visibleSections.reduce((acc, s) => acc + s.data.length, 0)}
+        onSelectAll={() => bulk.selectAll(visibleSections.flatMap((s) => s.data.map((d) => d.id)))}
+        onCancel={bulk.clear}
+        onDelete={solicitarExclusaoEmMassa}
+        actions={[
+          ...(bulk.count === 1 ? [{ icon: 'eye', label: 'Visualizar', onPress: () => {
+            const onlyId = Array.from(bulk.selectedIds)[0];
+            const item = visibleItems.find((i) => i.id === onlyId);
+            if (item) setPreviewItem(item);
+          } }] : []),
+          { icon: 'folder', label: 'Mover', onPress: () => setShowMoveModal(true) },
+          { icon: 'copy', label: 'Duplicar', onPress: duplicarEmMassa },
+          { icon: 'star', label: (() => {
+            const sel = visibleItems.filter((i) => bulk.isSelected(i.id));
+            return sel.length > 0 && sel.every((i) => Number(i.favorito) === 1) ? 'Desfavoritar' : 'Favoritar';
+          })(), onPress: favoritarEmMassa },
+          { icon: 'trending-up', label: 'Reajustar', onPress: () => setShowPriceModal(true) },
+          ...(isCsvExportSupported() ? [{ icon: 'download', label: 'CSV', onPress: exportarCSVEmMassa }] : []),
+        ]}
+      />
+
+      {/* Modal de mover em massa (P2-B) */}
+      <CategoryPickerModal
+        visible={showMoveModal}
+        title="Mover insumos para..."
+        subtitle={`${bulk.count} ${bulk.count === 1 ? 'item selecionado' : 'itens selecionados'}`}
+        categorias={categorias}
+        onSelect={moverEmMassa}
+        onCancel={() => setShowMoveModal(false)}
+      />
+
+      <BulkPriceAdjustModal
+        visible={showPriceModal}
+        title="Reajustar valor de compra"
+        subtitle={`${bulk.count} ${bulk.count === 1 ? 'item selecionado' : 'itens selecionados'}`}
+        currentLabel="valores pagos"
+        onConfirm={reajustarEmMassa}
+        onCancel={() => setShowPriceModal(false)}
+      />
+
+      <InfoToast
+        visible={!!infoToast}
+        message={infoToast?.message}
+        icon={infoToast?.icon}
+        onDismiss={() => setInfoToast(null)}
+      />
+
+      <ItemPreviewModal
+        visible={!!previewItem}
+        title={previewItem?.nome}
+        subtitle={previewItem?.marca || (previewItem?.categoria_nome || 'Sem categoria')}
+        meta={previewItem?.updated_at ? `Editado ${formatTimeAgo(previewItem.updated_at)}` : null}
+        favorito={previewItem ? Number(previewItem.favorito) : 0}
+        onToggleFavorite={previewItem ? () => toggleFavoritoSingular(previewItem) : undefined}
+        icon="shopping-bag"
+        iconColor={colors.primary}
+        fields={previewItem ? [
+          { label: 'Categoria', value: previewItem.categoria_nome || 'Sem categoria' },
+          { label: 'Marca', value: previewItem.marca },
+          { label: 'Unidade', value: previewItem.unidade_medida },
+          { label: 'Quantidade líquida', value: previewItem.quantidade_liquida },
+          { label: 'Valor pago', value: formatCurrency(previewItem.valor_pago) },
+          { label: 'Preço por kg/L', value: formatCurrency(previewItem.preco_por_kg), accent: true },
+        ] : []}
+        onEdit={() => {
+          const id = previewItem?.id;
+          setPreviewItem(null);
+          bulk.clear();
+          if (id) navigation.navigate('MateriaPrimaForm', { id });
+        }}
+        onClose={() => setPreviewItem(null)}
+      />
     </View>
   );
 }
@@ -456,6 +860,16 @@ const styles = StyleSheet.create({
 
   // Filtros
   filtrosList: { paddingHorizontal: spacing.md, gap: 2 },
+  searchSortRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingRight: spacing.md,
+  },
+  sortMenuWrap: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
   filtroChip: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.inputBg,
@@ -483,8 +897,9 @@ const styles = StyleSheet.create({
   // Seção header
   sectionHeader: {
     flexDirection: 'row', alignItems: 'center',
-    marginTop: spacing.md, marginBottom: 6,
+    paddingTop: spacing.md, paddingBottom: 6,
     paddingHorizontal: 2,
+    backgroundColor: colors.background,
   },
   sectionDot: {
     width: 8, height: 8, borderRadius: 4, marginRight: 6,
@@ -527,6 +942,23 @@ const styles = StyleSheet.create({
   },
   avatarText: {
     fontSize: 15, fontFamily: fontFamily.bold, fontWeight: '700',
+  },
+
+  // Bulk selection (P1-21)
+  checkbox: {
+    width: 22, height: 22, borderRadius: 6,
+    borderWidth: 2, borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: spacing.sm + 8,
+    marginLeft: 6,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  rowSelected: {
+    backgroundColor: colors.primary + '0E',
   },
 
   // Info

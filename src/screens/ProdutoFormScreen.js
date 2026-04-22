@@ -7,9 +7,14 @@ import Card from '../components/Card';
 import PickerSelect from '../components/PickerSelect';
 import InfoTooltip from '../components/InfoTooltip';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import SaveStatus from '../components/SaveStatus';
+import CostBreakdownChart from '../components/CostBreakdownChart';
+import SuggestPriceModal from '../components/SuggestPriceModal';
+import { suggestPrice, gatherFinancialContext, getCategoriaMedia, getHistoricoVendas } from '../services/aiPricing';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import { t } from '../i18n/pt-BR';
 import {
   UNIDADES_MEDIDA, formatCurrency, formatPercent, calcMarkup, calcDespesasFixasPercentual,
   converterParaBase, getTipoUnidade, calcCustoIngrediente, calcCustoPreparo,
@@ -84,6 +89,12 @@ export default function ProdutoFormScreen({ route, navigation }) {
   // Delete modal
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [historicoPrecos, setHistoricoPrecos] = useState([]);
+
+  // IA — sugestão de preço (M1-23)
+  const [aiVisible, setAiVisible] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState(null);
+  const [aiResult, setAiResult] = useState(null);
 
   // Auto-save & validation state
   const [errors, setErrors] = useState({});
@@ -326,6 +337,61 @@ export default function ProdutoFormScreen({ route, navigation }) {
     setter(true);
     setTimeout(() => setter(false), 1500);
   }
+
+  // === IA Suggest Price (M1-23) ==========================================
+  async function abrirSugestaoIA() {
+    if (custoUnitario <= 0) {
+      Alert.alert(
+        'Adicione custos primeiro',
+        'A IA precisa do CMV para sugerir um preço. Adicione insumos, preparos ou embalagens antes.',
+      );
+      return;
+    }
+    setAiVisible(true);
+    setAiResult(null);
+    setAiError(null);
+    setAiLoading(true);
+    try {
+      const db = await getDatabase();
+      const ctx = await gatherFinancialContext(db);
+      const cat = categorias.find(c => c.id === form.categoria_id);
+      const precoMedioCat = await getCategoriaMedia(db, form.categoria_id, editId);
+      const historico = editId ? await getHistoricoVendas(db, editId) : [];
+      const precoAtualNum = parseNum(form.preco_venda);
+      const margemProdutoUser = form.margem_lucro_produto.trim() !== ''
+        ? parseNum(form.margem_lucro_produto) / 100
+        : null;
+      const margem_alvo = margemProdutoUser != null ? margemProdutoUser : ctx.margem_alvo;
+
+      const result = await suggestPrice({
+        produto_nome: form.nome || 'Produto sem nome',
+        categoria: cat?.nome || undefined,
+        cmv: Number(custoUnitario.toFixed(4)),
+        margem_alvo,
+        despesas_fixas_pct: ctx.despesas_fixas_pct,
+        despesas_variaveis_pct: ctx.despesas_variaveis_pct,
+        preco_atual: precoAtualNum > 0 ? precoAtualNum : undefined,
+        preco_medio_categoria: precoMedioCat || undefined,
+        historico,
+      });
+      setAiResult(result);
+    } catch (e) {
+      setAiError(e?.message || 'Erro ao consultar IA');
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  function aplicarPrecoIA(preco) {
+    const v = Number(preco) || 0;
+    if (v <= 0) return;
+    // Mantém formato com vírgula (padrão pt-BR do form)
+    const str = v.toFixed(2).replace('.', ',');
+    setForm(p => ({ ...p, preco_venda: str }));
+    setErrors(p => ({ ...p, preco_venda: undefined }));
+    setAiVisible(false);
+  }
+  // ========================================================================
 
   function addIngrediente(itemId, qty) {
     const id = itemId;
@@ -650,7 +716,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               <Text style={styles.costsTitle}>Resumo de Custos</Text>
               <InfoTooltip
                 title="Precificação"
-                text="Preço sugerido = Custo Unitário × Markup. O Markup considera despesas fixas, variáveis e margem de lucro."
+                text="Preço sugerido = Custo Unitário × Markup. O Markup considera custos do mês, custos por venda e margem de lucro."
                 examples={['Altere a margem individual abaixo', 'Preço sugerido se ajusta automaticamente']}
               />
             </View>
@@ -676,12 +742,14 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 </Text>
               </View>
             </View>
-            <View style={styles.costsBreakdown}>
-              <Text style={styles.costsBreakdownItem}>Insumos {formatCurrency(custoInsumos)}</Text>
-              <Text style={styles.costsBreakdownSep}>·</Text>
-              <Text style={styles.costsBreakdownItem}>Preparos {formatCurrency(custoPreparos)}</Text>
-              <Text style={styles.costsBreakdownSep}>·</Text>
-              <Text style={styles.costsBreakdownItem}>Emb. {formatCurrency(custoEmbalagens)}</Text>
+            <View style={styles.costsChartWrap}>
+              <CostBreakdownChart
+                segments={[
+                  { label: 'Insumos', value: custoInsumos, color: colors.primary },
+                  { label: 'Preparos', value: custoPreparos, color: colors.accent },
+                  { label: 'Embalagens', value: custoEmbalagens, color: colors.coral },
+                ]}
+              />
             </View>
           </View>
         )}
@@ -966,7 +1034,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
           headerRight={
             <InfoTooltip
               title="Precificação"
-              text="O preço sugerido é calculado aplicando o Mark-up sobre o custo unitário. O Mark-up considera despesas fixas, variáveis e a margem de lucro desejada."
+              text="O preço sugerido é calculado aplicando o Mark-up sobre o custo unitário. O Mark-up considera custos do mês, custos por venda e a margem de lucro desejada."
               examples={[
                 'Markup = 1 / (1 - DF% - DV% - Lucro%)',
                 'Preço Sugerido = Custo Unitário × Markup',
@@ -1029,6 +1097,17 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 <Text style={styles.precoSugeridoValor}>{formatCurrency(precoSugerido)}</Text>
               </View>
 
+              {/* IA — Sugestão de preço (M1-23) */}
+              <TouchableOpacity
+                style={styles.aiSuggestBtn}
+                onPress={abrirSugestaoIA}
+                activeOpacity={0.85}
+              >
+                <Feather name="zap" size={16} color={colors.primary} />
+                <Text style={styles.aiSuggestText}>Sugerir preço com IA</Text>
+                <Text style={styles.aiSuggestEmoji}>✨</Text>
+              </TouchableOpacity>
+
               <InputField
                 label="Preço de Venda (R$) *"
                 value={form.preco_venda}
@@ -1050,8 +1129,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
               {/* Análise final */}
               <View style={styles.custoRow}><Text style={styles.custoLabel}>CMV</Text><Text style={styles.custoValue}>{formatPercent(cmvPerc)}</Text></View>
-              <View style={styles.custoRow}><Text style={styles.custoLabel}>Despesas Fixas</Text><Text style={styles.custoValue}>{formatCurrency(despFixasValor)} ({formatPercent(config.despFixasPerc)})</Text></View>
-              <View style={styles.custoRow}><Text style={styles.custoLabel}>Despesas Variáveis</Text><Text style={styles.custoValue}>{formatCurrency(despVarValor)} ({formatPercent(config.despVarPerc)})</Text></View>
+              <View style={styles.custoRow}><Text style={styles.custoLabel}>Custos do mês</Text><Text style={styles.custoValue}>{formatCurrency(despFixasValor)} ({formatPercent(config.despFixasPerc)})</Text></View>
+              <View style={styles.custoRow}><Text style={styles.custoLabel}>Custos por venda</Text><Text style={styles.custoValue}>{formatCurrency(despVarValor)} ({formatPercent(config.despVarPerc)})</Text></View>
               <View style={[styles.custoRow, styles.custoTotal]}>
                 <Text style={[styles.custoLabel, styles.custoTotalText]}>Lucro Líquido</Text>
                 <Text style={[styles.custoValue, { color: lucroLiquido >= 0 ? colors.success : colors.error, fontWeight: '700' }]}>
@@ -1176,7 +1255,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 <Text style={styles.costsTitle}>Resumo de Custos</Text>
                 <InfoTooltip
                   title="Precificação"
-                  text="Preço sugerido = Custo Unitário × Markup. O Markup considera despesas fixas, variáveis e margem de lucro."
+                  text="Preço sugerido = Custo Unitário × Markup. O Markup considera custos do mês, custos por venda e margem de lucro."
                   examples={['Altere a margem individual abaixo', 'Preço sugerido se ajusta automaticamente']}
                 />
               </View>
@@ -1202,12 +1281,14 @@ export default function ProdutoFormScreen({ route, navigation }) {
                   </Text>
                 </View>
               </View>
-              <View style={styles.costsBreakdown}>
-                <Text style={styles.costsBreakdownItem}>Insumos {formatCurrency(custoInsumos)}</Text>
-                <Text style={styles.costsBreakdownSep}>·</Text>
-                <Text style={styles.costsBreakdownItem}>Preparos {formatCurrency(custoPreparos)}</Text>
-                <Text style={styles.costsBreakdownSep}>·</Text>
-                <Text style={styles.costsBreakdownItem}>Emb. {formatCurrency(custoEmbalagens)}</Text>
+              <View style={styles.costsChartWrap}>
+                <CostBreakdownChart
+                  segments={[
+                    { label: 'Insumos', value: custoInsumos, color: colors.primary },
+                    { label: 'Preparos', value: custoPreparos, color: colors.accent },
+                    { label: 'Embalagens', value: custoEmbalagens, color: colors.coral },
+                  ]}
+                />
               </View>
 
               {/* Detailed breakdown in sidebar */}
@@ -1239,8 +1320,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
                       <Text style={[styles.custoValue, styles.custoTotalText]}>{formatCurrency(custoUnitario)} {pv > 0 ? `(${formatPercent(cmvPerc)})` : ''}</Text>
                     </View>
                     <View style={styles.separator} />
-                    <View style={styles.custoRow}><Text style={styles.custoLabel}>Desp. Fixas</Text><Text style={styles.custoValue}>{formatCurrency(despFixasValor)} ({formatPercent(config.despFixasPerc)})</Text></View>
-                    <View style={styles.custoRow}><Text style={styles.custoLabel}>Desp. Variáveis</Text><Text style={styles.custoValue}>{formatCurrency(despVarValor)} ({formatPercent(config.despVarPerc)})</Text></View>
+                    <View style={styles.custoRow}><Text style={styles.custoLabel}>Custos do mês</Text><Text style={styles.custoValue}>{formatCurrency(despFixasValor)} ({formatPercent(config.despFixasPerc)})</Text></View>
+                    <View style={styles.custoRow}><Text style={styles.custoLabel}>Custos por venda</Text><Text style={styles.custoValue}>{formatCurrency(despVarValor)} ({formatPercent(config.despVarPerc)})</Text></View>
                     <View style={[styles.custoRow, styles.custoTotal]}>
                       <Text style={[styles.custoLabel, styles.custoTotalText]}>Lucro Líquido</Text>
                       <Text style={[styles.custoValue, { color: lucroLiquido >= 0 ? colors.success : colors.error, fontWeight: '700' }]}>
@@ -1373,18 +1454,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
         <View style={styles.editFooter}>
           {saveStatus && (
             <View style={styles.autoSaveBar}>
-              {saveStatus === 'saving' ? (
-                <>
-                  <Feather name="loader" size={13} color={colors.textSecondary} />
-                  <Text style={styles.autoSaveText}>Salvando...</Text>
-                </>
-              ) : (
-                <>
-                  <Feather name="check-circle" size={13} color={colors.success} />
-                  <Text style={[styles.autoSaveText, { color: colors.success }]}>Salvo</Text>
-              </>
-            )}
-          </View>
+              <SaveStatus status={saveStatus} variant="badge" />
+            </View>
           )}
           <Pressable style={styles.saveBackBtn} onPress={async () => {
             // Save price to history before full save
@@ -1458,7 +1529,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     <Text style={styles.modalCancelText}>Voltar</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.modalSaveBtn} onPress={async () => {
-                    if (!novaCatNome.trim()) return Alert.alert('Erro', 'Informe o nome da categoria');
+                    if (!novaCatNome.trim()) return Alert.alert(t.alertAttention, t.validation.requiredCategoryName);
                     const db = await getDatabase();
                     const result = await db.runAsync('INSERT INTO categorias_produtos (nome, icone) VALUES (?, ?)', [novaCatNome.trim(), 'tag']);
                     const newId = result.lastInsertRowId;
@@ -1507,6 +1578,17 @@ export default function ProdutoFormScreen({ route, navigation }) {
           </View>
         </View>
       </Modal>
+
+      {/* IA Suggest Price Modal (M1-23) */}
+      <SuggestPriceModal
+        visible={aiVisible}
+        loading={aiLoading}
+        error={aiError}
+        result={aiResult}
+        onClose={() => setAiVisible(false)}
+        onRetry={abrirSugestaoIA}
+        onApply={aplicarPrecoIA}
+      />
     </View>
   );
 }
@@ -1589,6 +1671,19 @@ const styles = StyleSheet.create({
   },
   precoSugeridoLabel: { fontSize: fonts.small, color: colors.primary, fontWeight: '700' },
   precoSugeridoValor: { fontSize: fonts.medium, color: colors.primary, fontWeight: '800' },
+  aiSuggestBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: colors.primary + '12',
+    borderWidth: 1, borderColor: colors.primary + '40',
+    borderRadius: borderRadius.md,
+    paddingVertical: 10, paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  aiSuggestText: {
+    fontSize: fonts.small, color: colors.primary,
+    fontFamily: fontFamily.bold, fontWeight: '700',
+  },
+  aiSuggestEmoji: { fontSize: fonts.small },
 
   // Preço hint
   precoHint: { fontSize: fonts.tiny, color: colors.textSecondary, fontStyle: 'italic', marginTop: -spacing.xs, marginBottom: spacing.xs },
@@ -1788,6 +1883,7 @@ const styles = StyleSheet.create({
   costsItemLabel: { fontSize: 9, fontFamily: fontFamily.medium, color: colors.textSecondary, marginBottom: 2 },
   costsItemValue: { fontSize: fonts.small, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.text },
   costsBreakdown: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' },
+  costsChartWrap: { marginTop: spacing.sm, paddingHorizontal: 2 },
   costsBreakdownItem: { fontSize: 10, fontFamily: fontFamily.regular, color: colors.textSecondary },
   costsBreakdownSep: { marginHorizontal: 4, color: colors.disabled, fontSize: 10 },
 

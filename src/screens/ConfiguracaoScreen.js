@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal, Keyboard, TextInput, Switch } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal, Keyboard, TextInput, Switch, RefreshControl, Platform } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import CurrencyInputModal from '../components/CurrencyInputModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -8,6 +8,7 @@ import InfoTooltip from '../components/InfoTooltip';
 import Chip from '../components/Chip';
 import { Feather } from '@expo/vector-icons';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import useListDensity from '../hooks/useListDensity';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, calcDespesasFixasPercentual, calcMarkup } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
@@ -50,10 +51,13 @@ export default function ConfiguracaoScreen() {
   const [configId, setConfigId] = useState(null);
   const [faturamentoMode, setFaturamentoMode] = useState('media'); // 'media' or 'mensal'
   const [faturamentoMedioInput, setFaturamentoMedioInput] = useState('');
+  // Densidade global de listas (P3-G)
+  const { density, setDensity } = useListDensity();
 
   const mesesCurtos = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
   const debounceRef = useRef(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -61,6 +65,11 @@ export default function ConfiguracaoScreen() {
       return () => setConfirmDelete(null);
     }, [])
   );
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try { await loadData(); } finally { setRefreshing(false); }
+  }
 
   function showSaved(msg) {
     setSavedFeedback(msg || 'Salvo');
@@ -158,7 +167,7 @@ export default function ConfiguracaoScreen() {
 
   function removerDespesaFixa(id, descricao) {
     setConfirmDelete({
-      titulo: 'Excluir Despesa Fixa', nome: descricao,
+      titulo: 'Excluir custo mensal', nome: descricao,
       onConfirm: async () => {
         const db = await getDatabase();
         await db.runAsync('DELETE FROM despesas_fixas WHERE id = ?', [id]);
@@ -180,7 +189,7 @@ export default function ConfiguracaoScreen() {
 
   function removerDespesaVariavel(id, descricao) {
     setConfirmDelete({
-      titulo: 'Excluir Despesa Variável', nome: descricao,
+      titulo: 'Excluir custo por venda', nome: descricao,
       onConfirm: async () => {
         const db = await getDatabase();
         await db.runAsync('DELETE FROM despesas_variaveis WHERE id = ?', [id]);
@@ -549,7 +558,7 @@ export default function ConfiguracaoScreen() {
             <StepNumber number={2} color={colors.accent} />
             <View style={{ flex: 1 }}>
               <Text style={s.stepTitle}>Faturamento Mensal</Text>
-              <Text style={s.stepSubtitle}>Peso das despesas fixas sobre cada produto</Text>
+              <Text style={s.stepSubtitle}>Peso dos custos mensais sobre cada produto</Text>
             </View>
             {faturamentoMedio > 0 && (
               <Chip
@@ -648,16 +657,16 @@ export default function ConfiguracaoScreen() {
           </View>
         </View>
 
-        {/* STEP 3: Despesas Fixas */}
+        {/* STEP 3: Custos Mensais (audit P1-08 — antes "Despesas Fixas") */}
         <View style={s.stepCard}>
           <View style={s.stepHeader}>
             <StepNumber number={3} color={colors.coral} />
             <View style={[{ flex: 1, flexDirection: 'row', alignItems: 'center' }]}>
-              <Text style={s.stepTitle}>Despesas Fixas</Text>
+              <Text style={s.stepTitle}>Custos do mês</Text>
               <InfoTooltip
-                title="O que são Despesas Fixas?"
-                text="São custos mensais que não mudam com a quantidade produzida. Você paga esses valores todo mês, independente de quanto vende."
-                examples={['Aluguel', 'Conta de luz', 'Internet', 'Salários fixos', 'Contador']}
+                title="O que são Custos do mês?"
+                text="São contas que você paga TODO mês, mesmo que não venda nada. Aluguel, luz, internet, salário... esse dinheiro sai da sua conta no mesmo dia, independente de quanto você produziu."
+                examples={['Aluguel', 'Conta de luz', 'Internet', 'Salário do funcionário', 'Contador']}
               />
             </View>
             {totalFixas > 0 && (
@@ -670,7 +679,7 @@ export default function ConfiguracaoScreen() {
           </View>
 
           <View style={s.stepBody}>
-            <Text style={s.stepSubtitle}>Custos mensais independentes da produção</Text>
+            <Text style={s.stepSubtitle}>O que sai todo mês, independente do que você vende</Text>
 
             {/* Sugestões como lista selecionável */}
             {(() => {
@@ -752,7 +761,7 @@ export default function ConfiguracaoScreen() {
               <TouchableOpacity
                 style={s.addValueBtn}
                 onPress={() => setCurrencyModal({
-                  title: 'Valor da Despesa Fixa',
+                  title: 'Valor do custo mensal',
                   value: novaFixa.valor,
                   prefix: 'R$',
                   placeholder: '0,00',
@@ -783,16 +792,16 @@ export default function ConfiguracaoScreen() {
           </View>
         </View>
 
-        {/* STEP 4: Despesas Variáveis */}
+        {/* STEP 4: Custos por venda (audit P1-08 — antes "Despesas Variáveis") */}
         <View style={s.stepCard}>
           <View style={s.stepHeader}>
             <StepNumber number={4} color={colors.purple} />
             <View style={[{ flex: 1, flexDirection: 'row', alignItems: 'center' }]}>
-              <Text style={s.stepTitle}>Despesas Variáveis</Text>
+              <Text style={s.stepTitle}>Custos por venda</Text>
               <InfoTooltip
-                title="O que são Despesas Variáveis?"
-                text="São percentuais descontados sobre cada venda. Quanto mais você vende, mais paga. Inclua impostos, taxas de máquina de cartão e PIX. Dica: faça uma média das taxas das diferentes máquinas que utiliza, ou use a taxa da que mais vende."
-                examples={['Impostos (Simples Nacional)', 'Taxa do cartão de crédito', 'Taxa PIX', 'Comissão de vendedores', 'Taxa de marketplace']}
+                title="O que são Custos por venda?"
+                text="São porcentagens que somem da sua venda toda vez que alguém compra: imposto, taxa do cartão, taxa do iFood, comissão... quanto mais você vende, mais sai. Coloque o percentual médio que costuma pagar."
+                examples={['Imposto (Simples Nacional)', 'Taxa do cartão de crédito', 'Taxa do PIX', 'Comissão do iFood', 'Comissão de vendedor']}
               />
             </View>
             {totalVariaveis > 0 && (
@@ -913,6 +922,66 @@ export default function ConfiguracaoScreen() {
           </View>
         </View>
 
+        {/* APARÊNCIA: Densidade da lista (P3-G) */}
+        <View style={s.stepCard}>
+          <View style={s.stepHeader}>
+            <View style={[s.stepCircle, { backgroundColor: colors.purple }]}>
+              <Feather name="layout" size={16} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.stepTitle}>Aparência</Text>
+              <Text style={s.stepSubtitle}>Densidade das listas</Text>
+            </View>
+          </View>
+          <View style={s.stepBody}>
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <TouchableOpacity
+                onPress={() => setDensity('comfortable')}
+                style={{
+                  flex: 1,
+                  paddingVertical: spacing.sm + 2,
+                  borderRadius: borderRadius.md,
+                  borderWidth: 2,
+                  borderColor: density === 'comfortable' ? colors.primary : colors.border,
+                  backgroundColor: density === 'comfortable' ? colors.primary + '10' : colors.surface,
+                  alignItems: 'center',
+                }}
+              >
+                <Feather name="menu" size={18} color={density === 'comfortable' ? colors.primary : colors.textSecondary} />
+                <Text style={{
+                  marginTop: 4,
+                  fontSize: fonts.small,
+                  fontFamily: fontFamily.semiBold,
+                  color: density === 'comfortable' ? colors.primary : colors.textSecondary,
+                }}>Confortável</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setDensity('compact')}
+                style={{
+                  flex: 1,
+                  paddingVertical: spacing.sm + 2,
+                  borderRadius: borderRadius.md,
+                  borderWidth: 2,
+                  borderColor: density === 'compact' ? colors.primary : colors.border,
+                  backgroundColor: density === 'compact' ? colors.primary + '10' : colors.surface,
+                  alignItems: 'center',
+                }}
+              >
+                <Feather name="align-justify" size={18} color={density === 'compact' ? colors.primary : colors.textSecondary} />
+                <Text style={{
+                  marginTop: 4,
+                  fontSize: fonts.small,
+                  fontFamily: fontFamily.semiBold,
+                  color: density === 'compact' ? colors.primary : colors.textSecondary,
+                }}>Compacto</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={{ marginTop: spacing.sm, fontSize: fonts.tiny, color: colors.textSecondary, fontFamily: fontFamily.regular }}>
+              Aplica a todas as listas (Insumos, Embalagens, Preparos, Produtos).
+            </Text>
+          </View>
+        </View>
+
         <View style={{ height: 20 }} />
       </View>
     );
@@ -920,7 +989,14 @@ export default function ConfiguracaoScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView style={s.container} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={s.container}
+        contentContainerStyle={s.content}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={Platform.OS !== 'web' ? (
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        ) : undefined}
+      >
         {/* Page header */}
         <View style={s.pageHeader}>
           <View style={s.pageHeaderIcon}>
@@ -964,7 +1040,7 @@ export default function ConfiguracaoScreen() {
         <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setEditModal(null)}>
           <TouchableOpacity activeOpacity={1} style={s.modalContent} onPress={() => {}}>
             <Text style={s.modalTitle}>
-              {editModal?.tipo === 'fixa' ? 'Editar Despesa Fixa' : 'Editar Despesa Variável'}
+              {editModal?.tipo === 'fixa' ? 'Editar custo mensal' : 'Editar custo por venda'}
             </Text>
             <View style={{ marginBottom: spacing.md }}>
               <Text style={s.modalLabel}>Descrição</Text>

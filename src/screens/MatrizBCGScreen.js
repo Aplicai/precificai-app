@@ -4,36 +4,43 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
 import InfoTooltip from '../components/InfoTooltip';
+import Loader from '../components/Loader';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 
-// Classification config
+// Classification config (audit P1-07): nomes afetivos em vez de jargão BCG.
+// Chaves mantidas em português gastronômico para compatibilidade com dados
+// salvos; LABELS exibidos seguem a linguagem do audit (mina de ouro, aposta...).
 const CLASSIFICATIONS = {
   'Estrela': {
     icon: 'star', label: 'Estrelas', emoji: '\u2B50',
     bg: '#FFF8E1', border: '#FFD700', color: '#D4A017',
-    desc: 'Alta lucratividade + alta popularidade. Seus campeões! Mantenha e destaque.',
+    desc: 'Vendem muito E dão lucro alto. São seus campeões — mantenha sempre disponíveis e destaque no cardápio.',
     acao: 'Promover e manter',
+    short: 'Estrela',
   },
   'Cavalo de Batalha': {
-    icon: 'zap', label: 'Cavalos de Batalha', emoji: '\u26A1',
+    icon: 'trending-up', label: 'Mina de Ouro', emoji: '\uD83D\uDCB0',
     bg: '#E8F5E9', border: '#4CAF50', color: '#388E3C',
-    desc: 'Baixa lucratividade + alta popularidade. Renegocie custos ou aumente o preço.',
+    desc: 'Vendem muito mas a margem está apertada. Renegocie ingredientes ou suba o preço aos poucos — uma alta de 5% pode dobrar o lucro.',
     acao: 'Otimizar custos',
+    short: 'Mina',
   },
   'Quebra-Cabeça': {
-    icon: 'grid', label: 'Quebra-Cabeças', emoji: '\uD83E\uDDE9',
+    icon: 'help-circle', label: 'Apostas', emoji: '\uD83C\uDFB2',
     bg: '#E3F2FD', border: '#2196F3', color: '#1565C0',
-    desc: 'Alta lucratividade + baixa popularidade. Invista em divulgação ou crie combos.',
-    acao: 'Aumentar vendas',
+    desc: 'Margem alta mas vendem pouco. Vale divulgar mais, fazer combo ou colocar em destaque — o potencial está aí.',
+    acao: 'Divulgar mais',
+    short: 'Aposta',
   },
   'Abacaxi': {
-    icon: 'alert-triangle', label: 'Abacaxis', emoji: '\uD83C\uDF4D',
+    icon: 'alert-triangle', label: 'Repensar', emoji: '\uD83C\uDF4D',
     bg: '#FFEBEE', border: '#F44336', color: '#C62828',
-    desc: 'Baixa lucratividade + baixa popularidade. Reformule, aumente preço ou retire.',
+    desc: 'Vendem pouco e dão pouco lucro. Hora de decidir: reformular a receita, subir o preço ou tirar do cardápio.',
     acao: 'Reformular ou retirar',
+    short: 'Repensar',
   },
 };
 
@@ -288,13 +295,13 @@ export default function MatrizBCGScreen({ navigation }) {
       {/* Step 1: Header */}
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={styles.title}>Engenharia de Cardápio</Text>
+          <Text style={styles.title}>Engenharia do Cardápio</Text>
           <InfoTooltip
             title="Como funciona?"
             text="Classifica cada produto pela margem de contribuição × popularidade (vendas/mês). A mediana divide os produtos em 4 quadrantes."
           />
         </View>
-        <Text style={styles.subtitle}>Descubra quais produtos manter, promover ou retirar</Text>
+        <Text style={styles.subtitle}>Descubra quais produtos vendem mais e dão mais lucro — e quais você deveria parar de vender.</Text>
       </View>
 
       {/* Sales CTA - always visible when not editing */}
@@ -405,8 +412,7 @@ export default function MatrizBCGScreen({ navigation }) {
 
       {loading ? (
         <View style={styles.emptyState}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.emptyTitle, { marginTop: 12 }]}>Carregando análise...</Text>
+          <Loader message="Classificando seu cardápio..." />
         </View>
       ) : produtos.length === 0 ? (
         <View style={styles.emptyState}>
@@ -525,7 +531,7 @@ export default function MatrizBCGScreen({ navigation }) {
                         <View style={[styles.classBadge, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
                           <Text style={styles.classBadgeEmoji}>{cfg.emoji}</Text>
                           <Text style={[styles.classBadgeText, { color: cfg.color }]} numberOfLines={1}>
-                            {p.classificacao === 'Cavalo de Batalha' ? 'Cavalo' : p.classificacao === 'Quebra-Cabeça' ? 'Q-Cabeça' : p.classificacao}
+                            {cfg.short}
                           </Text>
                         </View>
                         <Text style={[styles.acaoSuggestion, { color: cfg.color }]}>{cfg.acao}</Text>

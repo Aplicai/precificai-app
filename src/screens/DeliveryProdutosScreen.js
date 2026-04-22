@@ -366,7 +366,12 @@ export default function DeliveryProdutosScreen() {
               {/* Items added block */}
               <Card title={`Itens (${novoProdutoDelivery.itens.length})`}>
                 {novoProdutoDelivery.itens.length === 0 ? (
-                  <Text style={styles.modalEmptyText}>Nenhum item adicionado. Busque e adicione abaixo.</Text>
+                  <EmptyState
+                    compact
+                    icon="package"
+                    title="Nenhum item ainda"
+                    description="Busque e adicione produtos abaixo para compor este item de delivery."
+                  />
                 ) : (
                   novoProdutoDelivery.itens.map((item, index) => {
                     const badge = getTipoBadge(item.tipo);

@@ -6,11 +6,13 @@ import InputField from '../components/InputField';
 import Card from '../components/Card';
 import PickerSelect from '../components/PickerSelect';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import SaveStatus from '../components/SaveStatus';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import InfoTooltip from '../components/InfoTooltip';
 import ModalFormWrapper from '../components/ModalFormWrapper';
 import { useIsFocused } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import { t } from '../i18n/pt-BR';
 import {
   UNIDADES_MEDIDA,
   calcPrecoBase,
@@ -611,11 +613,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         {/* Auto-save status (edição) */}
         {editId && saveStatus && (
           <View style={styles.autoSaveInline}>
-            {saveStatus === 'saving' ? (
-              <Text style={styles.autoSaveInlineText}>Salvando...</Text>
-            ) : (
-              <Text style={[styles.autoSaveInlineText, { color: colors.success }]}>Alterações salvas automaticamente</Text>
-            )}
+            <SaveStatus status={saveStatus} variant="badge" />
           </View>
         )}
 
@@ -688,7 +686,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                     <Text style={styles.modalCancelText}>Voltar</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.modalSaveBtn} onPress={async () => {
-                    if (!novaCatNome.trim()) return Alert.alert('Erro', 'Informe o nome da subcategoria');
+                    if (!novaCatNome.trim()) return Alert.alert(t.alertAttention, t.validation.requiredSubcategoryName);
                     const db = await getDatabase();
                     const result = await db.runAsync('INSERT INTO categorias_insumos (nome, icone) VALUES (?, ?)', [novaCatNome.trim(), novaCatIcone]);
                     const newId = result.lastInsertRowId;

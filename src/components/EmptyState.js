@@ -3,7 +3,24 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 
-export default function EmptyState({ icon = 'inbox', title, description, ctaLabel, onPress }) {
+/**
+ * EmptyState — placeholder amigável para listas vazias.
+ *
+ * Modos:
+ *  - default (full): para telas inteiras vazias (icone grande + descrição + CTA opcional)
+ *  - compact: para usar dentro de modais/cards onde o espaço é limitado
+ *    (icone menor, padding reduzido, sem círculo gigante)
+ */
+export default function EmptyState({ icon = 'inbox', title, description, ctaLabel, onPress, compact = false }) {
+  if (compact) {
+    return (
+      <View style={styles.compactContainer}>
+        <Feather name={icon} size={24} color={colors.primaryLight} style={{ marginBottom: 6 }} />
+        <Text style={styles.compactTitle}>{title || 'Nenhum item'}</Text>
+        {description && <Text style={styles.compactDescription}>{description}</Text>}
+      </View>
+    );
+  }
   return (
     <View style={styles.container}>
       <View style={styles.iconCircle}>
@@ -67,5 +84,28 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     fontWeight: '700',
     fontSize: fonts.small,
+  },
+  // Variante compacta (dentro de modais/cards)
+  compactContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  compactTitle: {
+    fontSize: fonts.small,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  compactDescription: {
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 16,
+    maxWidth: 240,
   },
 });

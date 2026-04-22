@@ -19,9 +19,10 @@ const NAV_SECTIONS = [
   },
   {
     items: [
+      { key: 'estoque', label: 'Estoque', icon: 'package', iconSet: 'feather', tab: 'Ferramentas', screen: 'EstoqueHub' },
       { key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign', iconSet: 'feather', tab: 'Ferramentas', screen: 'FinanceiroMain' },
       { key: 'delivery', label: 'Delivery', icon: 'truck', iconSet: 'feather', tab: 'Ferramentas', screen: 'DeliveryHub' },
-      { key: 'bcg', label: 'Eng. de Cardápio', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Ferramentas', screen: 'MatrizBCG' },
+      { key: 'bcg', label: 'Eng. do Cardápio', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Ferramentas', screen: 'MatrizBCG' },
       { key: 'precos', label: 'Atualizar Preços', icon: 'refresh-cw', iconSet: 'feather', tab: 'Ferramentas', screen: 'AtualizarPrecos' },
       { key: 'simulador', label: 'Simulador', icon: 'zap', iconSet: 'feather', tab: 'Ferramentas', screen: 'Simulador' },
       { key: 'relatorio', label: 'Relatório Simples', icon: 'file-text', iconSet: 'feather', tab: 'Ferramentas', screen: 'RelatorioSimples' },
@@ -67,6 +68,7 @@ function getActiveKey(navState) {
     const stackState = tabRoute.state;
     const stackRoute = stackState?.routes?.[stackState.index];
     const screenName = stackRoute?.name;
+    if (screenName === 'EstoqueHub' || screenName === 'EntradaEstoque' || screenName === 'AjusteEstoque') return 'estoque';
     if (screenName === 'FinanceiroMain') return 'financeiro';
     if (screenName === 'DeliveryHub' || screenName?.startsWith('Delivery')) return 'delivery';
     if (screenName === 'MatrizBCG' || screenName === 'BCGProdutoForm') return 'bcg';

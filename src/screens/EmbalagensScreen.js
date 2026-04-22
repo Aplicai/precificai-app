@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, FlatList, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform, RefreshControl } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
@@ -10,7 +10,24 @@ import { formatCurrency, getTipoUnidade, normalizeSearch } from '../utils/calcul
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
 import Skeleton from '../components/Skeleton';
+import UndoToast from '../components/UndoToast';
+import SortMenu from '../components/SortMenu';
+import BulkActionBar from '../components/BulkActionBar';
+import CategoryPickerModal from '../components/CategoryPickerModal';
+import InfoToast from '../components/InfoToast';
+import HighlightedText from '../components/HighlightedText';
+import usePersistedState from '../hooks/usePersistedState';
+import useListDensity from '../hooks/useListDensity';
+import BulkPriceAdjustModal from '../components/BulkPriceAdjustModal';
+import ListStatsStrip from '../components/ListStatsStrip';
+import { exportToCSV, isCsvExportSupported } from '../utils/exportCsv';
+import ItemPreviewModal from '../components/ItemPreviewModal';
+import { formatTimeAgo } from '../utils/timeAgo';
+import ViewModeToggle from '../components/ViewModeToggle';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import useUndoableDelete from '../hooks/useUndoableDelete';
+import useBulkSelection from '../hooks/useBulkSelection';
+import { t } from '../i18n/pt-BR';
 
 // Cores para categorias
 const CATEGORY_COLORS = [
@@ -44,6 +61,12 @@ export default function EmbalagensScreen({ navigation }) {
   const [novoIcone, setNovoIcone] = useState('tag');
   const [busca, setBusca] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const undoDelete = useUndoableDelete();
+  const [sortBy, setSortBy] = usePersistedState('embalagens.sortBy', 'nome_asc');
+  const [viewMode, setViewMode] = usePersistedState('embalagens.viewMode', 'list');
+  const isGrid = isDesktop || viewMode === 'grid';
+  const { rowOverride, nameOverride, avatarSize } = useListDensity();
+  const bulk = useBulkSelection();
   // Mapa de cores por categoria ID
   const [catColorMap, setCatColorMap] = useState({});
   // Seções recolhidas
@@ -51,13 +74,23 @@ export default function EmbalagensScreen({ navigation }) {
   // Desktop grid seções recolhidas
   const [collapsedDesktop, setCollapsedDesktop] = useState({});
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [showPriceModal, setShowPriceModal] = useState(false);
+  const [previewItem, setPreviewItem] = useState(null);
+  const [infoToast, setInfoToast] = useState(null);
 
   function toggleDesktopSection(key) { setCollapsedDesktop(prev => ({...prev, [key]: !prev[key]})); }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try { await loadData(); } finally { setRefreshing(false); }
+  }
 
   useFocusEffect(useCallback(() => {
     loadData();
     return () => setConfirmDelete(null);
-  }, [filtroCategoria, busca]));
+  }, [filtroCategoria, busca, sortBy]));
 
   async function loadData() {
     setLoading(true);
@@ -71,7 +104,24 @@ export default function EmbalagensScreen({ navigation }) {
     colorMap['null'] = colors.disabled;
     setCatColorMap(colorMap);
 
-    const embalagens = await db.getAllAsync('SELECT * FROM embalagens ORDER BY nome');
+    const orderClauses = {
+      nome_asc: 'nome COLLATE NOCASE ASC',
+      nome_desc: 'nome COLLATE NOCASE DESC',
+      recentes: 'id DESC',
+      preco_desc: 'preco_unitario DESC',
+      preco_asc: 'preco_unitario ASC',
+      modificados: 'updated_at DESC', // P3-I
+      favoritos: 'nome COLLATE NOCASE ASC', // P3-H — re-sort em JS
+    };
+    const orderBy = orderClauses[sortBy] || orderClauses.nome_asc;
+    let embalagens = await db.getAllAsync(`SELECT * FROM embalagens ORDER BY ${orderBy}`);
+    if (sortBy === 'favoritos') {
+      embalagens = [...embalagens].sort((a, b) => {
+        const fa = a.favorito ? 1 : 0, fb = b.favorito ? 1 : 0;
+        if (fa !== fb) return fb - fa;
+        return String(a.nome || '').localeCompare(String(b.nome || ''));
+      });
+    }
     setTotalEmbalagens(embalagens.length);
 
     let embalagensFiltradas = embalagens;
@@ -140,16 +190,175 @@ export default function EmbalagensScreen({ navigation }) {
       titulo: 'Excluir Embalagem',
       nome,
       onConfirm: async () => {
-        const db = await getDatabase();
-        await db.runAsync('DELETE FROM embalagens WHERE id = ?', [id]);
         setConfirmDelete(null);
-        loadData();
+        await undoDelete.requestDelete({
+          id,
+          message: `Embalagem "${nome}" excluída`,
+          commit: async () => {
+            const db = await getDatabase();
+            await db.runAsync('DELETE FROM embalagens WHERE id = ?', [id]);
+          },
+          onCommitted: () => loadData(),
+        });
       },
     });
   }
 
+  function solicitarExclusaoEmMassa() {
+    const ids = Array.from(bulk.selectedIds);
+    if (ids.length === 0) return;
+    setConfirmDelete({
+      titulo: ids.length === 1 ? 'Excluir Embalagem' : `Excluir ${ids.length} embalagens`,
+      nome: ids.length === 1 ? null : `${ids.length} itens selecionados`,
+      onConfirm: async () => {
+        setConfirmDelete(null);
+        await undoDelete.requestDelete({
+          id: ids,
+          message: ids.length === 1 ? '1 embalagem excluída' : `${ids.length} embalagens excluídas`,
+          commit: async () => {
+            const db = await getDatabase();
+            const placeholders = ids.map(() => '?').join(',');
+            await db.runAsync(`DELETE FROM embalagens WHERE id IN (${placeholders})`, ids);
+          },
+          onCommitted: () => loadData(),
+        });
+        bulk.clear();
+      },
+    });
+  }
+
+  function handleRowPress(item) {
+    if (bulk.active) bulk.toggle(item.id);
+    else navigation.navigate('EmbalagemForm', { id: item.id });
+  }
+  function handleRowLongPress(item) { bulk.enter(item.id); }
+
+  async function moverEmMassa(catId) {
+    const ids = Array.from(bulk.selectedIds);
+    setShowMoveModal(false);
+    if (ids.length === 0) return;
+    const db = await getDatabase();
+    const placeholders = ids.map(() => '?').join(',');
+    await db.runAsync(
+      `UPDATE embalagens SET categoria_id = ? WHERE id IN (${placeholders})`,
+      [catId, ...ids]
+    );
+    bulk.clear();
+    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'embalagem movida' : 'embalagens movidas'}`, icon: 'folder' });
+    loadData();
+  }
+
+  async function duplicarEmMassa() {
+    const ids = Array.from(bulk.selectedIds);
+    if (ids.length === 0) return;
+    const db = await getDatabase();
+    const placeholders = ids.map(() => '?').join(',');
+    const itens = await db.getAllAsync(
+      `SELECT * FROM embalagens WHERE id IN (${placeholders})`, ids
+    );
+    await Promise.all(itens.map(item => db.runAsync(
+      'INSERT INTO embalagens (nome, marca, categoria_id, quantidade, unidade_medida, preco_embalagem, preco_unitario) VALUES (?,?,?,?,?,?,?)',
+      [item.nome + ' (cópia)', item.marca, item.categoria_id, item.quantidade, item.unidade_medida, item.preco_embalagem, item.preco_unitario]
+    )));
+    bulk.clear();
+    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'embalagem duplicada' : 'embalagens duplicadas'}`, icon: 'copy' });
+    loadData();
+  }
+
+  async function reajustarEmMassa({ mode, value, sign }) {
+    const ids = Array.from(bulk.selectedIds);
+    setShowPriceModal(false);
+    if (ids.length === 0 || !value) return;
+    const db = await getDatabase();
+    const placeholders = ids.map(() => '?').join(',');
+    const itens = await db.getAllAsync(`SELECT * FROM embalagens WHERE id IN (${placeholders})`, ids);
+    const factor = mode === 'percent' ? 1 + (sign * value) / 100 : null;
+    await Promise.all(itens.map((item) => {
+      const oldPreco = Number(item.preco_embalagem) || 0;
+      let novoPreco = mode === 'percent' ? oldPreco * factor : oldPreco + sign * value;
+      if (novoPreco < 0) novoPreco = 0;
+      const qtd = Number(item.quantidade) || 1;
+      const novoUnit = qtd > 0 ? novoPreco / qtd : 0;
+      return db.runAsync(
+        'UPDATE embalagens SET preco_embalagem = ?, preco_unitario = ? WHERE id = ?',
+        [novoPreco, novoUnit, item.id]
+      );
+    }));
+    bulk.clear();
+    const sigStr = sign === 1 ? '+' : '−';
+    const valStr = mode === 'percent' ? `${value}%` : `R$ ${value.toFixed(2).replace('.', ',')}`;
+    setInfoToast({
+      message: `${ids.length} ${ids.length === 1 ? 'embalagem reajustada' : 'embalagens reajustadas'} (${sigStr}${valStr})`,
+      icon: 'trending-up',
+    });
+    loadData();
+  }
+
+  // P3-H Favoritar/Desfavoritar em massa
+  async function favoritarEmMassa() {
+    const ids = Array.from(bulk.selectedIds);
+    if (ids.length === 0) return;
+    const db = await getDatabase();
+    const itens = visibleItems.filter((i) => bulk.isSelected(i.id));
+    const allFav = itens.every((i) => Number(i.favorito) === 1);
+    const novoVal = allFav ? 0 : 1;
+    await Promise.all(ids.map((id) =>
+      db.runAsync('UPDATE embalagens SET favorito = ? WHERE id = ?', [novoVal, id])
+    ));
+    bulk.clear();
+    setInfoToast({
+      message: novoVal === 1
+        ? `${ids.length} ${ids.length === 1 ? 'embalagem favoritada' : 'embalagens favoritadas'}`
+        : `${ids.length} ${ids.length === 1 ? 'embalagem desfavoritada' : 'embalagens desfavoritadas'}`,
+      icon: 'star',
+    });
+    loadData();
+  }
+
+  async function toggleFavoritoSingular(item) {
+    if (!item) return;
+    const db = await getDatabase();
+    const novo = Number(item.favorito) === 1 ? 0 : 1;
+    await db.runAsync('UPDATE embalagens SET favorito = ? WHERE id = ?', [novo, item.id]);
+    setPreviewItem({ ...item, favorito: novo });
+    loadData();
+  }
+
+  async function exportarCSVEmMassa() {
+    const ids = Array.from(bulk.selectedIds);
+    if (ids.length === 0) return;
+    const db = await getDatabase();
+    const placeholders = ids.map(() => '?').join(',');
+    const itens = await db.getAllAsync(
+      `SELECT e.*, c.nome AS categoria_nome FROM embalagens e LEFT JOIN categorias_embalagens c ON c.id = e.categoria_id WHERE e.id IN (${placeholders}) ORDER BY e.nome`,
+      ids
+    );
+    const rows = itens.map((it) => ({
+      nome: it.nome,
+      marca: it.marca || '',
+      categoria: it.categoria_nome || 'Sem categoria',
+      unidade: it.unidade_medida,
+      quantidade: it.quantidade,
+      preco_embalagem: it.preco_embalagem,
+      preco_unitario: it.preco_unitario,
+    }));
+    const ok = exportToCSV('embalagens.csv', rows, [
+      { key: 'nome', label: 'Nome' },
+      { key: 'marca', label: 'Marca' },
+      { key: 'categoria', label: 'Categoria' },
+      { key: 'unidade', label: 'Unidade' },
+      { key: 'quantidade', label: 'Quantidade' },
+      { key: 'preco_embalagem', label: 'Preço da embalagem (R$)' },
+      { key: 'preco_unitario', label: 'Preço unitário (R$)' },
+    ]);
+    if (ok) {
+      bulk.clear();
+      setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'embalagem exportada' : 'embalagens exportadas'}`, icon: 'download' });
+    }
+  }
+
   async function adicionarCategoria() {
-    if (!novaCategoria.trim()) return Alert.alert('Erro', 'Informe o nome da categoria');
+    if (!novaCategoria.trim()) return Alert.alert(t.alertAttention, t.validation.requiredCategoryName);
     const db = await getDatabase();
     await db.runAsync('INSERT INTO categorias_embalagens (nome, icone) VALUES (?, ?)', [novaCategoria.trim(), novoIcone]);
     setNovaCategoria('');
@@ -176,6 +385,24 @@ export default function EmbalagensScreen({ navigation }) {
       },
     });
   }
+
+  // Filtra linhas em janela de undo (P1-11)
+  const visibleSections = sections
+    .map((s) => ({ ...s, data: s.data.filter((it) => !undoDelete.hiddenIds.has(it.id)) }))
+    .filter((s) => s.data.length > 0 || filtroCategoria === s.catId);
+
+  // P3-B Stats summary
+  const visibleItems = visibleSections.flatMap((s) => s.data);
+  const visCount = visibleItems.length;
+  const avgUnit = visCount
+    ? visibleItems.reduce((acc, it) => acc + (Number(it.preco_unitario) || 0), 0) / visCount
+    : 0;
+  const totalEmb = visibleItems.reduce((acc, it) => acc + (Number(it.preco_embalagem) || 0), 0);
+  const statsList = visCount > 0 ? [
+    { icon: 'package', label: 'Itens', value: String(visCount), color: colors.primary },
+    { icon: 'tag', label: 'Médio/un.', value: formatCurrency(avgUnit), color: colors.accent || '#FFD37A' },
+    { icon: 'shopping-cart', label: 'Total estoque', value: formatCurrency(totalEmb), color: colors.success || '#1a8a4f' },
+  ] : [];
 
   return (
     <View style={styles.container}>
@@ -212,7 +439,32 @@ export default function EmbalagensScreen({ navigation }) {
             <Feather name="plus" size={14} color={colors.primary} />
           </TouchableOpacity>
         </ScrollView>
-        <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar embalagem..." />
+        <View style={styles.searchSortRow}>
+          <View style={{ flex: 1 }}>
+            <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar embalagem..." />
+          </View>
+          <View style={styles.sortMenuWrap}>
+            <SortMenu
+              value={sortBy}
+              onChange={setSortBy}
+              compact
+              options={[
+                { key: 'favoritos', label: 'Favoritos primeiro', icon: 'star' },
+                { key: 'nome_asc', label: 'Nome (A→Z)', icon: 'arrow-down' },
+                { key: 'nome_desc', label: 'Nome (Z→A)', icon: 'arrow-up' },
+                { key: 'recentes', label: 'Mais recentes', icon: 'clock' },
+                { key: 'modificados', label: 'Editados recentemente', icon: 'edit-2' },
+                { key: 'preco_desc', label: 'Preço (maior)', icon: 'trending-up' },
+                { key: 'preco_asc', label: 'Preço (menor)', icon: 'trending-down' },
+              ]}
+            />
+          </View>
+          {!isDesktop && (
+            <View style={{ marginLeft: 6 }}>
+              <ViewModeToggle value={viewMode} onChange={setViewMode} />
+            </View>
+          )}
+        </View>
       </View>
 
       {/* Botão Adicionar */}
@@ -225,13 +477,13 @@ export default function EmbalagensScreen({ navigation }) {
       </TouchableOpacity>
 
       {/* Lista agrupada */}
-      {isDesktop ? (
+      {isGrid ? (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
           <View style={styles.desktopContentWrap}>
             <View style={styles.desktopContentInner}>
               {loading ? (
                 <Skeleton.List count={6} />
-              ) : sections.length === 0 ? (
+              ) : visibleSections.length === 0 ? (
                 <EmptyState
                   icon={busca.trim() ? 'search' : 'package'}
                   title={busca.trim()
@@ -245,7 +497,7 @@ export default function EmbalagensScreen({ navigation }) {
                 />
               ) : (
                 <View style={styles.desktopGrid}>
-                  {sections.map((section, catIdx) => (
+                  {visibleSections.map((section, catIdx) => (
                     <View key={section.catId} style={{ marginBottom: spacing.md }}>
                       <TouchableOpacity
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, marginTop: catIdx > 0 ? 16 : 0 }}
@@ -257,17 +509,32 @@ export default function EmbalagensScreen({ navigation }) {
                         <Feather name={collapsedDesktop[section.title] ? 'chevron-right' : 'chevron-down'} size={14} color={colors.disabled} />
                       </TouchableOpacity>
                       {!collapsedDesktop[section.title] && (<View style={styles.gridContainer}>
-                        {section.data.map((item) => (
+                        {section.data.map((item) => {
+                          const selected = bulk.isSelected(item.id);
+                          return (
                           <TouchableOpacity
                             key={item.id}
-                            style={[styles.gridCard, isWeb && { cursor: 'pointer' }]}
+                            style={[styles.gridCard, isWeb && { cursor: 'pointer' }, selected && styles.rowSelected]}
                             activeOpacity={0.7}
-                            onPress={() => navigation.navigate('EmbalagemForm', { id: item.id })}
+                            onPress={() => handleRowPress(item)}
+                            onLongPress={() => handleRowLongPress(item)}
                           >
-                            <Text style={styles.gridCardName} numberOfLines={1} {...(Platform.OS === 'web' ? { title: item.nome + (item.marca ? ' (' + item.marca + ')' : '') } : {})}>{item.nome}{item.marca ? <Text style={{ color: colors.textSecondary, fontWeight: '400' }}> ({item.marca})</Text> : null}</Text>
+                            {bulk.active && (
+                              <View style={[styles.checkbox, selected && styles.checkboxChecked, { marginRight: 8 }]}>
+                                {selected && <Feather name="check" size={12} color="#fff" />}
+                              </View>
+                            )}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }} {...(Platform.OS === 'web' ? { title: item.nome + (item.marca ? ' (' + item.marca + ')' : '') } : {})}>
+                              {Number(item.favorito) === 1 && (
+                                <Feather name="star" size={11} color={colors.yellow || '#FFC83A'} style={{ marginRight: 4 }} />
+                              )}
+                              <HighlightedText text={item.nome} query={busca} style={styles.gridCardName} numberOfLines={1} />
+                              {item.marca ? <Text style={[styles.gridCardName, { color: colors.textSecondary, fontWeight: '400' }]} numberOfLines={1}> ({item.marca})</Text> : null}
+                            </View>
                             <Text style={styles.gridCardPrice}>{formatCurrency(item.preco_unitario)}</Text>
                           </TouchableOpacity>
-                        ))}
+                          );
+                        })}
                       </View>)}
                     </View>
                   ))}
@@ -278,13 +545,22 @@ export default function EmbalagensScreen({ navigation }) {
         </ScrollView>
       ) : (
         <SectionList
-          sections={sections.map(s => ({
+          sections={visibleSections.map(s => ({
             ...s,
             data: collapsedSections[s.catId] ? [] : s.data,
           }))}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
-          stickySectionHeadersEnabled={false}
+          stickySectionHeadersEnabled={true}
+          ListHeaderComponent={statsList.length > 0 ? <ListStatsStrip stats={statsList} /> : null}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
           ListEmptyComponent={
             loading ? (
               <Skeleton.List count={6} />
@@ -328,6 +604,7 @@ export default function EmbalagensScreen({ navigation }) {
             const catColor = catColorMap[item.categoria_id] || catColorMap['null'] || colors.disabled;
             const inicial = (item.nome || '?').charAt(0).toUpperCase();
             const unidadeInfo = getUnidadeInfo(item.unidade_medida);
+            const selected = bulk.isSelected(item.id);
 
             return (
               <TouchableOpacity
@@ -336,20 +613,34 @@ export default function EmbalagensScreen({ navigation }) {
                   isFirst && styles.rowFirst,
                   isLast && styles.rowLast,
                   !isLast && styles.rowBorder,
+                  selected && styles.rowSelected,
+                  rowOverride,
                 ]}
-                onPress={() => navigation.navigate('EmbalagemForm', { id: item.id })}
+                onPress={() => handleRowPress(item)}
+                onLongPress={() => handleRowLongPress(item)}
                 activeOpacity={0.6}
               >
-                {/* Avatar com inicial */}
-                <View style={[styles.avatar, { backgroundColor: catColor + '18' }]}>
-                  <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
-                </View>
+                {/* Avatar com inicial OU checkbox no modo bulk */}
+                {bulk.active ? (
+                  <View style={[styles.checkbox, selected && styles.checkboxChecked, { marginRight: spacing.sm }]}>
+                    {selected && <Feather name="check" size={14} color="#fff" />}
+                  </View>
+                ) : (
+                  <View style={[styles.avatar, { backgroundColor: catColor + '18', width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}>
+                    <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
+                  </View>
+                )}
 
                 {/* Info */}
                 <View style={styles.rowInfo}>
-                  <Text style={styles.rowNome} numberOfLines={1}>{item.nome}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    {Number(item.favorito) === 1 && (
+                      <Feather name="star" size={11} color={colors.yellow || '#FFC83A'} />
+                    )}
+                    <HighlightedText text={item.nome} query={busca} style={[styles.rowNome, nameOverride, { flexShrink: 1 }]} numberOfLines={1} />
+                  </View>
                   {item.marca ? (
-                    <Text style={styles.rowMarca} numberOfLines={1}>{item.marca}</Text>
+                    <HighlightedText text={item.marca} query={busca} style={styles.rowMarca} numberOfLines={1} />
                   ) : null}
                 </View>
 
@@ -361,23 +652,25 @@ export default function EmbalagensScreen({ navigation }) {
                   </View>
                 </View>
 
-                {/* Duplicar */}
-                <TouchableOpacity
-                  onPress={() => duplicarEmbalagem(item)}
-                  style={styles.copyBtn}
-                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-                >
-                  <Feather name="copy" size={13} color={colors.disabled} />
-                </TouchableOpacity>
-
-                {/* Excluir */}
-                <TouchableOpacity
-                  onPress={() => solicitarExclusao(item.id, item.nome)}
-                  style={styles.deleteBtn}
-                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-                >
-                  <Feather name="trash-2" size={13} color={colors.disabled} />
-                </TouchableOpacity>
+                {/* Duplicar + Excluir (escondidos no modo bulk) */}
+                {!bulk.active && (
+                  <>
+                    <TouchableOpacity
+                      onPress={() => duplicarEmbalagem(item)}
+                      style={styles.copyBtn}
+                      hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                    >
+                      <Feather name="copy" size={13} color={colors.disabled} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => solicitarExclusao(item.id, item.nome)}
+                      style={styles.deleteBtn}
+                      hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                    >
+                      <Feather name="trash-2" size={13} color={colors.disabled} />
+                    </TouchableOpacity>
+                  </>
+                )}
               </TouchableOpacity>
             );
           }}
@@ -385,7 +678,84 @@ export default function EmbalagensScreen({ navigation }) {
         />
       )}
 
-      <FAB onPress={() => navigation.navigate('EmbalagemForm', {})} label={isDesktop ? 'Nova Embalagem' : undefined} />
+      {!bulk.active && (
+        <FAB onPress={() => navigation.navigate('EmbalagemForm', {})} label={isDesktop ? 'Nova Embalagem' : undefined} />
+      )}
+
+      <BulkActionBar
+        visible={bulk.active}
+        count={bulk.count}
+        totalVisible={visibleSections.reduce((acc, s) => acc + s.data.length, 0)}
+        onSelectAll={() => bulk.selectAll(visibleSections.flatMap((s) => s.data.map((d) => d.id)))}
+        onCancel={bulk.clear}
+        onDelete={solicitarExclusaoEmMassa}
+        actions={[
+          ...(bulk.count === 1 ? [{ icon: 'eye', label: 'Visualizar', onPress: () => {
+            const onlyId = Array.from(bulk.selectedIds)[0];
+            const item = visibleItems.find((i) => i.id === onlyId);
+            if (item) setPreviewItem(item);
+          } }] : []),
+          { icon: 'folder', label: 'Mover', onPress: () => setShowMoveModal(true) },
+          { icon: 'copy', label: 'Duplicar', onPress: duplicarEmMassa },
+          { icon: 'star', label: (() => {
+            const sel = visibleItems.filter((i) => bulk.isSelected(i.id));
+            return sel.length > 0 && sel.every((i) => Number(i.favorito) === 1) ? 'Desfavoritar' : 'Favoritar';
+          })(), onPress: favoritarEmMassa },
+          { icon: 'trending-up', label: 'Reajustar', onPress: () => setShowPriceModal(true) },
+          ...(isCsvExportSupported() ? [{ icon: 'download', label: 'CSV', onPress: exportarCSVEmMassa }] : []),
+        ]}
+      />
+
+      <CategoryPickerModal
+        visible={showMoveModal}
+        title="Mover embalagens para..."
+        subtitle={`${bulk.count} ${bulk.count === 1 ? 'item selecionado' : 'itens selecionados'}`}
+        categorias={categorias}
+        onSelect={moverEmMassa}
+        onCancel={() => setShowMoveModal(false)}
+      />
+
+      <BulkPriceAdjustModal
+        visible={showPriceModal}
+        title="Reajustar preço de embalagens"
+        subtitle={`${bulk.count} ${bulk.count === 1 ? 'item selecionado' : 'itens selecionados'}`}
+        currentLabel="preços de embalagem"
+        onConfirm={reajustarEmMassa}
+        onCancel={() => setShowPriceModal(false)}
+      />
+
+      <InfoToast
+        visible={!!infoToast}
+        message={infoToast?.message}
+        icon={infoToast?.icon}
+        onDismiss={() => setInfoToast(null)}
+      />
+
+      <ItemPreviewModal
+        visible={!!previewItem}
+        title={previewItem?.nome}
+        subtitle={previewItem?.marca || (previewItem?.categoria_nome || 'Sem categoria')}
+        meta={previewItem?.updated_at ? `Editado ${formatTimeAgo(previewItem.updated_at)}` : null}
+        favorito={previewItem ? Number(previewItem.favorito) : 0}
+        onToggleFavorite={previewItem ? () => toggleFavoritoSingular(previewItem) : undefined}
+        icon="package"
+        iconColor={colors.primary}
+        fields={previewItem ? [
+          { label: 'Categoria', value: previewItem.categoria_nome || 'Sem categoria' },
+          { label: 'Marca', value: previewItem.marca },
+          { label: 'Unidade', value: previewItem.unidade_medida },
+          { label: 'Quantidade', value: previewItem.quantidade },
+          { label: 'Preço da embalagem', value: formatCurrency(previewItem.preco_embalagem) },
+          { label: 'Preço unitário', value: formatCurrency(previewItem.preco_unitario), accent: true },
+        ] : []}
+        onEdit={() => {
+          const id = previewItem?.id;
+          setPreviewItem(null);
+          bulk.clear();
+          if (id) navigation.navigate('EmbalagemForm', { id });
+        }}
+        onClose={() => setPreviewItem(null)}
+      />
 
       {/* Modal nova categoria */}
       <Modal visible={modalVisible} transparent animationType="fade">
@@ -427,6 +797,13 @@ export default function EmbalagensScreen({ navigation }) {
         onConfirm={confirmDelete?.onConfirm}
         onCancel={() => setConfirmDelete(null)}
       />
+
+      <UndoToast
+        visible={!!undoDelete.pending}
+        message={undoDelete.pending?.message}
+        onUndo={undoDelete.undo}
+        onTimeout={undoDelete.onTimeout}
+      />
     </View>
   );
 }
@@ -445,6 +822,15 @@ const styles = StyleSheet.create({
 
   // Filtros
   filtrosList: { paddingHorizontal: spacing.md, gap: 2 },
+  searchSortRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingRight: spacing.md,
+  },
+  sortMenuWrap: {
+    paddingTop: spacing.xs,
+  },
   filtroChip: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.inputBg,
@@ -472,8 +858,9 @@ const styles = StyleSheet.create({
   // Seção header
   sectionHeader: {
     flexDirection: 'row', alignItems: 'center',
-    marginTop: spacing.md, marginBottom: 6,
+    paddingTop: spacing.md, paddingBottom: 6,
     paddingHorizontal: 2,
+    backgroundColor: colors.background,
   },
   sectionDot: {
     width: 8, height: 8, borderRadius: 4, marginRight: 6,
@@ -506,6 +893,21 @@ const styles = StyleSheet.create({
   rowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
+  },
+
+  // Checkbox bulk
+  checkbox: {
+    width: 22, height: 22, borderRadius: 6,
+    borderWidth: 2, borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  rowSelected: {
+    backgroundColor: colors.primary + '0E',
   },
 
   // Avatar

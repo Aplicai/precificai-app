@@ -152,8 +152,14 @@ const styles = StyleSheet.create({
   eyeBtn: {
     paddingHorizontal: 12, paddingVertical: 12, justifyContent: 'center', alignItems: 'center',
   },
-  forgotBtn: { alignSelf: 'flex-end', marginTop: 8, marginBottom: 20 },
-  forgotText: { fontSize: 13, color: colors.info, fontFamily: fontFamily.medium },
+  // P1-15: Esqueci minha senha — alinhado à direita logo abaixo do campo de senha,
+  // com mais destaque (semibold + sublinhado) para reduzir bounce de usuários
+  // que esquecem a senha e não conseguem encontrar o link.
+  forgotBtn: { alignSelf: 'flex-end', marginTop: 10, marginBottom: 22, paddingVertical: 4 },
+  forgotText: {
+    fontSize: 13, color: colors.primary, fontFamily: fontFamily.semiBold,
+    fontWeight: '600', textDecorationLine: 'underline',
+  },
   primaryBtn: {
     backgroundColor: colors.primary, borderRadius: borderRadius.md, paddingVertical: 14,
     alignItems: 'center', justifyContent: 'center', minHeight: 48,

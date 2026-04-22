@@ -1,0 +1,28 @@
+{
+  "name": "Precificaí",
+  "short_name": "Precificaí",
+  "description": "Precificação inteligente para seu negócio: insumos, fichas técnicas, custo médio, margem, delivery e estoque.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F6F5",
+  "theme_color": "#004d47",
+  "lang": "pt-BR",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity", "finance"],
+  "prefer_related_applications": false
+}

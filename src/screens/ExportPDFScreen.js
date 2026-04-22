@@ -9,6 +9,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { getDatabase } from '../database/database';
 import { converterParaBase, formatCurrency, formatPercent, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, getTipoVenda } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import Loader from '../components/Loader';
 
 const CATEGORY_COLORS = [
   '#004d47', '#265bb0', '#e3b842', '#e3704d', '#6a4fb0',
@@ -410,7 +411,7 @@ export default function ExportPDFScreen({ navigation }) {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <Loader message="Carregando suas fichas técnicas..." />
       </View>
     );
   }

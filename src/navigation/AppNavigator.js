@@ -48,6 +48,10 @@ import PerfilScreen from '../screens/PerfilScreen';
 import MargemBaixaScreen from '../screens/MargemBaixaScreen';
 import ExportPDFScreen from '../screens/ExportPDFScreen';
 import SuporteScreen from '../screens/SuporteScreen';
+import EstoqueHubScreen from '../screens/EstoqueHubScreen';
+import EntradaEstoqueScreen from '../screens/EntradaEstoqueScreen';
+import AjusteEstoqueScreen from '../screens/AjusteEstoqueScreen';
+import NotificacoesScreen from '../screens/NotificacoesScreen';
 
 
 const Tab = createBottomTabNavigator();
@@ -211,7 +215,7 @@ function PreparosStack() {
 function BCGStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="MatrizBCG" component={MatrizBCGScreen} options={{ title: 'Engenharia de Cardápio' }} />
+      <Stack.Screen name="MatrizBCG" component={MatrizBCGScreen} options={{ title: 'Engenharia do Cardápio' }} />
       <Stack.Screen name="BCGProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
     </Stack.Navigator>
   );
@@ -241,7 +245,7 @@ function MaisStack() {
     <Stack.Navigator screenOptions={screenOptions}>
       <Stack.Screen name="MaisMain" component={MaisScreen} options={({ navigation }) => ({ title: 'Ferramentas', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="FinanceiroMain" component={ConfiguracaoScreen} options={{ title: 'Financeiro' }} />
-      <Stack.Screen name="MatrizBCG" component={MatrizBCGScreen} options={{ title: 'Engenharia de Cardápio' }} />
+      <Stack.Screen name="MatrizBCG" component={MatrizBCGScreen} options={{ title: 'Engenharia do Cardápio' }} />
       <Stack.Screen name="BCGProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
       <Stack.Screen name="DeliveryHub" component={DeliveryHubScreen} options={{ title: 'Delivery' }} />
       <Stack.Screen name="DeliveryPlataformas" component={DeliveryPlataformasScreen} options={{ title: 'Plataformas' }} />
@@ -259,6 +263,10 @@ function MaisStack() {
       <Stack.Screen name="ContaSeguranca" component={ContaSegurancaScreen} options={{ title: 'Conta e Segurança' }} />
       <Stack.Screen name="ExportPDF" component={ExportPDFScreen} options={{ title: 'Exportar PDF' }} />
       <Stack.Screen name="Suporte" component={SuporteScreen} options={{ title: 'Suporte' }} />
+      <Stack.Screen name="EstoqueHub" component={EstoqueHubScreen} options={{ title: 'Estoque' }} />
+      <Stack.Screen name="EntradaEstoque" component={EntradaEstoqueScreen} options={{ title: 'Entrada de Estoque' }} />
+      <Stack.Screen name="AjusteEstoque" component={AjusteEstoqueScreen} options={{ title: 'Ajuste de Estoque' }} />
+      <Stack.Screen name="Notificacoes" component={NotificacoesScreen} options={{ title: 'Notificações' }} />
     </Stack.Navigator>
   );
 }

@@ -46,12 +46,12 @@ const FAQ_ITEMS = [
   // — Gestão —
   {
     category: 'Gestão',
-    question: 'O que são despesas fixas e variáveis?',
-    answer: 'Fixas são custos que existem mesmo sem vender nada: aluguel, energia, funcionários, internet. Variáveis mudam conforme o volume de vendas: impostos (Simples), taxas de cartão/PIX, embalagens. Cadastre ambas no Financeiro para um cálculo preciso.',
+    question: 'O que são custos do mês e custos por venda?',
+    answer: 'Custos do mês são contas que você paga TODO mês, mesmo sem vender nada: aluguel, energia, funcionários, internet. Custos por venda mudam conforme o volume de vendas: impostos (Simples), taxas de cartão/PIX, comissões. Cadastre ambos no Financeiro para um cálculo preciso.',
   },
   {
-    question: 'Como usar a Engenharia de Cardápio?',
-    answer: 'Informe a quantidade vendida por mês de cada produto. O app classifica em 4 categorias: Estrela (manter e promover), Cavalo de Batalha (reduzir custos), Quebra-Cabeça (aumentar vendas), Abacaxi (reformular ou retirar). Atualize mensalmente.',
+    question: 'Como usar a Engenharia do Cardápio?',
+    answer: 'Informe a quantidade vendida por mês de cada produto. O app classifica em 4 grupos: Estrelas (manter e promover), Mina de Ouro (otimizar custos), Apostas (divulgar mais), Repensar (reformular ou retirar). Atualize mensalmente.',
   },
   {
     question: 'Como interpretar o Ponto de Equilíbrio?',

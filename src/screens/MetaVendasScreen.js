@@ -6,6 +6,7 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 import EmptyState from '../components/EmptyState';
+import Loader from '../components/Loader';
 
 export default function MetaVendasScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
@@ -111,7 +112,7 @@ export default function MetaVendasScreen({ navigation }) {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <Loader message="Calculando sua meta de vendas..." />
       </View>
     );
   }

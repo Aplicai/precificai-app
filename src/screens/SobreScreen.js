@@ -8,8 +8,8 @@ const VERSION = '2.0.0';
 const FEATURES = [
   { icon: 'file-text', label: 'Cadastro completo', desc: 'Insumos, preparos, embalagens e produtos' },
   { icon: 'dollar-sign', label: 'Cálculo automático de CMV', desc: 'CMV e preço sugerido com markup e margem' },
-  { icon: 'sliders', label: 'Configuração financeira completa', desc: 'Margem, despesas fixas e variáveis, faturamento' },
-  { icon: 'bar-chart-2', label: 'Engenharia de Cardápio', desc: 'Análise de portfólio com vendas mensais' },
+  { icon: 'sliders', label: 'Configuração financeira completa', desc: 'Margem, custos do mês e por venda, faturamento' },
+  { icon: 'bar-chart-2', label: 'Engenharia do Cardápio', desc: 'Análise de portfólio com vendas mensais' },
   { icon: 'zap', label: 'Simulador de Impacto', desc: 'Variação de preços e cenários' },
   { icon: 'target', label: 'Meta de Faturamento', desc: 'Ponto de equilíbrio e metas diárias' },
   { icon: 'truck', label: 'Precificação para Delivery', desc: 'iFood, Rappi e outras plataformas' },

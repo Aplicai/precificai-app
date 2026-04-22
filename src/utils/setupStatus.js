@@ -46,8 +46,8 @@ export async function getSetupStatus() {
       detalhes: [
         { label: 'Margem de lucro', done: lucroOk },
         { label: 'Faturamento', done: faturamentoOk },
-        { label: 'Despesas fixas', done: fixasOk },
-        { label: 'Despesas variáveis', done: variaveisOk },
+        { label: 'Custos do mês', done: fixasOk },
+        { label: 'Custos por venda', done: variaveisOk },
       ],
     },
     {

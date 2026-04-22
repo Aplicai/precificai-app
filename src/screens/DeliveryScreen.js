@@ -6,6 +6,7 @@ import { getDatabase } from '../database/database';
 import Card from '../components/Card';
 import InputField from '../components/InputField';
 import InfoTooltip from '../components/InfoTooltip';
+import EmptyState from '../components/EmptyState';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
 import { formatCurrency, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 
@@ -739,7 +740,12 @@ export default function DeliveryScreen() {
 
               <Text style={styles.modalSubtitle}>Itens adicionados</Text>
               {novoProdutoDelivery.itens.length === 0 && (
-                <Text style={[styles.emptyText, { paddingVertical: spacing.sm }]}>Nenhum item adicionado.</Text>
+                <EmptyState
+                  compact
+                  icon="package"
+                  title="Nenhum item ainda"
+                  description="Adicione produtos ou preparos abaixo para compor este item."
+                />
               )}
               {novoProdutoDelivery.itens.map((item, index) => (
                 <View key={index} style={styles.modalItem}>
@@ -847,7 +853,12 @@ export default function DeliveryScreen() {
 
               <Text style={styles.modalSubtitle}>Itens do combo</Text>
               {novoCombo.itens.length === 0 && (
-                <Text style={[styles.emptyText, { paddingVertical: spacing.sm }]}>Nenhum item adicionado.</Text>
+                <EmptyState
+                  compact
+                  icon="package"
+                  title="Combo vazio"
+                  description="Adicione produtos abaixo para montar este combo."
+                />
               )}
               {novoCombo.itens.map((item, index) => (
                 <View key={index} style={styles.modalItem}>

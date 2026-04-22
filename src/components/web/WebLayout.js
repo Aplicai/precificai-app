@@ -3,6 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Sidebar from './Sidebar';
 import WebHeader from './WebHeader';
+import InstallPrompt from './InstallPrompt';
 
 export default function WebLayout({ children, notifCount, onNotifPress }) {
   const navigation = useNavigation();
@@ -25,6 +26,7 @@ export default function WebLayout({ children, notifCount, onNotifPress }) {
           {children}
         </View>
       </View>
+      <InstallPrompt />
     </View>
   );
 }

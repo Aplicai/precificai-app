@@ -10,6 +10,7 @@ import InputField from '../components/InputField';
 import EmptyState from '../components/EmptyState';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import InfoTooltip from '../components/InfoTooltip';
+import Loader from '../components/Loader';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import SearchBar from '../components/SearchBar';
@@ -247,9 +248,8 @@ export default function DeliveryHubScreen({ navigation }) {
   // ── Render ──
   if (loading) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 12, color: colors.textSecondary }}>Carregando...</Text>
+      <View style={styles.container}>
+        <Loader message="Calculando margens de delivery..." />
       </View>
     );
   }
@@ -664,7 +664,7 @@ export default function DeliveryHubScreen({ navigation }) {
                                 <Text style={[styles.breakdownLabel, { fontFamily: fontFamily.bold }]}>Lucro Bruto /un</Text>
                                 <InfoTooltip
                                   title="Lucro Bruto por Unidade"
-                                  text="É o valor que sobra após descontar comissões, taxas e custo do produto. Ainda não inclui despesas fixas do negócio (aluguel, energia, funcionários) nem impostos."
+                                  text="É o valor que sobra após descontar comissões, taxas e custo do produto. Ainda não inclui custos do mês (aluguel, energia, funcionários) nem impostos."
                                 />
                               </View>
                               <Text style={[styles.breakdownValue, { fontFamily: fontFamily.bold, color: custom.lucro >= 0 ? colors.success : colors.error }]}>{formatCurrency(custom.lucro)}</Text>
@@ -674,7 +674,7 @@ export default function DeliveryHubScreen({ navigation }) {
                                 <Text style={[styles.breakdownLabel, { fontFamily: fontFamily.bold }]}>Margem</Text>
                                 <InfoTooltip
                                   title="Margem no Delivery"
-                                  text="Percentual de lucro bruto sobre o preço cobrado na plataforma, após descontar CMV, comissão, cupom e taxa de entrega. Não inclui despesas fixas do negócio."
+                                  text="Percentual de lucro bruto sobre o preço cobrado na plataforma, após descontar CMV, comissão, cupom e taxa de entrega. Não inclui custos do mês."
                                   examples={['Acima de 15%: saudável', '5-15%: atenção', 'Abaixo de 5%: revise o preço']}
                                 />
                               </View>

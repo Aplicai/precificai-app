@@ -40,8 +40,8 @@ export async function getFinanceiroStatus() {
 
   const etapas = [
     { key: 'faturamento', label: 'Faturamento mensal', done: faturamentoOk },
-    { key: 'fixas', label: 'Despesas fixas', done: fixasOk },
-    { key: 'variaveis', label: 'Despesas variáveis', done: variaveisOk },
+    { key: 'fixas', label: 'Custos do mês', done: fixasOk },
+    { key: 'variaveis', label: 'Custos por venda', done: variaveisOk },
     { key: 'lucro', label: 'Margem de lucro', done: lucroOk },
   ];
 

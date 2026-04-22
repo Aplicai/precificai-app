@@ -5,6 +5,7 @@ import { supabase } from '../config/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import { t } from '../i18n/pt-BR';
 
 export default function ContaSegurancaScreen({ navigation }) {
   const { user } = useAuth();
@@ -23,23 +24,23 @@ export default function ContaSegurancaScreen({ navigation }) {
 
   async function handleUpdateEmail() {
     if (!newEmail.trim() || !newEmail.includes('@')) {
-      Alert.alert('Erro', 'Informe um e-mail válido.');
+      Alert.alert(t.alertAttention, t.validation.invalidEmail);
       return;
     }
     if (newEmail.trim().toLowerCase() !== confirmEmail.trim().toLowerCase()) {
-      Alert.alert('Erro', 'Os e-mails não coincidem. Digite o mesmo e-mail nos dois campos.');
+      Alert.alert(t.alertAttention, t.validation.emailMismatch);
       return;
     }
     setLoading(true);
     try {
       const { error } = await supabase.auth.updateUser({ email: newEmail.trim() });
       if (error) throw error;
-      Alert.alert('Sucesso', 'Um e-mail de confirmação foi enviado para o novo endereço e para o endereço atual. Verifique ambas as caixas de entrada.');
+      Alert.alert(t.alertSuccess, t.auth.emailChanged + ' Confira também a caixa do e-mail atual.');
       setNewEmail('');
       setConfirmEmail('');
       setSection(null);
     } catch (err) {
-      Alert.alert('Erro', err.message || 'Não foi possível alterar o e-mail.');
+      Alert.alert(t.alertError, err.message || t.feedback.genericError);
     } finally {
       setLoading(false);
     }
@@ -47,15 +48,15 @@ export default function ContaSegurancaScreen({ navigation }) {
 
   async function handleUpdatePassword() {
     if (newPass.length < 8) {
-      Alert.alert('Erro', 'A nova senha deve ter no mínimo 8 caracteres.');
+      Alert.alert(t.alertAttention, t.validation.passwordMin);
       return;
     }
     if (!/[A-Z]/.test(newPass) || !/[a-z]/.test(newPass) || !/[0-9]/.test(newPass)) {
-      Alert.alert('Erro', 'A senha deve conter letras maiúsculas, minúsculas e números.');
+      Alert.alert(t.alertAttention, t.validation.passwordWeak);
       return;
     }
     if (newPass !== confirmPass) {
-      Alert.alert('Erro', 'As senhas não coincidem.');
+      Alert.alert(t.alertAttention, t.validation.passwordMismatch);
       return;
     }
     setLoading(true);
@@ -66,19 +67,19 @@ export default function ContaSegurancaScreen({ navigation }) {
         password: currentPass,
       });
       if (signInError) {
-        Alert.alert('Erro', 'Senha atual incorreta.');
+        Alert.alert(t.alertAttention, 'Senha atual incorreta.');
         setLoading(false);
         return;
       }
       const { error } = await supabase.auth.updateUser({ password: newPass });
       if (error) throw error;
-      Alert.alert('Sucesso', 'Senha alterada com sucesso!');
+      Alert.alert(t.alertSuccess, t.auth.passwordChanged);
       setCurrentPass('');
       setNewPass('');
       setConfirmPass('');
       setSection(null);
     } catch (err) {
-      Alert.alert('Erro', err.message || 'Não foi possível alterar a senha.');
+      Alert.alert(t.alertError, err.message || t.feedback.genericError);
     } finally {
       setLoading(false);
     }
@@ -126,7 +127,7 @@ export default function ContaSegurancaScreen({ navigation }) {
 
   async function excluirConta() {
     if (deleteConfirmText !== 'EXCLUIR') {
-      Alert.alert('Erro', 'Digite EXCLUIR para confirmar.');
+      Alert.alert(t.alertAttention, t.validation.confirmDeleteToken);
       return;
     }
     setDeleting(true);
@@ -143,7 +144,7 @@ export default function ContaSegurancaScreen({ navigation }) {
         Alert.alert('Exclusão solicitada', 'Seus dados serão retidos por 30 dias conforme a LGPD e depois excluídos permanentemente. Um e-mail de confirmação será enviado.');
       }
     } catch(e) {
-      Alert.alert('Erro', 'Não foi possível excluir a conta.');
+      Alert.alert(t.alertError, t.feedback.genericError);
     } finally {
       setDeleting(false);
       setShowDeleteModal(false);

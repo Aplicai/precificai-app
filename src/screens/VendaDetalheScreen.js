@@ -109,8 +109,17 @@ export default function VendaDetalheScreen({ route }) {
       return Alert.alert('Erro', 'Informe uma data valida (AAAA-MM-DD)');
     }
     const db = await getDatabase();
-    await db.runAsync('INSERT INTO vendas (produto_id, data, quantidade) VALUES (?, ?, ?)',
-      [produtoId, dataVenda, parseFloat(quantidade.replace(',', '.'))]);
+    const qtd = parseFloat(quantidade.replace(',', '.'));
+    const result = await db.runAsync('INSERT INTO vendas (produto_id, data, quantidade) VALUES (?, ?, ?)',
+      [produtoId, dataVenda, qtd]);
+    // Baixa automática de estoque (M1-10): tenta expandir BOM e dar saída.
+    // Falhas não bloqueiam o registro da venda — log silencioso.
+    try {
+      const { baixarEstoquePorVenda } = await import('../services/estoque');
+      await baixarEstoquePorVenda(db, produtoId, qtd, result?.lastInsertRowId || null);
+    } catch (e) {
+      // Sem estoque suficiente ou item sem BOM → não bloqueia venda
+    }
     setQuantidade('');
     loadData();
   }

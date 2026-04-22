@@ -8,6 +8,7 @@ import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento,
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import InfoTooltip from '../components/InfoTooltip';
 import EmptyState from '../components/EmptyState';
+import Loader from '../components/Loader';
 
 const TABS = [
   { key: 'ese', label: 'Simulador de Impacto', icon: 'trending-up' },
@@ -348,7 +349,7 @@ export default function SimuladorScreen({ navigation }) {
           <View style={{ flex: 1, marginLeft: spacing.sm }}>
             <Text style={styles.metaInfoTitle}>Quanto preciso vender?</Text>
             <Text style={styles.metaInfoDesc}>
-              Informe quanto deseja lucrar por mês. O cálculo já considera todos os custos: ingredientes (CMV), despesas fixas e variáveis (impostos, taxas).
+              Informe quanto deseja lucrar por mês. O cálculo já considera todos os custos: ingredientes (CMV), custos do mês e custos por venda (impostos, taxas).
             </Text>
           </View>
         </View>
@@ -365,7 +366,7 @@ export default function SimuladorScreen({ navigation }) {
                 Faturamento mínimo para cobrir todos os custos (lucro zero)
               </Text>
               <Text style={{ fontSize: 16, fontFamily: fontFamily.bold, color: colors.text }}>{formatCurrency(pe)}<Text style={{ fontSize: 11, color: colors.textSecondary }}>/mês</Text></Text>
-              <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 2 }}>{formatCurrency(pe / 30)}/dia · CMV médio {formatPercent(metaCmvPercent)} + {formatPercent(totalVarDecimal)} variáveis + {formatCurrency(custoFixoMensal)} fixos</Text>
+              <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 2 }}>{formatCurrency(pe / 30)}/dia · CMV médio {formatPercent(metaCmvPercent)} + {formatPercent(totalVarDecimal)} por venda + {formatCurrency(custoFixoMensal)} mensais</Text>
             </View>
           );
         })()}
@@ -376,7 +377,7 @@ export default function SimuladorScreen({ navigation }) {
             <Text style={styles.metaCardLabel}>Meta de lucro líquido mensal</Text>
             <InfoTooltip
               title="Lucro Líquido"
-              text="É o valor que sobra depois de descontar TODOS os custos: ingredientes (CMV), despesas fixas (aluguel, energia, etc), despesas variáveis (impostos, taxas) e custos de entrega. É o dinheiro que realmente vai para o seu bolso."
+              text="É o valor que sobra depois de descontar TODOS os custos: ingredientes (CMV), custos do mês (aluguel, energia, etc), custos por venda (impostos, taxas) e custos de entrega. É o dinheiro que realmente vai para o seu bolso."
             />
           </View>
           <View style={styles.metaInputRow}>
@@ -462,7 +463,7 @@ export default function SimuladorScreen({ navigation }) {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <Loader message="Simulando cenários de venda..." />
       </View>
     );
   }

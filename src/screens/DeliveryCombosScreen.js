@@ -7,6 +7,7 @@ import FAB from '../components/FAB';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
 import InputField from '../components/InputField';
+import SaveStatus from '../components/SaveStatus';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
@@ -653,22 +654,8 @@ export default function DeliveryCombosScreen() {
               <View style={styles.modalHeader}>
                 <Feather name="package" size={18} color={colors.primary} />
                 <Text style={styles.modalTitle}>{isEditing ? 'Editar Combo' : 'Criar Combo'}</Text>
-                {/* Auto-save status indicator for edit mode */}
-                {isEditing && saveStatus && (
-                  <View style={styles.autoSaveInline}>
-                    {saveStatus === 'saving' ? (
-                      <>
-                        <Feather name="loader" size={11} color={colors.textSecondary} />
-                        <Text style={styles.autoSaveInlineText}>Salvando...</Text>
-                      </>
-                    ) : (
-                      <>
-                        <Feather name="check-circle" size={11} color={colors.success} />
-                        <Text style={[styles.autoSaveInlineText, { color: colors.success }]}>Salvo</Text>
-                      </>
-                    )}
-                  </View>
-                )}
+                {/* Auto-save status indicator for edit mode (audit P1-17) */}
+                {isEditing && <SaveStatus status={saveStatus} />}
               </View>
 
               <InputField
@@ -688,7 +675,12 @@ export default function DeliveryCombosScreen() {
 
               <Text style={styles.modalSubtitle}>Itens do combo</Text>
               {novoCombo.itens.length === 0 && (
-                <Text style={styles.emptyItemsText}>Nenhum item adicionado.</Text>
+                <EmptyState
+                  compact
+                  icon="package"
+                  title="Combo vazio"
+                  description="Adicione produtos abaixo para montar este combo."
+                />
               )}
               {novoCombo.itens.map((item, index) => {
                 const badgeInfo = getTipoBadgeInfo(item.tipo);
@@ -765,11 +757,11 @@ export default function DeliveryCombosScreen() {
 
               <Text style={styles.modalSubtitle}>Adicionar itens</Text>
 
-              <InputField
+              <SearchBar
                 value={buscaItem}
                 onChangeText={setBuscaItem}
-                placeholder="Buscar item..."
-                style={{ marginBottom: spacing.xs }}
+                placeholder="Buscar produto, insumo, embalagem ou preparo..."
+                inset="modal"
               />
 
               {(() => {
@@ -843,21 +835,9 @@ export default function DeliveryCombosScreen() {
               {/* Modal actions: show Salvar only for NEW combos; edit mode uses auto-save */}
               {isEditing ? (
                 <View style={styles.editModalFooter}>
-                  {saveStatus && (
-                    <View style={styles.autoSaveBar}>
-                      {saveStatus === 'saving' ? (
-                        <>
-                          <Feather name="loader" size={13} color={colors.textSecondary} />
-                          <Text style={styles.autoSaveText}>Salvando...</Text>
-                        </>
-                      ) : (
-                        <>
-                          <Feather name="check-circle" size={13} color={colors.success} />
-                          <Text style={[styles.autoSaveText, { color: colors.success }]}>Salvo</Text>
-                        </>
-                      )}
-                    </View>
-                  )}
+                  <View style={styles.autoSaveBar}>
+                    <SaveStatus status={saveStatus} variant="badge" />
+                  </View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm }}>
                     {novoCombo.nome.trim() !== '' && (
                       <TouchableOpacity

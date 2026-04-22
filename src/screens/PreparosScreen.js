@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, FlatList, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform, RefreshControl } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
@@ -10,7 +10,24 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { formatCurrency, getTipoUnidade, normalizeSearch } from '../utils/calculations';
 import EmptyState from '../components/EmptyState';
 import Skeleton from '../components/Skeleton';
+import UndoToast from '../components/UndoToast';
+import SortMenu from '../components/SortMenu';
+import BulkActionBar from '../components/BulkActionBar';
+import CategoryPickerModal from '../components/CategoryPickerModal';
+import InfoToast from '../components/InfoToast';
+import HighlightedText from '../components/HighlightedText';
+import usePersistedState from '../hooks/usePersistedState';
+import useListDensity from '../hooks/useListDensity';
+import ListStatsStrip from '../components/ListStatsStrip';
+import BulkPriceAdjustModal from '../components/BulkPriceAdjustModal';
+import { exportToCSV, isCsvExportSupported } from '../utils/exportCsv';
+import ItemPreviewModal from '../components/ItemPreviewModal';
+import { formatTimeAgo } from '../utils/timeAgo';
+import ViewModeToggle from '../components/ViewModeToggle';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import useUndoableDelete from '../hooks/useUndoableDelete';
+import useBulkSelection from '../hooks/useBulkSelection';
+import { t } from '../i18n/pt-BR';
 
 // Cores para categorias
 const CATEGORY_COLORS = [
@@ -56,6 +73,12 @@ export default function PreparosScreen({ navigation }) {
   const [novoIcone, setNovoIcone] = useState('tag');
   const [busca, setBusca] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const undoDelete = useUndoableDelete();
+  const [sortBy, setSortBy] = usePersistedState('preparos.sortBy', 'nome_asc');
+  const [viewMode, setViewMode] = usePersistedState('preparos.viewMode', 'list');
+  const isGrid = isDesktop || viewMode === 'grid';
+  const { rowOverride, nameOverride, avatarSize } = useListDensity();
+  const bulk = useBulkSelection();
   // Mapa de cores por categoria ID
   const [catColorMap, setCatColorMap] = useState({});
   // Seções recolhidas
@@ -63,13 +86,23 @@ export default function PreparosScreen({ navigation }) {
   // Desktop grid seções recolhidas
   const [collapsedDesktop, setCollapsedDesktop] = useState({});
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [showPriceModal, setShowPriceModal] = useState(false);
+  const [previewItem, setPreviewItem] = useState(null);
+  const [infoToast, setInfoToast] = useState(null);
 
   function toggleDesktopSection(key) { setCollapsedDesktop(prev => ({...prev, [key]: !prev[key]})); }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try { await loadData(); } finally { setRefreshing(false); }
+  }
 
   useFocusEffect(useCallback(() => {
     loadData();
     return () => setConfirmDelete(null);
-  }, [filtroCategoria, busca]));
+  }, [filtroCategoria, busca, sortBy]));
 
   async function loadData() {
     setLoading(true);
@@ -83,7 +116,23 @@ export default function PreparosScreen({ navigation }) {
     colorMap['null'] = colors.disabled;
     setCatColorMap(colorMap);
 
-    const preparos = await db.getAllAsync('SELECT * FROM preparos ORDER BY nome');
+    // Ordenação dinâmica via sortBy (P1-22 + P3-H/I)
+    const orderClauses = {
+      nome_asc: 'nome COLLATE NOCASE ASC',
+      nome_desc: 'nome COLLATE NOCASE DESC',
+      recentes: 'id DESC',
+      modificados: 'updated_at DESC', // P3-I
+      favoritos: 'nome COLLATE NOCASE ASC', // P3-H — re-sort em JS
+    };
+    const orderBy = orderClauses[sortBy] || orderClauses.nome_asc;
+    let preparos = await db.getAllAsync(`SELECT * FROM preparos ORDER BY ${orderBy}`);
+    if (sortBy === 'favoritos') {
+      preparos = [...preparos].sort((a, b) => {
+        const fa = a.favorito ? 1 : 0, fb = b.favorito ? 1 : 0;
+        if (fa !== fb) return fb - fa;
+        return String(a.nome || '').localeCompare(String(b.nome || ''));
+      });
+    }
     setTotalPreparos(preparos.length);
 
     let preparosFiltrados = preparos;
@@ -154,16 +203,184 @@ export default function PreparosScreen({ navigation }) {
       titulo: 'Excluir Preparo',
       nome,
       onConfirm: async () => {
-        const db = await getDatabase();
-        await db.runAsync('DELETE FROM preparos WHERE id = ?', [id]);
         setConfirmDelete(null);
-        loadData();
+        await undoDelete.requestDelete({
+          id,
+          message: `Preparo "${nome}" excluído`,
+          commit: async () => {
+            const db = await getDatabase();
+            await db.runAsync('DELETE FROM preparos WHERE id = ?', [id]);
+          },
+          onCommitted: () => loadData(),
+        });
       },
     });
   }
 
+  function solicitarExclusaoEmMassa() {
+    const ids = Array.from(bulk.selectedIds);
+    if (ids.length === 0) return;
+    setConfirmDelete({
+      titulo: ids.length === 1 ? 'Excluir Preparo' : `Excluir ${ids.length} preparos`,
+      nome: ids.length === 1 ? null : `${ids.length} itens selecionados`,
+      onConfirm: async () => {
+        setConfirmDelete(null);
+        await undoDelete.requestDelete({
+          id: ids,
+          message: ids.length === 1 ? '1 preparo excluído' : `${ids.length} preparos excluídos`,
+          commit: async () => {
+            const db = await getDatabase();
+            const placeholders = ids.map(() => '?').join(',');
+            await db.runAsync(`DELETE FROM preparos WHERE id IN (${placeholders})`, ids);
+          },
+          onCommitted: () => loadData(),
+        });
+        bulk.clear();
+      },
+    });
+  }
+
+  function handleRowPress(item) {
+    if (bulk.active) bulk.toggle(item.id);
+    else navigation.navigate('PreparoForm', { id: item.id });
+  }
+  function handleRowLongPress(item) { bulk.enter(item.id); }
+
+  async function moverEmMassa(catId) {
+    const ids = Array.from(bulk.selectedIds);
+    setShowMoveModal(false);
+    if (ids.length === 0) return;
+    const db = await getDatabase();
+    const placeholders = ids.map(() => '?').join(',');
+    await db.runAsync(
+      `UPDATE preparos SET categoria_id = ? WHERE id IN (${placeholders})`,
+      [catId, ...ids]
+    );
+    bulk.clear();
+    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'preparo movido' : 'preparos movidos'}`, icon: 'folder' });
+    loadData();
+  }
+
+  async function duplicarEmMassa() {
+    const ids = Array.from(bulk.selectedIds);
+    if (ids.length === 0) return;
+    const db = await getDatabase();
+    const placeholders = ids.map(() => '?').join(',');
+    const itens = await db.getAllAsync(
+      `SELECT * FROM preparos WHERE id IN (${placeholders})`, ids
+    );
+    for (const item of itens) {
+      const result = await db.runAsync(
+        'INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg) VALUES (?,?,?,?,?,?)',
+        [item.nome + ' (cópia)', item.categoria_id, item.rendimento_total, item.unidade_medida, item.custo_total, item.custo_por_kg]
+      );
+      const newId = result?.lastInsertRowId;
+      if (newId) {
+        const ings = await db.getAllAsync('SELECT * FROM preparo_ingredientes WHERE preparo_id = ?', [item.id]);
+        await Promise.all(ings.map(ing => db.runAsync(
+          'INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
+          [newId, ing.materia_prima_id, ing.quantidade_utilizada, ing.custo]
+        )));
+      }
+    }
+    bulk.clear();
+    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'preparo duplicado' : 'preparos duplicados'}`, icon: 'copy' });
+    loadData();
+  }
+
+  async function reajustarEmMassa({ mode, value, sign }) {
+    const ids = Array.from(bulk.selectedIds);
+    setShowPriceModal(false);
+    if (ids.length === 0 || !value) return;
+    const db = await getDatabase();
+    const placeholders = ids.map(() => '?').join(',');
+    const itens = await db.getAllAsync(`SELECT * FROM preparos WHERE id IN (${placeholders})`, ids);
+    const factor = mode === 'percent' ? 1 + (sign * value) / 100 : null;
+    // Preparos: aplica delta direto em custo_total (override manual). Recalcula custo_por_kg
+    // baseado em rendimento_total. ATENÇÃO: editar e salvar o preparo recalcula custo
+    // a partir dos ingredientes, sobrescrevendo este reajuste.
+    await Promise.all(itens.map((item) => {
+      const oldCusto = Number(item.custo_total) || 0;
+      let novoCusto = mode === 'percent' ? oldCusto * factor : oldCusto + sign * value;
+      if (novoCusto < 0) novoCusto = 0;
+      const rend = Number(item.rendimento_total) || 1;
+      const novoCustoKg = rend > 0 ? novoCusto / rend : 0;
+      return db.runAsync(
+        'UPDATE preparos SET custo_total = ?, custo_por_kg = ? WHERE id = ?',
+        [novoCusto, novoCustoKg, item.id]
+      );
+    }));
+    bulk.clear();
+    const sigStr = sign === 1 ? '+' : '−';
+    const valStr = mode === 'percent' ? `${value}%` : `R$ ${value.toFixed(2).replace('.', ',')}`;
+    setInfoToast({
+      message: `${ids.length} ${ids.length === 1 ? 'preparo reajustado' : 'preparos reajustados'} (${sigStr}${valStr})`,
+      icon: 'trending-up',
+    });
+    loadData();
+  }
+
+  async function favoritarEmMassa() {
+    const ids = Array.from(bulk.selectedIds);
+    if (ids.length === 0) return;
+    const itens = visibleItems.filter((i) => bulk.isSelected(i.id));
+    const allFav = itens.every((i) => Number(i.favorito) === 1);
+    const novoVal = allFav ? 0 : 1;
+    const db = await getDatabase();
+    await Promise.all(ids.map((id) =>
+      db.runAsync('UPDATE preparos SET favorito = ? WHERE id = ?', [novoVal, id])
+    ));
+    bulk.clear();
+    setInfoToast({
+      message: novoVal === 1
+        ? `${ids.length} ${ids.length === 1 ? 'preparo favoritado' : 'preparos favoritados'}`
+        : `${ids.length} ${ids.length === 1 ? 'preparo desfavoritado' : 'preparos desfavoritados'}`,
+      icon: 'star',
+    });
+    loadData();
+  }
+
+  async function toggleFavoritoSingular(item) {
+    const novo = Number(item.favorito) === 1 ? 0 : 1;
+    const db = await getDatabase();
+    await db.runAsync('UPDATE preparos SET favorito = ? WHERE id = ?', [novo, item.id]);
+    setPreviewItem({ ...item, favorito: novo });
+    loadData();
+  }
+
+  async function exportarCSVEmMassa() {
+    const ids = Array.from(bulk.selectedIds);
+    if (ids.length === 0) return;
+    const db = await getDatabase();
+    const placeholders = ids.map(() => '?').join(',');
+    const itens = await db.getAllAsync(
+      `SELECT p.*, c.nome AS categoria_nome FROM preparos p LEFT JOIN categorias_preparos c ON c.id = p.categoria_id WHERE p.id IN (${placeholders}) ORDER BY p.nome`,
+      ids
+    );
+    const rows = itens.map((it) => ({
+      nome: it.nome,
+      categoria: it.categoria_nome || 'Sem categoria',
+      unidade: it.unidade_medida,
+      rendimento_total: it.rendimento_total,
+      custo_total: it.custo_total,
+      custo_por_kg: it.custo_por_kg,
+    }));
+    const ok = exportToCSV('preparos.csv', rows, [
+      { key: 'nome', label: 'Nome' },
+      { key: 'categoria', label: 'Categoria' },
+      { key: 'unidade', label: 'Unidade' },
+      { key: 'rendimento_total', label: 'Rendimento total' },
+      { key: 'custo_total', label: 'Custo total (R$)' },
+      { key: 'custo_por_kg', label: 'Custo por kg/L (R$)' },
+    ]);
+    if (ok) {
+      bulk.clear();
+      setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'preparo exportado' : 'preparos exportados'}`, icon: 'download' });
+    }
+  }
+
   async function adicionarCategoria() {
-    if (!novaCategoria.trim()) return Alert.alert('Erro', 'Informe o nome da categoria');
+    if (!novaCategoria.trim()) return Alert.alert(t.alertAttention, t.validation.requiredCategoryName);
     const db = await getDatabase();
     await db.runAsync('INSERT INTO categorias_preparos (nome, icone) VALUES (?, ?)', [novaCategoria.trim(), novoIcone]);
     setNovaCategoria('');
@@ -194,10 +411,10 @@ export default function PreparosScreen({ navigation }) {
   const isWeb = Platform.OS === 'web';
 
   function renderDesktopGrid() {
-    if (!isDesktop || sections.length === 0) return null;
+    if (!isDesktop || visibleSections.length === 0) return null;
     return (
       <View style={{ marginTop: spacing.xs }}>
-        {sections.map((section, catIdx) => (
+        {visibleSections.map((section, catIdx) => (
           <View key={section.catId} style={{ marginBottom: spacing.md }}>
             <TouchableOpacity
               style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, marginTop: catIdx > 0 ? 16 : 0 }}
@@ -209,25 +426,55 @@ export default function PreparosScreen({ navigation }) {
               <Feather name={collapsedDesktop[section.title] ? 'chevron-right' : 'chevron-down'} size={14} color={colors.disabled} />
             </TouchableOpacity>
             {!collapsedDesktop[section.title] && (<View style={styles.gridContainer}>
-              {section.data.map((item) => (
+              {section.data.map((item) => {
+                const selected = bulk.isSelected(item.id);
+                return (
                 <TouchableOpacity
                   key={item.id}
-                  style={[styles.gridCard, isWeb && { cursor: 'pointer' }]}
+                  style={[styles.gridCard, isWeb && { cursor: 'pointer' }, selected && styles.rowSelected]}
                   activeOpacity={0.7}
-                  onPress={() => navigation.navigate('PreparoForm', { id: item.id })}
+                  onPress={() => handleRowPress(item)}
+                  onLongPress={() => handleRowLongPress(item)}
                 >
-                  <Text style={styles.gridCardName} numberOfLines={1} {...(Platform.OS === 'web' ? { title: item.nome } : {})}>{item.nome}</Text>
+                  {bulk.active && (
+                    <View style={[styles.checkbox, selected && styles.checkboxChecked, { marginRight: 8 }]}>
+                      {selected && <Feather name="check" size={12} color="#fff" />}
+                    </View>
+                  )}
+                  {Number(item.favorito) === 1 && (
+                    <Feather name="star" size={11} color={colors.yellow || '#FFC83A'} style={{ marginRight: 4 }} />
+                  )}
+                  <HighlightedText text={item.nome} query={busca} style={styles.gridCardName} numberOfLines={1} />
                   <Text style={styles.gridCardPrice}>
                     Rende {formatRendimento(item.rendimento_total, item.unidade_medida)}
                   </Text>
                 </TouchableOpacity>
-              ))}
+                );
+              })}
             </View>)}
           </View>
         ))}
       </View>
     );
   }
+
+  // Filtra linhas em janela de undo (P1-11)
+  const visibleSections = sections
+    .map((s) => ({ ...s, data: s.data.filter((it) => !undoDelete.hiddenIds.has(it.id)) }))
+    .filter((s) => s.data.length > 0 || filtroCategoria === s.catId);
+
+  // P3-B Stats summary
+  const visibleItems = visibleSections.flatMap((s) => s.data);
+  const visCount = visibleItems.length;
+  const avgKg = visCount
+    ? visibleItems.reduce((acc, it) => acc + (Number(it.custo_por_kg) || 0), 0) / visCount
+    : 0;
+  const totalCusto = visibleItems.reduce((acc, it) => acc + (Number(it.custo_total) || 0), 0);
+  const statsList = visCount > 0 ? [
+    { icon: 'layers', label: 'Preparos', value: String(visCount), color: colors.primary },
+    { icon: 'tag', label: 'Médio/kg', value: formatCurrency(avgKg), color: colors.accent || '#FFD37A' },
+    { icon: 'shopping-cart', label: 'Custo total', value: formatCurrency(totalCusto), color: colors.success || '#1a8a4f' },
+  ] : [];
 
   return (
     <View style={styles.container}>
@@ -264,7 +511,29 @@ export default function PreparosScreen({ navigation }) {
             <Feather name="plus" size={14} color={colors.primary} />
           </TouchableOpacity>
         </ScrollView>
-        <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar preparo..." />
+        <View style={styles.searchSortRow}>
+          <View style={{ flex: 1 }}>
+            <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar preparo..." />
+          </View>
+          <View style={styles.sortMenuWrap}>
+            <SortMenu
+              value={sortBy}
+              onChange={setSortBy}
+              options={[
+                { key: 'favoritos', label: 'Favoritos primeiro', icon: 'star' },
+                { key: 'nome_asc', label: 'Nome (A→Z)', icon: 'arrow-down' },
+                { key: 'nome_desc', label: 'Nome (Z→A)', icon: 'arrow-up' },
+                { key: 'recentes', label: 'Mais recentes', icon: 'clock' },
+                { key: 'modificados', label: 'Editados recentemente', icon: 'edit-2' },
+              ]}
+            />
+          </View>
+          {!isDesktop && (
+            <View style={{ marginLeft: 6 }}>
+              <ViewModeToggle value={viewMode} onChange={setViewMode} />
+            </View>
+          )}
+        </View>
       </View>
 
       {/* Botão Adicionar */}
@@ -277,11 +546,11 @@ export default function PreparosScreen({ navigation }) {
       </TouchableOpacity>
 
       {/* Content */}
-      {isDesktop ? (
+      {isGrid ? (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
           <View style={styles.desktopContentWrap}>
             <View style={styles.desktopContentInner}>
-              {sections.length === 0 ? (
+              {visibleSections.length === 0 ? (
                 loading ? (
                   <Skeleton.List count={6} />
                 ) : (
@@ -303,13 +572,22 @@ export default function PreparosScreen({ navigation }) {
         </ScrollView>
       ) : (
         <SectionList
-          sections={sections.map(s => ({
+          sections={visibleSections.map(s => ({
             ...s,
             data: collapsedSections[s.catId] ? [] : s.data,
           }))}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
-          stickySectionHeadersEnabled={false}
+          stickySectionHeadersEnabled={true}
+          ListHeaderComponent={statsList.length > 0 ? <ListStatsStrip stats={statsList} /> : null}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
           ListEmptyComponent={
             loading ? (
               <Skeleton.List count={6} />
@@ -353,6 +631,7 @@ export default function PreparosScreen({ navigation }) {
             const catColor = catColorMap[item.categoria_id] || catColorMap['null'] || colors.disabled;
             const inicial = (item.nome || '?').charAt(0).toUpperCase();
             const unidadeInfo = getUnidadeInfo(item.unidade_medida);
+            const selected = bulk.isSelected(item.id);
 
             return (
               <TouchableOpacity
@@ -361,18 +640,32 @@ export default function PreparosScreen({ navigation }) {
                   isFirst && styles.rowFirst,
                   isLast && styles.rowLast,
                   !isLast && styles.rowBorder,
+                  selected && styles.rowSelected,
+                  rowOverride,
                 ]}
-                onPress={() => navigation.navigate('PreparoForm', { id: item.id })}
+                onPress={() => handleRowPress(item)}
+                onLongPress={() => handleRowLongPress(item)}
                 activeOpacity={0.6}
               >
-                {/* Avatar com inicial */}
-                <View style={[styles.avatar, { backgroundColor: catColor + '18' }]}>
-                  <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
-                </View>
+                {/* Avatar com inicial OU checkbox no modo bulk */}
+                {bulk.active ? (
+                  <View style={[styles.checkbox, selected && styles.checkboxChecked, { marginRight: spacing.sm }]}>
+                    {selected && <Feather name="check" size={14} color="#fff" />}
+                  </View>
+                ) : (
+                  <View style={[styles.avatar, { backgroundColor: catColor + '18', width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}>
+                    <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
+                  </View>
+                )}
 
                 {/* Info */}
                 <View style={styles.rowInfo}>
-                  <Text style={styles.rowNome} numberOfLines={1}>{item.nome}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    {Number(item.favorito) === 1 && (
+                      <Feather name="star" size={11} color={colors.yellow || '#FFC83A'} />
+                    )}
+                    <HighlightedText text={item.nome} query={busca} style={[styles.rowNome, nameOverride]} numberOfLines={1} />
+                  </View>
                   <Text style={styles.rowMarca} numberOfLines={1}>
                     Rende {formatRendimento(item.rendimento_total, item.unidade_medida)}
                   </Text>
@@ -386,23 +679,25 @@ export default function PreparosScreen({ navigation }) {
                   </View>
                 </View>
 
-                {/* Duplicar */}
-                <TouchableOpacity
-                  onPress={() => duplicarPreparo(item)}
-                  style={styles.copyBtn}
-                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-                >
-                  <Feather name="copy" size={13} color={colors.disabled} />
-                </TouchableOpacity>
-
-                {/* Excluir */}
-                <TouchableOpacity
-                  onPress={() => solicitarExclusao(item.id, item.nome)}
-                  style={styles.deleteBtn}
-                  hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-                >
-                  <Feather name="trash-2" size={13} color={colors.disabled} />
-                </TouchableOpacity>
+                {/* Duplicar + Excluir (escondidos no modo bulk) */}
+                {!bulk.active && (
+                  <>
+                    <TouchableOpacity
+                      onPress={() => duplicarPreparo(item)}
+                      style={styles.copyBtn}
+                      hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                    >
+                      <Feather name="copy" size={13} color={colors.disabled} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => solicitarExclusao(item.id, item.nome)}
+                      style={styles.deleteBtn}
+                      hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                    >
+                      <Feather name="trash-2" size={13} color={colors.disabled} />
+                    </TouchableOpacity>
+                  </>
+                )}
               </TouchableOpacity>
             );
           }}
@@ -410,7 +705,88 @@ export default function PreparosScreen({ navigation }) {
         />
       )}
 
-      <FAB onPress={() => navigation.navigate('PreparoForm', {})} label={isDesktop ? 'Novo Preparo' : undefined} />
+      {!bulk.active && (
+        <FAB onPress={() => navigation.navigate('PreparoForm', {})} label={isDesktop ? 'Novo Preparo' : undefined} />
+      )}
+
+      <BulkActionBar
+        visible={bulk.active}
+        count={bulk.count}
+        totalVisible={visibleSections.reduce((acc, s) => acc + s.data.length, 0)}
+        onSelectAll={() => bulk.selectAll(visibleSections.flatMap((s) => s.data.map((d) => d.id)))}
+        onCancel={bulk.clear}
+        onDelete={solicitarExclusaoEmMassa}
+        actions={[
+          ...(bulk.count === 1 ? [{ icon: 'eye', label: 'Visualizar', onPress: () => {
+            const onlyId = Array.from(bulk.selectedIds)[0];
+            const item = visibleItems.find((i) => i.id === onlyId);
+            if (item) setPreviewItem(item);
+          } }] : []),
+          { icon: 'folder', label: 'Mover', onPress: () => setShowMoveModal(true) },
+          { icon: 'copy', label: 'Duplicar', onPress: duplicarEmMassa },
+          {
+            icon: 'star',
+            label: (() => {
+              const sel = visibleItems.filter((i) => bulk.isSelected(i.id));
+              const allFav = sel.length > 0 && sel.every((i) => Number(i.favorito) === 1);
+              return allFav ? 'Desfavoritar' : 'Favoritar';
+            })(),
+            onPress: favoritarEmMassa,
+          },
+          { icon: 'trending-up', label: 'Reajustar', onPress: () => setShowPriceModal(true) },
+          ...(isCsvExportSupported() ? [{ icon: 'download', label: 'CSV', onPress: exportarCSVEmMassa }] : []),
+        ]}
+      />
+
+      <CategoryPickerModal
+        visible={showMoveModal}
+        title="Mover preparos para..."
+        subtitle={`${bulk.count} ${bulk.count === 1 ? 'item selecionado' : 'itens selecionados'}`}
+        categorias={categorias}
+        onSelect={moverEmMassa}
+        onCancel={() => setShowMoveModal(false)}
+      />
+
+      <BulkPriceAdjustModal
+        visible={showPriceModal}
+        title="Reajustar custo de preparo"
+        subtitle={`${bulk.count} ${bulk.count === 1 ? 'item selecionado' : 'itens selecionados'} · custo será sobrescrito`}
+        currentLabel="custos de preparo"
+        onConfirm={reajustarEmMassa}
+        onCancel={() => setShowPriceModal(false)}
+      />
+
+      <InfoToast
+        visible={!!infoToast}
+        message={infoToast?.message}
+        icon={infoToast?.icon}
+        onDismiss={() => setInfoToast(null)}
+      />
+
+      <ItemPreviewModal
+        visible={!!previewItem}
+        title={previewItem?.nome}
+        subtitle={previewItem?.categoria_nome || 'Sem categoria'}
+        icon="layers"
+        iconColor={colors.accent}
+        meta={previewItem?.updated_at ? `Editado ${formatTimeAgo(previewItem.updated_at)}` : null}
+        favorito={previewItem ? Number(previewItem.favorito) : 0}
+        onToggleFavorite={previewItem ? () => toggleFavoritoSingular(previewItem) : undefined}
+        fields={previewItem ? [
+          { label: 'Categoria', value: previewItem.categoria_nome || 'Sem categoria' },
+          { label: 'Unidade', value: previewItem.unidade_medida },
+          { label: 'Rendimento', value: formatRendimento(previewItem.rendimento_total, previewItem.unidade_medida) },
+          { label: 'Custo total', value: formatCurrency(previewItem.custo_total) },
+          { label: 'Custo por kg/L', value: formatCurrency(previewItem.custo_por_kg), accent: true },
+        ] : []}
+        onEdit={() => {
+          const id = previewItem?.id;
+          setPreviewItem(null);
+          bulk.clear();
+          if (id) navigation.navigate('PreparoForm', { id });
+        }}
+        onClose={() => setPreviewItem(null)}
+      />
 
       {/* Modal nova categoria */}
       <Modal visible={modalVisible} transparent animationType="fade">
@@ -452,6 +828,13 @@ export default function PreparosScreen({ navigation }) {
         onConfirm={confirmDelete?.onConfirm}
         onCancel={() => setConfirmDelete(null)}
       />
+
+      <UndoToast
+        visible={!!undoDelete.pending}
+        message={undoDelete.pending?.message}
+        onUndo={undoDelete.undo}
+        onTimeout={undoDelete.onTimeout}
+      />
     </View>
   );
 }
@@ -470,6 +853,16 @@ const styles = StyleSheet.create({
 
   // Filtros
   filtrosList: { paddingHorizontal: spacing.md, gap: 2 },
+  searchSortRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingRight: spacing.md,
+  },
+  sortMenuWrap: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
   filtroChip: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.inputBg,
@@ -497,8 +890,9 @@ const styles = StyleSheet.create({
   // Seção header
   sectionHeader: {
     flexDirection: 'row', alignItems: 'center',
-    marginTop: spacing.md, marginBottom: 6,
+    paddingTop: spacing.md, paddingBottom: 6,
     paddingHorizontal: 2,
+    backgroundColor: colors.background,
   },
   sectionDot: {
     width: 8, height: 8, borderRadius: 4, marginRight: 6,
@@ -531,6 +925,21 @@ const styles = StyleSheet.create({
   rowBorder: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
+  },
+
+  // Checkbox bulk
+  checkbox: {
+    width: 22, height: 22, borderRadius: 6,
+    borderWidth: 2, borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  rowSelected: {
+    backgroundColor: colors.primary + '0E',
   },
 
   // Avatar

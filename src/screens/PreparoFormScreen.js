@@ -7,9 +7,11 @@ import Card from '../components/Card';
 import PickerSelect from '../components/PickerSelect';
 import InfoTooltip from '../components/InfoTooltip';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import SaveStatus from '../components/SaveStatus';
 import ModalFormWrapper from '../components/ModalFormWrapper';
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import { t } from '../i18n/pt-BR';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import {
   UNIDADES_MEDIDA,
@@ -575,17 +577,7 @@ export default function PreparoFormScreen({ route, navigation }) {
         <View style={styles.editFooter}>
           {saveStatus && (
             <View style={styles.autoSaveBar}>
-              {saveStatus === 'saving' ? (
-                <>
-                  <Feather name="loader" size={13} color={colors.textSecondary} />
-                  <Text style={styles.autoSaveText}>Salvando...</Text>
-                </>
-              ) : (
-                <>
-                  <Feather name="check-circle" size={13} color={colors.success} />
-                  <Text style={[styles.autoSaveText, { color: colors.success }]}>Salvo</Text>
-                </>
-              )}
+              <SaveStatus status={saveStatus} variant="badge" />
             </View>
           )}
           <TouchableOpacity style={styles.saveBackBtn} onPress={async () => { allowExit.current = true; try { await autoSave(); } catch(e) {} const returnTo = route.params?.returnTo; if (returnTo) { navigation.navigate(returnTo); } else { navigation.goBack(); } }}>
@@ -663,7 +655,7 @@ export default function PreparoFormScreen({ route, navigation }) {
                     <Text style={styles.modalCancelText}>Voltar</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.modalSaveBtn} onPress={async () => {
-                    if (!novaCatNome.trim()) return Alert.alert('Erro', 'Informe o nome da subcategoria');
+                    if (!novaCatNome.trim()) return Alert.alert(t.alertAttention, t.validation.requiredSubcategoryName);
                     const db = await getDatabase();
                     const result = await db.runAsync('INSERT INTO categorias_preparos (nome, icone) VALUES (?, ?)', [novaCatNome.trim(), 'tag']);
                     const newId = result.lastInsertRowId;

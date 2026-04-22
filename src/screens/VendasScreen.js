@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import Card from '../components/Card';
@@ -25,12 +25,18 @@ export default function VendasScreen({ navigation }) {
   const [produtos, setProdutos] = useState([]);
   const [resumo, setResumo] = useState({ totalQty: 0, faturamento: 0, lucro: 0, ticketMedio: 0 });
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const meses = getUltimos6Meses();
 
   useFocusEffect(useCallback(() => {
     loadData();
   }, [mesAtual]));
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    try { await loadData(); } finally { setRefreshing(false); }
+  }
 
   async function loadData() {
     setLoading(true);
@@ -208,6 +214,9 @@ export default function VendasScreen({ navigation }) {
         data={produtos}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.listContent}
+        refreshControl={Platform.OS !== 'web' ? (
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} colors={[colors.primary]} />
+        ) : undefined}
         ListHeaderComponent={
           <>
             {/* Summary card */}
