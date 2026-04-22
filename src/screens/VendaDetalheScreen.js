@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { getDatabase } from '../database/database';
+import usePushPermissions from '../hooks/usePushPermissions';
 import InputField from '../components/InputField';
 import Card from '../components/Card';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
@@ -40,6 +41,9 @@ export default function VendaDetalheScreen({ route }) {
   const [vendasDoMes, setVendasDoMes] = useState([]);
   const [config, setConfig] = useState({ despFixasPerc: 0, despVarPerc: 0 });
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+  const savingRef = useRef(false);
+  const { askIfNotAsked } = usePushPermissions();
 
   const meses = getUltimos6Meses();
 
@@ -102,26 +106,62 @@ export default function VendaDetalheScreen({ route }) {
   }
 
   async function registrarVenda() {
+    // Guard contra double-tap (useRef sincroniza imediato; setState é async).
+    if (savingRef.current) return;
     if (!quantidade || parseFloat(quantidade.replace(',', '.')) <= 0) {
-      return Alert.alert('Erro', 'Informe a quantidade');
+      return Alert.alert('Atenção', 'Informe a quantidade');
     }
     if (!dataVenda || dataVenda.length < 10) {
-      return Alert.alert('Erro', 'Informe uma data valida (AAAA-MM-DD)');
+      return Alert.alert('Atenção', 'Informe uma data válida (AAAA-MM-DD)');
     }
-    const db = await getDatabase();
-    const qtd = parseFloat(quantidade.replace(',', '.'));
-    const result = await db.runAsync('INSERT INTO vendas (produto_id, data, quantidade) VALUES (?, ?, ?)',
-      [produtoId, dataVenda, qtd]);
-    // Baixa automática de estoque (M1-10): tenta expandir BOM e dar saída.
-    // Falhas não bloqueiam o registro da venda — log silencioso.
+    savingRef.current = true;
+    setSalvando(true);
+    let vendaInseridaId = null;
     try {
-      const { baixarEstoquePorVenda } = await import('../services/estoque');
-      await baixarEstoquePorVenda(db, produtoId, qtd, result?.lastInsertRowId || null);
+      const db = await getDatabase();
+      const qtd = parseFloat(quantidade.replace(',', '.'));
+      const result = await db.runAsync(
+        'INSERT INTO vendas (produto_id, data, quantidade) VALUES (?, ?, ?)',
+        [produtoId, dataVenda, qtd]
+      );
+      vendaInseridaId = result?.lastInsertRowId || null;
+
+      // Baixa de estoque (M1-10). Se falhar, faz rollback da venda e avisa.
+      try {
+        const { baixarEstoquePorVenda } = await import('../services/estoque');
+        const res = await baixarEstoquePorVenda(db, produtoId, qtd, vendaInseridaId);
+        // res.semBOM === true → produto sem BOM cadastrado, OK não bloqueia
+        if (res?.semBOM) {
+          // venda fica registrada, mas sem baixa de insumos
+        }
+      } catch (estoqueErr) {
+        // Reverte a venda recém-inserida.
+        if (vendaInseridaId) {
+          try {
+            await db.runAsync('DELETE FROM vendas WHERE id = ?', [vendaInseridaId]);
+          } catch (_) { /* swallow rollback error */ }
+        }
+        Alert.alert(
+          'Venda não registrada',
+          estoqueErr?.message || 'Falha ao baixar estoque. A venda foi cancelada.'
+        );
+        return;
+      }
+
+      setQuantidade('');
+      loadData();
+
+      // Earned moment: pede permissão de push após a primeira venda do produto.
+      // Idempotente — só pergunta uma vez (chave 'first_sale').
+      try {
+        await askIfNotAsked('first_sale');
+      } catch (_) { /* não bloqueia */ }
     } catch (e) {
-      // Sem estoque suficiente ou item sem BOM → não bloqueia venda
+      Alert.alert('Erro', e?.message || 'Não foi possível registrar a venda.');
+    } finally {
+      savingRef.current = false;
+      setSalvando(false);
     }
-    setQuantidade('');
-    loadData();
   }
 
   function removerVenda(id, data, qtd) {
@@ -130,9 +170,18 @@ export default function VendaDetalheScreen({ route }) {
       nome: `${formatDateBR(data)} - ${qtd} un`,
       onConfirm: async () => {
         const db = await getDatabase();
-        await db.runAsync('DELETE FROM vendas WHERE id = ?', [id]);
-        setConfirmDelete(null);
-        loadData();
+        try {
+          // Primeiro estorna o estoque (devolve insumos ao saldo).
+          // Idempotente — se a venda nunca baixou estoque, retorna 0.
+          const { estornarEstoquePorVenda } = await import('../services/estoque');
+          try {
+            await estornarEstoquePorVenda(id);
+          } catch (_) { /* não bloqueia delete da venda */ }
+          await db.runAsync('DELETE FROM vendas WHERE id = ?', [id]);
+        } finally {
+          setConfirmDelete(null);
+          loadData();
+        }
       },
     });
   }
@@ -200,8 +249,15 @@ export default function VendaDetalheScreen({ route }) {
           placeholder="Ex: 10"
           keyboardType="numeric"
         />
-        <TouchableOpacity style={styles.btnRegistrar} onPress={registrarVenda} activeOpacity={0.7}>
-          <Text style={styles.btnRegistrarText}>Registrar Venda</Text>
+        <TouchableOpacity
+          style={[styles.btnRegistrar, salvando && { opacity: 0.6 }]}
+          onPress={registrarVenda}
+          disabled={salvando}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.btnRegistrarText}>
+            {salvando ? 'Registrando…' : 'Registrar Venda'}
+          </Text>
         </TouchableOpacity>
       </Card>
 

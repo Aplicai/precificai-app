@@ -57,8 +57,10 @@ export default function EstoqueHubScreen({ navigation }) {
   const [movimentos, setMovimentos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [erro, setErro] = useState(null);
 
   const carregar = useCallback(async () => {
+    setErro(null);
     try {
       const db = await getDatabase();
       const items = await listarSaldosConsolidados(db);
@@ -70,9 +72,11 @@ export default function EstoqueHubScreen({ navigation }) {
         .select('*')
         .order('created_at', { ascending: false })
         .limit(200);
-      if (!error && Array.isArray(movs)) setMovimentos(movs);
+      if (error) throw error;
+      if (Array.isArray(movs)) setMovimentos(movs);
     } catch (e) {
-      // silencioso — telas vazias mostram EmptyState
+      // Surface ao usuário em vez de engolir.
+      setErro(e?.message || 'Não foi possível carregar o estoque.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -122,6 +126,17 @@ export default function EstoqueHubScreen({ navigation }) {
         })}
       </View>
 
+      {/* Banner de erro */}
+      {erro && (
+        <View style={styles.errorBanner}>
+          <Feather name="alert-triangle" size={16} color={colors.error} />
+          <Text style={styles.errorBannerText} numberOfLines={2}>{erro}</Text>
+          <TouchableOpacity onPress={carregar} style={styles.errorBannerBtn}>
+            <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Stats strip */}
       {!loading && (
         <View style={styles.statsStrip}>
@@ -152,7 +167,7 @@ export default function EstoqueHubScreen({ navigation }) {
       )}
       {tab === 'movimentos' && (
         <MovimentosTab
-          loading={loading} items={movimentos}
+          loading={loading} items={movimentos} saldos={saldos}
           refreshing={refreshing} onRefresh={onRefresh}
         />
       )}
@@ -233,7 +248,16 @@ function SaldoRow({ item }) {
   );
 }
 
-function MovimentosTab({ loading, items, refreshing, onRefresh }) {
+function MovimentosTab({ loading, items, saldos, refreshing, onRefresh }) {
+  // Index de saldos por `${tipo}:${id}` → nome (cross-reference local).
+  const nomePorChave = useMemo(() => {
+    const m = new Map();
+    for (const s of saldos || []) {
+      m.set(`${s._tipo}:${s.id}`, s.nome);
+    }
+    return m;
+  }, [saldos]);
+
   if (loading) {
     return (
       <View style={{ padding: spacing.md }}>
@@ -258,18 +282,28 @@ function MovimentosTab({ loading, items, refreshing, onRefresh }) {
       keyExtractor={(m) => String(m.id)}
       contentContainerStyle={{ padding: spacing.md, paddingBottom: 100 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      renderItem={({ item }) => <MovimentoRow mov={item} />}
+      renderItem={({ item }) => (
+        <MovimentoRow
+          mov={item}
+          itemNome={nomePorChave.get(`${item.entidade_tipo}:${item.entidade_id}`)}
+        />
+      )}
     />
   );
 }
 
-function MovimentoRow({ mov }) {
+function MovimentoRow({ mov, itemNome }) {
   const isEntrada = mov.tipo === 'entrada';
   const isSaida = mov.tipo === 'saida';
   const color = isEntrada ? colors.success : isSaida ? colors.error : colors.warning;
   const icon = isEntrada ? 'arrow-down-circle' : isSaida ? 'arrow-up-circle' : 'edit-3';
   const sinal = isSaida ? '-' : isEntrada ? '+' : '±';
   const qtd = Number(mov.quantidade) || 0;
+  const tipoLabel = mov.entidade_tipo === 'embalagem' ? 'Embalagem' : 'Insumo';
+  // Se temos o nome do item, mostra; senão fallback para #id
+  const itemDescr = itemNome
+    ? `${tipoLabel}: ${itemNome}`
+    : `${tipoLabel} #${mov.entidade_id}`;
   return (
     <View style={styles.row}>
       <Feather name={icon} size={22} color={color} style={{ marginRight: spacing.sm }} />
@@ -277,8 +311,8 @@ function MovimentoRow({ mov }) {
         <Text style={styles.rowTitle} numberOfLines={1}>
           {mov.motivo || (isEntrada ? 'Recebimento' : isSaida ? 'Saída' : 'Ajuste')}
         </Text>
-        <Text style={styles.rowMeta}>
-          {mov.entidade_tipo === 'embalagem' ? 'Embalagem' : 'Insumo'} #{mov.entidade_id} · {formatTimeAgo(mov.created_at)}
+        <Text style={styles.rowMeta} numberOfLines={1}>
+          {itemDescr} · {formatTimeAgo(mov.created_at)}
           {mov.origem_tipo ? ` · ${mov.origem_tipo}` : ''}
         </Text>
       </View>
@@ -445,5 +479,22 @@ const styles = StyleSheet.create({
   composHelp: {
     fontSize: fonts.small, color: colors.textSecondary,
     fontFamily: fontFamily.regular, marginTop: spacing.xs, lineHeight: 18,
+  },
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    backgroundColor: '#FDECEC', paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  errorBannerText: {
+    flex: 1, fontSize: fonts.small, color: colors.error,
+    fontFamily: fontFamily.regular,
+  },
+  errorBannerBtn: {
+    paddingHorizontal: 10, paddingVertical: 6,
+    backgroundColor: colors.error, borderRadius: borderRadius.sm,
+  },
+  errorBannerBtnText: {
+    color: '#fff', fontSize: fonts.tiny,
+    fontFamily: fontFamily.bold, fontWeight: '700',
   },
 });

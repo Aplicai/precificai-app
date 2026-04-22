@@ -43,6 +43,7 @@ export async function registrarEntrada({
     p_origem_id: origemId,
   });
   if (error) throw error;
+  invalidarCacheEstoque();
   return data;
 }
 
@@ -64,6 +65,7 @@ export async function baixarEstoque({
   motivo,
   origemTipo = 'venda',
   origemId = null,
+  permitirNegativo = false,
 }) {
   const { data, error } = await supabase.rpc('baixar_estoque', {
     p_entidade_tipo: entidadeTipo,
@@ -72,9 +74,44 @@ export async function baixarEstoque({
     p_motivo: motivo || null,
     p_origem_tipo: origemTipo,
     p_origem_id: origemId,
+    p_permitir_negativo: permitirNegativo,
   });
   if (error) throw error;
+  invalidarCacheEstoque();
   return data;
+}
+
+/**
+ * Estorna (reverte) todos os movimentos de saída de uma venda. Idempotente.
+ * Usado quando uma venda é deletada para devolver os itens ao estoque.
+ *
+ * @param {number} vendaId
+ * @returns {Promise<number>} quantidade de movimentos revertidos
+ */
+export async function estornarEstoquePorVenda(vendaId) {
+  if (!vendaId) return 0;
+  const { data, error } = await supabase.rpc('estornar_estoque_por_venda', {
+    p_venda_id: vendaId,
+  });
+  if (error) throw error;
+  invalidarCacheEstoque();
+  return data || 0;
+}
+
+/**
+ * Invalida caches do supabaseDb wrapper que possam ter dados antigos de
+ * materias_primas/embalagens/estoque_movimentos após uma RPC.
+ *
+ * O wrapper db tem TTL=2s mas RPCs (que rodam server-side) não passam
+ * pelo wrapper, então o cache pode servir dados desatualizados por até 2s.
+ */
+function invalidarCacheEstoque() {
+  try {
+    const { clearQueryCache } = require('../database/supabaseDb');
+    if (typeof clearQueryCache === 'function') clearQueryCache();
+  } catch (_) {
+    // Cache opcional — sem cache, sem problema.
+  }
 }
 
 /**
@@ -162,8 +199,12 @@ export async function expandirBOM(db, produtoId) {
       [pp.preparo_id]
     );
     if (!preparo) continue;
-    const rendimento = Number(preparo.rendimento_total) || 1;
+    const rendimento = Number(preparo.rendimento_total);
+    // Sem rendimento válido não é possível calcular consumo proporcional →
+    // pular em vez de fallback silencioso para 1 (que corromperia a baixa).
+    if (!rendimento || rendimento <= 0) continue;
     const fator = (Number(pp.quantidade_utilizada) || 0) / rendimento;
+    if (fator <= 0) continue;
     const ingsPrep = await db.getAllAsync(
       'SELECT materia_prima_id, quantidade_utilizada FROM preparo_ingredientes WHERE preparo_id = ?',
       [pp.preparo_id]
@@ -190,15 +231,32 @@ export async function expandirBOM(db, produtoId) {
  */
 export async function baixarEstoquePorVenda(db, produtoId, quantidadeVendida, vendaId) {
   const bom = await expandirBOM(db, produtoId);
-  const promises = bom.map((b) =>
-    baixarEstoque({
-      entidadeTipo: b.tipo,
-      entidadeId: b.id,
-      quantidade: b.quantidade * quantidadeVendida,
-      motivo: `Venda #${vendaId}`,
-      origemTipo: 'venda',
-      origemId: vendaId,
-    })
-  );
-  await Promise.all(promises);
+  if (bom.length === 0) return { ok: true, semBOM: true, baixados: 0 };
+
+  // Sequencial (não Promise.all): se um item falhar (saldo insuficiente),
+  // paramos imediatamente em vez de criar movimentos parciais que ficam
+  // difíceis de estornar.
+  const baixados = [];
+  for (const b of bom) {
+    try {
+      const movId = await baixarEstoque({
+        entidadeTipo: b.tipo,
+        entidadeId: b.id,
+        quantidade: b.quantidade * quantidadeVendida,
+        motivo: `Venda #${vendaId}`,
+        origemTipo: 'venda',
+        origemId: vendaId,
+      });
+      baixados.push(movId);
+    } catch (err) {
+      // Reverte movimentos já feitos (rollback parcial).
+      // Cada movimento criado com origem='venda' será estornado pela RPC.
+      try {
+        await estornarEstoquePorVenda(vendaId);
+      } catch (_) { /* best-effort */ }
+      const msg = err?.message || String(err);
+      throw new Error(`Falha na baixa de estoque: ${msg}`);
+    }
+  }
+  return { ok: true, baixados: baixados.length };
 }

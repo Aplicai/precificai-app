@@ -62,7 +62,9 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
   const custoNum = parseNum(custoUnitario);
   const valorTotal = (qtdNum || 0) * (custoNum || 0);
 
-  const podeSalvar = itemId && qtdNum && qtdNum > 0 && custoNum !== null && custoNum >= 0 && !salvando;
+  // Custo > 0: entrada (recebimento) sem custo positivo contaminaria o
+  // custo médio ponderado. Para zerar custo use a tela de Ajuste.
+  const podeSalvar = itemId && qtdNum && qtdNum > 0 && custoNum !== null && custoNum > 0 && !salvando;
 
   async function salvar() {
     if (!podeSalvar) return;
