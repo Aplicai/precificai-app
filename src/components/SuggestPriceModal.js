@@ -67,10 +67,10 @@ export default function SuggestPriceModal({
             <View style={styles.loadingBox}>
               <ActivityIndicator color={colors.primary} size="large" />
               <Text style={styles.loadingText}>
-                Analisando seu produto...
+                Calculando sugestão...
               </Text>
               <Text style={styles.loadingHint}>
-                Estamos cruzando custo, despesas e margem alvo.
+                Cruzando custo, despesas e margem alvo.
               </Text>
             </View>
           )}
@@ -159,7 +159,7 @@ export default function SuggestPriceModal({
               </View>
 
               <Text style={styles.footnote}>
-                Sugestão gerada por IA com base nos seus custos e despesas. Use como
+                Sugestão calculada a partir dos seus custos e despesas. Use como
                 referência — você decide o preço final.
               </Text>
             </ScrollView>

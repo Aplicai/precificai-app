@@ -338,12 +338,12 @@ export default function ProdutoFormScreen({ route, navigation }) {
     setTimeout(() => setter(false), 1500);
   }
 
-  // === IA Suggest Price (M1-23) ==========================================
+  // === Sugestão de preço (M1-23 — local, sem IA) ==========================
   async function abrirSugestaoIA() {
     if (custoUnitario <= 0) {
       Alert.alert(
         'Adicione custos primeiro',
-        'A IA precisa do CMV para sugerir um preço. Adicione insumos, preparos ou embalagens antes.',
+        'Precisamos do CMV para sugerir um preço. Adicione insumos, preparos ou embalagens antes.',
       );
       return;
     }
@@ -376,7 +376,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
       });
       setAiResult(result);
     } catch (e) {
-      setAiError(e?.message || 'Erro ao consultar IA');
+      setAiError(e?.message || 'Erro ao calcular sugestão');
     } finally {
       setAiLoading(false);
     }
@@ -1097,15 +1097,15 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 <Text style={styles.precoSugeridoValor}>{formatCurrency(precoSugerido)}</Text>
               </View>
 
-              {/* IA — Sugestão de preço (M1-23) */}
+              {/* Sugestão de preço (M1-23 — local, sem IA) */}
               <TouchableOpacity
                 style={styles.aiSuggestBtn}
                 onPress={abrirSugestaoIA}
                 activeOpacity={0.85}
               >
                 <Feather name="zap" size={16} color={colors.primary} />
-                <Text style={styles.aiSuggestText}>Sugerir preço com IA</Text>
-                <Text style={styles.aiSuggestEmoji}>✨</Text>
+                <Text style={styles.aiSuggestText}>Sugerir preço</Text>
+                <Text style={styles.aiSuggestEmoji}>💡</Text>
               </TouchableOpacity>
 
               <InputField
