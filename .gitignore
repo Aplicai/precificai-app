@@ -41,3 +41,19 @@ yarn-error.*
 /ios
 /android
 .vercel
+
+# Playwright — storageState contém token real do Supabase (gerado pelo globalSetup)
+/test-results/
+/playwright-report/
+/tests/storageState.json
+
+# Memory bank (local — persistência de contexto Claude entre sessões)
+/.memory-bank/
+
+# Backups e protótipos locais
+/backup.bat
+/setup_backup.ps1
+/seed-confeitaria.mjs
+/gerar-logos.html
+/logo-preview.html
+/logo-test.html

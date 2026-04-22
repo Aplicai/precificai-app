@@ -11,8 +11,10 @@ test.describe('Financeiro', () => {
     await page.waitForTimeout(1500);
   });
 
-  test('loads Configuração Central', async ({ page }) => {
-    await expect(page.getByText('Configuração Central')).toBeVisible();
+  test('loads Financeiro main view', async ({ page }) => {
+    // ConfiguracaoScreen renderiza um stepper com KPI "Mark-up" no topo
+    // (substituiu o título "Configuração Central" antigo).
+    await expect(page.getByText('Mark-up').first()).toBeVisible();
   });
 
   test('shows markup panel', async ({ page }) => {

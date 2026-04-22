@@ -2,7 +2,24 @@ const { expect } = require('@playwright/test');
 
 async function waitForAppLoad(page) {
   await page.waitForLoadState('networkidle');
-  await page.waitForSelector('text=/Início|Configure seu app/', { timeout: 15000 });
+  // Anchors estáveis pós-redesign: a Home mostra "Saúde da Precificação" ou
+  // "Boa tarde/Bom dia/Boa noite"; o onboarding ainda usa "Configure seu app".
+  // Timeout maior porque o primeiro hit no Expo Web compila lazily.
+  await page.waitForSelector(
+    'text=/Saúde da Precificação|Bom dia|Boa tarde|Boa noite|Configure seu app/',
+    { timeout: 30000 }
+  );
+}
+
+/**
+ * Marca o WelcomeTour (audit P1-07) como já visto antes de carregar o app.
+ * Deve ser chamado antes de page.goto() para evitar que o tour interativo
+ * apareça e bloqueie os testes que esperam pela Home.
+ */
+async function skipWelcomeTour(page) {
+  await page.addInitScript(() => {
+    try { window.localStorage.setItem('welcome_tour_done', 'true'); } catch {}
+  });
 }
 
 async function goToTab(page, tabName) {
@@ -44,6 +61,7 @@ function filterCriticalErrors(errors) {
 
 module.exports = {
   waitForAppLoad,
+  skipWelcomeTour,
   goToTab,
   clickFerramentaItem,
   setupConsoleErrorCheck,

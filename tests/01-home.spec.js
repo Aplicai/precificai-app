@@ -8,14 +8,19 @@ test.describe('Home / Visão Geral', () => {
   });
 
   test('loads Home screen with header', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: 'Início' })).toBeVisible();
+    // HomeScreen usa custom header sem heading <h1>; o cumprimento "Boa tarde/Bom dia"
+    // é o único anchor estável independente de hora do dia.
+    await expect(page.getByText(/Bom dia|Boa tarde|Boa noite/)).toBeVisible();
   });
 
   test('shows Saúde da Precificação KPIs', async ({ page }) => {
+    // Labels atuais (renomeados após o redesign de KPIs):
+    // "Margem Média"→"CMV Médio", "Custo Médio"→"Resultado Operacional",
+    // "Lucro Estimado"→"Margem Líquida" / "Ponto de Equilíbrio".
     await expect(page.getByText('Saúde da Precificação')).toBeVisible();
-    await expect(page.getByText('Margem Média')).toBeVisible();
-    await expect(page.getByText('Custo Médio').first()).toBeVisible();
-    await expect(page.getByText('Lucro Estimado').first()).toBeVisible();
+    await expect(page.getByText('CMV Médio').first()).toBeVisible();
+    await expect(page.getByText('Resultado Operacional').first()).toBeVisible();
+    await expect(page.getByText('Margem Líquida').first()).toBeVisible();
   });
 
   test('shows Ações Rápidas section', async ({ page }) => {

@@ -8,7 +8,9 @@ test.describe('All Screens Load Without Crash', () => {
   });
 
   test('Home loads', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: 'Início' })).toBeVisible();
+    // HomeScreen tem header customizado (sem heading <h1>); usamos a seção
+    // "Saúde da Precificação" como anchor estável para confirmar que carregou.
+    await expect(page.getByText('Saúde da Precificação')).toBeVisible();
   });
 
   test('Insumos loads', async ({ page }) => {
@@ -40,21 +42,23 @@ test.describe('All Screens Load Without Crash', () => {
     await goToTab(page, 'Ferramentas');
     await page.getByText('Markup, despesas, faturamento').click();
     await page.waitForTimeout(1500);
-    await expect(page.getByText('Configuração Central')).toBeVisible();
+    // Substituiu "Configuração Central" pelo KPI "Mark-up" no novo stepper.
+    await expect(page.getByText('Mark-up').first()).toBeVisible();
   });
 
   test('Delivery menu item exists in Ferramentas', async ({ page }) => {
     await goToTab(page, 'Ferramentas');
     // Verify Delivery option is visible (click limited by RN Web)
-    await expect(page.getByText('Plataformas, preços e combos')).toBeVisible();
+    await expect(page.getByText('Plataformas, preços e combos').first()).toBeVisible();
   });
 
   test('Matriz BCG loads via Ferramentas', async ({ page }) => {
     await goToTab(page, 'Ferramentas');
-    await page.getByText('Análise de portfólio').click();
+    // "Análise de portfólio" foi reescrito como "Veja quais produtos vendem mais...".
+    await page.getByText('Veja quais produtos vendem mais').click();
     await page.waitForTimeout(1500);
-    const content = page.locator('text=/Estrela|Preço de Venda|CMV/');
-    await expect(content.first()).toBeVisible();
+    // BCG abre como "Engenharia de Cardápio" com formulário "Vendas do mês".
+    await expect(page.getByText('Vendas do mês').first()).toBeVisible();
   });
 
   test('Configurações loads via Ferramentas', async ({ page }) => {

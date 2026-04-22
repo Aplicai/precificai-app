@@ -13,8 +13,12 @@ test.describe('Produtos', () => {
     await expect(page.getByPlaceholder('Buscar produto...')).toBeVisible();
   });
 
-  test('shows Combos bar', async ({ page }) => {
-    await expect(page.getByText('Combos').first()).toBeVisible();
+  test('shows category chip', async ({ page }) => {
+    // A barra "Combos" foi removida do ProdutosListScreen (combos viraram
+    // recurso isolado em Delivery). Em vez disso checamos que pelo menos
+    // uma categoria de produto aparece nos chips de filtro.
+    const chips = page.locator('text=/Bolos|Brownies|Doces|Sobremesas|Tortas|Sem categoria/');
+    expect(await chips.count()).toBeGreaterThan(0);
   });
 
   test('shows Todos filter', async ({ page }) => {

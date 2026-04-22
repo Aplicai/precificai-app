@@ -36,7 +36,10 @@ test.describe('Navigation - Tabs', () => {
     await goToTab(page, 'Ferramentas');
     await page.getByText('Markup, despesas, faturamento').click();
     await page.waitForTimeout(1500);
-    await expect(page.getByText('Configuração Central')).toBeVisible();
+    // ConfiguracaoScreen renderiza um stepper com seções "Margem de Lucro",
+    // "Faturamento Mensal", "Despesas Fixas", "Despesas Variáveis" — e o KPI
+    // "Mark-up" no topo. Não existe mais o título "Configuração Central".
+    await expect(page.getByText('Mark-up').first()).toBeVisible();
   });
 
   test('Ferramentas > Configurações works', async ({ page }) => {
