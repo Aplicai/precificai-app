@@ -34,6 +34,8 @@ export default function PreparoFormScreen({ route, navigation }) {
   const [materiasPrimas, setMateriasPrimas] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [novoIng, setNovoIng] = useState({ materia_prima_id: null, quantidade: '' });
+  const [quantityPrompt, setQuantityPrompt] = useState(null);
+  const qtyInputRef = useRef(null);
   const [catPickerVisible, setCatPickerVisible] = useState(false);
   const [novaCatMode, setNovaCatMode] = useState(false);
   const [novaCatNome, setNovaCatNome] = useState('');
@@ -175,21 +177,39 @@ export default function PreparoFormScreen({ route, navigation }) {
   const custoKg = rendimento > 0 ? (custoTotal / rendimento) * 1000 : 0;
   const temCustos = ingredientes.length > 0;
 
-  function adicionarIngrediente() {
-    if (!novoIng.materia_prima_id) return Alert.alert('Selecione', 'Escolha um insumo antes de adicionar.');
-    const qtd = parseNum(novoIng.quantidade);
-    if (qtd <= 0) return Alert.alert('Quantidade', 'Informe a quantidade utilizada.');
-    const mp = materiasPrimas.find(m => m.id === novoIng.materia_prima_id);
-    setIngredientes(prev => [...prev, {
-      materia_prima_id: novoIng.materia_prima_id,
-      mp_nome: mp.nome,
+  function openQuantityPrompt(mpId) {
+    const mp = materiasPrimas.find(m => m.id === mpId);
+    if (!mp) return;
+    setQuantityPrompt({
+      materia_prima_id: mp.id,
+      nome: mp.nome,
+      unidade: mp.unidade_medida || 'g',
       preco_por_kg: mp.preco_por_kg,
-      mp_unidade: mp.unidade_medida,
+      quantidade: '',
+    });
+    setTimeout(() => qtyInputRef.current?.focus(), 200);
+  }
+
+  function confirmQuantity() {
+    if (!quantityPrompt) return;
+    const qtd = parseNum(quantityPrompt.quantidade);
+    if (qtd <= 0) return Alert.alert('Quantidade', 'Informe a quantidade utilizada.');
+    setIngredientes(prev => [...prev, {
+      materia_prima_id: quantityPrompt.materia_prima_id,
+      mp_nome: quantityPrompt.nome,
+      preco_por_kg: quantityPrompt.preco_por_kg,
+      mp_unidade: quantityPrompt.unidade,
       quantidade_utilizada: qtd,
     }]);
-    setNovoIng({ materia_prima_id: null, quantidade: '' });
+    setQuantityPrompt(null);
     setIngAdicionado(true);
     setTimeout(() => setIngAdicionado(false), 1500);
+  }
+
+  function adicionarIngrediente() {
+    if (!novoIng.materia_prima_id) return Alert.alert('Selecione', 'Escolha um insumo antes de adicionar.');
+    openQuantityPrompt(novoIng.materia_prima_id);
+    setNovoIng({ materia_prima_id: null, quantidade: '' });
   }
 
   function removerIngrediente(index) {
@@ -361,30 +381,14 @@ export default function PreparoFormScreen({ route, navigation }) {
           {/* Adicionar ingrediente */}
           <View style={styles.addIngSection}>
             <PickerSelect
-              label="Insumo"
-              value={novoIng.materia_prima_id}
-              onValueChange={(v) => setNovoIng(p => ({ ...p, materia_prima_id: v }))}
+              label="Adicionar insumo"
+              value={null}
+              onValueChange={(v) => { if (v) openQuantityPrompt(v); }}
               options={materiasPrimas.map(mp => ({ label: mp.nome, value: mp.id }))}
               placeholder="Selecione um insumo"
               onCreateNew={() => navigation.navigate('MateriaPrimaForm')}
               createLabel="Cadastrar novo insumo"
             />
-            {novoIng.materia_prima_id && (
-              <View style={styles.addRow}>
-                <View style={{ flex: 1, marginRight: spacing.sm }}>
-                  <InputField
-                    label={`Quantidade (${getUnidadeIngrediente(novoIng.materia_prima_id)})`}
-                    value={novoIng.quantidade}
-                    onChangeText={(v) => setNovoIng(p => ({ ...p, quantidade: v }))}
-                    keyboardType="numeric"
-                    placeholder="Ex: 200"
-                  />
-                </View>
-                <TouchableOpacity style={styles.addBtn} onPress={adicionarIngrediente}>
-                  <Feather name="plus" size={16} color={colors.textLight} />
-                </TouchableOpacity>
-              </View>
-            )}
             {ingAdicionado && (
               <Text style={styles.addFeedback}>Ingrediente adicionado!</Text>
             )}
@@ -671,6 +675,40 @@ export default function PreparoFormScreen({ route, navigation }) {
                     loadCategorias();
                   }}>
                     <Text style={styles.modalSaveText}>Criar e Selecionar</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Modal Quantity Prompt */}
+      <Modal visible={!!quantityPrompt} transparent animationType="fade" onRequestClose={() => setQuantityPrompt(null)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setQuantityPrompt(null)}>
+          <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { maxWidth: 360 }]} onPress={() => {}}>
+            {quantityPrompt && (
+              <>
+                <Text style={styles.modalTitle}>{quantityPrompt.nome}</Text>
+                <Text style={styles.modalLabel}>Quantidade ({quantityPrompt.unidade})</Text>
+                <TextInput
+                  ref={qtyInputRef}
+                  style={styles.modalInput}
+                  value={quantityPrompt.quantidade}
+                  onChangeText={(v) => setQuantityPrompt(prev => prev ? { ...prev, quantidade: v } : null)}
+                  keyboardType="numeric"
+                  placeholder="Ex: 200"
+                  placeholderTextColor={colors.disabled}
+                  autoFocus
+                  onSubmitEditing={confirmQuantity}
+                  returnKeyType="done"
+                />
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setQuantityPrompt(null)}>
+                    <Text style={styles.modalCancelText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.modalSaveBtn} onPress={confirmQuantity}>
+                    <Text style={styles.modalSaveText}>Adicionar</Text>
                   </TouchableOpacity>
                 </View>
               </>

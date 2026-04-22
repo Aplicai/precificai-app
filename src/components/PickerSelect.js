@@ -6,7 +6,23 @@ import { colors, spacing, fonts, borderRadius } from '../utils/theme';
 export default function PickerSelect({ label, value, options, onValueChange, placeholder, style, displayValue, onCreateNew, createLabel }) {
   const [visible, setVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
-  const selectedLabel = displayValue || options.find(o => o.value === value)?.label || placeholder || 'Selecione...';
+  // Bug fix (P0-04): Antes, quando `value` estava setado mas as `options` ainda não
+  // tinham carregado (timing/async) ou quando havia mismatch de tipo (string vs number),
+  // o componente caía no fallback "Selecione..." mesmo com valor preenchido — o que
+  // confundia o usuário em telas como Editar Preparo (campo unidade_medida).
+  // Agora, se houver valor mas nenhuma option correspondente, renderizamos o próprio
+  // valor como label provisório em vez do placeholder.
+  const matchedOption = options?.find(o => o.value === value);
+  const hasValue = value !== null && value !== undefined && value !== '';
+  const selectedLabel =
+    displayValue
+    || matchedOption?.label
+    || (hasValue ? String(value) : null)
+    || placeholder
+    || 'Selecione...';
+  // Considera "preenchido" qualquer caso em que o usuário tenha escolhido algo —
+  // mesmo que a label ainda não tenha sido resolvida pelas options.
+  const isFilled = hasValue || !!displayValue;
 
   const filteredOptions = searchText.trim()
     ? options.filter(o => o.label.toLowerCase().includes(searchText.trim().toLowerCase()))
@@ -18,12 +34,12 @@ export default function PickerSelect({ label, value, options, onValueChange, pla
     <View style={[styles.container, style]}>
       {label && <Text style={styles.label}>{label}</Text>}
       <TouchableOpacity style={styles.selector} onPress={() => setVisible(true)}>
-        <Text style={[styles.selectorText, !value && styles.placeholder]}>{selectedLabel}</Text>
+        <Text style={[styles.selectorText, !isFilled && styles.placeholder]}>{selectedLabel}</Text>
         <Text style={styles.arrow}>▼</Text>
       </TouchableOpacity>
       <Modal visible={visible} transparent animationType="fade">
         <TouchableOpacity style={styles.overlay} onPress={closeModal} activeOpacity={1}>
-          <View style={styles.modal}>
+          <TouchableOpacity activeOpacity={1} style={styles.modal} onPress={() => {}}>
             <Text style={styles.modalTitle}>{label || 'Selecione'}</Text>
             {options.length > 6 && (
               <TextInput
@@ -58,7 +74,7 @@ export default function PickerSelect({ label, value, options, onValueChange, pla
                 <Text style={styles.createNewText}>{createLabel || 'Criar novo'}</Text>
               </TouchableOpacity>
             )}
-          </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
     </View>

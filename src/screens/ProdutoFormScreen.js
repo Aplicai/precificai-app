@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Alert, Modal, TextInput, TouchableWithoutFeedback } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Pressable, Alert, Modal, TextInput, Platform } from 'react-native';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import InputField from '../components/InputField';
@@ -13,7 +13,7 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import {
   UNIDADES_MEDIDA, formatCurrency, formatPercent, calcMarkup, calcDespesasFixasPercentual,
   converterParaBase, getTipoUnidade, calcCustoIngrediente, calcCustoPreparo,
-  calcFatorCorrecao, calcPrecoBase, getLabelPrecoBase, normalizeSearch, getTipoVenda,
+  getLabelPrecoBase, normalizeSearch, getTipoVenda,
 } from '../utils/calculations';
 
 const UNIDADES_TEMPO = [
@@ -58,13 +58,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
   const [embalagensList, setEmbalagensList] = useState([]);
   const [config, setConfig] = useState({ despFixasPerc: 0, despVarPerc: 0, lucroDesejado: 0.15, markup: 1 });
 
-  const [novoIng, setNovoIng] = useState({ id: null, quantidade: '' });
-  const [novoPreparo, setNovoPreparo] = useState({ id: null, quantidade: '' });
-  const [novaEmb, setNovaEmb] = useState({ id: null, quantidade: '' });
-
-  // Quantity prompt modal state: { type: 'ingrediente'|'preparo'|'embalagem', id, nome, unidade, detalhe, quantidade }
-  const [quantityPrompt, setQuantityPrompt] = useState(null);
-  const qtyInputRef = useRef(null);
+  // Autocomplete dropdown visibility
+  const [activeSearch, setActiveSearch] = useState(null); // null | 'preparo' | 'ingrediente' | 'embalagem'
 
   // Visual feedback states
   const [ingAdicionado, setIngAdicionado] = useState(false);
@@ -85,20 +80,6 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
   // Collapsible section
   const [showInfoAdicionais, setShowInfoAdicionais] = useState(false);
-
-  // New ingredient modal state
-  const [novoIngModalVisible, setNovoIngModalVisible] = useState(false);
-  const [novoIngForm, setNovoIngForm] = useState({
-    nome: '', unidade_medida: 'g', quantidade_bruta: '', quantidade_liquida: '', valor_pago: '',
-  });
-
-  // New embalagem modal state
-  const [novaEmbModalVisible, setNovaEmbModalVisible] = useState(false);
-  const [novaEmbForm, setNovaEmbForm] = useState({ nome: '', quantidade: '', preco_embalagem: '' });
-
-  // New preparo modal state
-  const [novoPreparoModalVisible, setNovoPreparoModalVisible] = useState(false);
-  const [novoPreparoForm, setNovoPreparoForm] = useState({ nome: '', rendimento_total: '', unidade_medida: 'g' });
 
   // Delete modal
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -149,6 +130,14 @@ export default function ProdutoFormScreen({ route, navigation }) {
       return () => setConfirmDelete(null);
     }, [])
   );
+
+  // Reload aux data when a modal form (transparentModal) is closed and we return
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadAuxData();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   // Intercepta saída para validar campos
   useEffect(() => {
@@ -231,77 +220,6 @@ export default function ProdutoFormScreen({ route, navigation }) {
     const mk = calcMarkup(dfPerc, totalVar, lucro);
 
     setConfig({ despFixasPerc: dfPerc, despVarPerc: totalVar, lucroDesejado: lucro, markup: mk });
-  }
-
-  async function salvarNovoIngrediente() {
-    if (!novoIngForm.nome.trim()) return Alert.alert('Erro', 'Informe o nome do ingrediente');
-    const qtB = parseNum(novoIngForm.quantidade_bruta);
-    const qtL = parseNum(novoIngForm.quantidade_liquida);
-    const vp = parseNum(novoIngForm.valor_pago);
-    const fc = calcFatorCorrecao(qtB, qtL);
-    const pb = calcPrecoBase(vp, qtL, novoIngForm.unidade_medida);
-    const db = await getDatabase();
-    const result = await db.runAsync(
-      'INSERT INTO materias_primas (nome, marca, categoria_id, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg) VALUES (?,?,?,?,?,?,?,?,?)',
-      [novoIngForm.nome.trim(), '', null, qtB, qtL, fc, novoIngForm.unidade_medida, vp, pb]
-    );
-    const newId = result.lastInsertRowId;
-    const updated = await db.getAllAsync('SELECT * FROM materias_primas ORDER BY nome');
-    setMateriasPrimas(updated);
-    setNovoIngForm({ nome: '', unidade_medida: 'g', quantidade_bruta: '', quantidade_liquida: '', valor_pago: '' });
-    setNovoIngModalVisible(false);
-    // Open quantity prompt for the newly created ingredient
-    const newItem = updated.find(m => m.id === newId);
-    if (newItem) openQuantityPrompt('ingrediente', newItem);
-  }
-
-  async function salvarNovaEmbalagem() {
-    if (!novaEmbForm.nome.trim()) return Alert.alert('Erro', 'Informe o nome da embalagem');
-    const qtd = parseNum(novaEmbForm.quantidade);
-    const precoEmb = parseNum(novaEmbForm.preco_embalagem);
-    if (qtd <= 0) return Alert.alert('Erro', 'Informe a quantidade');
-    if (precoEmb <= 0) return Alert.alert('Erro', 'Informe o preço da embalagem');
-    const precoUnitario = precoEmb / qtd;
-    const db = await getDatabase();
-    const result = await db.runAsync(
-      'INSERT INTO embalagens (nome, marca, categoria_id, quantidade, unidade_medida, preco_embalagem, preco_unitario) VALUES (?,?,?,?,?,?,?)',
-      [novaEmbForm.nome.trim(), '', null, qtd, 'Unidades', precoEmb, precoUnitario]
-    );
-    const newId = result.lastInsertRowId;
-    const updated = await db.getAllAsync('SELECT * FROM embalagens ORDER BY nome');
-    setEmbalagensList(updated);
-    setNovaEmbForm({ nome: '', quantidade: '', preco_embalagem: '' });
-    setNovaEmbModalVisible(false);
-    // Open quantity prompt for the newly created embalagem
-    const newItem = updated.find(e => e.id === newId);
-    if (newItem) openQuantityPrompt('embalagem', newItem);
-  }
-
-  async function salvarNovoPreparo() {
-    if (!novoPreparoForm.nome.trim()) return Alert.alert('Erro', 'Informe o nome do preparo');
-    const rendimento = parseNum(novoPreparoForm.rendimento_total);
-    if (rendimento <= 0) return Alert.alert('Erro', 'Informe o rendimento');
-    const db = await getDatabase();
-    const result = await db.runAsync(
-      'INSERT INTO preparos (nome, rendimento_total, unidade_medida) VALUES (?,?,?)',
-      [novoPreparoForm.nome.trim(), rendimento, novoPreparoForm.unidade_medida]
-    );
-    const newId = result.lastInsertRowId;
-    const updated = await db.getAllAsync(
-      `SELECT p.*, COALESCE(SUM(pi.quantidade_utilizada * m.preco_por_kg / 1000), 0) as custo_total
-       FROM preparos p LEFT JOIN preparo_ingredientes pi ON pi.preparo_id = p.id
-       LEFT JOIN materias_primas m ON m.id = pi.materia_prima_id
-       GROUP BY p.id ORDER BY p.nome`
-    );
-    const mapped = updated.map(p => ({
-      ...p,
-      custo_por_kg: p.rendimento_total > 0 ? (p.custo_total / p.rendimento_total) * 1000 : 0,
-    }));
-    setPreparosList(mapped);
-    setNovoPreparoForm({ nome: '', rendimento_total: '', unidade_medida: 'g' });
-    setNovoPreparoModalVisible(false);
-    const newItem = mapped.find(p => p.id === newId);
-    if (newItem) openQuantityPrompt('preparo', newItem);
   }
 
   async function loadProduto() {
@@ -409,81 +327,64 @@ export default function ProdutoFormScreen({ route, navigation }) {
     setTimeout(() => setter(false), 1500);
   }
 
-  function addIngrediente(overrideId, overrideQtd) {
-    const id = overrideId || novoIng.id;
-    const qtd = overrideQtd || novoIng.quantidade;
-    if (!id) return Alert.alert('Erro', 'Selecione um insumo');
-    if (!qtd || parseNum(qtd) <= 0) return Alert.alert('Erro', 'Informe a quantidade');
+  function addIngrediente(itemId, qty) {
+    const id = itemId;
+    const qtd = parseNum(qty || '1');
+    if (!id) return;
     const mp = materiasPrimas.find(m => m.id === id);
-    const unidade = mp?.unidade_medida || 'g';
-    setIngredientes(prev => [...prev, { materia_prima_id: id, mp_nome: mp.nome, preco_por_kg: mp.preco_por_kg, quantidade_utilizada: parseNum(qtd), unidade }]);
-    setNovoIng({ id: null, quantidade: '' });
+    if (!mp) return;
+    // If already exists, increment quantity
+    const existingIdx = ingredientes.findIndex(i => i.materia_prima_id === id);
+    if (existingIdx >= 0) {
+      setIngredientes(prev => prev.map((item, i) => i === existingIdx ? { ...item, quantidade_utilizada: item.quantidade_utilizada + qtd } : item));
+    } else {
+      const unidade = mp.unidade_medida || 'g';
+      setIngredientes(prev => [...prev, { materia_prima_id: id, mp_nome: mp.nome, preco_por_kg: mp.preco_por_kg, quantidade_utilizada: qtd, unidade }]);
+    }
     showFeedback(setIngAdicionado);
   }
 
-  function addPreparo(overrideId, overrideQtd) {
-    const id = overrideId || novoPreparo.id;
-    const qtd = overrideQtd || novoPreparo.quantidade;
-    if (!id) return Alert.alert('Erro', 'Selecione um preparo');
-    if (!qtd || parseNum(qtd) <= 0) return Alert.alert('Erro', 'Informe a quantidade');
+  function addPreparo(itemId, qty) {
+    const id = itemId;
+    const qtd = parseNum(qty || '1');
+    if (!id) return;
     const pr = preparosList.find(p => p.id === id);
-    setProdutoPreparos(prev => [...prev, { preparo_id: id, pr_nome: pr.nome, custo_por_kg: pr.custo_por_kg, quantidade_utilizada: parseNum(qtd), unidade: pr.unidade_medida || 'g' }]);
-    setNovoPreparo({ id: null, quantidade: '' });
+    if (!pr) return;
+    // If already exists, increment quantity
+    const existingIdx = produtoPreparos.findIndex(p => p.preparo_id === id);
+    if (existingIdx >= 0) {
+      setProdutoPreparos(prev => prev.map((item, i) => i === existingIdx ? { ...item, quantidade_utilizada: item.quantidade_utilizada + qtd } : item));
+    } else {
+      setProdutoPreparos(prev => [...prev, { preparo_id: id, pr_nome: pr.nome, custo_por_kg: pr.custo_por_kg, quantidade_utilizada: qtd, unidade: pr.unidade_medida || 'g' }]);
+    }
     showFeedback(setPrepAdicionado);
   }
 
-  function addEmbalagem(overrideId, overrideQtd) {
-    const id = overrideId || novaEmb.id;
-    const qtd = overrideQtd || novaEmb.quantidade;
-    if (!id) return Alert.alert('Erro', 'Selecione uma embalagem');
-    if (!qtd || parseNum(qtd) <= 0) return Alert.alert('Erro', 'Informe a quantidade');
+  function addEmbalagem(itemId, qty) {
+    const id = itemId;
+    const qtd = parseNum(qty || '1');
+    if (!id) return;
     const em = embalagensList.find(e => e.id === id);
-    setProdutoEmbalagens(prev => [...prev, { embalagem_id: id, em_nome: em.nome, preco_unitario: em.preco_unitario, quantidade_utilizada: parseNum(qtd) }]);
-    setNovaEmb({ id: null, quantidade: '' });
+    if (!em) return;
+    // If already exists, increment quantity
+    const existingIdx = produtoEmbalagens.findIndex(e => e.embalagem_id === id);
+    if (existingIdx >= 0) {
+      setProdutoEmbalagens(prev => prev.map((item, i) => i === existingIdx ? { ...item, quantidade_utilizada: item.quantidade_utilizada + qtd } : item));
+    } else {
+      setProdutoEmbalagens(prev => [...prev, { embalagem_id: id, em_nome: em.nome, preco_unitario: em.preco_unitario, quantidade_utilizada: qtd }]);
+    }
     showFeedback(setEmbAdicionado);
   }
 
-  // Open quantity prompt when tapping an item in the search list
-  function openQuantityPrompt(type, item) {
-    let nome, unidade, detalhe;
+  function updateQuantidade(type, index, val) {
+    const numVal = parseFloat(String(val).replace(',', '.')) || 0;
     if (type === 'ingrediente') {
-      nome = item.nome;
-      unidade = item.unidade_medida || 'g';
-      detalhe = `${formatCurrency(item.preco_por_kg)}/${getLabelPrecoBase(item.unidade_medida).replace('Preço por ', '')}`;
+      setIngredientes(prev => prev.map((item, i) => i === index ? { ...item, quantidade_utilizada: numVal } : item));
     } else if (type === 'preparo') {
-      nome = item.nome;
-      unidade = item.unidade_medida || 'g';
-      detalhe = `${formatCurrency(item.custo_por_kg)}/kg`;
+      setProdutoPreparos(prev => prev.map((item, i) => i === index ? { ...item, quantidade_utilizada: numVal } : item));
     } else {
-      nome = item.nome;
-      unidade = 'un';
-      detalhe = `${formatCurrency(item.preco_unitario)}/un`;
+      setProdutoEmbalagens(prev => prev.map((item, i) => i === index ? { ...item, quantidade_utilizada: numVal } : item));
     }
-    setQuantityPrompt({ type, id: item.id, nome, unidade, detalhe, quantidade: '' });
-    setTimeout(() => qtyInputRef.current?.focus(), 200);
-  }
-
-  function confirmQuantityPrompt() {
-    if (!quantityPrompt || !quantityPrompt.quantidade || parseNum(quantityPrompt.quantidade) <= 0) {
-      return Alert.alert('Erro', 'Informe a quantidade');
-    }
-    const { type, id, quantidade } = quantityPrompt;
-    if (type === 'ingrediente') addIngrediente(id, quantidade);
-    else if (type === 'preparo') addPreparo(id, quantidade);
-    else addEmbalagem(id, quantidade);
-    setQuantityPrompt(null);
-  }
-
-  function getSelectedIngUnit() {
-    if (!novoIng.id) return 'g/ml/un';
-    const mp = materiasPrimas.find(m => m.id === novoIng.id);
-    return mp?.unidade_medida || 'g';
-  }
-
-  function getSelectedPrepUnit() {
-    if (!novoPreparo.id) return 'g/ml';
-    const pr = preparosList.find(p => p.id === novoPreparo.id);
-    return pr?.unidade_medida || 'g';
   }
 
   // Helper: custo de um ingrediente
@@ -785,7 +686,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* Bloco 3: Preparos (search + table unified) */}
+        {/* Bloco 3: Preparos (autocomplete + inline table) */}
         <Card
           title={`Preparos${produtoPreparos.length > 0 ? ` (${produtoPreparos.length})` : ''}`}
           style={{ marginTop: spacing.md }}
@@ -801,40 +702,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
             />
           }
         >
-          <View style={styles.searchRow}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Buscar preparo..."
-              placeholderTextColor={colors.disabled}
-              value={buscaPreparo}
-              onChangeText={setBuscaPreparo}
-            />
-          </View>
-          <TouchableOpacity style={styles.novoIngBtn} onPress={() => setNovoPreparoModalVisible(true)}>
-            <Text style={styles.novoIngBtnIcon}>+</Text>
-            <Text style={styles.novoIngBtnText}>Criar novo preparo</Text>
-          </TouchableOpacity>
-          <ScrollView style={styles.selectionList} nestedScrollEnabled>
-            {preparosList
-              .filter(p => !buscaPreparo || normalizeSearch(p.nome).includes(normalizeSearch(buscaPreparo)))
-              .map(p => (
-                <TouchableOpacity
-                  key={p.id}
-                  style={[styles.selListItem]}
-                  onPress={() => openQuantityPrompt('preparo', p)}
-                >
-                  <Text style={[styles.selListItemName]}>{p.nome}</Text>
-                  <Text style={[styles.selListItemDetail]}>
-                    {p.unidade_medida || 'g'} - {formatCurrency(p.custo_por_kg)}/kg
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            {preparosList.filter(p => !buscaPreparo || normalizeSearch(p.nome).includes(normalizeSearch(buscaPreparo))).length === 0 && (
-              <Text style={styles.listEmpty}>Nenhum preparo encontrado</Text>
-            )}
-          </ScrollView>
-          {prepAdicionado && <Text style={styles.feedbackText}>Preparo adicionado!</Text>}
-
+          {/* Table of added items FIRST */}
           {produtoPreparos.length > 0 && (
             <View style={styles.tableBlock}>
               <View style={styles.tableHeader}>
@@ -850,7 +718,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 return (
                   <View key={idx} style={[styles.tableRow, idx % 2 === 0 && styles.tableRowEven]}>
                     <Text style={[styles.tableCell, { flex: 2 }]} numberOfLines={1}>{pp.pr_nome || pr?.nome}</Text>
-                    <Text style={[styles.tableCell, { flex: 1, textAlign: 'center' }]}>{pp.quantidade_utilizada}</Text>
+                    <TextInput
+                      style={[styles.inlineQtyInput, { flex: 1 }]}
+                      value={String(pp.quantidade_utilizada)}
+                      onChangeText={(v) => updateQuantidade('preparo', idx, v)}
+                      keyboardType="numeric"
+                      selectTextOnFocus
+                    />
                     <Text style={[styles.tableCell, { flex: 0.8, textAlign: 'center' }]}>{unidade}</Text>
                     <Text style={[styles.tableCellCusto, { flex: 1.2, textAlign: 'right' }]}>{formatCurrency(custoPreparo(pp))}</Text>
                     <TouchableOpacity onPress={() => setProdutoPreparos(prev => prev.filter((_, i) => i !== idx))} style={{ width: 32, alignItems: 'center' }}>
@@ -865,9 +739,53 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </View>
             </View>
           )}
+
+          {/* Autocomplete search to add */}
+          <View style={styles.searchAddInput}>
+            <Feather name="search" size={16} color={colors.disabled} style={{ marginRight: spacing.xs }} />
+            <TextInput
+              style={[styles.searchInput, { flex: 1 }]}
+              placeholder="Adicionar preparo..."
+              placeholderTextColor={colors.disabled}
+              value={buscaPreparo}
+              onChangeText={(v) => { setBuscaPreparo(v); setActiveSearch('preparo'); }}
+              onFocus={() => setActiveSearch('preparo')}
+              onBlur={() => setTimeout(() => { if (activeSearch === 'preparo') setActiveSearch(null); }, 200)}
+            />
+          </View>
+
+          {/* Dropdown - only visible when active */}
+          {activeSearch === 'preparo' && (
+            <View style={styles.dropdownContainer}>
+              <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                {preparosList
+                  .filter(p => !buscaPreparo || normalizeSearch(p.nome).includes(normalizeSearch(buscaPreparo)))
+                  .map(p => (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={styles.dropdownItem}
+                      onPress={() => { addPreparo(p.id, '1'); setBuscaPreparo(''); setActiveSearch(null); }}
+                    >
+                      <Text style={styles.dropdownItemName}>{p.nome}</Text>
+                      <Text style={styles.dropdownItemDetail}>
+                        {p.unidade_medida || 'g'} - {formatCurrency(p.custo_por_kg)}/kg
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                {preparosList.filter(p => !buscaPreparo || normalizeSearch(p.nome).includes(normalizeSearch(buscaPreparo))).length === 0 && (
+                  <Text style={styles.listEmpty}>Nenhum preparo encontrado</Text>
+                )}
+              </ScrollView>
+              <Pressable style={styles.createNewBtn} onPress={() => { setActiveSearch(null); navigation.navigate('PreparoForm'); }}>
+                <Feather name="plus-circle" size={14} color={colors.primary} />
+                <Text style={styles.createNewBtnText}>Criar novo preparo</Text>
+              </Pressable>
+            </View>
+          )}
+          {prepAdicionado && <Text style={styles.feedbackText}>Preparo adicionado!</Text>}
         </Card>
 
-        {/* Bloco 4: Insumos (search + table unified) */}
+        {/* Bloco 4: Insumos (autocomplete + inline table) */}
         <Card
           title={`Insumos${ingredientes.length > 0 ? ` (${ingredientes.length})` : ''}`}
           style={{ marginTop: spacing.md }}
@@ -878,44 +796,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
             />
           }
         >
-          {/* Search + add */}
-          <View style={styles.searchRow}>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Buscar insumo..."
-              placeholderTextColor={colors.disabled}
-              value={buscaIng}
-              onChangeText={setBuscaIng}
-            />
-          </View>
-          <TouchableOpacity style={styles.novoIngBtn} onPress={() => setNovoIngModalVisible(true)}>
-            <Text style={styles.novoIngBtnIcon}>+</Text>
-            <Text style={styles.novoIngBtnText}>Criar novo insumo</Text>
-          </TouchableOpacity>
-          {buscaIng.length > 0 && (
-          <ScrollView style={styles.selectionList} nestedScrollEnabled>
-            {materiasPrimas
-              .filter(m => normalizeSearch(m.nome).includes(normalizeSearch(buscaIng)))
-              .map(m => (
-                <TouchableOpacity
-                  key={m.id}
-                  style={[styles.selListItem]}
-                  onPress={() => openQuantityPrompt('ingrediente', m)}
-                >
-                  <Text style={[styles.selListItemName]}>{m.nome}</Text>
-                  <Text style={[styles.selListItemDetail]}>
-                    {formatCurrency(m.preco_por_kg)}/{getLabelPrecoBase(m.unidade_medida).replace('Preço por ', '')}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            {materiasPrimas.filter(m => normalizeSearch(m.nome).includes(normalizeSearch(buscaIng))).length === 0 && (
-              <Text style={styles.listEmpty}>Nenhum insumo encontrado</Text>
-            )}
-          </ScrollView>
-          )}
-          {ingAdicionado && <Text style={styles.feedbackText}>Insumo adicionado!</Text>}
-
-          {/* Table inline */}
+          {/* Table of added items FIRST */}
           {ingredientes.length > 0 && (
             <View style={styles.tableBlock}>
               <View style={styles.tableHeader}>
@@ -928,7 +809,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
               {ingredientes.map((ing, idx) => (
                 <View key={idx} style={[styles.tableRow, idx % 2 === 0 && styles.tableRowEven]}>
                   <Text style={[styles.tableCell, { flex: 2 }]} numberOfLines={1}>{ing.mp_nome}</Text>
-                  <Text style={[styles.tableCell, { flex: 1, textAlign: 'center' }]}>{ing.quantidade_utilizada}</Text>
+                  <TextInput
+                    style={[styles.inlineQtyInput, { flex: 1 }]}
+                    value={String(ing.quantidade_utilizada)}
+                    onChangeText={(v) => updateQuantidade('ingrediente', idx, v)}
+                    keyboardType="numeric"
+                    selectTextOnFocus
+                  />
                   <Text style={[styles.tableCell, { flex: 0.8, textAlign: 'center' }]}>{ing.unidade}</Text>
                   <Text style={[styles.tableCellCusto, { flex: 1.2, textAlign: 'right' }]}>{formatCurrency(custoIng(ing))}</Text>
                   <TouchableOpacity onPress={() => setIngredientes(prev => prev.filter((_, i) => i !== idx))} style={{ width: 32, alignItems: 'center' }}>
@@ -942,46 +829,55 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </View>
             </View>
           )}
-        </Card>
 
-        {/* Bloco 5: Embalagens (search + table unified) */}
-        <Card title={`Embalagens${produtoEmbalagens.length > 0 ? ` (${produtoEmbalagens.length})` : ''}`} style={{ marginTop: spacing.md }}>
-          <View style={styles.searchRow}>
+          {/* Autocomplete search to add */}
+          <View style={styles.searchAddInput}>
+            <Feather name="search" size={16} color={colors.disabled} style={{ marginRight: spacing.xs }} />
             <TextInput
-              style={styles.searchInput}
-              placeholder="Buscar embalagem..."
+              style={[styles.searchInput, { flex: 1 }]}
+              placeholder="Adicionar insumo..."
               placeholderTextColor={colors.disabled}
-              value={buscaEmb}
-              onChangeText={setBuscaEmb}
+              value={buscaIng}
+              onChangeText={(v) => { setBuscaIng(v); setActiveSearch('ingrediente'); }}
+              onFocus={() => setActiveSearch('ingrediente')}
+              onBlur={() => setTimeout(() => { if (activeSearch === 'ingrediente') setActiveSearch(null); }, 200)}
             />
           </View>
-          <TouchableOpacity style={styles.novoIngBtn} onPress={() => setNovaEmbModalVisible(true)}>
-            <Text style={styles.novoIngBtnIcon}>+</Text>
-            <Text style={styles.novoIngBtnText}>Criar nova embalagem</Text>
-          </TouchableOpacity>
-          {buscaEmb.length > 0 && (
-          <ScrollView style={styles.selectionList} nestedScrollEnabled>
-            {embalagensList
-              .filter(e => normalizeSearch(e.nome).includes(normalizeSearch(buscaEmb)))
-              .map(e => (
-                <TouchableOpacity
-                  key={e.id}
-                  style={[styles.selListItem]}
-                  onPress={() => openQuantityPrompt('embalagem', e)}
-                >
-                  <Text style={[styles.selListItemName]}>{e.nome}</Text>
-                  <Text style={[styles.selListItemDetail]}>
-                    {formatCurrency(e.preco_unitario)}/un
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            {embalagensList.filter(e => normalizeSearch(e.nome).includes(normalizeSearch(buscaEmb))).length === 0 && (
-              <Text style={styles.listEmpty}>Nenhuma embalagem encontrada</Text>
-            )}
-          </ScrollView>
-          )}
-          {embAdicionado && <Text style={styles.feedbackText}>Embalagem adicionada!</Text>}
 
+          {/* Dropdown - only visible when active */}
+          {activeSearch === 'ingrediente' && (
+            <View style={styles.dropdownContainer}>
+              <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                {materiasPrimas
+                  .filter(m => !buscaIng || normalizeSearch(m.nome).includes(normalizeSearch(buscaIng)))
+                  .map(m => (
+                    <TouchableOpacity
+                      key={m.id}
+                      style={styles.dropdownItem}
+                      onPress={() => { addIngrediente(m.id, '1'); setBuscaIng(''); setActiveSearch(null); }}
+                    >
+                      <Text style={styles.dropdownItemName}>{m.nome}</Text>
+                      <Text style={styles.dropdownItemDetail}>
+                        {formatCurrency(m.preco_por_kg)}/{getLabelPrecoBase(m.unidade_medida).replace('Preço por ', '')}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                {materiasPrimas.filter(m => !buscaIng || normalizeSearch(m.nome).includes(normalizeSearch(buscaIng))).length === 0 && (
+                  <Text style={styles.listEmpty}>Nenhum insumo encontrado</Text>
+                )}
+              </ScrollView>
+              <Pressable style={styles.createNewBtn} onPress={() => { setActiveSearch(null); navigation.navigate('MateriaPrimaForm'); }}>
+                <Feather name="plus-circle" size={14} color={colors.primary} />
+                <Text style={styles.createNewBtnText}>Criar novo insumo</Text>
+              </Pressable>
+            </View>
+          )}
+          {ingAdicionado && <Text style={styles.feedbackText}>Insumo adicionado!</Text>}
+        </Card>
+
+        {/* Bloco 5: Embalagens (autocomplete + inline table) */}
+        <Card title={`Embalagens${produtoEmbalagens.length > 0 ? ` (${produtoEmbalagens.length})` : ''}`} style={{ marginTop: spacing.md }}>
+          {/* Table of added items FIRST */}
           {produtoEmbalagens.length > 0 && (
             <View style={styles.tableBlock}>
               <View style={styles.tableHeader}>
@@ -997,7 +893,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 return (
                   <View key={idx} style={[styles.tableRow, idx % 2 === 0 && styles.tableRowEven]}>
                     <Text style={[styles.tableCell, { flex: 2.5 }]} numberOfLines={1}>{pe.em_nome || em?.nome}</Text>
-                    <Text style={[styles.tableCell, { flex: 1, textAlign: 'center' }]}>{pe.quantidade_utilizada} un</Text>
+                    <TextInput
+                      style={[styles.inlineQtyInput, { flex: 1 }]}
+                      value={String(pe.quantidade_utilizada)}
+                      onChangeText={(v) => updateQuantidade('embalagem', idx, v)}
+                      keyboardType="numeric"
+                      selectTextOnFocus
+                    />
                     <Text style={[styles.tableCellCusto, { flex: 1.2, textAlign: 'right' }]}>{formatCurrency(custo)}</Text>
                     <TouchableOpacity onPress={() => setProdutoEmbalagens(prev => prev.filter((_, i) => i !== idx))} style={{ width: 32, alignItems: 'center' }}>
                       <Text style={styles.removeBtn}>✕</Text>
@@ -1011,6 +913,50 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </View>
             </View>
           )}
+
+          {/* Autocomplete search to add */}
+          <View style={styles.searchAddInput}>
+            <Feather name="search" size={16} color={colors.disabled} style={{ marginRight: spacing.xs }} />
+            <TextInput
+              style={[styles.searchInput, { flex: 1 }]}
+              placeholder="Adicionar embalagem..."
+              placeholderTextColor={colors.disabled}
+              value={buscaEmb}
+              onChangeText={(v) => { setBuscaEmb(v); setActiveSearch('embalagem'); }}
+              onFocus={() => setActiveSearch('embalagem')}
+              onBlur={() => setTimeout(() => { if (activeSearch === 'embalagem') setActiveSearch(null); }, 200)}
+            />
+          </View>
+
+          {/* Dropdown - only visible when active */}
+          {activeSearch === 'embalagem' && (
+            <View style={styles.dropdownContainer}>
+              <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                {embalagensList
+                  .filter(e => !buscaEmb || normalizeSearch(e.nome).includes(normalizeSearch(buscaEmb)))
+                  .map(e => (
+                    <TouchableOpacity
+                      key={e.id}
+                      style={styles.dropdownItem}
+                      onPress={() => { addEmbalagem(e.id, '1'); setBuscaEmb(''); setActiveSearch(null); }}
+                    >
+                      <Text style={styles.dropdownItemName}>{e.nome}</Text>
+                      <Text style={styles.dropdownItemDetail}>
+                        {formatCurrency(e.preco_unitario)}/un
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                {embalagensList.filter(e => !buscaEmb || normalizeSearch(e.nome).includes(normalizeSearch(buscaEmb))).length === 0 && (
+                  <Text style={styles.listEmpty}>Nenhuma embalagem encontrada</Text>
+                )}
+              </ScrollView>
+              <Pressable style={styles.createNewBtn} onPress={() => { setActiveSearch(null); navigation.navigate('EmbalagemForm'); }}>
+                <Feather name="plus-circle" size={14} color={colors.primary} />
+                <Text style={styles.createNewBtnText}>Criar nova embalagem</Text>
+              </Pressable>
+            </View>
+          )}
+          {embAdicionado && <Text style={styles.feedbackText}>Embalagem adicionada!</Text>}
         </Card>
 
         {/* Bloco 5: Custos e Precificação (hidden on desktop - sidebar has it) */}
@@ -1128,35 +1074,45 @@ export default function ProdutoFormScreen({ route, navigation }) {
         </TouchableOpacity>
         {showInfoAdicionais && (
           <Card style={{ marginTop: 0, borderTopLeftRadius: 0, borderTopRightRadius: 0 }}>
-            <Text style={styles.subSectionTitle}>Conservação e Validade</Text>
-            <InputField label="Validade (dias)" value={form.validade_dias} onChangeText={(v) => setForm(p => ({ ...p, validade_dias: v }))} keyboardType="numeric" placeholder="Ex: 5" />
+            <Text style={styles.subSectionTitle}>Validade</Text>
+            <InputField label="Validade do produto (dias)" value={form.validade_dias} onChangeText={(v) => setForm(p => ({ ...p, validade_dias: v }))} keyboardType="numeric" placeholder="Ex: 5" />
 
+            <Text style={[styles.subSectionTitle, { marginTop: spacing.md }]}>Formas de Conservação</Text>
+            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
+              Selecione como o produto pode ser conservado e informe temperatura e duração.
+            </Text>
             {CONSERVACAO_OPCOES.map(opt => (
               <View key={opt.key} style={styles.conservBlock}>
-                <TouchableOpacity
+                <Pressable
                   style={[styles.conservToggle, form[`conserv_${opt.key}`] && styles.conservToggleAtivo]}
                   onPress={() => setForm(p => ({ ...p, [`conserv_${opt.key}`]: !p[`conserv_${opt.key}`] }))}
                 >
-                  <Feather name={opt.icon} size={16} color={form[`conserv_${opt.key}`] ? colors.primary : colors.textSecondary} style={{ marginRight: 6 }} />
+                  <Feather name={opt.icon} size={16} color={form[`conserv_${opt.key}`] ? colors.primary : colors.textSecondary} style={{ marginRight: 8 }} />
                   <Text style={[styles.conservLabel, form[`conserv_${opt.key}`] && styles.conservLabelAtivo]}>{opt.label}</Text>
-                  <Text style={styles.conservCheck}>{form[`conserv_${opt.key}`] ? '✓' : ''}</Text>
-                </TouchableOpacity>
+                  <View style={[styles.conservCheckbox, form[`conserv_${opt.key}`] && styles.conservCheckboxAtivo]}>
+                    {form[`conserv_${opt.key}`] && <Feather name="check" size={12} color="#fff" />}
+                  </View>
+                </Pressable>
                 {form[`conserv_${opt.key}`] && (
                   <View style={styles.conservFields}>
-                    <InputField
-                      style={{ flex: 1, marginRight: spacing.sm, marginBottom: 0 }}
-                      label="Temperatura"
-                      value={form[`temp_${opt.key}`]}
-                      onChangeText={(v) => setForm(p => ({ ...p, [`temp_${opt.key}`]: v }))}
-                      placeholder={opt.tempDefault}
-                    />
-                    <InputField
-                      style={{ flex: 1, marginBottom: 0 }}
-                      label="Validade"
-                      value={form[`tempo_${opt.key}`]}
-                      onChangeText={(v) => setForm(p => ({ ...p, [`tempo_${opt.key}`]: v }))}
-                      placeholder="Ex: 5 dias"
-                    />
+                    <View style={{ flex: 1, marginRight: spacing.sm }}>
+                      <InputField
+                        style={{ marginBottom: 0 }}
+                        label="Temperatura"
+                        value={form[`temp_${opt.key}`]}
+                        onChangeText={(v) => setForm(p => ({ ...p, [`temp_${opt.key}`]: v }))}
+                        placeholder={opt.tempDefault}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <InputField
+                        style={{ marginBottom: 0 }}
+                        label="Duração"
+                        value={form[`tempo_${opt.key}`]}
+                        onChangeText={(v) => setForm(p => ({ ...p, [`tempo_${opt.key}`]: v }))}
+                        placeholder="Ex: 5 dias"
+                      />
+                    </View>
                   </View>
                 )}
               </View>
@@ -1378,25 +1334,18 @@ export default function ProdutoFormScreen({ route, navigation }) {
                               {data ? <Text style={styles.historicoBarDate}>{data}</Text> : null}
                               <TouchableOpacity
                                 style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: colors.error + '12', alignItems: 'center', justifyContent: 'center', marginTop: 4 }}
-                                onPress={async () => {
-                                  if (Platform.OS === 'web') {
-                                    const ok = window.confirm('Deseja excluir este registro de preço do histórico?');
-                                    if (ok) {
-                                      try {
-                                        const db = await getDatabase();
-                                        await db.runAsync('DELETE FROM historico_precos WHERE id = ?', [h.id]);
-                                        setHistoricoPrecos(prev => prev.filter(x => x.id !== h.id));
-                                      } catch (e) {}
-                                    }
-                                  } else {
-                                    Alert.alert('Excluir registro', 'Deseja excluir este registro de preço?', [
-                                      { text: 'Cancelar', style: 'cancel' },
-                                      { text: 'Excluir', style: 'destructive', onPress: async () => {
-                                        try { const db = await getDatabase(); await db.runAsync('DELETE FROM historico_precos WHERE id = ?', [h.id]); setHistoricoPrecos(prev => prev.filter(x => x.id !== h.id)); } catch(e) {}
-                                      }}
-                                    ]);
-                                  }
-                                }}
+                                onPress={() => setConfirmDelete({
+                                  titulo: 'Excluir registro de preço',
+                                  nome: `${data || 'Registro'} — ${formatCurrency(p)}`,
+                                  onConfirm: async () => {
+                                    try {
+                                      const db = await getDatabase();
+                                      await db.runAsync('DELETE FROM historico_precos WHERE id = ?', [h.id]);
+                                      setHistoricoPrecos(prev => prev.filter(x => x.id !== h.id));
+                                    } catch (e) {}
+                                    setConfirmDelete(null);
+                                  },
+                                })}
                                 hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                                 {...(Platform.OS === 'web' ? { title: 'Excluir este registro de preço' } : {})}
                               >
@@ -1437,7 +1386,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
             )}
           </View>
           )}
-          <TouchableOpacity style={styles.saveBackBtn} onPress={async () => {
+          <Pressable style={styles.saveBackBtn} onPress={async () => {
             // Save price to history before full save
             const price = parseFloat(String(formRef.current.preco_venda).replace(',','.')) || 0;
             if (price > 0 && editId) {
@@ -1455,13 +1404,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
           }}>
             <Feather name="check" size={16} color="#fff" />
             <Text style={styles.saveBackBtnText}>Salvar e Voltar</Text>
-          </TouchableOpacity>
+          </Pressable>
         </View>
       ) : (
         <View style={styles.stickyFooter}>
-          <TouchableOpacity style={styles.btnSave} onPress={salvar}>
+          <Pressable style={styles.btnSave} onPress={salvar}>
             <Text style={styles.btnSaveText}>Salvar Produto</Text>
-          </TouchableOpacity>
+          </Pressable>
         </View>
       )}
 
@@ -1523,245 +1472,6 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 </View>
               </>
             )}
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Modal Quantity Prompt (inline add) */}
-      <Modal visible={!!quantityPrompt} transparent animationType="fade" onRequestClose={() => setQuantityPrompt(null)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setQuantityPrompt(null)}>
-          <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { maxWidth: 360 }]} onPress={() => {}}>
-            {quantityPrompt && (
-              <>
-                <Text style={styles.modalTitle}>{quantityPrompt.nome}</Text>
-                <Text style={{ fontSize: fonts.small, color: colors.textSecondary, textAlign: 'center', marginTop: -spacing.sm, marginBottom: spacing.md }}>
-                  {quantityPrompt.detalhe}
-                </Text>
-                <Text style={styles.modalLabel}>Quantidade ({quantityPrompt.unidade})</Text>
-                <TextInput
-                  ref={qtyInputRef}
-                  style={styles.modalInput}
-                  value={quantityPrompt.quantidade}
-                  onChangeText={(v) => setQuantityPrompt(prev => prev ? { ...prev, quantidade: v } : null)}
-                  keyboardType="numeric"
-                  placeholder="Ex: 100"
-                  placeholderTextColor={colors.disabled}
-                  autoFocus
-                  onSubmitEditing={confirmQuantityPrompt}
-                  returnKeyType="done"
-                />
-                <View style={styles.modalActions}>
-                  <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setQuantityPrompt(null)}>
-                    <Text style={styles.modalCancelText}>Cancelar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.modalSaveBtn} onPress={confirmQuantityPrompt}>
-                    <Text style={styles.modalSaveText}>Adicionar</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Modal Nova Embalagem */}
-      <Modal visible={novaEmbModalVisible} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setNovaEmbModalVisible(false)}>
-          <TouchableOpacity activeOpacity={1} style={styles.modalContent} onPress={() => {}}>
-            <Text style={styles.modalTitle}>Nova Embalagem</Text>
-
-            <Text style={styles.modalLabel}>Nome *</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={novaEmbForm.nome}
-              onChangeText={(v) => setNovaEmbForm(p => ({ ...p, nome: v }))}
-              placeholder="Ex: Caixa kraft P"
-              placeholderTextColor={colors.disabled}
-              autoFocus
-            />
-
-            <Text style={styles.modalLabel}>Quantidade (unidades no pacote)</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={novaEmbForm.quantidade}
-              onChangeText={(v) => setNovaEmbForm(p => ({ ...p, quantidade: v }))}
-              keyboardType="numeric"
-              placeholder="Ex: 100"
-              placeholderTextColor={colors.disabled}
-            />
-
-            <Text style={styles.modalLabel}>Preço do Pacote (R$)</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={novaEmbForm.preco_embalagem}
-              onChangeText={(v) => setNovaEmbForm(p => ({ ...p, preco_embalagem: v }))}
-              keyboardType="numeric"
-              placeholder="Ex: 25,00"
-              placeholderTextColor={colors.disabled}
-            />
-
-            {parseNum(novaEmbForm.quantidade) > 0 && parseNum(novaEmbForm.preco_embalagem) > 0 && (
-              <View style={styles.novoIngCalc}>
-                <Text style={styles.novoIngCalcLabel}>
-                  Preço Unitário: {formatCurrency(parseNum(novaEmbForm.preco_embalagem) / parseNum(novaEmbForm.quantidade))}
-                </Text>
-              </View>
-            )}
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setNovaEmbModalVisible(false)}>
-                <Text style={styles.modalCancelText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalSaveBtn} onPress={salvarNovaEmbalagem}>
-                <Text style={styles.modalSaveText}>Criar e Selecionar</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Modal Novo Preparo */}
-      <Modal visible={novoPreparoModalVisible} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setNovoPreparoModalVisible(false)}>
-          <TouchableOpacity activeOpacity={1} style={styles.modalContent} onPress={() => {}}>
-            <Text style={styles.modalTitle}>Novo Preparo</Text>
-
-            <Text style={styles.modalLabel}>Nome *</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={novoPreparoForm.nome}
-              onChangeText={(v) => setNovoPreparoForm(p => ({ ...p, nome: v }))}
-              placeholder="Ex: Ganache de chocolate"
-              placeholderTextColor={colors.disabled}
-              autoFocus
-            />
-
-            <Text style={styles.modalLabel}>Unidade de Medida</Text>
-            <View style={styles.novoIngUnidades}>
-              {UNIDADES_MEDIDA.map(u => (
-                <TouchableOpacity
-                  key={u.value}
-                  style={[styles.novoIngUnidadeChip, novoPreparoForm.unidade_medida === u.value && styles.novoIngUnidadeChipAtivo]}
-                  onPress={() => setNovoPreparoForm(p => ({ ...p, unidade_medida: u.value }))}
-                >
-                  <Text style={[styles.novoIngUnidadeText, novoPreparoForm.unidade_medida === u.value && styles.novoIngUnidadeTextAtivo]}>{u.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.modalLabel}>Rendimento Total ({novoPreparoForm.unidade_medida})</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={novoPreparoForm.rendimento_total}
-              onChangeText={(v) => setNovoPreparoForm(p => ({ ...p, rendimento_total: v }))}
-              keyboardType="numeric"
-              placeholder="Ex: 1000"
-              placeholderTextColor={colors.disabled}
-            />
-
-            <View style={styles.novoIngCalc}>
-              <Text style={[styles.novoIngCalcLabel, { color: colors.textSecondary }]}>
-                💡 Ingredientes podem ser adicionados depois na aba Preparos
-              </Text>
-            </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setNovoPreparoModalVisible(false)}>
-                <Text style={styles.modalCancelText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalSaveBtn} onPress={salvarNovoPreparo}>
-                <Text style={styles.modalSaveText}>Criar e Selecionar</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Modal Novo Ingrediente */}
-      <Modal visible={novoIngModalVisible} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setNovoIngModalVisible(false)}>
-          <TouchableOpacity activeOpacity={1} style={styles.modalContent} onPress={() => {}}>
-            <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalTitle}>Novo Insumo</Text>
-
-              <Text style={styles.modalLabel}>Nome *</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={novoIngForm.nome}
-                onChangeText={(v) => setNovoIngForm(p => ({ ...p, nome: v }))}
-                placeholder="Ex: Farinha de trigo"
-                placeholderTextColor={colors.disabled}
-                autoFocus
-              />
-
-              <Text style={styles.modalLabel}>Unidade de Medida</Text>
-              <View style={styles.novoIngUnidades}>
-                {UNIDADES_MEDIDA.map(u => (
-                  <TouchableOpacity
-                    key={u.value}
-                    style={[styles.novoIngUnidadeChip, novoIngForm.unidade_medida === u.value && styles.novoIngUnidadeChipAtivo]}
-                    onPress={() => setNovoIngForm(p => ({ ...p, unidade_medida: u.value }))}
-                  >
-                    <Text style={[styles.novoIngUnidadeText, novoIngForm.unidade_medida === u.value && styles.novoIngUnidadeTextAtivo]}>{u.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.modalLabel}>Quantidade Bruta ({novoIngForm.unidade_medida})</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    value={novoIngForm.quantidade_bruta}
-                    onChangeText={(v) => setNovoIngForm(p => ({ ...p, quantidade_bruta: v }))}
-                    keyboardType="numeric"
-                    placeholder="Ex: 1000"
-                    placeholderTextColor={colors.disabled}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.modalLabel}>Quantidade Líquida ({novoIngForm.unidade_medida})</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    value={novoIngForm.quantidade_liquida}
-                    onChangeText={(v) => setNovoIngForm(p => ({ ...p, quantidade_liquida: v }))}
-                    keyboardType="numeric"
-                    placeholder="Ex: 800"
-                    placeholderTextColor={colors.disabled}
-                  />
-                </View>
-              </View>
-
-              <Text style={styles.modalLabel}>Valor Pago (R$)</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={novoIngForm.valor_pago}
-                onChangeText={(v) => setNovoIngForm(p => ({ ...p, valor_pago: v }))}
-                keyboardType="numeric"
-                placeholder="Ex: 5,00"
-                placeholderTextColor={colors.disabled}
-              />
-
-              {parseNum(novoIngForm.quantidade_liquida) > 0 && parseNum(novoIngForm.valor_pago) > 0 && (
-                <View style={styles.novoIngCalc}>
-                  <Text style={styles.novoIngCalcLabel}>
-                    Fator de Correção: {calcFatorCorrecao(parseNum(novoIngForm.quantidade_bruta), parseNum(novoIngForm.quantidade_liquida)).toFixed(2)}
-                  </Text>
-                  <Text style={styles.novoIngCalcLabel}>
-                    {getLabelPrecoBase(novoIngForm.unidade_medida)}: {formatCurrency(calcPrecoBase(parseNum(novoIngForm.valor_pago), parseNum(novoIngForm.quantidade_liquida), novoIngForm.unidade_medida))}
-                  </Text>
-                </View>
-              )}
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setNovoIngModalVisible(false)}>
-                  <Text style={styles.modalCancelText}>Cancelar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.modalSaveBtn} onPress={salvarNovoIngrediente}>
-                  <Text style={styles.modalSaveText}>Criar e Selecionar</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -1908,6 +1618,11 @@ const styles = StyleSheet.create({
   conservLabel: { fontSize: fonts.regular, color: colors.text, flex: 1, fontWeight: '600' },
   conservLabelAtivo: { color: colors.primary },
   conservCheck: { fontSize: 18, color: colors.primary, fontWeight: '700', width: 24, textAlign: 'center' },
+  conservCheckbox: {
+    width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: colors.border,
+    backgroundColor: colors.inputBg, alignItems: 'center', justifyContent: 'center',
+  },
+  conservCheckboxAtivo: { backgroundColor: colors.primary, borderColor: colors.primary },
   conservFields: { flexDirection: 'row', marginTop: spacing.xs, paddingLeft: spacing.sm },
 
   // Category picker
@@ -1954,28 +1669,81 @@ const styles = StyleSheet.create({
   modalSaveBtn: { flex: 1, padding: spacing.sm + 2, borderRadius: borderRadius.sm, backgroundColor: colors.primary, alignItems: 'center' },
   modalSaveText: { color: colors.textLight, fontWeight: '700', fontSize: fonts.regular },
 
-  // Novo ingrediente inline
-  novoIngBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    paddingVertical: spacing.xs + 2, marginTop: spacing.xs, marginBottom: spacing.xs,
-    borderWidth: 1, borderColor: colors.primary, borderStyle: 'dashed',
-    borderRadius: borderRadius.sm, backgroundColor: colors.primary + '08',
+  // Inline quantity input (editable in table row)
+  inlineQtyInput: {
+    width: 56,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+    backgroundColor: colors.primary + '08',
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+    borderRadius: 6,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
   },
-  novoIngBtnIcon: { fontSize: 14, fontWeight: '700', color: colors.primary, marginRight: spacing.xs },
-  novoIngBtnText: { fontSize: fonts.tiny, fontWeight: '600', color: colors.primary },
-  novoIngUnidades: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.xs },
-  novoIngUnidadeChip: {
-    paddingHorizontal: spacing.sm + 2, paddingVertical: spacing.xs + 2,
-    borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.inputBg,
+
+  // Autocomplete search input row
+  searchAddInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.inputBg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    marginTop: spacing.sm,
   },
-  novoIngUnidadeChipAtivo: { borderColor: colors.primary, backgroundColor: colors.primary + '15' },
-  novoIngUnidadeText: { fontSize: fonts.small, color: colors.textSecondary },
-  novoIngUnidadeTextAtivo: { color: colors.primary, fontWeight: '700' },
-  novoIngCalc: {
-    backgroundColor: colors.primary + '10', borderRadius: borderRadius.sm,
-    padding: spacing.sm, marginTop: spacing.sm,
+
+  // Autocomplete dropdown
+  dropdownContainer: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.sm,
+    backgroundColor: '#fff',
+    maxHeight: 230,
+    marginTop: 2,
+    ...Platform.select({
+      web: { boxShadow: '0 4px 12px rgba(0,0,0,0.1)' },
+      default: { elevation: 4 },
+    }),
   },
-  novoIngCalcLabel: { fontSize: fonts.small, color: colors.primary, fontWeight: '600', marginBottom: 2 },
+  dropdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  dropdownItemName: {
+    fontSize: 13,
+    color: colors.text,
+    fontWeight: '500',
+    flex: 1,
+  },
+  dropdownItemDetail: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginLeft: spacing.xs,
+  },
+  createNewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.primary + '06',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  createNewBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+    marginLeft: 6,
+  },
 
   // Auto-save status bar
   autoSaveBar: {
@@ -2037,36 +1805,11 @@ const styles = StyleSheet.create({
   },
   saveBackBtnText: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: '#fff' },
 
-  // Search row
-  searchRow: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border,
-    borderRadius: borderRadius.sm, paddingHorizontal: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  searchIcon: { fontSize: 16, marginRight: spacing.xs },
   searchInput: {
     flex: 1, fontSize: fonts.regular, color: colors.text,
     paddingVertical: spacing.sm, paddingHorizontal: 0,
   },
 
-  // Selection list
-  selectionList: { maxHeight: 120, marginBottom: spacing.xs },
-  selListItem: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: spacing.xs + 2, paddingHorizontal: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
-    backgroundColor: '#fff', borderRadius: borderRadius.sm,
-  },
-  selListItemSelected: {
-    backgroundColor: colors.success + '18',
-    borderColor: colors.success,
-    borderWidth: 1,
-  },
-  selListItemName: { fontSize: fonts.small, color: colors.text, fontWeight: '500', flex: 1 },
-  selListItemNameSelected: { color: colors.success },
-  selListItemDetail: { fontSize: 10, color: colors.textSecondary, marginLeft: spacing.xs },
-  selListItemDetailSelected: { color: colors.success },
   listEmpty: {
     fontSize: fonts.small, color: colors.disabled, textAlign: 'center',
     paddingVertical: spacing.md, fontStyle: 'italic',

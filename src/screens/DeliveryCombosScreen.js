@@ -27,7 +27,7 @@ function getComboColor(index) {
 function getTipoBadgeInfo(tipo) {
   if (tipo === 'materia_prima') return { label: 'insumo', color: colors.primary };
   if (tipo === 'preparo') return { label: 'preparo', color: colors.accent };
-  if (tipo === 'produto') return { label: 'produto', color: colors.purple };
+  if (tipo === 'produto' || tipo === 'delivery_produto') return { label: 'produto', color: colors.purple };
   if (tipo === 'embalagem') return { label: 'embalagem', color: colors.yellow };
   return { label: tipo, color: colors.disabled };
 }
@@ -57,11 +57,10 @@ export default function DeliveryCombosScreen() {
 
   // Available items for picker
   const [allProdutos, setAllProdutos] = useState([]);
-  // deliveryProdutos removed (feature deprecated)
+  const [allDeliveryProdutos, setAllDeliveryProdutos] = useState([]);
   const [allMaterias, setAllMaterias] = useState([]);
   const [allEmbalagens, setAllEmbalagens] = useState([]);
   const [allPreparos, setAllPreparos] = useState([]);
-  // allAdicionais removed (feature deprecated)
 
   useFocusEffect(
     useCallback(() => {
@@ -97,7 +96,7 @@ export default function DeliveryCombosScreen() {
     const db = await getDatabase();
 
     const [prods, allIngs, allPreps, allEmbs, embalagensList, preparosList, materiasList,
-           combosList, allComboItens] = await Promise.all([
+           combosList, allComboItens, dProds, allDProdItens] = await Promise.all([
       db.getAllAsync('SELECT * FROM produtos ORDER BY nome'),
       db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
       db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
@@ -107,6 +106,8 @@ export default function DeliveryCombosScreen() {
       db.getAllAsync('SELECT id, nome, preco_por_kg, unidade_medida FROM materias_primas ORDER BY nome'),
       db.getAllAsync('SELECT * FROM delivery_combos ORDER BY nome'),
       db.getAllAsync('SELECT * FROM delivery_combo_itens'),
+      db.getAllAsync('SELECT * FROM delivery_produtos ORDER BY nome'),
+      db.getAllAsync('SELECT * FROM delivery_produto_itens'),
     ]);
 
     // Build lookup maps
@@ -138,6 +139,33 @@ export default function DeliveryCombosScreen() {
     setAllEmbalagens(embalagensList);
     setAllPreparos(preparosList);
 
+    // Build delivery product costs (delivery_produtos is a separate table)
+    const dProdItensByDProd = {};
+    (allDProdItens || []).forEach(i => { (dProdItensByDProd[i.delivery_produto_id] = dProdItensByDProd[i.delivery_produto_id] || []).push(i); });
+
+    const deliveryProdResults = [];
+    for (const dp of (dProds || [])) {
+      const itens = dProdItensByDProd[dp.id] || [];
+      let custo = 0;
+      for (const item of itens) {
+        if (item.tipo === 'produto') {
+          const prod = prodResults.find(p => p.id === item.item_id);
+          if (prod) custo += prod.custoUnitario * item.quantidade;
+        } else if (item.tipo === 'embalagem') {
+          const emb = embalagensList.find(e => e.id === item.item_id);
+          if (emb) custo += emb.preco_unitario * item.quantidade;
+        } else if (item.tipo === 'preparo') {
+          const prep = preparosList.find(p => p.id === item.item_id);
+          if (prep) custo += calcCustoPreparo(prep.custo_por_kg, item.quantidade, 'g');
+        } else if (item.tipo === 'materia_prima') {
+          const mp = materiasList.find(m => m.id === item.item_id);
+          if (mp) custo += calcCustoIngrediente(mp.preco_por_kg, item.quantidade, mp.unidade_medida, 'g');
+        }
+      }
+      deliveryProdResults.push({ id: dp.id, nome: dp.nome, precoVenda: dp.preco_venda || 0, custoUnitario: custo });
+    }
+    setAllDeliveryProdutos(deliveryProdResults);
+
     // Build combo items lookup
     const comboItensByCombo = {};
     (allComboItens || []).forEach(i => { (comboItensByCombo[i.combo_id] = comboItensByCombo[i.combo_id] || []).push(i); });
@@ -150,6 +178,9 @@ export default function DeliveryCombosScreen() {
         if (item.tipo === 'produto') {
           const prod = prodResults.find(p => p.id === item.item_id);
           if (prod) custo += prod.custoUnitario * item.quantidade;
+        } else if (item.tipo === 'delivery_produto') {
+          const dp = deliveryProdResults.find(p => p.id === item.item_id);
+          if (dp) custo += dp.custoUnitario * item.quantidade;
         } else if (item.tipo === 'materia_prima') {
           const mp = materiasList.find(m => m.id === item.item_id);
           if (mp) custo += calcCustoIngrediente(mp.preco_por_kg, item.quantidade, mp.unidade_medida, 'g');
@@ -196,6 +227,10 @@ export default function DeliveryCombosScreen() {
         const p = allProdutos.find(x => x.id === item.item_id);
         nome = p ? p.nome : 'Produto';
         custoUnit = p ? p.custoUnitario : 0;
+      } else if (item.tipo === 'delivery_produto') {
+        const dp = allDeliveryProdutos.find(x => x.id === item.item_id);
+        nome = dp ? dp.nome : 'Produto Delivery';
+        custoUnit = dp ? dp.custoUnitario : 0;
       } else if (item.tipo === 'materia_prima') {
         const mp = allMaterias.find(x => x.id === item.item_id);
         nome = mp ? mp.nome : 'Insumo';
@@ -388,7 +423,7 @@ export default function DeliveryCombosScreen() {
   }
 
   function getItemCusto(tipo, item) {
-    if (tipo === 'produto') return item.custoUnitario || 0;
+    if (tipo === 'produto' || tipo === 'delivery_produto') return item.custoUnitario || 0;
     if (tipo === 'materia_prima') return calcCustoIngrediente(item.preco_por_kg || 0, 1, item.unidade_medida, 'g');
     if (tipo === 'embalagem') return item.preco_unitario || 0;
     if (tipo === 'preparo') return calcCustoPreparo(item.custo_por_kg || 0, 1, 'g');
@@ -440,11 +475,20 @@ export default function DeliveryCombosScreen() {
   const margemModal = precoVendaModal > 0 ? ((precoVendaModal - custoTotal) / precoVendaModal) * 100 : 0;
   const isEditing = editingCombo !== null;
 
+  // Breakdown by type
+  const custoProdutos = novoCombo.itens.filter(i => i.tipo === 'produto' || i.tipo === 'delivery_produto').reduce((a, i) => a + (i.custoUnit || 0) * i.quantidade, 0);
+  const custoInsumos = novoCombo.itens.filter(i => i.tipo === 'materia_prima').reduce((a, i) => a + (i.custoUnit || 0) * i.quantidade, 0);
+  const custoPreparosCombo = novoCombo.itens.filter(i => i.tipo === 'preparo').reduce((a, i) => a + (i.custoUnit || 0) * i.quantidade, 0);
+  const custoEmbalagensCombo = novoCombo.itens.filter(i => i.tipo === 'embalagem').reduce((a, i) => a + (i.custoUnit || 0) * i.quantidade, 0);
+  const lucroCombo = precoVendaModal - custoTotal;
+  const margemDesejada = 0.35; // 35% default
+  const precoSugerido = custoTotal > 0 ? custoTotal / (1 - margemDesejada) : 0;
+
   // ─── RENDER ───────────────────────────────────────────────
 
   function renderComboCard({ item: combo, index }) {
     const margem = combo.preco_venda > 0 ? ((combo.preco_venda - combo.custo) / combo.preco_venda) * 100 : 0;
-    const margemPositiva = margem >= 0;
+    const margemColor = margem >= 25 ? colors.success : margem >= 15 ? colors.accent : colors.error;
     const comboColor = getComboColor(index);
     const inicial = (combo.nome || '?').charAt(0).toUpperCase();
     const itemCount = combo.itens ? combo.itens.length : 0;
@@ -471,8 +515,8 @@ export default function DeliveryCombosScreen() {
         {/* Price + margin badge */}
         <View style={styles.rowRight}>
           <Text style={styles.rowPreco}>{formatCurrency(combo.preco_venda)}</Text>
-          <View style={[styles.margemBadge, { backgroundColor: (margemPositiva ? colors.success : colors.error) + '12' }]}>
-            <Text style={[styles.margemBadgeText, { color: margemPositiva ? colors.success : colors.error }]}>
+          <View style={[styles.margemBadge, { backgroundColor: margemColor + '12' }]}>
+            <Text style={[styles.margemBadgeText, { color: margemColor }]}>
               {margem.toFixed(1)}%
             </Text>
           </View>
@@ -492,7 +536,7 @@ export default function DeliveryCombosScreen() {
 
   function renderDesktopGridCard({ item: combo, index }) {
     const margem = combo.preco_venda > 0 ? ((combo.preco_venda - combo.custo) / combo.preco_venda) * 100 : 0;
-    const margemPositiva = margem >= 0;
+    const margemColor = margem >= 25 ? colors.success : margem >= 15 ? colors.accent : colors.error;
     const comboColor = getComboColor(index);
     const inicial = (combo.nome || '?').charAt(0).toUpperCase();
     const itemCount = combo.itens ? combo.itens.length : 0;
@@ -521,8 +565,8 @@ export default function DeliveryCombosScreen() {
         <Text style={styles.gridSubtitle}>{itemCount} {itemCount === 1 ? 'item' : 'itens'}</Text>
         <View style={styles.gridBottom}>
           <Text style={styles.gridPreco}>{formatCurrency(combo.preco_venda)}</Text>
-          <View style={[styles.margemBadge, { backgroundColor: (margemPositiva ? colors.success : colors.error) + '12' }]}>
-            <Text style={[styles.margemBadgeText, { color: margemPositiva ? colors.success : colors.error }]}>
+          <View style={[styles.margemBadge, { backgroundColor: margemColor + '12' }]}>
+            <Text style={[styles.margemBadgeText, { color: margemColor }]}>
               {margem.toFixed(1)}%
             </Text>
           </View>
@@ -678,18 +722,43 @@ export default function DeliveryCombosScreen() {
                 );
               })}
 
-              {/* Result chips - cost summary */}
+              {/* Resumo de Custos - full cost report */}
               {novoCombo.itens.length > 0 && (
-                <View style={styles.resultBar}>
-                  <View style={[styles.resultChip, { backgroundColor: colors.primary + '10' }]}>
-                    <Text style={styles.resultChipLabel}>Custo Total</Text>
-                    <Text style={[styles.resultChipValue, { color: colors.primary }]}>{formatCurrency(custoTotal)}</Text>
+                <View style={styles.comboResumo}>
+                  <View style={styles.comboResumoHeader}>
+                    <Feather name="dollar-sign" size={14} color={colors.primary} />
+                    <Text style={styles.comboResumoTitle}>Resumo de Custos</Text>
                   </View>
-                  <View style={[styles.resultChip, { backgroundColor: (margemModal >= 0 ? colors.success : colors.error) + '10' }]}>
-                    <Text style={styles.resultChipLabel}>Margem</Text>
-                    <Text style={[styles.resultChipValue, { color: margemModal >= 0 ? colors.success : colors.error }]}>
-                      {precoVendaModal > 0 ? `${margemModal.toFixed(1)}%` : '—'}
-                    </Text>
+                  <View style={styles.comboResumoGrid}>
+                    <View style={styles.comboResumoCell}>
+                      <Text style={styles.comboResumoCellLabel}>CMV Unit.</Text>
+                      <Text style={styles.comboResumoCellValue}>{formatCurrency(custoTotal)}</Text>
+                    </View>
+                    <View style={styles.comboResumoCell}>
+                      <Text style={styles.comboResumoCellLabel}>Sugerido</Text>
+                      <Text style={[styles.comboResumoCellValue, { color: colors.textSecondary }]}>{formatCurrency(precoSugerido)}</Text>
+                    </View>
+                    <View style={styles.comboResumoCell}>
+                      <Text style={styles.comboResumoCellLabel}>Lucro</Text>
+                      <Text style={[styles.comboResumoCellValue, { color: lucroCombo >= 0 ? colors.primary : colors.error }]}>{formatCurrency(lucroCombo)}</Text>
+                    </View>
+                    <View style={styles.comboResumoCell}>
+                      <Text style={styles.comboResumoCellLabel}>Margem</Text>
+                      <Text style={[styles.comboResumoCellValue, {
+                        color: margemModal >= 25 ? colors.success : margemModal >= 15 ? colors.accent : colors.error
+                      }]}>
+                        {precoVendaModal > 0 ? `${margemModal.toFixed(1)}%` : '\u2014'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.comboResumoBreakdown}>
+                    {custoProdutos > 0 && <Text style={styles.comboResumoBreakdownItem}>Produtos {formatCurrency(custoProdutos)}</Text>}
+                    {custoProdutos > 0 && custoInsumos > 0 && <Text style={styles.comboResumoBreakdownSep}>{'\u00B7'}</Text>}
+                    {custoInsumos > 0 && <Text style={styles.comboResumoBreakdownItem}>Insumos {formatCurrency(custoInsumos)}</Text>}
+                    {(custoProdutos > 0 || custoInsumos > 0) && custoPreparosCombo > 0 && <Text style={styles.comboResumoBreakdownSep}>{'\u00B7'}</Text>}
+                    {custoPreparosCombo > 0 && <Text style={styles.comboResumoBreakdownItem}>Preparos {formatCurrency(custoPreparosCombo)}</Text>}
+                    {(custoProdutos > 0 || custoInsumos > 0 || custoPreparosCombo > 0) && custoEmbalagensCombo > 0 && <Text style={styles.comboResumoBreakdownSep}>{'\u00B7'}</Text>}
+                    {custoEmbalagensCombo > 0 && <Text style={styles.comboResumoBreakdownItem}>Emb. {formatCurrency(custoEmbalagensCombo)}</Text>}
                   </View>
                 </View>
               )}
@@ -1177,5 +1246,67 @@ const styles = StyleSheet.create({
   gridPreco: {
     fontSize: 14, fontFamily: fontFamily.bold, fontWeight: '700',
     color: colors.primary,
+  },
+
+  // Combo Resumo de Custos (full cost report card)
+  comboResumo: {
+    backgroundColor: colors.primary + '06',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.primary + '20',
+    padding: spacing.md,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  comboResumoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: spacing.sm,
+  },
+  comboResumoTitle: {
+    fontSize: fonts.regular,
+    fontWeight: '700',
+    color: colors.text,
+    fontFamily: fontFamily.bold,
+  },
+  comboResumoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  comboResumoCell: {
+    width: '50%',
+    paddingVertical: spacing.xs,
+  },
+  comboResumoCellLabel: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  comboResumoCellValue: {
+    fontSize: fonts.large,
+    fontWeight: '700',
+    color: colors.text,
+    fontFamily: fontFamily.bold,
+  },
+  comboResumoBreakdown: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginTop: spacing.xs,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.primary + '15',
+    gap: 4,
+  },
+  comboResumoBreakdownItem: {
+    fontSize: 10,
+    color: colors.textSecondary,
+  },
+  comboResumoBreakdownSep: {
+    fontSize: 10,
+    color: colors.disabled,
   },
 });

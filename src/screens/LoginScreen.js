@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
 import useRateLimit from '../hooks/useRateLimit';
+import { mapAuthError } from '../utils/authErrors';
 
 export default function LoginScreen({ navigation }) {
   const { signIn } = useAuth();
@@ -19,7 +20,7 @@ export default function LoginScreen({ navigation }) {
     const limitMsg = rateLimit.checkLimit();
     if (limitMsg) { setError(limitMsg); return; }
     if (!email.trim() || !password.trim()) {
-      setError('Preencha todos os campos');
+      setError('Informe email e senha para continuar.');
       return;
     }
     setError('');
@@ -29,18 +30,7 @@ export default function LoginScreen({ navigation }) {
       rateLimit.reset();
     } catch (err) {
       rateLimit.recordAttempt();
-      const raw = err?.message || err?.error_description || String(err);
-      const lower = raw.toLowerCase();
-      const msg = lower.includes('invalid login') || lower.includes('invalid credentials') || lower.includes('wrong password')
-        ? 'Email ou senha incorretos'
-        : lower.includes('email not confirmed') || lower.includes('not confirmed')
-        ? 'Confirme seu email antes de entrar'
-        : lower.includes('fetch') || lower.includes('network') || lower.includes('failed to fetch')
-        ? 'Sem conexão com o servidor. Verifique sua internet.'
-        : lower.includes('too many requests') || lower.includes('rate limit')
-        ? 'Muitas tentativas. Aguarde alguns minutos.'
-        : `Erro ao entrar: ${raw}`;
-      setError(msg);
+      setError(mapAuthError(err, { context: 'signIn' }));
     } finally {
       setLoading(false);
     }

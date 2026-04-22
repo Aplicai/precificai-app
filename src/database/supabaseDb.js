@@ -143,7 +143,7 @@ async function executeRun(sql, params = []) {
     const row = { user_id: currentUserId };
     cols.forEach((col, i) => {
       if (col === 'id') return; // Skip id, let Supabase auto-generate
-      row[col] = params[i] ?? parseValue(placeholders[i]);
+      row[col] = i < params.length ? params[i] : parseValue(placeholders[i]);
     });
 
     const { data, error } = await supabase.from(table).insert(row).select('id').single();

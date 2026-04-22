@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
 import useRateLimit from '../hooks/useRateLimit';
+import { mapAuthError } from '../utils/authErrors';
 
 const MIN_PASSWORD_LENGTH = 6;
 
@@ -44,20 +45,7 @@ export default function RegisterScreen({ navigation }) {
       setSuccess(true);
     } catch (err) {
       rateLimit.recordAttempt();
-      const raw = err?.message || err?.error_description || String(err);
-      const lower = raw.toLowerCase();
-      const msg = lower.includes('already registered') || lower.includes('already exists')
-        ? 'Este email já está cadastrado. Tente fazer login.'
-        : lower.includes('invalid email') || lower.includes('valid email')
-        ? 'Digite um email válido'
-        : lower.includes('weak password') || lower.includes('password')
-        ? 'A senha precisa ter pelo menos 6 caracteres'
-        : lower.includes('fetch') || lower.includes('network') || lower.includes('failed to fetch')
-        ? 'Sem conexão. Verifique sua internet.'
-        : lower.includes('too many requests') || lower.includes('rate limit')
-        ? 'Muitas tentativas. Aguarde alguns minutos.'
-        : `Erro ao criar conta: ${raw}`;
-      setError(msg);
+      setError(mapAuthError(err, { context: 'signUp' }));
     } finally {
       setLoading(false);
     }

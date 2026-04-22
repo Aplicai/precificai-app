@@ -9,6 +9,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, getTipoUnidade, normalizeSearch } from '../utils/calculations';
 import EmptyState from '../components/EmptyState';
+import Skeleton from '../components/Skeleton';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 // Cores para categorias
@@ -282,10 +283,7 @@ export default function PreparosScreen({ navigation }) {
             <View style={styles.desktopContentInner}>
               {sections.length === 0 ? (
                 loading ? (
-                  <View style={{ padding: 40, alignItems: 'center' }}>
-                    <ActivityIndicator size="large" color={colors.primary} />
-                    <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 13 }}>Carregando preparos...</Text>
-                  </View>
+                  <Skeleton.List count={6} />
                 ) : (
                   <EmptyState
                     icon={busca.trim() ? 'search' : 'layers'}
@@ -314,10 +312,7 @@ export default function PreparosScreen({ navigation }) {
           stickySectionHeadersEnabled={false}
           ListEmptyComponent={
             loading ? (
-              <View style={{ padding: 40, alignItems: 'center' }}>
-                <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 13 }}>Carregando preparos...</Text>
-              </View>
+              <Skeleton.List count={6} />
             ) : (
               <EmptyState
                 icon={busca.trim() ? 'search' : 'layers'}
@@ -326,7 +321,7 @@ export default function PreparosScreen({ navigation }) {
                   : 'Nenhum preparo cadastrado'}
                 description={busca.trim()
                   ? `Não encontramos resultados para "${busca}".`
-                  : 'Cadastre suas receitas base para calcular custos automaticamente.'}
+                  : 'Passo 3 · Crie receitas base combinando seus insumos. Cadastre insumos primeiro se ainda não fez.'}
                 ctaLabel={!busca.trim() ? 'Cadastrar preparo' : undefined}
                 onPress={!busca.trim() ? () => navigation.navigate('PreparoForm', {}) : undefined}
               />

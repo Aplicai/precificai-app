@@ -34,7 +34,7 @@ export default function FinanceiroPendenteBanner() {
       <Text style={styles.icon}>⚠️</Text>
       <View style={styles.body}>
         <Text style={styles.title}>Configuração financeira pendente</Text>
-        <Text style={styles.desc}>Markup, margens e preços sugeridos podem estar incorretos. Toque para configurar.</Text>
+        <Text style={styles.desc}>Markup, margens e preços sugeridos podem estar incorretos. Configure agora para corrigir.</Text>
       </View>
     </TouchableOpacity>
   );

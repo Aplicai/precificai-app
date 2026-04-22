@@ -7,6 +7,8 @@ import Card from '../components/Card';
 import InputField from '../components/InputField';
 import SearchBar from '../components/SearchBar';
 import InfoTooltip from '../components/InfoTooltip';
+import Chip from '../components/Chip';
+import EmptyState from '../components/EmptyState';
 import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
@@ -294,9 +296,13 @@ export default function DeliveryPrecosScreen() {
         <View style={styles.platHeader}>
           <Feather name="smartphone" size={12} color={colors.textSecondary} style={{ marginRight: 4 }} />
           <Text style={styles.platName}>{plat.plataforma}</Text>
-          <View style={styles.platTaxaBadge}>
-            <Text style={styles.platTaxaText}>{plat.taxa_plataforma}%</Text>
-          </View>
+          <Chip
+            label={`${plat.taxa_plataforma}%`}
+            tooltip={`Taxa da plataforma ${plat.plataforma}: ${plat.taxa_plataforma}%`}
+            color={colors.accent}
+            style={styles.platTaxaBadge}
+            textStyle={styles.platTaxaText}
+          />
         </View>
 
         <View style={styles.priceRow}>
@@ -405,25 +411,17 @@ export default function DeliveryPrecosScreen() {
         }
       >
         {!hasItems ? (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIconCircle}>
-              <Feather name="dollar-sign" size={28} color={colors.primary} />
-            </View>
-            <Text style={styles.emptyTitle}>Sem itens para precificar</Text>
-            <Text style={styles.emptyDesc}>
-              Cadastre produtos ou combos para ver a precificação delivery.
-            </Text>
-          </View>
+          <EmptyState
+            icon="dollar-sign"
+            title="Sem itens para precificar"
+            description="Cadastre produtos ou combos para ver a precificação delivery."
+          />
         ) : plataformas.length === 0 ? (
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIconCircle}>
-              <Feather name="smartphone" size={28} color={colors.accent} />
-            </View>
-            <Text style={styles.emptyTitle}>Nenhuma plataforma ativa</Text>
-            <Text style={styles.emptyDesc}>
-              Ative pelo menos uma plataforma em Plataformas para ver os precos.
-            </Text>
-          </View>
+          <EmptyState
+            icon="smartphone"
+            title="Nenhuma plataforma ativa"
+            description="Ative pelo menos uma plataforma em Plataformas para ver os preços."
+          />
         ) : (
           <>
             <SearchBar
@@ -515,23 +513,20 @@ export default function DeliveryPrecosScreen() {
                                   <Text style={styles.comboBadgeText}>combo</Text>
                                 </View>
                               )}
-                              <View style={[
-                                styles.margemBadge,
-                                { backgroundColor: margem >= 30 ? colors.success + '14' : colors.warning + '14' },
-                              ]}>
-                                <Feather
-                                  name={margem >= 30 ? 'trending-up' : 'trending-down'}
-                                  size={9}
-                                  color={margem >= 30 ? colors.success : colors.warning}
-                                  style={{ marginRight: 2 }}
-                                />
-                                <Text style={[
-                                  styles.margemBadgeText,
-                                  { color: margem >= 30 ? colors.success : colors.warning },
-                                ]}>
-                                  {margem.toFixed(0)}%
-                                </Text>
-                              </View>
+                              <Chip
+                                label={`${margem.toFixed(0)}%`}
+                                tooltip={`Margem de lucro: ${margem.toFixed(1)}%`}
+                                color={margem >= 30 ? colors.success : colors.warning}
+                                style={styles.margemBadge}
+                                textStyle={styles.margemBadgeText}
+                                icon={(
+                                  <Feather
+                                    name={margem >= 30 ? 'trending-up' : 'trending-down'}
+                                    size={9}
+                                    color={margem >= 30 ? colors.success : colors.warning}
+                                  />
+                                )}
+                              />
                             </View>
 
                             <Feather

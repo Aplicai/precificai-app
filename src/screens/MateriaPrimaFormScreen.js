@@ -524,25 +524,18 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                             {data ? <Text style={styles.historicoBarDate}>{data}</Text> : null}
                             <TouchableOpacity
                               style={styles.historicoDeleteBtn}
-                              onPress={async () => {
-                                if (Platform.OS === 'web') {
-                                  const ok = window.confirm('Deseja excluir este registro de preço do histórico?');
-                                  if (ok) {
-                                    try {
-                                      const db = await getDatabase();
-                                      await db.runAsync('DELETE FROM historico_precos WHERE id = ?', [h.id]);
-                                      setHistoricoPrecos(prev => prev.filter(x => x.id !== h.id));
-                                    } catch (e) {}
-                                  }
-                                } else {
-                                  Alert.alert('Excluir registro', 'Deseja excluir este registro de preço?', [
-                                    { text: 'Cancelar', style: 'cancel' },
-                                    { text: 'Excluir', style: 'destructive', onPress: async () => {
-                                      try { const db = await getDatabase(); await db.runAsync('DELETE FROM historico_precos WHERE id = ?', [h.id]); setHistoricoPrecos(prev => prev.filter(x => x.id !== h.id)); } catch(e) {}
-                                    }}
-                                  ]);
-                                }
-                              }}
+                              onPress={() => setConfirmDelete({
+                                titulo: 'Excluir registro de preço',
+                                nome: `${data || 'Registro'} — ${formatCurrency(p)}`,
+                                onConfirm: async () => {
+                                  try {
+                                    const db = await getDatabase();
+                                    await db.runAsync('DELETE FROM historico_precos WHERE id = ?', [h.id]);
+                                    setHistoricoPrecos(prev => prev.filter(x => x.id !== h.id));
+                                  } catch (e) {}
+                                  setConfirmDelete(null);
+                                },
+                              })}
                               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                               {...(Platform.OS === 'web' ? { title: 'Excluir este registro de preço' } : {})}
                             >

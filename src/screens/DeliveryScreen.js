@@ -566,7 +566,7 @@ export default function DeliveryScreen() {
           </View>
         ))}
         {deliveryProdutos.length === 0 && (
-          <Text style={styles.emptyText}>Nenhum produto delivery criado.</Text>
+          <Text style={styles.emptyText}>Crie produtos exclusivos para iFood, Rappi e outros — com preços e custos próprios.</Text>
         )}
         <TouchableOpacity
           style={styles.createBtn}
@@ -610,7 +610,7 @@ export default function DeliveryScreen() {
           </View>
         ))}
         {combos.length === 0 && (
-          <Text style={styles.emptyText}>Nenhum combo criado.</Text>
+          <Text style={styles.emptyText}>Combine produtos em pacotes promocionais e veja a margem real do combo.</Text>
         )}
         <TouchableOpacity
           style={styles.createBtn}

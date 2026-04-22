@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, converterParaBase } from '../utils/calculations';
+import EmptyState from '../components/EmptyState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 const CATEGORY_COLORS = [
@@ -369,7 +370,11 @@ export default function ListaComprasScreen({ navigation }) {
               <ActivityIndicator color={colors.primary} />
             </View>
           ) : produtos.length === 0 ? (
-            <Text style={styles.emptyText}>Nenhum produto cadastrado.</Text>
+            <EmptyState
+              icon="shopping-cart"
+              title="Nenhum insumo cadastrado"
+              description="Cadastre seus insumos em Insumos para gerar uma lista de compras automática a partir do estoque atual."
+            />
           ) : (
             <View>
               {(() => {

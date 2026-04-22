@@ -50,6 +50,13 @@ const ROUTE_TITLES = {
   'Suporte': 'Suporte',
 };
 
+// Routes rendered as transparentModal popups — header should ignore them
+const MODAL_FORM_ROUTES = new Set([
+  'MateriaPrimaForm',
+  'EmbalagemForm',
+  'PreparoForm',
+]);
+
 function getPageTitle(navState) {
   if (!navState) return 'Painel Geral';
   const tabRoute = navState.routes?.[navState.index];
@@ -58,7 +65,15 @@ function getPageTitle(navState) {
   // Check nested stack
   const stackState = tabRoute.state;
   if (stackState) {
-    const stackRoute = stackState.routes?.[stackState.index];
+    let idx = stackState.index;
+    let stackRoute = stackState.routes?.[idx];
+
+    // If active route is a modal form, step back through the stack to find the underlying route
+    while (stackRoute?.name && MODAL_FORM_ROUTES.has(stackRoute.name) && idx > 0) {
+      idx--;
+      stackRoute = stackState.routes[idx];
+    }
+
     if (stackRoute?.name) {
       // Check if this route has a nested screen via params
       const nestedScreen = stackRoute.params?.screen;
@@ -89,7 +104,10 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
   // Check if current stack has screens to go back to
   const tabRoute = tabState?.routes?.[tabState.index];
   const stackState = tabRoute?.state;
-  const canGoBack = stackState && stackState.index > 0;
+  const activeStackRoute = stackState?.routes?.[stackState?.index];
+  const isModalFormActive = activeStackRoute?.name && MODAL_FORM_ROUTES.has(activeStackRoute.name);
+  // Don't show back arrow when a modal form is on top — modal has its own close button
+  const canGoBack = stackState && stackState.index > 0 && !isModalFormActive;
 
   // Map child screens to their parent tab + screen
   const PARENT_SCREENS = {
@@ -119,8 +137,8 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
   const currentStackRoute = stackState?.routes?.[stackState?.index];
   // Fallback: if no stack state, check if the tab route itself has nested params
   const currentScreenName = currentStackRoute?.name || tabRoute?.state?.routes?.[0]?.name || tabRoute?.params?.screen;
-  const returnTo = currentStackRoute?.params?.returnTo || currentStackRoute?.params?.params?.returnTo || tabRoute?.params?.params?.returnTo;
-  const parentScreen = PARENT_SCREENS[currentScreenName];
+  const returnTo = isModalFormActive ? null : (currentStackRoute?.params?.returnTo || currentStackRoute?.params?.params?.returnTo || tabRoute?.params?.params?.returnTo);
+  const parentScreen = isModalFormActive ? null : PARENT_SCREENS[currentScreenName];
 
   function handleGoBack() {
     // 1. Check returnTo param (passed when navigating from another context)

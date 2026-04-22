@@ -5,6 +5,7 @@ import CurrencyInputModal from '../components/CurrencyInputModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import InfoTooltip from '../components/InfoTooltip';
+import Chip from '../components/Chip';
 import { Feather } from '@expo/vector-icons';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
@@ -454,9 +455,11 @@ export default function ConfiguracaoScreen() {
               <Text style={s.stepSubtitle}>Rentabilidade desejada por produto</Text>
             </View>
             {lucroPerc > 0 && (
-              <View style={[s.stepBadge, { backgroundColor: colors.success + '15' }]}>
-                <Text style={[s.stepBadgeText, { color: colors.success }]}>{(lucroPerc * 100).toFixed(0)}%</Text>
-              </View>
+              <Chip
+                label={`${(lucroPerc * 100).toFixed(0)}%`}
+                color={colors.success}
+                style={s.stepBadge}
+              />
             )}
           </View>
 
@@ -484,7 +487,7 @@ export default function ConfiguracaoScreen() {
               })}
             >
               <Text style={[s.bigValueText, !lucroDesejado && { color: colors.disabled }]}>
-                {lucroDesejado ? `${lucroDesejado}%` : 'Toque para definir'}
+                {lucroDesejado ? `${lucroDesejado}%` : 'Definir lucro desejado'}
               </Text>
               <Feather name="edit-2" size={14} color={colors.primary} style={{ marginLeft: 8 }} />
             </TouchableOpacity>
@@ -549,9 +552,11 @@ export default function ConfiguracaoScreen() {
               <Text style={s.stepSubtitle}>Peso das despesas fixas sobre cada produto</Text>
             </View>
             {faturamentoMedio > 0 && (
-              <View style={[s.stepBadge, { backgroundColor: colors.accent + '15' }]}>
-                <Text style={[s.stepBadgeText, { color: colors.accent }]}>{formatCurrency(faturamentoMedio)}</Text>
-              </View>
+              <Chip
+                label={formatCurrency(faturamentoMedio)}
+                color={colors.accent}
+                style={s.stepBadge}
+              />
             )}
           </View>
 
@@ -656,9 +661,11 @@ export default function ConfiguracaoScreen() {
               />
             </View>
             {totalFixas > 0 && (
-              <View style={[s.stepBadge, { backgroundColor: colors.coral + '15' }]}>
-                <Text style={[s.stepBadgeText, { color: colors.coral }]}>{formatCurrency(totalFixas)}</Text>
-              </View>
+              <Chip
+                label={formatCurrency(totalFixas)}
+                color={colors.coral}
+                style={s.stepBadge}
+              />
             )}
           </View>
 
@@ -789,9 +796,11 @@ export default function ConfiguracaoScreen() {
               />
             </View>
             {totalVariaveis > 0 && (
-              <View style={[s.stepBadge, { backgroundColor: colors.purple + '15' }]}>
-                <Text style={[s.stepBadgeText, { color: colors.purple }]}>{formatPercent(totalVariaveis)}</Text>
-              </View>
+              <Chip
+                label={formatPercent(totalVariaveis)}
+                color={colors.purple}
+                style={s.stepBadge}
+              />
             )}
           </View>
 
@@ -1216,13 +1225,12 @@ const s = StyleSheet.create({
   stepSubtitle: {
     fontSize: fonts.tiny, color: colors.textSecondary, marginTop: 1,
   },
+  // Visual original preservado: radius 12 (não-pílula) + padding um pouco maior.
+  // Cor (bg + fg) e tipografia (fonts.tiny + fontFamily.bold) ficam por conta do Chip.
   stepBadge: {
     borderRadius: 12,
     paddingHorizontal: spacing.sm + 2,
     paddingVertical: 3,
-  },
-  stepBadgeText: {
-    fontSize: fonts.tiny, fontFamily: fontFamily.bold, fontWeight: '700',
   },
   stepBody: {
     padding: spacing.md,

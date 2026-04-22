@@ -9,6 +9,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { formatCurrency, getTipoUnidade, normalizeSearch } from '../utils/calculations';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
+import Skeleton from '../components/Skeleton';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 // Cores para categorias
@@ -229,10 +230,7 @@ export default function EmbalagensScreen({ navigation }) {
           <View style={styles.desktopContentWrap}>
             <View style={styles.desktopContentInner}>
               {loading ? (
-                <View style={{ padding: 40, alignItems: 'center' }}>
-                  <ActivityIndicator size="large" color={colors.primary} />
-                  <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 13 }}>Carregando embalagens...</Text>
-                </View>
+                <Skeleton.List count={6} />
               ) : sections.length === 0 ? (
                 <EmptyState
                   icon={busca.trim() ? 'search' : 'package'}
@@ -289,10 +287,7 @@ export default function EmbalagensScreen({ navigation }) {
           stickySectionHeadersEnabled={false}
           ListEmptyComponent={
             loading ? (
-              <View style={{ padding: 40, alignItems: 'center' }}>
-                <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 13 }}>Carregando embalagens...</Text>
-              </View>
+              <Skeleton.List count={6} />
             ) : (
               <EmptyState
                 icon={busca.trim() ? 'search' : 'package'}

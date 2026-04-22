@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
 import useRateLimit from '../hooks/useRateLimit';
+import { mapAuthError } from '../utils/authErrors';
 
 export default function ForgotPasswordScreen({ navigation }) {
   const { resetPassword } = useAuth();
@@ -33,14 +34,7 @@ export default function ForgotPasswordScreen({ navigation }) {
       setSent(true);
     } catch (err) {
       rateLimit.recordAttempt();
-      const raw = err?.message || err?.error_description || String(err);
-      const lower = raw.toLowerCase();
-      const msg = lower.includes('fetch') || lower.includes('network') || lower.includes('failed to fetch')
-        ? 'Sem conexão. Verifique sua internet.'
-        : lower.includes('too many requests') || lower.includes('rate limit')
-        ? 'Muitas tentativas. Aguarde alguns minutos.'
-        : 'Erro ao enviar email. Verifique o endereço.';
-      setError(msg);
+      setError(mapAuthError(err, { context: 'reset' }));
     } finally {
       setLoading(false);
     }

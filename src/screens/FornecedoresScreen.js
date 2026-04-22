@@ -6,6 +6,7 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency } from '../utils/calculations';
 import SearchBar from '../components/SearchBar';
+import EmptyState from '../components/EmptyState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 const CATEGORY_COLORS = [
@@ -204,13 +205,11 @@ export default function FornecedoresScreen({ navigation }) {
         </View>
 
         {groups.length === 0 && (
-          <View style={styles.emptyState}>
-            <Feather name="search" size={32} color={colors.disabled} />
-            <Text style={styles.emptyTitle}>Nenhuma comparação disponível</Text>
-            <Text style={styles.emptyDesc}>
-              Cadastre o mesmo insumo com nomes iguais mas marcas diferentes para comparar preços entre fornecedores.
-            </Text>
-          </View>
+          <EmptyState
+            icon="search"
+            title="Nenhuma comparação disponível"
+            description="Cadastre o mesmo insumo com marcas diferentes para comparar preços entre fornecedores."
+          />
         )}
 
         {isDesktop ? (

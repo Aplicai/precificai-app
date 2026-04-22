@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+import EmptyState from '../components/EmptyState';
 
 export default function MetaVendasScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
@@ -202,11 +203,11 @@ export default function MetaVendasScreen({ navigation }) {
 
         {/* Empty state */}
         {produtos.length === 0 && !loading && (
-          <View style={styles.emptyCard}>
-            <Feather name="package" size={40} color={colors.disabled} />
-            <Text style={styles.emptyText}>Nenhum produto com preço cadastrado.</Text>
-            <Text style={styles.emptySubtext}>Cadastre produtos com preço de venda para usar esta ferramenta.</Text>
-          </View>
+          <EmptyState
+            icon="package"
+            title="Nenhum produto com preço cadastrado"
+            description="Cadastre produtos com preço de venda para usar esta ferramenta."
+          />
         )}
 
         <View style={{ height: spacing.xl }} />

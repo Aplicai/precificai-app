@@ -10,6 +10,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { formatCurrency, formatPercent, calcDespesasFixasPercentual, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
+import Skeleton from '../components/Skeleton';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 // Cores para categorias
@@ -390,10 +391,7 @@ export default function ProdutosListScreen({ navigation }) {
             <View style={styles.desktopContentInner}>
               {sections.length === 0 ? (
                 loading ? (
-                  <View style={{ padding: 40, alignItems: 'center' }}>
-                    <ActivityIndicator size="large" color={colors.primary} />
-                    <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 13 }}>Carregando produtos...</Text>
-                  </View>
+                  <Skeleton.List count={6} />
                 ) : (
                   <EmptyState
                     icon={busca.trim() ? 'search' : 'box'}
@@ -422,10 +420,7 @@ export default function ProdutosListScreen({ navigation }) {
           stickySectionHeadersEnabled={false}
           ListEmptyComponent={
             loading ? (
-              <View style={{ padding: 40, alignItems: 'center' }}>
-                <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 13 }}>Carregando produtos...</Text>
-              </View>
+              <Skeleton.List count={6} />
             ) : (
               <EmptyState
                 icon={busca.trim() ? 'search' : 'box'}

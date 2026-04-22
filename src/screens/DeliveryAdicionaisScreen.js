@@ -6,6 +6,7 @@ import { getDatabase } from '../database/database';
 import Card from '../components/Card';
 import InputField from '../components/InputField';
 import InfoTooltip from '../components/InfoTooltip';
+import EmptyState from '../components/EmptyState';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
 import { formatCurrency } from '../utils/calculations';
 
@@ -102,13 +103,11 @@ export default function DeliveryAdicionaisScreen() {
           }
         >
           {adicionais.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyIcon}>🧂</Text>
-              <Text style={styles.emptyTitle}>Nenhum adicional cadastrado</Text>
-              <Text style={styles.emptyDesc}>
-                Cadastre itens extras como sachês, molhos e talheres que acompanham seus pedidos delivery.
-              </Text>
-            </View>
+            <EmptyState
+              icon="package"
+              title="Nenhum adicional cadastrado"
+              description="Cadastre itens extras como sachês, molhos e talheres que acompanham seus pedidos delivery."
+            />
           ) : (
             adicionais.map((add) => {
               const isEditing = editingId === add.id;

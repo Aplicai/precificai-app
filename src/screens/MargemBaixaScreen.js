@@ -129,7 +129,7 @@ export default function MargemBaixaScreen({ navigation }) {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.summaryTitle}>{produtos.length} produto{produtos.length !== 1 ? 's' : ''} com margem abaixo de 10%</Text>
-          <Text style={styles.summaryDesc}>Toque em cada produto para ajustar preço ou custos</Text>
+          <Text style={styles.summaryDesc}>Abra cada produto para ajustar preço ou custos</Text>
         </View>
       </View>
 

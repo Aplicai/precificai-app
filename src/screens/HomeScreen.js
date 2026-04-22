@@ -217,7 +217,7 @@ export default function HomeScreen({ navigation }) {
         pendencias.push({
           tipo: 'warning',
           texto: `Mais ${uniqueProds.length - 5} produtos com margem baixa`,
-          descricao: 'Toque para ver todos os produtos',
+          descricao: 'Ver todos os produtos com margem baixa',
           acao: 'MargemBaixa',
         });
       }
@@ -531,7 +531,7 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.statusDetail}>Cadastre insumos e produtos para começar</Text>
             )}
             {!pendente && !baseIncompleta && d.produtosMargBaixa.length > 0 && (
-              <Text style={styles.statusDetail}>Toque para ver os produtos</Text>
+              <Text style={styles.statusDetail}>Ver produtos afetados</Text>
             )}
           </View>
           {statusOnPress && <Feather name="chevron-right" size={18} color={colors.disabled} />}
@@ -570,7 +570,7 @@ export default function HomeScreen({ navigation }) {
           const benchColors = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
           return [
           { label: 'CMV Médio', value: formatPercent(d.cmvPercent), icon: 'tag', color: colors.accent,
-            tip: { title: 'CMV Médio', text: 'Custo de Mercadoria Vendida em % do preço de venda. Toque para alterar a meta.', examples: ['Referência do setor alimentício:', 'Restaurantes: 28-35%', 'Pizzarias: 25-32%', 'Confeitarias: 20-30%', 'Fast food: 25-35%', `Sua meta: < ${cmvMetaValue}%`] },
+            tip: { title: 'CMV Médio', text: 'Custo de Mercadoria Vendida em % do preço de venda. Abra o card para alterar a meta.', examples: ['Referência do setor alimentício:', 'Restaurantes: 28-35%', 'Pizzarias: 25-32%', 'Confeitarias: 20-30%', 'Fast food: 25-35%', `Sua meta: < ${cmvMetaValue}%`] },
             meta: `Atual: ${formatPercent(d.cmvPercent)} · Meta: < ${cmvMetaValue}%`, bench: pendente ? null : cmvBench, onPress: () => setShowCmvMeta(true) },
           { label: 'Resultado Operacional', value: pendente ? '--' : formatCurrency(d.resultadoFinanceiro), icon: 'dollar-sign', color: pendente ? colors.disabled : (d.resultadoFinanceiro >= 0 ? colors.success : colors.error),
             tip: { title: 'Resultado Operacional', text: 'Calculado automaticamente: faturamento médio mensal menos as despesas fixas. Para alterar, ajuste o faturamento ou as despesas fixas no Financeiro.', examples: ['Fórmula: Faturamento − Despesas Fixas', 'Positivo: receita cobre despesas fixas', 'Negativo: despesas fixas maiores que o faturamento', '💡 Ajuste no Financeiro (Ferramentas)'] },
@@ -582,7 +582,7 @@ export default function HomeScreen({ navigation }) {
               : 'Configure o financeiro', bench: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0
               ? (d.fatMedio >= d.pontoEquilibrio * 1.2 ? 'green' : d.fatMedio >= d.pontoEquilibrio ? 'yellow' : 'red') : null },
           { label: 'Margem Líquida', value: pendente ? '--' : formatPercent(d.margemMedia), icon: 'trending-up', color: pendente ? colors.disabled : (d.margemMedia >= parseFloat(margemMetaValue)/100 ? colors.success : colors.coral),
-            tip: { title: 'Margem Líquida Média', text: 'Margem de lucro média já descontando CMV, despesas fixas e variáveis. Toque para alterar a meta.', examples: ['Acima de 15%: saudável', '5-15%: atenção', `Meta atual: > ${margemMetaValue}%`] },
+            tip: { title: 'Margem Líquida Média', text: 'Margem de lucro média já descontando CMV, despesas fixas e variáveis. Abra o card para alterar a meta.', examples: ['Acima de 15%: saudável', '5-15%: atenção', `Meta atual: > ${margemMetaValue}%`] },
             meta: d.margemMedia >= parseFloat(margemMetaValue)/100 ? `Meta: > ${margemMetaValue}%  ✓` : `Meta: > ${margemMetaValue}%`, bench: pendente ? null : margBench, onPress: () => setShowMargemMeta(true) },
         ].map(k => {
           const Wrapper = k.onPress ? TouchableOpacity : View;

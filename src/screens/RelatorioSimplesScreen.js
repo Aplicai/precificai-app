@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+import EmptyState from '../components/EmptyState';
 
 function escapeHtml(text) {
   if (!text) return '';
@@ -309,10 +310,12 @@ export default function RelatorioSimplesScreen({ navigation }) {
 
   if (!data || data.totalProdutos === 0) {
     return (
-      <View style={styles.loadingContainer}>
-        <Feather name="file-text" size={48} color={colors.disabled} />
-        <Text style={styles.emptyTitle}>Nenhum produto cadastrado</Text>
-        <Text style={styles.emptyDesc}>Cadastre seus produtos para ver o relatório simplificado.</Text>
+      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: colors.background }}>
+        <EmptyState
+          icon="file-text"
+          title="Nenhum produto cadastrado"
+          description="Cadastre seus produtos para ver o relatório simplificado."
+        />
       </View>
     );
   }

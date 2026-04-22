@@ -3,6 +3,7 @@ import { View, Text, ScrollView, FlatList, StyleSheet, TouchableOpacity } from '
 import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import Card from '../components/Card';
+import EmptyState from '../components/EmptyState';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
 import { formatCurrency, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 
@@ -249,7 +250,13 @@ export default function VendasScreen({ navigation }) {
         renderItem={renderProdutoItem}
         ListEmptyComponent={
           !loading ? (
-            <Text style={styles.empty}>Nenhum produto cadastrado.</Text>
+            <EmptyState
+              icon="bar-chart-2"
+              title="Nenhum produto cadastrado"
+              description="Cadastre produtos para acompanhar vendas e ver a engenharia do seu cardápio."
+              ctaLabel="Ir para Produtos"
+              onPress={() => navigation.navigate('Produtos')}
+            />
           ) : null
         }
       />

@@ -7,6 +7,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import InfoTooltip from '../components/InfoTooltip';
+import EmptyState from '../components/EmptyState';
 
 const TABS = [
   { key: 'ese', label: 'Simulador de Impacto', icon: 'trending-up' },
@@ -446,11 +447,11 @@ export default function SimuladorScreen({ navigation }) {
 
         {/* Empty state */}
         {metaProdutos.length === 0 && !loading && (
-          <View style={styles.emptyCard}>
-            <Feather name="package" size={40} color={colors.disabled} />
-            <Text style={styles.emptyText}>Nenhum produto com preço cadastrado.</Text>
-            <Text style={styles.emptySubtext}>Cadastre produtos com preço de venda para usar esta ferramenta.</Text>
-          </View>
+          <EmptyState
+            icon="package"
+            title="Nenhum produto com preço cadastrado"
+            description="Cadastre produtos com preço de venda para usar o simulador 'E se?'."
+          />
         )}
 
         <View style={{ height: spacing.xl }} />
