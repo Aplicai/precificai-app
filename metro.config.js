@@ -1,5 +1,7 @@
-const { getDefaultConfig } = require('expo/metro-config');
+const { getSentryExpoConfig } = require('@sentry/react-native/metro');
 
-const config = getDefaultConfig(__dirname);
+// Sentry recomenda getSentryExpoConfig em vez de getDefaultConfig
+// para garantir debug IDs corretos nos source maps (P0-01).
+const config = getSentryExpoConfig(__dirname);
 
 module.exports = config;

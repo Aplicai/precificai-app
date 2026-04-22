@@ -5,6 +5,10 @@ import { useFonts } from 'expo-font';
 import AppNavigator from './src/navigation/AppNavigator';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { colors } from './src/utils/theme';
+import { initErrorReporter, wrap as wrapWithSentry } from './src/utils/errorReporter';
+
+// Inicializa o reporter de erros (P0-01). No-op se DSN ausente.
+initErrorReporter();
 
 // Remove browser default outline on all inputs (web only)
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -22,7 +26,7 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   document.head.appendChild(style);
 }
 
-export default function App() {
+function App() {
   const [fontsLoaded] = useFonts({
     'DMSans-Regular': require('./assets/fonts/DMSans-Regular.ttf'),
     'DMSans-Medium': require('./assets/fonts/DMSans-Medium.ttf'),
@@ -48,3 +52,6 @@ export default function App() {
     </AuthProvider>
   );
 }
+
+// Boundary global do Sentry — captura erros não tratados em qualquer lugar do app
+export default wrapWithSentry(App);

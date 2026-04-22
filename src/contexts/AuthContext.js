@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, useContext, useRef, useCallb
 import { AppState, Platform } from 'react-native';
 import { supabase } from '../config/supabase';
 import { resetDatabase } from '../database/database';
+import { captureException, addBreadcrumb, setUser as reportSetUser } from '../utils/errorReporter';
 
 const AuthContext = createContext({});
 
@@ -46,6 +47,7 @@ export function AuthProvider({ children }) {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
       setUser(s?.user ?? null);
+      reportSetUser(s?.user ?? null);
       setLoading(false);
     });
 
@@ -53,6 +55,8 @@ export function AuthProvider({ children }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
       setUser(s?.user ?? null);
+      reportSetUser(s?.user ?? null);
+      addBreadcrumb({ category: 'auth', message: `auth event: ${_event}` });
       setLoading(false);
     });
 
@@ -60,26 +64,51 @@ export function AuthProvider({ children }) {
   }, []);
 
   const signIn = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    return data;
+    addBreadcrumb({ category: 'auth', message: 'signIn attempt' });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      captureException(err, { screen: 'Login', action: 'signIn' });
+      throw err;
+    }
   };
 
   const signUp = async (email, password) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
-    return data;
+    addBreadcrumb({ category: 'auth', message: 'signUp attempt' });
+    try {
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      captureException(err, { screen: 'Register', action: 'signUp' });
+      throw err;
+    }
   };
 
   const signOut = async () => {
+    addBreadcrumb({ category: 'auth', message: 'signOut' });
     resetDatabase(); // Clear cached data to prevent cross-user leakage
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      reportSetUser(null);
+    } catch (err) {
+      captureException(err, { action: 'signOut' });
+      throw err;
+    }
   };
 
   const resetPassword = async (email) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
-    if (error) throw error;
+    addBreadcrumb({ category: 'auth', message: 'resetPassword attempt' });
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      if (error) throw error;
+    } catch (err) {
+      captureException(err, { screen: 'ForgotPassword', action: 'resetPassword' });
+      throw err;
+    }
   };
 
   return (
