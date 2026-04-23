@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { CommonActions } from '@react-navigation/native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -8,6 +8,12 @@ import { supabase } from '../config/supabase';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { SEGMENTOS, INSUMOS_POR_SEGMENTO, CATEGORIAS_POR_SEGMENTO } from '../data/templates';
 import { calcPrecoBase, calcFatorCorrecao } from '../utils/calculations';
+
+// F1-J1-01: prefixo da chave de step do WelcomeTour. Mantido em sync com
+// `WelcomeTourScreen.js` — chegando aqui o tour é considerado encerrado, então
+// removemos o passo salvo para evitar reabrir o usuário no meio do tour caso
+// volte para a tela de welcome em algum cenário de fluxo.
+const WELCOMETOUR_STEP_KEY_PREFIX = 'welcometour_step_';
 
 // Audit P0: helper defensivo para formatação de valores numéricos vindos do template.
 function safeNum(v) {
@@ -35,6 +41,23 @@ export default function KitInicioScreen({ navigation, route }) {
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+
+  // F1-J1-01: usuário chegou no Kit de Início → o WelcomeTour ficou para trás.
+  // Limpamos a chave de passo salvo (qualquer user_id) para garantir que uma
+  // próxima abertura do tour comece do zero. Não bloqueante.
+  useEffect(() => {
+    (async () => {
+      try {
+        const keys = await AsyncStorage.getAllKeys();
+        const stepKeys = keys.filter(k => k.startsWith(WELCOMETOUR_STEP_KEY_PREFIX));
+        if (stepKeys.length > 0) {
+          await AsyncStorage.multiRemove(stepKeys);
+        }
+      } catch (e) {
+        console.error('[KitInicio.clearWelcomeTourStep]', e);
+      }
+    })();
+  }, []);
 
   async function navegarAposKit() {
     try {

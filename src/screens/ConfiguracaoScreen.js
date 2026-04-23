@@ -155,7 +155,8 @@ export default function ConfiguracaoScreen() {
 
   async function salvarLucro() {
     const db = await getDatabase();
-    const valor = parseFloat(lucroDesejado.replace(',', '.')) / 100;
+    const p = parseNum(lucroDesejado);
+    const valor = Number.isFinite(p) ? p / 100 : 0;
     await db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [valor]);
     showSaved('Margem salva');
     loadData();
@@ -175,8 +176,9 @@ export default function ConfiguracaoScreen() {
   async function adicionarDespesaFixa() {
     if (!novaFixa.descricao.trim()) return Alert.alert('Erro', 'Informe a descrição');
     const db = await getDatabase();
+    const valor = parseNum(novaFixa.valor);
     await db.runAsync('INSERT INTO despesas_fixas (descricao, valor) VALUES (?, ?)',
-      [novaFixa.descricao, parseFloat(novaFixa.valor.replace(',', '.')) || 0]);
+      [novaFixa.descricao, Number.isFinite(valor) ? valor : 0]);
     setNovaFixa({ descricao: '', valor: '' });
     showSaved('Despesa adicionada');
     loadData();
@@ -197,8 +199,10 @@ export default function ConfiguracaoScreen() {
   async function adicionarDespesaVariavel() {
     if (!novaVariavel.descricao.trim()) return Alert.alert('Erro', 'Informe a descrição');
     const db = await getDatabase();
+    const p = parseNum(novaVariavel.percentual);
+    const finalPerc = Number.isFinite(p) ? p / 100 : 0;
     await db.runAsync('INSERT INTO despesas_variaveis (descricao, percentual) VALUES (?, ?)',
-      [novaVariavel.descricao, parseFloat(novaVariavel.percentual.replace(',', '.')) / 100 || 0]);
+      [novaVariavel.descricao, finalPerc]);
     setNovaVariavel({ descricao: '', percentual: '' });
     showSaved('Despesa adicionada');
     loadData();
@@ -228,11 +232,14 @@ export default function ConfiguracaoScreen() {
     if (!editModal) return;
     const db = await getDatabase();
     if (editModal.tipo === 'fixa') {
+      const valor = parseNum(editModal.valor);
       await db.runAsync('UPDATE despesas_fixas SET descricao = ?, valor = ? WHERE id = ?',
-        [editModal.descricao, parseFloat(editModal.valor.replace(',', '.')) || 0, editModal.id]);
+        [editModal.descricao, Number.isFinite(valor) ? valor : 0, editModal.id]);
     } else {
+      const p = parseNum(editModal.valor);
+      const finalPerc = Number.isFinite(p) ? p / 100 : 0;
       await db.runAsync('UPDATE despesas_variaveis SET descricao = ?, percentual = ? WHERE id = ?',
-        [editModal.descricao, parseFloat(editModal.valor.replace(',', '.')) / 100 || 0, editModal.id]);
+        [editModal.descricao, finalPerc, editModal.id]);
     }
     setEditModal(null);
     showSaved('Atualizado');
@@ -241,8 +248,9 @@ export default function ConfiguracaoScreen() {
 
   async function salvarFaturamento(id, valor) {
     const db = await getDatabase();
+    const v = parseNum(valor);
     await db.runAsync('UPDATE faturamento_mensal SET valor = ? WHERE id = ?',
-      [parseFloat(valor.replace(',', '.')) || 0, id]);
+      [Number.isFinite(v) ? v : 0, id]);
     const status = await getFinanceiroStatus();
     setFinStatus(status);
   }
@@ -283,7 +291,8 @@ export default function ConfiguracaoScreen() {
         setCurrencyModal({
           title: descricao, value: '0', prefix: 'R$', placeholder: '0,00',
           onConfirm: async (val) => {
-            const v = parseFloat(String(val).replace(',', '.')) || 0;
+            const parsed = parseNum(val);
+            const v = Number.isFinite(parsed) ? parsed : 0;
             const dbx = await getDatabase();
             await dbx.runAsync('UPDATE despesas_fixas SET valor = ? WHERE id = ?', [v, newId]);
             setCurrencyModal(null);
@@ -307,7 +316,8 @@ export default function ConfiguracaoScreen() {
         setCurrencyModal({
           title: descricao, value: '0', suffix: '%', placeholder: '0,0',
           onConfirm: async (val) => {
-            const v = parseFloat(String(val).replace(',', '.')) / 100 || 0;
+            const p = parseNum(val);
+            const v = Number.isFinite(p) ? p / 100 : 0;
             const dbx = await getDatabase();
             await dbx.runAsync('UPDATE despesas_variaveis SET percentual = ? WHERE id = ?', [v, newId]);
             setCurrencyModal(null);
@@ -668,8 +678,10 @@ export default function ConfiguracaoScreen() {
                         placeholder: '0,00',
                         onConfirm: (val) => {
                           const clean = val.replace(/[^0-9,\.]/g, '');
+                          const parsed = parseNum(clean);
+                          const novoValor = Number.isFinite(parsed) ? parsed : 0;
                           setFaturamento(prev => prev.map(item =>
-                            item.id === f.id ? { ...item, valor: parseFloat(clean.replace(',', '.')) || 0 } : item
+                            item.id === f.id ? { ...item, valor: novoValor } : item
                           ));
                           salvarFaturamento(f.id, clean);
                           setCurrencyModal(null);
@@ -765,8 +777,10 @@ export default function ConfiguracaoScreen() {
                         placeholder: '0,00',
                         onConfirm: async (val) => {
                           const db = await getDatabase();
+                          const parsed = parseNum(val);
+                          const novoValor = Number.isFinite(parsed) ? parsed : 0;
                           await db.runAsync('UPDATE despesas_fixas SET valor = ? WHERE id = ?',
-                            [parseFloat(val.replace(',', '.')) || 0, d.id]);
+                            [novoValor, d.id]);
                           setCurrencyModal(null);
                           showSaved('Salvo');
                           loadData();
@@ -897,9 +911,11 @@ export default function ConfiguracaoScreen() {
                         suffix: '%',
                         placeholder: '0,00',
                         onConfirm: async (val) => {
+                          const p = parseNum(val);
+                          const finalPerc = Number.isFinite(p) ? p / 100 : 0;
                           const db = await getDatabase();
                           await db.runAsync('UPDATE despesas_variaveis SET percentual = ? WHERE id = ?',
-                            [parseFloat(val.replace(',', '.')) / 100 || 0, d.id]);
+                            [finalPerc, d.id]);
                           setCurrencyModal(null);
                           showSaved('Salvo');
                           loadData();

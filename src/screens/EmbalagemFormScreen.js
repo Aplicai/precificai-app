@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ScrollView, View, StyleSheet, TouchableOpacity, Text, Alert, Modal, TextInput, Keyboard, TouchableWithoutFeedback, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
@@ -8,7 +8,7 @@ import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import SaveStatus from '../components/SaveStatus';
 import ModalFormWrapper from '../components/ModalFormWrapper';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { calcPrecoUnitarioEmbalagem, formatCurrency } from '../utils/calculations';
 import { t } from '../i18n/pt-BR';
@@ -60,13 +60,16 @@ export default function EmbalagemFormScreen({ route, navigation }) {
 
   useEffect(() => {
     navigation.setOptions({ title: editId ? 'Editar Embalagem' : 'Nova Embalagem' });
-    loadCategorias();
     if (editId) {
       loadItem();
     } else {
       setLoaded(true);
     }
   }, [editId]);
+
+  // F2-J2-01: recarrega categorias ao retornar para a tela
+  // (categoria criada inline em outro form precisa aparecer aqui sem reabrir)
+  useFocusEffect(useCallback(() => { loadCategorias(); }, []));
 
   // Intercepta saída para validar campos
   useEffect(() => {

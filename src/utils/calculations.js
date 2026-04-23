@@ -152,7 +152,9 @@ export function getDivisorRendimento(produto) {
   }
 
   // Heurística para valores legados: Grama(s)/Mililitro(s) com rt pequeno = venda por kg/litro
-  const rt = parseFloat(produto.rendimento_total) || 0;
+  // CR-4: Number.isFinite — NaN deve cair no fallback `unidade` (não causar Infinity no CMV)
+  const rtRaw = parseFloat(produto.rendimento_total);
+  const rt = Number.isFinite(rtRaw) ? rtRaw : 0;
   const isLegacyKgLitro = (un.includes('grama') || un.includes('quilo') || un.includes('litro') || un.includes('ml'))
     && rt > 0 && rt <= 50;
 
@@ -174,7 +176,9 @@ export function getTipoVenda(produto) {
   if (un === 'por_litro') return 'litro';
 
   // Heurística para valores legados
-  const rt = parseFloat(produto.rendimento_total) || 0;
+  // CR-4: Number.isFinite — NaN deve cair no fallback 'unidade' (não classificar errado)
+  const rtRaw = parseFloat(produto.rendimento_total);
+  const rt = Number.isFinite(rtRaw) ? rtRaw : 0;
   if (rt > 0 && rt <= 50) {
     if (un.includes('grama') || un.includes('quilo')) return 'kg';
     if (un.includes('litro') || un.includes('ml')) return 'litro';

@@ -16,9 +16,15 @@ export default function OnboardingScreen({ navigation }) {
   const [status, setStatus] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
+  // F1-J1-03: contador de tentativas automáticas em foco quando status chega
+  // vazio (ex.: DB ainda hidratando). Limita para evitar loop infinito.
+  const retryCountRef = React.useRef(0);
+  const MAX_AUTO_RETRIES = 2;
 
   useFocusEffect(
     useCallback(() => {
+      // Reset retries em cada foco — usuário voltando à tela quer fluxo limpo.
+      retryCountRef.current = 0;
       loadStatus();
     }, [])
   );
@@ -26,6 +32,16 @@ export default function OnboardingScreen({ navigation }) {
   async function loadStatus() {
     try {
       const s = await getSetupStatus();
+      // F1-J1-03: status "vazio" (sem etapas) = sintoma típico de DB ainda
+      // não populada / falha intermitente do wrapper. Tenta novamente algumas
+      // vezes antes de mostrar a UI degradada — evita o app vazio silencioso.
+      const isEmpty = !s || !Array.isArray(s.etapas) || s.etapas.length === 0;
+      if (isEmpty && retryCountRef.current < MAX_AUTO_RETRIES) {
+        retryCountRef.current += 1;
+        console.error('[Onboarding.loadStatus] status vazio, retry', retryCountRef.current);
+        setTimeout(() => loadStatus(), 600);
+        return;
+      }
       setStatus(s);
       setLoadError(null);
       if (s.completo) {

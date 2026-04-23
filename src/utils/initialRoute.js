@@ -66,3 +66,85 @@ export async function determineInitialRoute({ skipWelcomeTour = false } = {}) {
     return 'ProfileSetup';
   }
 }
+
+/**
+ * F1-J1-03: variante de `determineInitialRoute` que devolve a rota e, se
+ * houve falha, expõe o objeto de erro para a camada de navegação poder
+ * mostrar uma tela de erro com retry em vez de jogar o usuário num app
+ * silencioso/vazio. Mantém compat: rota fallback continua sendo
+ * `ProfileSetup` em caso de erro.
+ *
+ * @param {Object} opts — mesmo shape de `determineInitialRoute`.
+ * @returns {Promise<{route: 'WelcomeTour'|'ProfileSetup'|'Onboarding'|'MainTabs', routeError: Error|null}>}
+ */
+export async function determineInitialRouteWithError(opts = {}) {
+  try {
+    const route = await determineInitialRoute(opts);
+    return { route, routeError: null };
+  } catch (err) {
+    // `determineInitialRoute` já tem catch interno e devolve 'ProfileSetup',
+    // então isso só é alcançado em falhas catastróficas (require quebrado, etc).
+    console.error('[determineInitialRouteWithError]', err);
+    return { route: 'ProfileSetup', routeError: err };
+  }
+}
+
+/**
+ * F1-J1-03: variante explícita que detecta falha de `getSetupStatus` (DB).
+ * Diferente de `determineInitialRoute`, não engole o erro — devolve a rota
+ * fallback (`ProfileSetup`) E o erro original para a UI exibir retry.
+ *
+ * Quando há sucesso, `routeError` é `null` e `route` é a rota normal.
+ *
+ * Esta função duplica a lógica de `determineInitialRoute` com tratamento de
+ * erro mais granular para que possamos distinguir "fluxo normal" de
+ * "DB falhou — não sei se você tem dados". A duplicação é intencional para
+ * manter `determineInitialRoute` (callers existentes) com signature String.
+ */
+export async function determineInitialRouteSafe({ skipWelcomeTour = false } = {}) {
+  try {
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    const onboardingDone = await AsyncStorage.getItem('onboarding_done');
+    if (onboardingDone === 'true') return { route: 'MainTabs', routeError: null };
+
+    if (!skipWelcomeTour) {
+      const tourDone = await AsyncStorage.getItem('welcome_tour_done');
+      if (tourDone !== 'true') {
+        const rawCount = await AsyncStorage.getItem('welcome_tour_count');
+        const count = Number(rawCount) || 0;
+        if (count < 2) return { route: 'WelcomeTour', routeError: null };
+        await AsyncStorage.setItem('welcome_tour_done', 'true');
+      }
+    }
+
+    const { getDatabase } = require('../database/database');
+    const db = await getDatabase();
+
+    const perfil = await db.getFirstAsync('SELECT * FROM perfil LIMIT 1');
+    if (!perfil || !perfil.nome_negocio || perfil.nome_negocio.trim() === '') {
+      return { route: 'ProfileSetup', routeError: null };
+    }
+
+    const insumos = await db.getAllAsync('SELECT id FROM materias_primas LIMIT 1');
+    if (insumos && insumos.length > 0) {
+      await AsyncStorage.setItem('onboarding_done', 'true');
+      return { route: 'MainTabs', routeError: null };
+    }
+
+    // Erro aqui significa DB acessível mas getSetupStatus quebrou — caso
+    // que o `determineInitialRoute` original mascarava. Expomos para a UI.
+    try {
+      const status = await getSetupStatus();
+      return {
+        route: status.financeiroCompleto ? 'MainTabs' : 'Onboarding',
+        routeError: null,
+      };
+    } catch (statusErr) {
+      console.error('[determineInitialRouteSafe.getSetupStatus]', statusErr);
+      return { route: 'ProfileSetup', routeError: statusErr };
+    }
+  } catch (err) {
+    console.error('[determineInitialRouteSafe]', err);
+    return { route: 'ProfileSetup', routeError: err };
+  }
+}

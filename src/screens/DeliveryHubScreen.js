@@ -64,7 +64,7 @@ export default function DeliveryHubScreen({ navigation }) {
   const [selectedPlat, setSelectedPlat] = useState(null);
   const [simResult, setSimResult] = useState(null);
   const [buscaProd, setBuscaProd] = useState('');
-  const [precoCustom, setPrecoCustom] = useState('');
+  const [precoCustom, setPrecoCustom] = usePersistedState('deliveryHub.precoMinimo', '');
   const [expandedPlats, setExpandedPlats] = useState({});
   const [margemDesejada, setMargemDesejada] = usePersistedState('deliveryHub.margemDesejada', '30');
 
@@ -562,6 +562,8 @@ export default function DeliveryHubScreen({ navigation }) {
                   style={[styles.simBtn, (!selectedProd || !selectedPlat) && { opacity: 0.5 }]}
                   onPress={simularPreco}
                   disabled={!selectedProd || !selectedPlat}
+                  accessibilityRole="button"
+                  accessibilityLabel="Simular preço delivery"
                 >
                   <Feather name="play" size={16} color="#fff" />
                   <Text style={styles.simBtnText}>Simular preço</Text>
@@ -693,17 +695,37 @@ export default function DeliveryHubScreen({ navigation }) {
                       <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm, fontFamily: fontFamily.regular }}>
                         Digite o preço que pretende cobrar e veja a composição real
                       </Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-                        <Text style={{ fontSize: 15, fontFamily: fontFamily.bold, color: colors.text }}>R$</Text>
-                        <TextInput
-                          style={[styles.platInput, { flex: 1, fontSize: 18, fontFamily: fontFamily.bold, textAlign: 'center' }]}
-                          value={precoCustom}
-                          onChangeText={setPrecoCustom}
-                          keyboardType="numeric"
-                          placeholder={simResult.precoSugerido ? simResult.precoSugerido.toFixed(2) : '0,00'}
-                          placeholderTextColor={colors.disabled}
-                        />
-                      </View>
+                      {(() => {
+                        // Validação inline: aceita vazio (sem erro) ou número finito >= 0.
+                        const trimmed = String(precoCustom).trim();
+                        const parsedPreco = parseFloat(trimmed.replace(',', '.'));
+                        const precoCustomInvalid = trimmed.length > 0 && (!Number.isFinite(parsedPreco) || parsedPreco < 0);
+                        return (
+                          <>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                              <Text style={{ fontSize: 15, fontFamily: fontFamily.bold, color: colors.text }}>R$</Text>
+                              <TextInput
+                                style={[
+                                  styles.platInput,
+                                  { flex: 1, fontSize: 18, fontFamily: fontFamily.bold, textAlign: 'center' },
+                                  precoCustomInvalid && { borderColor: colors.error },
+                                ]}
+                                value={precoCustom}
+                                onChangeText={setPrecoCustom}
+                                keyboardType="numeric"
+                                placeholder={simResult.precoSugerido ? simResult.precoSugerido.toFixed(2) : '0,00'}
+                                placeholderTextColor={colors.disabled}
+                                accessibilityLabel="Preço mínimo do produto em reais"
+                              />
+                            </View>
+                            {precoCustomInvalid && (
+                              <Text style={{ fontSize: 11, color: colors.error, marginTop: 4, fontFamily: fontFamily.medium }}>
+                                Digite um valor numérico válido (0 ou maior).
+                              </Text>
+                            )}
+                          </>
+                        );
+                      })()}
                       {(() => {
                         const custom = calcCustom();
                         if (!custom) return null;

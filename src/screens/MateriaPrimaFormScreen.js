@@ -10,7 +10,7 @@ import SaveStatus from '../components/SaveStatus';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import InfoTooltip from '../components/InfoTooltip';
 import ModalFormWrapper from '../components/ModalFormWrapper';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { t } from '../i18n/pt-BR';
 import {
@@ -89,13 +89,16 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
 
   useEffect(() => {
     navigation.setOptions({ title: editId ? 'Editar Insumo' : 'Novo Insumo' });
-    loadCategorias();
     if (editId) {
       loadItem();
     } else {
       setLoaded(true);
     }
   }, [editId]);
+
+  // F2-J2-01: recarrega categorias ao voltar p/ a tela
+  // (categoria criada em outro form precisa aparecer no picker sem reabrir)
+  useFocusEffect(useCallback(() => { loadCategorias(); }, []));
 
   // Intercepta saída para validar campos
   useEffect(() => {
@@ -151,7 +154,10 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         const reversed = (hist || []).reverse();
         const filtered = reversed.filter((h, i) => i === 0 || h.valor_pago !== reversed[i - 1].valor_pago);
         setHistoricoPrecos(filtered);
-      } catch(e) {}
+      } catch(e) {
+        // F2-J2-03: catch antes era silencioso — log para diagnóstico
+        if (typeof console !== 'undefined' && console.error) console.error('[MateriaPrimaForm.loadHistorico]', e);
+      }
     })();
   }, [editId]);
 
@@ -191,8 +197,12 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     }
   }
 
+  // F2-J2-03 / CR-1: parseNum retorna null para NaN para que consumidores possam
+  // distinguir "vazio/inválido" de "zero explícito". Use Number.isFinite() ou
+  // fallback `?? 0` em cada call site.
   function parseNum(val) {
-    return parseFloat(String(val).replace(',', '.')) || 0;
+    const n = parseFloat(String(val).replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
   }
 
   const qtBruta = parseNum(form.quantidade_bruta);
@@ -216,9 +226,10 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     const f = formRef.current;
     if (!f.nome.trim()) return; // não salva sem nome
 
-    const qb = parseFloat(String(f.quantidade_bruta).replace(',', '.')) || 0;
-    const ql = parseFloat(String(f.quantidade_liquida).replace(',', '.')) || 0;
-    const vp = parseFloat(String(f.valor_pago).replace(',', '.')) || 0;
+    // F2-J2-03 / CR-1: usa helper parseNum (Number.isFinite-aware) com `?? 0` p/ DB
+    const qb = parseNum(f.quantidade_bruta) ?? 0;
+    const ql = parseNum(f.quantidade_liquida) ?? 0;
+    const vp = parseNum(f.valor_pago) ?? 0;
     const fc = calcFatorCorrecao(qb, ql);
     const pb = calcPrecoBase(vp, ql, f.unidade_medida);
 
@@ -545,7 +556,10 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                                     const db = await getDatabase();
                                     await db.runAsync('DELETE FROM historico_precos WHERE id = ?', [h.id]);
                                     setHistoricoPrecos(prev => prev.filter(x => x.id !== h.id));
-                                  } catch (e) {}
+                                  } catch (e) {
+                                    // F2-J2-03: catch antes era silencioso — log para diagnóstico
+                                    if (typeof console !== 'undefined' && console.error) console.error('[MateriaPrimaForm.deleteHistorico]', e);
+                                  }
                                   setConfirmDelete(null);
                                 },
                               })}
@@ -576,20 +590,26 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         {editId && (
           <TouchableOpacity style={styles.btnSaveEdit} onPress={async () => {
             // Registrar histórico de preço ao salvar
-            const vp = parseFloat(String(formRef.current.valor_pago).replace(',', '.')) || 0;
+            // F2-J2-03 / CR-1: parseNum c/ Number.isFinite + `?? 0` (preserva fallback ql=qb)
+            const vp = parseNum(formRef.current.valor_pago) ?? 0;
             if (vp > 0) {
               try {
                 const db = await getDatabase();
                 const f = formRef.current;
-                const qb = parseFloat(String(f.quantidade_bruta).replace(',', '.')) || 0;
-                const ql = parseFloat(String(f.quantidade_liquida).replace(',', '.')) || qb;
+                const qb = parseNum(f.quantidade_bruta) ?? 0;
+                const qlParsed = parseNum(f.quantidade_liquida);
+                const ql = qlParsed != null && qlParsed > 0 ? qlParsed : qb;
                 const pb = ql > 0 ? vp / (ql / 1000) : 0;
                 const lastHist = await db.getAllAsync('SELECT valor_pago FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC LIMIT 1', [editId]);
                 const lastPrice = lastHist?.[0]?.valor_pago;
                 if (lastPrice === undefined || lastPrice === null || Math.abs(lastPrice - vp) > 0.001) {
                   await db.runAsync('INSERT INTO historico_precos (materia_prima_id, valor_pago, preco_por_kg) VALUES (?,?,?)', [editId, vp, pb]);
                 }
-              } catch (e) {}
+              } catch (e) {
+                // F2-J2-03: catch antes era silencioso — log + status de erro
+                if (typeof console !== 'undefined' && console.error) console.error('[MateriaPrimaForm.saveBackBtn]', e);
+                setSaveStatus('error');
+              }
             }
             allowExit.current = true;
             goBackSafe();
@@ -605,10 +625,14 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             {isFormComplete(form) && <TouchableOpacity style={[styles.btnDelete, { borderColor: colors.primary + '30' }]} onPress={async () => {
               const f = formRef.current;
               // Salva o item atual antes de duplicar
-              try { await autoSave(); } catch(e) {}
+              // F2-J2-03: catch antes era silencioso — log do erro de auto-save
+              try { await autoSave(); } catch(e) {
+                if (typeof console !== 'undefined' && console.error) console.error('[MateriaPrimaForm.duplicar.autoSave]', e);
+              }
               const db = await getDatabase();
+              // F2-J2-03 / CR-1: parseNum (Number.isFinite) com fallbacks `?? 0` / `|| 1`
               const result = await db.runAsync('INSERT INTO materias_primas (nome, marca, categoria_id, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg) VALUES (?,?,?,?,?,?,?,?,?)',
-                [f.nome.trim() + ' (cópia)', f.marca, f.categoria_id, parseFloat(f.quantidade_bruta) || 0, parseFloat(f.quantidade_liquida) || 0, parseFloat(f.fator_correcao) || 1, f.unidade_medida, parseFloat(String(f.valor_pago).replace(',','.')) || 0, parseFloat(f.preco_por_kg) || 0]);
+                [f.nome.trim() + ' (cópia)', f.marca, f.categoria_id, parseNum(f.quantidade_bruta) ?? 0, parseNum(f.quantidade_liquida) ?? 0, parseNum(f.fator_correcao) ?? 1, f.unidade_medida, parseNum(f.valor_pago) ?? 0, parseNum(f.preco_por_kg) ?? 0]);
               if (result?.lastInsertRowId) { allowExit.current = true; navigation.replace('MateriaPrimaForm', { id: result.lastInsertRowId }); }
             }}>
               <Feather name="copy" size={13} color={colors.primary} style={{ marginRight: 5 }} />

@@ -122,13 +122,16 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
   useEffect(() => {
     loadAuxData();
-    loadCategorias();
     if (editId) {
       loadProduto();
     } else {
       setLoaded(true);
     }
   }, [editId]);
+
+  // F2-J2-01: recarrega categorias ao retornar para a tela
+  // (categoria criada inline em outro form precisa aparecer aqui sem reabrir)
+  useFocusEffect(useCallback(() => { loadCategorias(); }, []));
 
   // Dynamic title
   useEffect(() => {
@@ -207,7 +210,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
     if (navigation?.setParams) navigation.setParams({ sugerirNovoPreco: undefined });
   }, [route.params?.sugerirNovoPreco, custoUnitario]);
 
-  const parseNum = (v) => parseFloat(String(v).replace(',', '.')) || 0;
+  // F2-J2-02 / CR-2: parseNum retorna null para NaN para que consumidores possam
+  // distinguir "vazio/inválido" de "zero explícito". Cada call site deve usar
+  // Number.isFinite() ou um fallback explícito (`?? 0`, `|| 1`).
+  const parseNum = (v) => {
+    const n = parseFloat(String(v).replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+  };
 
   function sufixoUnidadeRendimento() {
     const un = UNIDADES_MEDIDA.find(u => u.value === form.unidade_rendimento);
@@ -459,7 +468,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
   }
 
   function updateQuantidade(type, index, val) {
-    const numVal = parseFloat(String(val).replace(',', '.')) || 0;
+    // F2-J2-02: guarda Number.isFinite — campo vazio/letras vira 0, não NaN
+    const parsed = parseFloat(String(val).replace(',', '.'));
+    const numVal = Number.isFinite(parsed) ? parsed : 0;
     if (type === 'ingrediente') {
       setIngredientes(prev => prev.map((item, i) => i === index ? { ...item, quantidade_utilizada: numVal } : item));
     } else if (type === 'preparo') {
@@ -489,8 +500,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
     const f = formRef.current;
     if (!f.nome.trim()) return; // não salva sem nome
 
-    const margemSalvar = f.margem_lucro_produto.trim() !== '' ? parseFloat(String(f.margem_lucro_produto).replace(',', '.')) / 100 : null;
-    const pv = parseFloat(String(f.preco_venda).replace(',', '.')) || 0;
+    // F2-J2-02: Number.isFinite guards para evitar NaN persistido no DB
+    const margemRaw = parseFloat(String(f.margem_lucro_produto).replace(',', '.'));
+    const margemSalvar = f.margem_lucro_produto.trim() !== '' && Number.isFinite(margemRaw) ? margemRaw / 100 : null;
+    const pvRaw = parseFloat(String(f.preco_venda).replace(',', '.'));
+    const pv = Number.isFinite(pvRaw) ? pvRaw : 0;
 
     setSaveStatus('saving');
     try {
@@ -501,9 +515,10 @@ export default function ProdutoFormScreen({ route, navigation }) {
          temp_congelado=?, tempo_congelado=?, temp_refrigerado=?, tempo_refrigerado=?,
          temp_ambiente=?, tempo_ambiente=?, modo_preparo=?, observacoes=? WHERE id=?`,
         [
-          f.nome, f.categoria_id, parseNum(f.rendimento_total), f.unidade_rendimento,
-          parseNum(f.rendimento_unidades) || 1, parseNum(f.tempo_preparo), pv, margemSalvar,
-          parseNum(f.validade_dias),
+          // F2-J2-02: parseNum agora pode retornar null — usar `?? 0` p/ campos numéricos do DB
+          f.nome, f.categoria_id, parseNum(f.rendimento_total) ?? 0, f.unidade_rendimento,
+          parseNum(f.rendimento_unidades) || 1, parseNum(f.tempo_preparo) ?? 0, pv, margemSalvar,
+          parseNum(f.validade_dias) ?? 0,
           f.conserv_congelado ? f.temp_congelado : '', f.conserv_congelado ? f.tempo_congelado : '',
           f.conserv_refrigerado ? f.temp_refrigerado : '', f.conserv_refrigerado ? f.tempo_refrigerado : '',
           f.conserv_ambiente ? f.temp_ambiente : '', f.conserv_ambiente ? f.tempo_ambiente : '',
@@ -531,12 +546,15 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
     try {
       const db = await getDatabase();
-      const margemSalvar = form.margem_lucro_produto.trim() !== '' ? parseNum(form.margem_lucro_produto) / 100 : null;
-      const pv = parseFloat(String(form.preco_venda).replace(',', '.')) || 0;
+      // F2-J2-02: Number.isFinite guards + fallback `?? 0` para campos numéricos
+      const margemRaw = parseNum(form.margem_lucro_produto);
+      const margemSalvar = form.margem_lucro_produto.trim() !== '' && Number.isFinite(margemRaw) ? margemRaw / 100 : null;
+      const pvRaw = parseFloat(String(form.preco_venda).replace(',', '.'));
+      const pv = Number.isFinite(pvRaw) ? pvRaw : 0;
       const params = [
-        form.nome, form.categoria_id, parseNum(form.rendimento_total), form.unidade_rendimento,
-        rendUn, parseNum(form.tempo_preparo), pv, margemSalvar,
-        parseNum(form.validade_dias),
+        form.nome, form.categoria_id, parseNum(form.rendimento_total) ?? 0, form.unidade_rendimento,
+        rendUn, parseNum(form.tempo_preparo) ?? 0, pv, margemSalvar,
+        parseNum(form.validade_dias) ?? 0,
         form.conserv_congelado ? form.temp_congelado : '', form.conserv_congelado ? form.tempo_congelado : '',
         form.conserv_refrigerado ? form.temp_refrigerado : '', form.conserv_refrigerado ? form.tempo_refrigerado : '',
         form.conserv_ambiente ? form.temp_ambiente : '', form.conserv_ambiente ? form.tempo_ambiente : '',
@@ -1230,10 +1248,14 @@ export default function ProdutoFormScreen({ route, navigation }) {
               const f = formRef.current;
               try { await autoSave(); } catch (e) { if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.preDuplicate.autoSave]', e); }
               const db = await getDatabase();
-              const margemVal = f.margem_lucro_produto && f.margem_lucro_produto.trim() !== '' ? parseFloat(String(f.margem_lucro_produto).replace(',', '.')) / 100 : null;
+              // F2-J2-02: guards Number.isFinite + `?? 0` para preservar 0 quando vazio/inválido
+              const margemDupRaw = parseFloat(String(f.margem_lucro_produto).replace(',', '.'));
+              const margemVal = f.margem_lucro_produto && f.margem_lucro_produto.trim() !== '' && Number.isFinite(margemDupRaw) ? margemDupRaw / 100 : null;
+              const pvDupRaw = parseFloat(String(f.preco_venda).replace(',','.'));
+              const pvDup = Number.isFinite(pvDupRaw) ? pvDupRaw : 0;
               const result = await db.runAsync(
                 `INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades, tempo_preparo, preco_venda, margem_lucro_produto, validade_dias, temp_congelado, tempo_congelado, temp_refrigerado, tempo_refrigerado, temp_ambiente, tempo_ambiente, modo_preparo, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-                [f.nome.trim() + ' (cópia)', f.categoria_id, parseNum(f.rendimento_total), f.unidade_rendimento || 'g', parseNum(f.rendimento_unidades) || 1, parseNum(f.tempo_preparo), parseFloat(String(f.preco_venda).replace(',','.')) || 0, margemVal, parseNum(f.validade_dias),
+                [f.nome.trim() + ' (cópia)', f.categoria_id, parseNum(f.rendimento_total) ?? 0, f.unidade_rendimento || 'g', parseNum(f.rendimento_unidades) || 1, parseNum(f.tempo_preparo) ?? 0, pvDup, margemVal, parseNum(f.validade_dias) ?? 0,
                  f.conserv_congelado ? f.temp_congelado : '', f.conserv_congelado ? f.tempo_congelado : '',
                  f.conserv_refrigerado ? f.temp_refrigerado : '', f.conserv_refrigerado ? f.tempo_refrigerado : '',
                  f.conserv_ambiente ? f.temp_ambiente : '', f.conserv_ambiente ? f.tempo_ambiente : '',
@@ -1479,7 +1501,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
           )}
           <Pressable style={styles.saveBackBtn} onPress={async () => {
             // Save price to history before full save
-            const price = parseFloat(String(formRef.current.preco_venda).replace(',','.')) || 0;
+            // F2-J2-02: Number.isFinite guard — campo vazio/letras vira 0, não NaN
+            const priceRaw = parseFloat(String(formRef.current.preco_venda).replace(',','.'));
+            const price = Number.isFinite(priceRaw) ? priceRaw : 0;
             if (price > 0 && editId) {
               try {
                 const prodHistId = editId + 1000000;

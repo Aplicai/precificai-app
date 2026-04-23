@@ -9,7 +9,7 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import WebLayout from '../components/web/WebLayout';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { getSetupStatus } from '../utils/setupStatus';
-import { determineInitialRoute } from '../utils/initialRoute';
+import { determineInitialRoute, determineInitialRouteSafe } from '../utils/initialRoute';
 import { useAuth } from '../contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -370,22 +370,81 @@ function AuthNavigator() {
 function AppContent() {
   const [initialRoute, setInitialRoute] = useState(null);
   const [savedTab, setSavedTab] = useState(null);
+  // F1-J1-03: erro de resolução de rota (ex.: getSetupStatus falhou).
+  // Quando setado, exibimos uma tela de erro com retry antes de navegar
+  // para evitar deixar o usuário num app vazio sem feedback.
+  const [routeError, setRouteError] = useState(null);
+  // attempt count força re-execução do effect quando o usuário clica retry.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    const timeout = setTimeout(() => setInitialRoute('MainTabs'), 5000);
-    determineInitialRoute().then(route => {
+    let cancelled = false;
+    setRouteError(null);
+    setInitialRoute(null);
+    const timeout = setTimeout(() => {
+      if (!cancelled) setInitialRoute('MainTabs');
+    }, 5000);
+    determineInitialRouteSafe().then(({ route, routeError: err }) => {
+      if (cancelled) return;
       clearTimeout(timeout);
+      // Se houve erro de DB/setup status, NÃO navega ainda — mostra retry.
+      if (err) {
+        setRouteError(err);
+        return;
+      }
       setInitialRoute(route);
-    }).catch(() => {
+    }).catch((err) => {
+      if (cancelled) return;
       clearTimeout(timeout);
-      setInitialRoute('MainTabs');
+      // Falha catastrófica: log + tela de erro.
+      console.error('[AppContent.determineRoute]', err);
+      setRouteError(err);
     });
     // Load last active tab
     AsyncStorage.getItem(LAST_TAB_KEY).then(tab => {
       if (tab && VALID_TABS.includes(tab)) setSavedTab(tab);
     }).catch(() => {});
-    return () => clearTimeout(timeout);
-  }, []);
+    return () => { cancelled = true; clearTimeout(timeout); };
+  }, [attempt]);
+
+  // F1-J1-03: tela de erro com retry. Substitui o "splash em branco" antigo
+  // que aparecia quando getSetupStatus falhava silenciosamente.
+  if (routeError) {
+    return (
+      <View style={{
+        flex: 1, backgroundColor: colors.background,
+        justifyContent: 'center', alignItems: 'center', padding: 24,
+      }}>
+        <Feather name="alert-circle" size={36} color={colors.warning || colors.primary} />
+        <Text style={{
+          marginTop: 12, fontSize: 16, color: colors.text,
+          textAlign: 'center', fontFamily: fontFamily.semiBold,
+        }}>
+          Não foi possível carregar seus dados
+        </Text>
+        <Text style={{
+          marginTop: 6, fontSize: 13, color: colors.textSecondary,
+          textAlign: 'center', maxWidth: 320, lineHeight: 18,
+        }}>
+          Verifique sua conexão e tente novamente. Se o problema continuar, fale com o suporte.
+        </Text>
+        <TouchableOpacity
+          onPress={() => setAttempt(a => a + 1)}
+          activeOpacity={0.8}
+          style={{
+            marginTop: 20, backgroundColor: colors.primary,
+            paddingVertical: 10, paddingHorizontal: 24, borderRadius: 8,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Tentar novamente"
+        >
+          <Text style={{ color: '#fff', fontFamily: fontFamily.semiBold, fontSize: 14 }}>
+            Tentar novamente
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (!initialRoute) return <View style={{ flex: 1, backgroundColor: colors.background }} />;
 

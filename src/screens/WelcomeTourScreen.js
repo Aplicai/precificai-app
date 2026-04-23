@@ -16,6 +16,16 @@ import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { determineInitialRoute } from '../utils/initialRoute';
+import { useAuth } from '../contexts/AuthContext';
+
+// F1-J1-01: persistência do passo atual do tour por usuário.
+// Segue o padrão de `usePushPermissions.js` — chave prefixada + user_id.
+// Sem userId fazemos fallback para chave global (`__anon`) — usuário deslogado
+// ainda terá continuidade dentro daquela instalação.
+const STEP_STORAGE_KEY_PREFIX = 'welcometour_step_';
+function buildStepKey(userId) {
+  return `${STEP_STORAGE_KEY_PREFIX}${userId || '__anon'}`;
+}
 
 /**
  * WelcomeTourScreen — Tour interativo de 4 slides (audit P1-07).
@@ -76,6 +86,9 @@ export default function WelcomeTourScreen({ navigation }) {
   const slideWidth = isWebDesktop ? Math.min(560, width) : width;
   const scrollRef = useRef(null);
   const [index, setIndex] = useState(0);
+  const { user } = useAuth();
+  // F1-J1-01: chave de step é por usuário; recalculamos quando user muda.
+  const stepKey = buildStepKey(user?.id);
 
   // Incrementa o contador de exibições — após a 2ª vez, initialRoute marca como done.
   useEffect(() => {
@@ -92,6 +105,44 @@ export default function WelcomeTourScreen({ navigation }) {
       }
     })();
   }, []);
+
+  // F1-J1-01: hidrata o passo salvo da sessão anterior (se houver).
+  // Roda apenas uma vez, após termos a chave (que depende de user.id).
+  // Se o passo salvo for inválido (corrompido / fora do range), reinicia em 0.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(stepKey);
+        const parsed = Number(raw);
+        if (!Number.isFinite(parsed)) return;
+        const safeIdx = Math.max(0, Math.min(parsed, SLIDES.length - 1));
+        if (safeIdx === 0 || cancelled) return;
+        setIndex(safeIdx);
+        // Defer scroll para depois do primeiro layout (ScrollView já montado).
+        setTimeout(() => {
+          if (!cancelled) {
+            scrollRef.current?.scrollTo({ x: safeIdx * slideWidth, animated: false });
+          }
+        }, 0);
+      } catch (e) {
+        // Falha de storage não bloqueia o tour; só perde a continuidade.
+        console.error('[WelcomeTour.hydrateStep]', e);
+      }
+    })();
+    return () => { cancelled = true; };
+    // slideWidth muda em redimensionamento; queremos hidratar uma vez quando
+    // a chave é definida (após auth carregar). Dep em stepKey é suficiente.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepKey]);
+
+  // F1-J1-01: persiste o passo atual sempre que `index` muda.
+  // Não bloqueia UI; falha apenas perde continuidade na próxima sessão.
+  useEffect(() => {
+    AsyncStorage.setItem(stepKey, String(index)).catch(e => {
+      console.error('[WelcomeTour.persistStep]', e);
+    });
+  }, [index, stepKey]);
 
   const onScroll = useCallback(
     (e) => {
@@ -115,6 +166,13 @@ export default function WelcomeTourScreen({ navigation }) {
       await AsyncStorage.setItem('welcome_tour_done', 'true');
     } catch (e) {
       console.error('[WelcomeTour.finish.persistDone]', e);
+    }
+    // F1-J1-01: tour concluído → limpa o passo salvo para não reabrir
+    // no meio caso o usuário caia aqui novamente (cenário raro mas defensivo).
+    try {
+      await AsyncStorage.removeItem(stepKey);
+    } catch (e) {
+      console.error('[WelcomeTour.finish.clearStep]', e);
     }
     // Determina a próxima rota (pulando o próprio tour) e navega
     let next = 'ProfileSetup';
@@ -140,7 +198,7 @@ export default function WelcomeTourScreen({ navigation }) {
     } else {
       navigation.navigate(next);
     }
-  }, [navigation]);
+  }, [navigation, stepKey]);
 
   const onNext = useCallback(() => {
     if (index < SLIDES.length - 1) {
@@ -189,6 +247,16 @@ export default function WelcomeTourScreen({ navigation }) {
           ))}
         </ScrollView>
       </View>
+
+      {/* F1-J1-01: indicador textual de progresso (X de Y).
+          Complementa os dots — útil para acessibilidade e telas pequenas
+          onde o usuário não associa dot ativo a posição absoluta. */}
+      <Text
+        style={styles.progressLabel}
+        accessibilityLabel={`Passo ${index + 1} de ${SLIDES.length}`}
+      >
+        {`${index + 1} de ${SLIDES.length}`}
+      </Text>
 
       {/* Dots */}
       <View style={styles.dotsRow}>
@@ -296,11 +364,19 @@ const styles = StyleSheet.create({
   carouselWrap: {
     flex: 1,
   },
+  progressLabel: {
+    textAlign: 'center',
+    fontSize: fonts.small,
+    fontFamily: fontFamily.semiBold,
+    color: colors.primary,
+    marginTop: spacing.sm,
+  },
   dotsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: spacing.md,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.md,
     gap: 8,
   },
   dot: {

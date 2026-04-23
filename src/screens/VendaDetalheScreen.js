@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { getDatabase } from '../database/database';
 import usePushPermissions from '../hooks/usePushPermissions';
+import usePersistedState from '../hooks/usePersistedState';
 import InputField from '../components/InputField';
 import Card from '../components/Card';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
@@ -37,7 +39,7 @@ export default function VendaDetalheScreen({ route }) {
   const [custoUnitario, setCustoUnitario] = useState(0);
   const [dataVenda, setDataVenda] = useState(todayStr);
   const [quantidade, setQuantidade] = useState('');
-  const [mesAtual, setMesAtual] = useState(getUltimos6Meses()[0].key);
+  const [mesAtual, setMesAtual] = usePersistedState(`vendaDetalhe.mesAtual.${produtoId}`, getUltimos6Meses()[0].key);
   const [vendasDoMes, setVendasDoMes] = useState([]);
   const [config, setConfig] = useState({ despFixasPerc: 0, despVarPerc: 0 });
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -47,9 +49,11 @@ export default function VendaDetalheScreen({ route }) {
 
   const meses = getUltimos6Meses();
 
-  useEffect(() => {
-    loadData();
-  }, [mesAtual]);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [mesAtual])
+  );
 
   async function loadData() {
     try {

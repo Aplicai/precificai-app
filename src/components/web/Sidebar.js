@@ -153,7 +153,7 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
             }),
           })
         );
-      } catch(e) {}
+      } catch(e) { console.error('[Sidebar.navegacao]', e); }
       navigation.navigate(item.tab);
     }
   };

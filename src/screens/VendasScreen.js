@@ -132,7 +132,8 @@ export default function VendasScreen({ navigation }) {
       result.sort((a, b) => {
         if (a.qtdVendida === 0 && b.qtdVendida > 0) return 1;
         if (b.qtdVendida === 0 && a.qtdVendida > 0) return -1;
-        return b.qtdVendida - a.qtdVendida;
+        const diff = b.qtdVendida - a.qtdVendida;
+        return diff !== 0 ? diff : a.nome.localeCompare(b.nome, 'pt-BR');
       });
 
       // Calculate summary

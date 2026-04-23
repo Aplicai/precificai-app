@@ -6,6 +6,7 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import usePersistedState from '../hooks/usePersistedState';
 import InfoTooltip from '../components/InfoTooltip';
 import EmptyState from '../components/EmptyState';
 import Loader from '../components/Loader';
@@ -36,8 +37,8 @@ export default function SimuladorScreen({ navigation }) {
   const [produtos, setProdutos] = useState([]);
 
   // ── "E se?" state ──
-  const [ajuste, setAjuste] = useState('10');
-  const [insumoSelecionado, setInsumoSelecionado] = useState(null);
+  const [ajuste, setAjuste] = usePersistedState('simulador.ajuste', '10');
+  const [insumoSelecionado, setInsumoSelecionado] = usePersistedState('simulador.insumo', null);
   const [resultados, setResultados] = useState(null);
   const [busca, setBusca] = useState('');
 

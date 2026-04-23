@@ -73,7 +73,6 @@ export default function PreparoFormScreen({ route, navigation }) {
   useEffect(() => {
     navigation.setOptions({ title: editId ? 'Editar preparo' : 'Novo preparo' });
     loadMateriasPrimas();
-    loadCategorias();
     if (editId) {
       loadItem();
     } else {
@@ -82,8 +81,10 @@ export default function PreparoFormScreen({ route, navigation }) {
   }, [editId]);
 
   // Recarregar lista de insumos ao voltar (ex: após criar novo insumo)
+  // F2-J2-01: também recarrega categorias (criada inline em outro form precisa aparecer)
   useFocusEffect(useCallback(() => {
     loadMateriasPrimas();
+    loadCategorias();
   }, []));
 
   // Intercepta saída para validar campos
@@ -560,7 +561,10 @@ export default function PreparoFormScreen({ route, navigation }) {
           <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.md, marginTop: spacing.sm }}>
             {isFormComplete(form) && <TouchableOpacity style={[styles.btnDelete, { borderColor: colors.primary + '30' }]} onPress={async () => {
               const f = formRef.current;
-              try { await autoSave(); } catch(e) {}
+              // CR-5: catch antes era silencioso — log do erro de auto-save antes de duplicar
+              try { await autoSave(); } catch(e) {
+                if (typeof console !== 'undefined' && console.error) console.error('[PreparoForm.duplicar.autoSave]', e);
+              }
               const db = await getDatabase();
               const result = await db.runAsync('INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg, modo_preparo, observacoes, validade_dias) VALUES (?,?,?,?,?,?,?,?,?)',
                 [f.nome.trim() + ' (cópia)', f.categoria_id, parseFloat(f.rendimento_total) || 0, f.unidade_medida, 0, 0, f.modo_preparo || '', f.observacoes || '', parseFloat(f.validade_dias) || 0]);
@@ -596,7 +600,11 @@ export default function PreparoFormScreen({ route, navigation }) {
               <SaveStatus status={saveStatus} variant="badge" />
             </View>
           )}
-          <TouchableOpacity style={styles.saveBackBtn} onPress={async () => { allowExit.current = true; try { await autoSave(); } catch(e) {} const returnTo = route.params?.returnTo; if (returnTo) { navigation.navigate(returnTo); } else { navigation.goBack(); } }}>
+          <TouchableOpacity style={styles.saveBackBtn} onPress={async () => { allowExit.current = true; try { await autoSave(); } catch(e) {
+            // CR-5: catch antes era silencioso — log + status de erro p/ feedback
+            if (typeof console !== 'undefined' && console.error) console.error('[PreparoForm.saveBackBtn]', e);
+            setSaveStatus('error');
+          } const returnTo = route.params?.returnTo; if (returnTo) { navigation.navigate(returnTo); } else { navigation.goBack(); } }}>
             <Feather name="check" size={16} color="#fff" />
             <Text style={styles.saveBackBtnText}>Salvar e voltar</Text>
           </TouchableOpacity>

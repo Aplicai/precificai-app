@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Platform, Share } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
@@ -241,6 +241,55 @@ export default function RelatorioSimplesScreen({ navigation }) {
     );
   }
 
+  // Monta um texto resumido (período, faturamento, top 3, alertas) para o Share nativo.
+  function construirTextoResumido() {
+    if (!data) return '';
+    const linhas = [];
+    linhas.push(`Relatório Precificaí — ${perfilNome || 'Meu Negócio'}`);
+    linhas.push(new Date().toLocaleDateString('pt-BR'));
+    linhas.push('');
+
+    if (data.resumo) {
+      linhas.push('Resumo (a cada R$ 10,00 que entra):');
+      linhas.push(`• R$ ${data.resumo.ingredientes} ingredientes`);
+      linhas.push(`• R$ ${data.resumo.fixas} custos do mês`);
+      linhas.push(`• R$ ${data.resumo.variaveis} custos por venda`);
+      linhas.push(`• R$ ${data.resumo.lucro} ${data.resumo.lucroPositivo ? 'de lucro' : '(prejuízo)'}`);
+      if (data.resumo.fatMedio > 0) {
+        linhas.push(`Faturamento médio: ${formatCurrency(data.resumo.fatMedio)}/mês`);
+      }
+      linhas.push('');
+    }
+
+    if (data.melhores && data.melhores.length > 0) {
+      linhas.push('Top 3 produtos (lucro por unidade):');
+      data.melhores.slice(0, 3).forEach((p, i) => {
+        linhas.push(`${i + 1}. ${p.nome} — ${formatCurrency(p.margemReais)}`);
+      });
+      linhas.push('');
+    }
+
+    if (data.atencao && data.atencao.length > 0) {
+      linhas.push(`Alertas: ${data.atencao.length} produto(s) com margem abaixo de 10%.`);
+      data.atencao.slice(0, 3).forEach(p => {
+        linhas.push(`• ${p.nome} (${formatCurrency(p.precoVenda)})`);
+      });
+      linhas.push('');
+    }
+
+    linhas.push('Gerado por Precificaí — www.precificaiapp.com');
+    return linhas.join('\n');
+  }
+
+  async function handleShare() {
+    try {
+      const message = construirTextoResumido();
+      await Share.share({ message, title: 'Relatório Precificaí' });
+    } catch (e) {
+      console.error('[RelatorioSimples.share]', e);
+    }
+  }
+
   function baixarRelatorio() {
     if (!data || Platform.OS !== 'web') return;
 
@@ -340,7 +389,7 @@ export default function RelatorioSimplesScreen({ navigation }) {
         <View style={styles.errorBanner}>
           <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: 8 }} />
           <Text style={styles.errorBannerText}>{loadError}</Text>
-          <TouchableOpacity onPress={loadData} style={styles.errorBannerBtn} activeOpacity={0.7}>
+          <TouchableOpacity onPress={loadData} style={styles.errorBannerBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Tentar carregar relatório novamente">
             <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
           </TouchableOpacity>
         </View>
@@ -358,9 +407,25 @@ export default function RelatorioSimplesScreen({ navigation }) {
           style={styles.downloadBtn}
           activeOpacity={0.7}
           onPress={baixarRelatorio}
+          accessibilityRole="button"
+          accessibilityLabel="Baixar relatório completo em PDF"
         >
           <Feather name="download" size={16} color="#fff" />
           <Text style={styles.downloadBtnText}>Baixar Relatório Completo</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Share button (mobile-only) */}
+      {Platform.OS !== 'web' && (
+        <TouchableOpacity
+          style={styles.downloadBtn}
+          activeOpacity={0.7}
+          onPress={handleShare}
+          accessibilityRole="button"
+          accessibilityLabel="Compartilhar resumo do relatório"
+        >
+          <Feather name="share-2" size={16} color="#fff" />
+          <Text style={styles.downloadBtnText}>Compartilhar</Text>
         </TouchableOpacity>
       )}
 

@@ -1203,7 +1203,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end', marginRight: 2,
   },
   itemLucro: { fontSize: 14, fontFamily: fontFamily.bold, fontWeight: '700' },
-  itemLucroLabel: { fontSize: 9, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase' },
+  itemLucroLabel: { fontSize: 11, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.textSecondary, textTransform: 'uppercase' },
 
   // Duplicar
   copyBtn: {
