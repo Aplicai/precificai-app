@@ -194,6 +194,19 @@ export default function ProdutoFormScreen({ route, navigation }) {
     };
   }, []);
 
+  // Auto-abrir SuggestPriceModal quando vindo do Simulador / MargemBaixa / etc
+  // com flag `sugerirNovoPreco: true` na navegação.
+  const sugerirAutoRef = useRef(false);
+  useEffect(() => {
+    if (sugerirAutoRef.current) return;
+    if (!route.params?.sugerirNovoPreco) return;
+    if (custoUnitario <= 0) return;
+    sugerirAutoRef.current = true;
+    abrirSugestaoIA();
+    // limpa flag pra não reabrir em re-render
+    if (navigation?.setParams) navigation.setParams({ sugerirNovoPreco: undefined });
+  }, [route.params?.sugerirNovoPreco, custoUnitario]);
+
   const parseNum = (v) => parseFloat(String(v).replace(',', '.')) || 0;
 
   function sufixoUnidadeRendimento() {

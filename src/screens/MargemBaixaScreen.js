@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Platform } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, RefreshControl, Platform, Modal, ScrollView } from 'react-native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
@@ -13,12 +13,29 @@ const safeNum = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+// Calcula preço sugerido para atingir meta de margem.
+// Fórmula: novoPreco = CMV / (1 - meta - dfPerc - varPerc)
+// Retorna null se denominador <= 0 (modelo inviável).
+function calcPrecoMetaMargem(cmv, meta, dfPerc, varPerc) {
+  const denom = 1 - safeNum(meta) - safeNum(dfPerc) - safeNum(varPerc);
+  if (!Number.isFinite(denom) || denom <= 0) return null;
+  const novo = safeNum(cmv) / denom;
+  return Number.isFinite(novo) && novo > 0 ? novo : null;
+}
+
 export default function MargemBaixaScreen({ navigation }) {
+  const isFocused = useIsFocused();
   const [produtos, setProdutos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [margemMeta, setMargemMeta] = useState(0.15);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  // Coeficientes para calcular preço sugerido por meta
+  const [coefs, setCoefs] = useState({ dfPerc: 0, varPerc: 0 });
+  // Modal de bulk update
+  const [bulkPreviewVisible, setBulkPreviewVisible] = useState(false);
+  const [bulkApplying, setBulkApplying] = useState(false);
+  const [bulkError, setBulkError] = useState(null);
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
@@ -100,11 +117,49 @@ export default function MargemBaixaScreen({ navigation }) {
 
       result.sort((a, b) => a.margem - b.margem);
       setProdutos(result);
+      setCoefs({ dfPerc: safeNum(dfPerc), varPerc: safeNum(totalVar) });
     } catch (e) {
       console.error('[MargemBaixa.loadData]', e);
       setLoadError(e?.message || 'Não foi possível carregar a análise de margem.');
     }
     setLoading(false);
+  }
+
+  // Constrói preview de ajuste em massa para meta
+  const previewItems = produtos
+    .map(p => {
+      const novo = calcPrecoMetaMargem(p.cmv, margemMeta, coefs.dfPerc, coefs.varPerc);
+      if (novo === null) return { ...p, precoNovo: null, inviavel: true };
+      return { ...p, precoNovo: novo, delta: novo - p.preco, deltaPerc: p.preco > 0 ? (novo - p.preco) / p.preco : 0, inviavel: false };
+    });
+  const previewViaveis = previewItems.filter(i => !i.inviavel);
+  const previewInviaveis = previewItems.filter(i => i.inviavel);
+
+  async function applyBulkUpdate() {
+    if (previewViaveis.length === 0) return;
+    setBulkApplying(true);
+    setBulkError(null);
+    try {
+      const db = await getDatabase();
+      // Atualiza em lote dentro de uma transação para atomicidade
+      await db.execAsync('BEGIN');
+      try {
+        for (const item of previewViaveis) {
+          await db.runAsync('UPDATE produtos SET preco_venda = ? WHERE id = ?', [item.precoNovo, item.id]);
+        }
+        await db.execAsync('COMMIT');
+      } catch (innerErr) {
+        await db.execAsync('ROLLBACK');
+        throw innerErr;
+      }
+      setBulkPreviewVisible(false);
+      await loadData();
+    } catch (e) {
+      console.error('[MargemBaixa.applyBulkUpdate]', e);
+      setBulkError(e?.message || 'Não foi possível aplicar o ajuste em massa.');
+    } finally {
+      setBulkApplying(false);
+    }
   }
 
   const getMargemColor = (m) => {
@@ -172,6 +227,19 @@ export default function MargemBaixaScreen({ navigation }) {
         </View>
       </View>
 
+      {produtos.length > 1 && (
+        <TouchableOpacity
+          style={styles.bulkBtn}
+          activeOpacity={0.85}
+          onPress={() => setBulkPreviewVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`Ajustar todos os ${produtos.length} produtos para a meta de ${(margemMeta * 100).toFixed(0)} por cento`}
+        >
+          <Feather name="zap" size={14} color="#fff" />
+          <Text style={styles.bulkBtnText}>Ajustar todos para meta ({formatPercent(margemMeta)})</Text>
+        </TouchableOpacity>
+      )}
+
       <FlatList
         data={produtos}
         keyExtractor={(item) => String(item.id)}
@@ -189,6 +257,82 @@ export default function MargemBaixaScreen({ navigation }) {
           </View>
         }
       />
+
+      {/* Modal preview de bulk update */}
+      <Modal visible={bulkPreviewVisible && isFocused} transparent animationType="fade" onRequestClose={() => setBulkPreviewVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Ajustar preços para meta</Text>
+            <Text style={styles.modalSubtitle}>
+              {previewViaveis.length} produto{previewViaveis.length !== 1 ? 's' : ''} terão o preço de venda alterado para atingir a margem de {formatPercent(margemMeta)}.
+            </Text>
+
+            {previewInviaveis.length > 0 && (
+              <View style={styles.modalAviso}>
+                <Feather name="alert-triangle" size={14} color={colors.error} />
+                <Text style={styles.modalAvisoText}>
+                  {previewInviaveis.length} produto{previewInviaveis.length !== 1 ? 's' : ''} ficou de fora: o CMV + custos variáveis já passa de 100%, não há margem possível com a estrutura atual.
+                </Text>
+              </View>
+            )}
+
+            {bulkError && (
+              <View style={styles.modalAviso}>
+                <Feather name="alert-octagon" size={14} color={colors.error} />
+                <Text style={styles.modalAvisoText}>{bulkError}</Text>
+              </View>
+            )}
+
+            <ScrollView style={styles.previewList} contentContainerStyle={{ paddingVertical: 4 }}>
+              {previewViaveis.map(item => (
+                <View key={item.id} style={styles.previewRow}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.previewName} numberOfLines={1}>{item.nome}</Text>
+                    <Text style={styles.previewMeta}>
+                      Margem: {formatPercent(item.margem)} → {formatPercent(margemMeta)}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.previewPrice}>
+                      {formatCurrency(item.preco)} → {formatCurrency(item.precoNovo)}
+                    </Text>
+                    <Text style={[styles.previewDelta, { color: item.delta >= 0 ? colors.success : colors.error }]}>
+                      {item.delta >= 0 ? '+' : ''}{formatCurrency(item.delta)} ({(item.deltaPerc * 100).toFixed(1)}%)
+                    </Text>
+                  </View>
+                </View>
+              ))}
+              {previewInviaveis.map(item => (
+                <View key={item.id} style={[styles.previewRow, { opacity: 0.55 }]}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.previewName} numberOfLines={1}>{item.nome}</Text>
+                    <Text style={[styles.previewMeta, { color: colors.error }]}>Inviável — revisar custos</Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                onPress={() => { setBulkPreviewVisible(false); setBulkError(null); }}
+                disabled={bulkApplying}
+              >
+                <Text style={styles.modalBtnCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnConfirm, (previewViaveis.length === 0 || bulkApplying) && { opacity: 0.5 }]}
+                onPress={applyBulkUpdate}
+                disabled={previewViaveis.length === 0 || bulkApplying}
+              >
+                <Text style={styles.modalBtnConfirmText}>
+                  {bulkApplying ? 'Aplicando...' : `Aplicar ${previewViaveis.length} ajuste${previewViaveis.length !== 1 ? 's' : ''}`}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -254,4 +398,43 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: fonts.body, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text, marginTop: spacing.md },
   emptyDesc: { fontSize: fonts.small, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 4 },
+
+  bulkBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: colors.primary, paddingVertical: 10, paddingHorizontal: spacing.md,
+    marginHorizontal: spacing.md, marginTop: spacing.sm, borderRadius: borderRadius.md,
+  },
+  bulkBtnText: { color: '#fff', fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600' },
+
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center', alignItems: 'center', padding: spacing.md,
+  },
+  modalContent: {
+    backgroundColor: '#fff', borderRadius: borderRadius.md,
+    padding: spacing.lg, width: '100%', maxWidth: 500, maxHeight: '85%',
+  },
+  modalTitle: { fontSize: fonts.large, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.text, marginBottom: 4 },
+  modalSubtitle: { fontSize: fonts.small, color: colors.textSecondary, fontFamily: fontFamily.regular, marginBottom: spacing.sm },
+  modalAviso: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: '#fef2f2', borderLeftWidth: 3, borderLeftColor: colors.error,
+    padding: spacing.sm, borderRadius: borderRadius.sm, marginBottom: spacing.sm,
+  },
+  modalAvisoText: { flex: 1, fontSize: fonts.tiny, color: colors.error, fontFamily: fontFamily.regular, lineHeight: 16 },
+  previewList: { maxHeight: 280, marginVertical: spacing.sm },
+  previewRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border + '60',
+  },
+  previewName: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, color: colors.text },
+  previewMeta: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
+  previewPrice: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, color: colors.text },
+  previewDelta: { fontSize: 11, fontFamily: fontFamily.semiBold, marginTop: 2 },
+  modalActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  modalBtn: { flex: 1, paddingVertical: 12, borderRadius: borderRadius.sm, alignItems: 'center' },
+  modalBtnCancel: { borderWidth: 1, borderColor: colors.border },
+  modalBtnCancelText: { color: colors.textSecondary, fontFamily: fontFamily.semiBold, fontWeight: '600' },
+  modalBtnConfirm: { backgroundColor: colors.primary },
+  modalBtnConfirmText: { color: '#fff', fontFamily: fontFamily.bold, fontWeight: '700' },
 });

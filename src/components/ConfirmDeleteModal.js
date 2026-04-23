@@ -2,20 +2,26 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
 
-export default function ConfirmDeleteModal({ visible, isFocused = true, titulo, nome, onConfirm, onCancel, confirmLabel = 'Excluir' }) {
+export default function ConfirmDeleteModal({ visible, isFocused = true, titulo, nome, onConfirm, onCancel, confirmLabel = 'Excluir', aviso = null }) {
   const shouldShow = visible && isFocused;
   return (
     <Modal visible={shouldShow} transparent animationType="fade">
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onCancel}>
         <TouchableOpacity activeOpacity={1} style={styles.content} onPress={() => {}}>
           <Text style={styles.title}>{titulo || 'Confirmar Exclusão'}</Text>
-          <Text style={styles.message}>
-            Deseja realmente excluir{'\n'}
-            <Text style={styles.nome}>"{nome}"</Text>?
-          </Text>
-          <Text style={styles.aviso}>
-            Esta ação não pode ser desfeita.
-          </Text>
+          {nome ? (
+            <Text style={styles.message}>
+              Deseja realmente excluir{'\n'}
+              <Text style={styles.nome}>"{nome}"</Text>?
+            </Text>
+          ) : (
+            <Text style={styles.message}>Deseja realmente excluir?</Text>
+          )}
+          {aviso ? (
+            <Text style={styles.avisoCustom}>{aviso}</Text>
+          ) : (
+            <Text style={styles.aviso}>Esta ação não pode ser desfeita.</Text>
+          )}
           <View style={styles.actions}>
             <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
               <Text style={styles.cancelText}>Cancelar</Text>
@@ -68,6 +74,21 @@ const styles = StyleSheet.create({
     color: colors.error,
     textAlign: 'center',
     marginBottom: spacing.lg,
+  },
+  avisoCustom: {
+    fontSize: fonts.small,
+    color: colors.error,
+    textAlign: 'left',
+    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
+    lineHeight: 20,
+    backgroundColor: '#fef2f2',
+    borderLeftWidth: 3,
+    borderLeftColor: colors.error,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.sm,
+    width: '100%',
   },
   actions: {
     flexDirection: 'row',

@@ -53,6 +53,52 @@ function getUnidadeLabel(unidade) {
   return tipo === 'peso' ? '/kg' : tipo === 'volume' ? '/L' : '/un';
 }
 
+// Cascade-warning: lista produtos e preparos que usam o(s) insumo(s).
+// Retorna { produtos: [{id,nome}], preparos: [{id,nome}], total } ou null se nada.
+async function getInsumoDependencies(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return null;
+  try {
+    const db = await getDatabase();
+    const placeholders = ids.map(() => '?').join(',');
+    const produtos = await db.getAllAsync(
+      `SELECT DISTINCT p.id, p.nome FROM produtos p
+       INNER JOIN produto_ingredientes pi ON pi.produto_id = p.id
+       WHERE pi.materia_prima_id IN (${placeholders})
+       ORDER BY p.nome ASC`,
+      ids
+    );
+    const preparos = await db.getAllAsync(
+      `SELECT DISTINCT p.id, p.nome FROM preparos p
+       INNER JOIN preparo_ingredientes pi ON pi.preparo_id = p.id
+       WHERE pi.materia_prima_id IN (${placeholders})
+       ORDER BY p.nome ASC`,
+      ids
+    );
+    const total = (produtos?.length || 0) + (preparos?.length || 0);
+    if (total === 0) return null;
+    return { produtos: produtos || [], preparos: preparos || [], total };
+  } catch (e) {
+    if (typeof console !== 'undefined' && console.error) console.error('[MateriasPrimasScreen.getInsumoDependencies]', e);
+    return null;
+  }
+}
+
+function buildCascadeAviso(deps) {
+  if (!deps || deps.total === 0) return null;
+  const linhas = [];
+  if (deps.produtos.length > 0) {
+    const nomes = deps.produtos.slice(0, 3).map(p => `• ${p.nome}`).join('\n');
+    const extra = deps.produtos.length > 3 ? `\n+${deps.produtos.length - 3} outros` : '';
+    linhas.push(`${deps.produtos.length} ${deps.produtos.length === 1 ? 'produto usa' : 'produtos usam'} este insumo:\n${nomes}${extra}`);
+  }
+  if (deps.preparos.length > 0) {
+    const nomes = deps.preparos.slice(0, 3).map(p => `• ${p.nome}`).join('\n');
+    const extra = deps.preparos.length > 3 ? `\n+${deps.preparos.length - 3} outros` : '';
+    linhas.push(`${deps.preparos.length} ${deps.preparos.length === 1 ? 'preparo usa' : 'preparos usam'} este insumo:\n${nomes}${extra}`);
+  }
+  return `⚠️ ${linhas.join('\n\n')}\n\nO ingrediente será removido deles. Custo e preço sugerido podem ficar desatualizados.`;
+}
+
 export default function MateriasPrimasScreen({ navigation }) {
   const { isDesktop } = useResponsiveLayout();
   const isWeb = Platform.OS === 'web';
@@ -207,10 +253,13 @@ export default function MateriasPrimasScreen({ navigation }) {
     }
   }
 
-  function solicitarExclusao(id, nome) {
+  async function solicitarExclusao(id, nome) {
+    const deps = await getInsumoDependencies([id]);
+    const aviso = buildCascadeAviso(deps);
     setConfirmDelete({
       titulo: 'Excluir Insumo',
       nome,
+      aviso,
       onConfirm: async () => {
         setConfirmDelete(null);
         // Soft-delete: esconde imediatamente, oferece desfazer por 5s (P1-11)
@@ -228,12 +277,15 @@ export default function MateriasPrimasScreen({ navigation }) {
   }
 
   // Exclusão em massa (P1-21)
-  function solicitarExclusaoEmMassa() {
+  async function solicitarExclusaoEmMassa() {
     const ids = Array.from(bulk.selectedIds);
     if (ids.length === 0) return;
+    const deps = await getInsumoDependencies(ids);
+    const aviso = buildCascadeAviso(deps);
     setConfirmDelete({
       titulo: ids.length === 1 ? 'Excluir Insumo' : `Excluir ${ids.length} insumos`,
       nome: ids.length === 1 ? null : `${ids.length} itens selecionados`,
+      aviso,
       onConfirm: async () => {
         setConfirmDelete(null);
         // Hook já adiciona todos os ids ao hiddenIds (suporta array)
@@ -782,6 +834,7 @@ export default function MateriasPrimasScreen({ navigation }) {
         isFocused={isFocused}
         titulo={confirmDelete?.titulo}
         nome={confirmDelete?.nome}
+        aviso={confirmDelete?.aviso}
         onConfirm={confirmDelete?.onConfirm}
         onCancel={() => setConfirmDelete(null)}
       />

@@ -429,6 +429,40 @@ export default function AtualizarPrecosScreen() {
               </Text>
             )}
 
+            {/* Audit P1 (Fase 2 - Fix #4): preview de delta antes de salvar */}
+            {(() => {
+              const novoPreco = safeNum(String(editModal?.value || '0').replace(',', '.'));
+              const oldPreco = safeNum(editModal?.item?.price);
+              if (!(novoPreco > 0) || !(oldPreco > 0)) return null;
+              const delta = novoPreco - oldPreco;
+              const deltaPerc = oldPreco > 0 ? (delta / oldPreco) * 100 : 0;
+              if (Math.abs(delta) < 0.005) return null;
+              const isUp = delta > 0;
+              const isDramatic = Math.abs(deltaPerc) >= 30;
+              const cor = isDramatic ? '#dc2626' : (isUp ? '#16a34a' : '#dc2626');
+              const sinal = isUp ? '+' : '−';
+              const valorAbs = Math.abs(delta);
+              const percAbs = Math.abs(deltaPerc);
+              return (
+                <View style={styles.modalDeltaBox}>
+                  <View style={styles.modalDeltaRow}>
+                    <Text style={styles.modalDeltaLabel}>Variação:</Text>
+                    <Text style={[styles.modalDeltaValue, { color: cor }]}>
+                      {sinal}{formatCurrency(valorAbs)} ({sinal}{percAbs.toFixed(1)}%)
+                    </Text>
+                  </View>
+                  <Text style={styles.modalDeltaTransition}>
+                    {formatCurrency(oldPreco)} → {formatCurrency(novoPreco)}
+                  </Text>
+                  {isDramatic ? (
+                    <Text style={styles.modalDeltaWarning}>
+                      ⚠️ Variação significativa — confira antes de salvar.
+                    </Text>
+                  ) : null}
+                </View>
+              );
+            })()}
+
             <View style={styles.modalButtons}>
               <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setEditModal(null)}>
                 <Text style={styles.modalCancelText}>Cancelar</Text>
@@ -869,6 +903,45 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: spacing.md,
+  },
+  // Audit P1 (Fase 2 - Fix #4): preview de delta no modal de edição
+  modalDeltaBox: {
+    backgroundColor: '#f9fafb',
+    borderRadius: borderRadius.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalDeltaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalDeltaLabel: {
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.medium,
+    color: colors.textSecondary,
+  },
+  modalDeltaValue: {
+    fontSize: fonts.small,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+  },
+  modalDeltaTransition: {
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  modalDeltaWarning: {
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.medium,
+    color: '#dc2626',
+    textAlign: 'center',
+    marginTop: 6,
   },
   modalButtons: {
     flexDirection: 'row',

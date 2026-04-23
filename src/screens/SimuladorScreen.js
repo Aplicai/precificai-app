@@ -328,8 +328,15 @@ export default function SimuladorScreen({ navigation }) {
             {/* Lista de produtos (filtrada pelo insumo selecionado) */}
             {(insumoSelecionado ? resultados.filter(r => r.ingredientes.some(ing => ing.mp_id === insumoSelecionado)) : resultados).map(r => {
               const margemColor = r.margemNova >= 0.15 ? colors.success : r.margemNova >= 0.05 ? colors.warning : colors.error;
+              const margemRisco = r.margemNova < 0.10;
               return (
-                <View key={r.id} style={styles.produtoRow}>
+                <TouchableOpacity
+                  key={r.id}
+                  style={[styles.produtoRow, margemRisco && { backgroundColor: '#fef2f2' }]}
+                  onPress={() => navigation.navigate('ProdutoForm', { id: r.id, sugerirNovoPreco: margemRisco })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Ajustar preço de ${r.nome}, margem nova ${(r.margemNova * 100).toFixed(0)} por cento`}
+                >
                   <View style={{ flex: 1 }}>
                     <Text style={styles.produtoNome} numberOfLines={1}>{r.nome}</Text>
                     <Text style={styles.produtoDetalhe}>
@@ -342,9 +349,14 @@ export default function SimuladorScreen({ navigation }) {
                     <Feather name="arrow-right" size={12} color={colors.disabled} />
                     <Text style={[styles.margemText, { color: margemColor, fontFamily: fontFamily.bold }]}>{formatPercent(r.margemNova)}</Text>
                   </View>
-                </View>
+                  <Feather name="chevron-right" size={16} color={colors.disabled} style={{ marginLeft: 6 }} />
+                </TouchableOpacity>
               );
             })}
+            <View style={styles.aplicarHint}>
+              <Feather name="info" size={12} color={colors.textSecondary} />
+              <Text style={styles.aplicarHintText}>Toque em um produto para ajustar o preço de venda.</Text>
+            </View>
           </View>
         )}
       </>
@@ -710,12 +722,21 @@ const styles = StyleSheet.create({
 
   produtoRow: {
     flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border + '60',
+    paddingVertical: 10, paddingHorizontal: 8, borderRadius: borderRadius.sm,
+    borderBottomWidth: 1, borderBottomColor: colors.border + '60',
   },
   produtoNome: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, color: colors.text },
   produtoDetalhe: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
   produtoMargens: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 12 },
   margemText: { fontSize: fonts.small, fontFamily: fontFamily.medium },
+  aplicarHint: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginTop: spacing.sm, paddingTop: spacing.sm,
+    borderTopWidth: 1, borderTopColor: colors.border + '40',
+  },
+  aplicarHintText: {
+    fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.regular, fontStyle: 'italic',
+  },
 
   // ── "Meta de Vendas" styles ──
   metaInfoCard: {

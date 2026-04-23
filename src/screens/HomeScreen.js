@@ -318,19 +318,20 @@ export default function HomeScreen({ navigation }) {
         } else if (worstProd && worstMargem < 0.15) {
           insights.push({ priority: 2, icon: 'alert-triangle', color: colors.coral, title: 'Margem baixa', text: `${worstProd.nome} está com margem de ${formatPercent(worstMargem)}, abaixo do ideal (15%).`, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ver produto' } });
         }
-        if (bestProd) insights.push({ priority: 3, icon: 'award', color: colors.success, title: 'Produto campeão', text: `${bestProd.nome} é seu mais lucrativo com margem de ${formatPercent(bestMargem)}.` });
-        insights.push({ priority: 3, icon: 'pie-chart', color: colors.accent, title: 'Carteira saudável', text: `${healthyCount} de ${prodsComPreco} produtos com margem saudável (>15%).` });
+        // Audit P1 (Fase 2 - Fix #5): TODO insight precisa de action navegável.
+        if (bestProd) insights.push({ priority: 3, icon: 'award', color: colors.success, title: 'Produto campeão', text: `${bestProd.nome} é seu mais lucrativo com margem de ${formatPercent(bestMargem)}.`, action: { tab: 'ProdutoFormHome', id: bestProd.id, label: 'Ver produto' } });
+        insights.push({ priority: 3, icon: 'pie-chart', color: colors.accent, title: 'Carteira saudável', text: `${healthyCount} de ${prodsComPreco} produtos com margem saudável (>15%).`, action: { tab: 'Produtos', label: 'Ver produtos' } });
       }
       if (produtosSemPreco.length > 0) {
         insights.push({ priority: 1, icon: 'tag', color: colors.warning, title: `${produtosSemPreco.length} produto(s) sem preço`, text: 'Defina o preço de venda para começar a calcular sua margem real.', action: { tab: 'Produtos', label: 'Definir preços' } });
       }
       if (pontoEquilibrio > 0 && fatMedio > 0 && fatMedio < pontoEquilibrio) {
-        insights.push({ priority: 1, icon: 'target', color: colors.coral, title: 'Faturamento abaixo do equilíbrio', text: `Faltam ${formatCurrency(pontoEquilibrio - fatMedio)} por mês para cobrir seus custos. Você precisa faturar ${formatCurrency(pontoEquilibrio / 30)}/dia.` });
+        insights.push({ priority: 1, icon: 'target', color: colors.coral, title: 'Faturamento abaixo do equilíbrio', text: `Faltam ${formatCurrency(pontoEquilibrio - fatMedio)} por mês para cobrir seus custos. Você precisa faturar ${formatCurrency(pontoEquilibrio / 30)}/dia.`, action: { tab: 'Financeiro', label: 'Abrir financeiro' } });
       } else if (pontoEquilibrio > 0) {
-        insights.push({ priority: 3, icon: 'target', color: colors.purple, title: 'Ponto de equilíbrio', text: `Você precisa faturar ${formatCurrency(pontoEquilibrio / 30)} por dia para cobrir seus custos.` });
+        insights.push({ priority: 3, icon: 'target', color: colors.purple, title: 'Ponto de equilíbrio', text: `Você precisa faturar ${formatCurrency(pontoEquilibrio / 30)} por dia para cobrir seus custos.`, action: { tab: 'Financeiro', label: 'Ver financeiro' } });
       }
       if (cmvPercent > 0.35) {
-        insights.push({ priority: 2, icon: 'trending-up', color: colors.coral, title: 'CMV acima da média', text: `Seu CMV está em ${formatPercent(cmvPercent)}, acima da referência do setor (30-35%). Renegocie ingredientes-chave.` });
+        insights.push({ priority: 2, icon: 'trending-up', color: colors.coral, title: 'CMV acima da média', text: `Seu CMV está em ${formatPercent(cmvPercent)}, acima da referência do setor (30-35%). Renegocie ingredientes-chave.`, action: { tab: 'Insumos', label: 'Revisar insumos' } });
       }
 
       // Sort by priority (1 = most critical first)
@@ -790,19 +791,42 @@ export default function HomeScreen({ navigation }) {
       </View>
 
       {/* Insights — lista completa de análises rápidas (P1-12: o featured banner
-          já mostra o mais urgente acima; aqui o usuário vê todos os outros). */}
+          já mostra o mais urgente acima; aqui o usuário vê todos os outros).
+          Audit P1 (Fase 2 - Fix #5): cards agora são clicáveis e levam ao
+          contexto correto (produto específico, financeiro, insumos, etc.). */}
       {d.insights?.length > 0 && (
         <>
           <Text style={styles.sectionTitle}>Análises Rápidas</Text>
-          {d.insights.map((insight, i) => (
-            <View key={i} style={[styles.insightCard, { borderLeftColor: insight.color }]}>
-              <Feather name={insight.icon} size={16} color={insight.color} style={{ marginTop: 2 }} />
-              <View style={{ flex: 1 }}>
-                {insight.title && <Text style={styles.insightTitle}>{insight.title}</Text>}
-                <Text style={styles.insightText}>{insight.text}</Text>
-              </View>
-            </View>
-          ))}
+          {d.insights.map((insight, i) => {
+            const a = insight.action;
+            const Wrapper = a ? TouchableOpacity : View;
+            const wrapperProps = a
+              ? {
+                  activeOpacity: 0.7,
+                  onPress: () => {
+                    if (a.id) navToProduto(a.id);
+                    else nav(a.tab);
+                  },
+                  accessibilityRole: 'button',
+                  accessibilityLabel: insight.title || insight.text,
+                }
+              : {};
+            return (
+              <Wrapper key={i} style={[styles.insightCard, { borderLeftColor: insight.color }]} {...wrapperProps}>
+                <Feather name={insight.icon} size={16} color={insight.color} style={{ marginTop: 2 }} />
+                <View style={{ flex: 1 }}>
+                  {insight.title && <Text style={styles.insightTitle}>{insight.title}</Text>}
+                  <Text style={styles.insightText}>{insight.text}</Text>
+                  {a && (
+                    <Text style={[styles.insightCta, { color: insight.color }]}>
+                      {a.label} →
+                    </Text>
+                  )}
+                </View>
+                {a && <Feather name="chevron-right" size={14} color={colors.disabled} />}
+              </Wrapper>
+            );
+          })}
         </>
       )}
 
@@ -1189,6 +1213,11 @@ const styles = StyleSheet.create({
     color: colors.text, marginBottom: 2, lineHeight: 18,
   },
   insightText: { fontSize: 12, fontFamily: fontFamily.regular, color: colors.textSecondary, lineHeight: 17 },
+  // Audit P1 (Fase 2 - Fix #5): CTA inline em insights navegáveis.
+  insightCta: {
+    fontSize: 12, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    marginTop: 4,
+  },
 
   // Featured Insight Banner (P1-12) — destaque visual no topo da Home
   featuredInsight: {
