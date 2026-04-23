@@ -10,6 +10,7 @@ import InfoTooltip from '../components/InfoTooltip';
 import Chip from '../components/Chip';
 import EmptyState from '../components/EmptyState';
 import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
+import InviabilidadeModal from '../components/InviabilidadeModal';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 import usePersistedState from '../hooks/usePersistedState';
@@ -52,6 +53,7 @@ export default function DeliveryPrecosScreen() {
   const [customPrices, setCustomPrices] = usePersistedState('deliveryPrecos.customPrices', {});
   const [showLegend, setShowLegend] = useState(false);
   const [loadError, setLoadError] = useState(null);
+  const [inviabilidadeInfo, setInviabilidadeInfo] = useState(null);
   const isLoadingRef = useRef(false);
 
   useFocusEffect(
@@ -360,17 +362,35 @@ export default function DeliveryPrecosScreen() {
           />
         </View>
 
-        {inviavel && (
-          <View
+        {(inviavel || (!inviavel && lucro < 0)) && (
+          <TouchableOpacity
             style={styles.inviavelBanner}
-            accessibilityRole="alert"
-            accessibilityLiveRegion="polite"
+            onPress={() => setInviabilidadeInfo({
+              itemNome: item.nome,
+              plataformaNome: plat.plataforma,
+              custoUnitario: custoUn,
+              precoBalcao: precoVenda,
+              taxaPct,
+              comissaoApp,
+              descontoPct,
+              precoDelivery,
+              lucro,
+              inviavel,
+            })}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={inviavel
+              ? `Preço inviável em ${plat.plataforma} — toque para ver detalhes e dicas`
+              : `Venda com prejuízo em ${plat.plataforma} — toque para ver detalhes e dicas`}
           >
             <Feather name="alert-octagon" size={12} color={colors.error} style={{ marginRight: 4 }} />
             <Text style={styles.inviavelBannerText}>
-              Taxa da plataforma cobre/excede o preço — defina um preço delivery manualmente.
+              {inviavel
+                ? 'Taxa cobre/excede o preço — toque para ver dicas'
+                : `Prejuízo de ${formatCurrency(Math.abs(lucro))} — toque para ver dicas`}
             </Text>
-          </View>
+            <Feather name="chevron-right" size={12} color={colors.error} style={{ marginLeft: 4 }} />
+          </TouchableOpacity>
         )}
 
         <View style={styles.priceRow}>
@@ -686,6 +706,12 @@ export default function DeliveryPrecosScreen() {
           </Text>
         </Card>
       )}
+
+      <InviabilidadeModal
+        visible={!!inviabilidadeInfo}
+        info={inviabilidadeInfo}
+        onClose={() => setInviabilidadeInfo(null)}
+      />
     </ScrollView>
   );
 }
