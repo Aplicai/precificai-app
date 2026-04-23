@@ -154,11 +154,22 @@ export default function VendaDetalheScreen({ route }) {
       setQuantidade('');
       loadData();
 
-      // Earned moment: pede permissão de push após a primeira venda do produto.
-      // Idempotente — só pergunta uma vez (chave 'first_sale').
+      // Earned moment: pede permissão de push apenas após a PRIMEIRA venda real do
+      // histórico do usuário (não a primeira da sessão). A venda recém-inserida já
+      // está no DB, então totalVendas === 1 ⇒ é a primeira de fato.
+      // Idempotente — askIfNotAsked também guarda flag (chave 'first_sale').
       try {
-        await askIfNotAsked('first_sale');
-      } catch (_) { /* não bloqueia */ }
+        const countRow = await db.getFirstAsync('SELECT COUNT(*) as count FROM vendas');
+        const totalVendas = countRow?.count || 0;
+        if (totalVendas === 1) {
+          await askIfNotAsked('first_sale');
+        }
+      } catch (pushErr) {
+        // Não bloqueia a venda — apenas registra para diagnóstico.
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('[VendaDetalheScreen.registrarVenda.earnedMoment]', pushErr);
+        }
+      }
     } catch (e) {
       Alert.alert('Erro', e?.message || 'Não foi possível registrar a venda.');
     } finally {

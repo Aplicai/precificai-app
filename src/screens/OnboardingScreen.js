@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal, ActivityIndicator } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, CommonActions } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts, borderRadius, fontFamily } from '../utils/theme';
@@ -56,7 +56,14 @@ export default function OnboardingScreen({ navigation }) {
       console.error('[Onboarding.goToHome]', e);
     }
     setShowCompleteModal(false);
-    navigation.replace('MainTabs');
+    // F1-J1-02 (P0): reset completo do stack para evitar rotas residuais
+    // inconsistentes (ex.: ProfileSetup/KitInicio ainda no histórico).
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'MainTabs' }],
+      })
+    );
   }
 
   function navToStep(etapa) {
@@ -74,7 +81,14 @@ export default function OnboardingScreen({ navigation }) {
     } catch (e) {
       console.error('[Onboarding.skipToHome]', e);
     }
-    navigation.replace('MainTabs');
+    // F1-J1-02 (P0): reset completo do stack para evitar rotas residuais
+    // inconsistentes ao pular o onboarding direto pra MainTabs.
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'MainTabs' }],
+      })
+    );
   }
 
   // Audit P2: feedback de loading inicial (antes era tela em branco).

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDatabase } from '../database/database';
@@ -53,12 +54,25 @@ export default function KitInicioScreen({ navigation, route }) {
         if (navigation.canGoBack()) {
           navigation.goBack();
         } else {
-          navigation.replace('MainTabs');
+          // F1-J1-02 (P0): reset completo do stack ao cair em MainTabs sem
+          // histórico válido — evita rotas residuais do fluxo de setup.
+          navigation.dispatch(
+            CommonActions.reset({
+              index: 0,
+              routes: [{ name: 'MainTabs' }],
+            })
+          );
         }
       }
     } catch (e) {
       console.error('[KitInicio.navegarAposKit]', e);
-      navigation.replace('MainTabs');
+      // F1-J1-02 (P0): fallback de erro também precisa garantir stack limpo.
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'MainTabs' }],
+        })
+      );
     }
   }
 

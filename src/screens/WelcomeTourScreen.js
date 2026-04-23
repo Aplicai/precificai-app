@@ -11,6 +11,7 @@ import {
   StatusBar,
   SafeAreaView,
 } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
@@ -123,7 +124,18 @@ export default function WelcomeTourScreen({ navigation }) {
       console.error('[WelcomeTour.finish.initialRoute]', e);
       next = 'ProfileSetup';
     }
-    if (navigation.replace) {
+    // F1-J1-02 (P0): se a próxima rota for raiz do app (MainTabs), reseta
+    // o stack inteiro para evitar resíduos do fluxo de welcome/setup.
+    // Demais rotas (ProfileSetup, Onboarding) seguem como replace normal,
+    // pois fazem parte do mesmo flow e devem manter a hierarquia.
+    if (next === 'MainTabs') {
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'MainTabs' }],
+        })
+      );
+    } else if (navigation.replace) {
       navigation.replace(next);
     } else {
       navigation.navigate(next);
