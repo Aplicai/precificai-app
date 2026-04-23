@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { View, Text, FlatList, ScrollView, StyleSheet, TextInput, TouchableOpacity, Modal, Keyboard, Platform } from 'react-native';
+import { View, Text, FlatList, ScrollView, StyleSheet, TextInput, TouchableOpacity, Modal, Keyboard, Platform, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import { Feather } from '@expo/vector-icons';
@@ -8,6 +8,13 @@ import { formatCurrency, normalizeSearch } from '../utils/calculations';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import usePersistedState from '../hooks/usePersistedState';
+
+// Audit P1: helper defensivo p/ números vindos de DB ou input manual.
+function safeNum(v) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
 
 const CATEGORY_COLORS = [
   colors.primary, colors.accent, colors.coral, colors.purple,
@@ -26,13 +33,21 @@ export default function AtualizarPrecosScreen() {
   const { isDesktop } = useResponsiveLayout();
   const [activeTab, setActiveTab] = useState('insumos');
   const [items, setItems] = useState([]);
-  const [busca, setBusca] = useState('');
+  // Audit P1: persistir busca entre navegações (padrão da casa).
+  const [busca, setBusca] = usePersistedState('atualizarPrecos.busca', '');
+  // Audit P0: estados de loading/erro (era silent + sem feedback).
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [saveError, setSaveError] = useState(null);
 
   // Modal state
   const [editModal, setEditModal] = useState(null); // { item, value }
+  const [editError, setEditError] = useState(null); // P1: feedback inline no modal
   const [recentSaved, setRecentSaved] = useState({}); // { id: true }
   const [collapsedDesktop, setCollapsedDesktop] = useState({});
   const inputRef = useRef(null);
+  // P0: guard contra race condition em loadData concorrente
+  const isLoadingRef = useRef(false);
 
   function toggleDesktopSection(key) { setCollapsedDesktop(prev => ({...prev, [key]: !prev[key]})); }
 
@@ -41,35 +56,48 @@ export default function AtualizarPrecosScreen() {
   }, [activeTab, busca]));
 
   async function loadData() {
-    const db = await getDatabase();
-    let rows = [];
+    if (isLoadingRef.current) return; // P0: evita corridas
+    isLoadingRef.current = true;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const db = await getDatabase();
+      let rows = [];
 
-    if (activeTab === 'insumos') {
-      rows = await db.getAllAsync('SELECT id, nome, marca, valor_pago, categoria_id FROM materias_primas ORDER BY nome');
-      const cats = await db.getAllAsync('SELECT id, nome FROM categorias_insumos');
-      const catMap = Object.fromEntries(cats.map(c => [c.id, c.nome]));
-      rows = rows.map(r => ({ ...r, displayName: r.marca ? `${r.nome} (${r.marca})` : r.nome, priceField: 'valor_pago', price: r.valor_pago, categoria: catMap[r.categoria_id] || 'Sem categoria' }));
-    } else if (activeTab === 'embalagens') {
-      rows = await db.getAllAsync('SELECT id, nome, marca, preco_embalagem, categoria_id FROM embalagens ORDER BY nome');
-      const cats = await db.getAllAsync('SELECT id, nome FROM categorias_embalagens');
-      const catMap = Object.fromEntries(cats.map(c => [c.id, c.nome]));
-      rows = rows.map(r => ({ ...r, displayName: r.marca ? `${r.nome} (${r.marca})` : r.nome, priceField: 'preco_embalagem', price: r.preco_embalagem, categoria: catMap[r.categoria_id] || 'Sem categoria' }));
-    } else if (activeTab === 'produtos') {
-      rows = await db.getAllAsync('SELECT id, nome, preco_venda, categoria_id FROM produtos ORDER BY nome');
-      const cats = await db.getAllAsync('SELECT id, nome FROM categorias_produtos');
-      const catMap = Object.fromEntries(cats.map(c => [c.id, c.nome]));
-      rows = rows.map(r => ({ ...r, priceField: 'preco_venda', price: r.preco_venda, categoria: catMap[r.categoria_id] || 'Sem categoria' }));
-    } else if (activeTab === 'combos') {
-      rows = await db.getAllAsync('SELECT id, nome, preco_venda FROM delivery_combos ORDER BY nome');
-      rows = rows.map(r => ({ ...r, priceField: 'preco_venda', price: r.preco_venda, categoria: 'Combos' }));
+      if (activeTab === 'insumos') {
+        rows = await db.getAllAsync('SELECT id, nome, marca, valor_pago, categoria_id FROM materias_primas ORDER BY nome');
+        const cats = await db.getAllAsync('SELECT id, nome FROM categorias_insumos');
+        const catMap = Object.fromEntries(cats.map(c => [c.id, c.nome]));
+        rows = rows.map(r => ({ ...r, displayName: r.marca ? `${r.nome} (${r.marca})` : r.nome, priceField: 'valor_pago', price: safeNum(r.valor_pago), categoria: catMap[r.categoria_id] || 'Sem categoria' }));
+      } else if (activeTab === 'embalagens') {
+        rows = await db.getAllAsync('SELECT id, nome, marca, preco_embalagem, categoria_id FROM embalagens ORDER BY nome');
+        const cats = await db.getAllAsync('SELECT id, nome FROM categorias_embalagens');
+        const catMap = Object.fromEntries(cats.map(c => [c.id, c.nome]));
+        rows = rows.map(r => ({ ...r, displayName: r.marca ? `${r.nome} (${r.marca})` : r.nome, priceField: 'preco_embalagem', price: safeNum(r.preco_embalagem), categoria: catMap[r.categoria_id] || 'Sem categoria' }));
+      } else if (activeTab === 'produtos') {
+        rows = await db.getAllAsync('SELECT id, nome, preco_venda, categoria_id FROM produtos ORDER BY nome');
+        const cats = await db.getAllAsync('SELECT id, nome FROM categorias_produtos');
+        const catMap = Object.fromEntries(cats.map(c => [c.id, c.nome]));
+        rows = rows.map(r => ({ ...r, priceField: 'preco_venda', price: safeNum(r.preco_venda), categoria: catMap[r.categoria_id] || 'Sem categoria' }));
+      } else if (activeTab === 'combos') {
+        rows = await db.getAllAsync('SELECT id, nome, preco_venda FROM delivery_combos ORDER BY nome');
+        rows = rows.map(r => ({ ...r, priceField: 'preco_venda', price: safeNum(r.preco_venda), categoria: 'Combos' }));
+      }
+
+      if (busca.trim()) {
+        const termo = normalizeSearch(busca);
+        rows = rows.filter(r => normalizeSearch(r.displayName || r.nome).includes(termo));
+      }
+
+      setItems(rows);
+    } catch (err) {
+      // Audit P0: era silent — agora loga e mostra banner.
+      console.error('[AtualizarPrecos.loadData]', err);
+      setLoadError('Não foi possível carregar os preços. Tente novamente.');
+    } finally {
+      setLoading(false);
+      isLoadingRef.current = false;
     }
-
-    if (busca.trim()) {
-      const termo = normalizeSearch(busca);
-      rows = rows.filter(r => normalizeSearch(r.displayName || r.nome).includes(termo));
-    }
-
-    setItems(rows);
   }
 
   function getTableName() {
@@ -89,38 +117,56 @@ export default function AtualizarPrecosScreen() {
   function openEditModal(item) {
     const formatted = item.price ? Number(item.price).toFixed(2).replace('.', ',') : '0,00';
     setEditModal({ item, value: formatted });
+    setEditError(null);
     setTimeout(() => inputRef.current?.focus(), 100);
   }
 
   async function confirmSave() {
     if (!editModal) return;
     const { item, value } = editModal;
-    const numericValue = parseFloat(value.replace(',', '.')) || 0;
-    const db = await getDatabase();
-    const table = getTableName();
+    // Audit P1: validar input antes de gravar — antes "abc" virava 0 silent.
+    const parsed = parseFloat(String(value).replace(',', '.'));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setEditError('Digite um valor numérico válido (use vírgula para decimais).');
+      return;
+    }
+    const numericValue = parsed;
+    try {
+      const db = await getDatabase();
+      const table = getTableName();
 
-    if (activeTab === 'insumos') {
-      const row = await db.getFirstAsync('SELECT * FROM materias_primas WHERE id = ?', [item.id]);
-      if (row) {
-        const qtdLiquida = row.quantidade_liquida || row.quantidade_bruta || 1;
-        const precoPorKg = qtdLiquida > 0 ? numericValue / qtdLiquida : 0;
-        await db.runAsync('UPDATE materias_primas SET valor_pago = ?, preco_por_kg = ? WHERE id = ?', [numericValue, precoPorKg, item.id]);
-      }
-    } else {
-      await db.runAsync(`UPDATE ${table} SET ${item.priceField} = ? WHERE id = ?`, [numericValue, item.id]);
-      if (activeTab === 'embalagens') {
-        const row = await db.getFirstAsync('SELECT * FROM embalagens WHERE id = ?', [item.id]);
-        if (row && row.quantidade > 0) {
-          await db.runAsync('UPDATE embalagens SET preco_unitario = ? WHERE id = ?', [numericValue / row.quantidade, item.id]);
+      if (activeTab === 'insumos') {
+        const row = await db.getFirstAsync('SELECT * FROM materias_primas WHERE id = ?', [item.id]);
+        if (row) {
+          // Audit P1: safeNum + division-by-zero guard reforçado.
+          const qtdLiquida = safeNum(row.quantidade_liquida) || safeNum(row.quantidade_bruta) || 1;
+          const precoPorKg = qtdLiquida > 0 ? safeNum(numericValue / qtdLiquida) : 0;
+          await db.runAsync('UPDATE materias_primas SET valor_pago = ?, preco_por_kg = ? WHERE id = ?', [numericValue, precoPorKg, item.id]);
+        }
+      } else {
+        await db.runAsync(`UPDATE ${table} SET ${item.priceField} = ? WHERE id = ?`, [numericValue, item.id]);
+        if (activeTab === 'embalagens') {
+          const row = await db.getFirstAsync('SELECT * FROM embalagens WHERE id = ?', [item.id]);
+          const qtd = safeNum(row?.quantidade);
+          if (row && qtd > 0) {
+            await db.runAsync('UPDATE embalagens SET preco_unitario = ? WHERE id = ?', [safeNum(numericValue / qtd), item.id]);
+          }
         }
       }
-    }
 
-    // Update local state
-    setItems(prev => prev.map(i => i.id === item.id ? { ...i, price: numericValue } : i));
-    setRecentSaved(prev => ({ ...prev, [item.id]: true }));
-    setTimeout(() => setRecentSaved(prev => { const n = { ...prev }; delete n[item.id]; return n; }), 2000);
-    setEditModal(null);
+      // Update local state
+      setItems(prev => prev.map(i => i.id === item.id ? { ...i, price: numericValue } : i));
+      setRecentSaved(prev => ({ ...prev, [item.id]: true }));
+      setTimeout(() => setRecentSaved(prev => { const n = { ...prev }; delete n[item.id]; return n; }), 2000);
+      setEditModal(null);
+      setEditError(null);
+    } catch (err) {
+      // Audit P0: salvar silent fazia o usuário pensar que gravou e perder dados.
+      console.error('[AtualizarPrecos.confirmSave]', err);
+      setEditError('Falha ao salvar. Verifique sua conexão e tente novamente.');
+      setSaveError('Não foi possível salvar o preço. Tente novamente.');
+      setTimeout(() => setSaveError(null), 3500);
+    }
   }
 
   const isWeb = Platform.OS === 'web';
@@ -147,7 +193,12 @@ export default function AtualizarPrecosScreen() {
           </Text>
           <View style={styles.rowRight}>
             {isSaved && (
-              <View style={styles.savedBadge}>
+              <View
+                style={styles.savedBadge}
+                accessibilityRole="text"
+                accessibilityLabel={`Preço de ${item.displayName || item.nome} salvo com sucesso`}
+                accessibilityLiveRegion="polite"
+              >
                 <Feather name="check" size={12} color={colors.success} />
                 <Text style={styles.savedText}>Salvo</Text>
               </View>
@@ -263,6 +314,26 @@ export default function AtualizarPrecosScreen() {
         </View>
       </View>
 
+      {/* Audit P0: banners de erro */}
+      {loadError ? (
+        <TouchableOpacity
+          style={styles.errorBanner}
+          onPress={loadData}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Tentar carregar preços novamente"
+        >
+          <Feather name="alert-circle" size={16} color="#dc2626" style={{ marginRight: 8 }} />
+          <Text style={styles.errorBannerText}>{loadError}</Text>
+        </TouchableOpacity>
+      ) : null}
+      {saveError ? (
+        <View style={styles.errorBanner} accessibilityRole="alert">
+          <Feather name="alert-circle" size={16} color="#dc2626" style={{ marginRight: 8 }} />
+          <Text style={styles.errorBannerText}>{saveError}</Text>
+        </View>
+      ) : null}
+
       {/* Item count */}
       {items.length > 0 && (
         <View style={[styles.countBar, isDesktop && styles.countBarDesktop]}>
@@ -271,6 +342,14 @@ export default function AtualizarPrecosScreen() {
           </Text>
         </View>
       )}
+
+      {/* Audit P0: loading indicator (era tela em branco) */}
+      {loading && items.length === 0 && !loadError ? (
+        <View style={styles.loadingBox}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={styles.loadingText}>Carregando preços...</Text>
+        </View>
+      ) : null}
 
       {/* Content */}
       {isDesktop ? (
@@ -327,14 +406,22 @@ export default function AtualizarPrecosScreen() {
                 value={editModal?.value || ''}
                 onChangeText={(text) => {
                   const clean = text.replace(/[^0-9.,]/g, '');
+                  // Limpa erro ao usuário corrigir entrada.
+                  if (editError) setEditError(null);
                   setEditModal(prev => prev ? { ...prev, value: clean } : null);
                 }}
                 keyboardType="numeric"
                 selectTextOnFocus
                 autoFocus
                 onSubmitEditing={confirmSave}
+                accessibilityLabel="Novo preço"
               />
             </View>
+
+            {/* Audit P1: feedback inline de validação no modal */}
+            {editError ? (
+              <Text style={styles.modalErrorText}>{editError}</Text>
+            ) : null}
 
             {editModal?.item?.price > 0 && (
               <Text style={styles.modalOldPrice}>
@@ -360,6 +447,26 @@ export default function AtualizarPrecosScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+
+  // Audit P0: banners de erro + loading
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fef2f2', padding: 10,
+    marginHorizontal: spacing.md, marginTop: spacing.sm,
+    borderRadius: borderRadius.sm,
+    borderLeftWidth: 3, borderLeftColor: '#dc2626',
+  },
+  errorBannerText: { color: '#dc2626', fontSize: fonts.small, flex: 1, fontFamily: fontFamily.regular },
+  loadingBox: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    padding: spacing.lg, gap: 8,
+  },
+  loadingText: { fontSize: fonts.small, color: colors.textSecondary, fontFamily: fontFamily.regular },
+  // Audit P1: erro inline no modal de edição
+  modalErrorText: {
+    fontSize: fonts.tiny, color: '#dc2626', fontFamily: fontFamily.medium,
+    textAlign: 'center', marginBottom: spacing.sm,
+  },
 
   // ── Header ──
   headerBar: {

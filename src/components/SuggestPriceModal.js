@@ -87,7 +87,21 @@ export default function SuggestPriceModal({
             </View>
           )}
 
-          {!loading && !error && result && (
+          {!loading && !error && result && !isResultValid(result) && (
+            <View style={styles.errorBox}>
+              <Feather name="alert-octagon" size={32} color={colors.error || '#c0392b'} />
+              <Text style={styles.errorTitle}>Não foi possível calcular um preço válido</Text>
+              <Text style={styles.errorText}>
+                Verifique se: o produto tem ingredientes/preparos cadastrados, a soma de despesas variáveis + fixas + margem alvo está abaixo de 100%, e a configuração financeira foi concluída.
+              </Text>
+              <TouchableOpacity style={styles.retryBtn} onPress={onClose} activeOpacity={0.8}>
+                <Feather name="settings" size={16} color="#fff" />
+                <Text style={styles.retryText}>Revisar configuração</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {!loading && !error && result && isResultValid(result) && (
             <ScrollView contentContainerStyle={{ paddingBottom: spacing.md }}>
               <View style={styles.precoCard}>
                 <Text style={styles.precoLabel}>Preço sugerido</Text>
@@ -98,6 +112,10 @@ export default function SuggestPriceModal({
                       {formatBRL(result.preco_psicologico)}
                     </Text>
                   </Text>
+                )}
+                {/* Comparação com preço atual (P1) */}
+                {Number(result.preco_atual) > 0 && Number(result.preco_sugerido) > 0 && (
+                  <PriceDelta atual={result.preco_atual} sugerido={result.preco_sugerido} />
                 )}
               </View>
 
@@ -115,6 +133,35 @@ export default function SuggestPriceModal({
                   </Text>
                 </View>
               </View>
+
+              {/* Breakdown da composição (P1) — só renderiza se houver pelo menos custo unitário */}
+              {Number(result.custo_unitario) > 0 && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionLabel}>Composição</Text>
+                  <View style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>Custo (CMV)</Text>
+                    <Text style={styles.breakdownValue}>{formatBRL(result.custo_unitario)}</Text>
+                  </View>
+                  {Number(result.despesas_variaveis_pct) > 0 && (
+                    <View style={styles.breakdownRow}>
+                      <Text style={styles.breakdownLabel}>Despesas variáveis</Text>
+                      <Text style={styles.breakdownValue}>{(Number(result.despesas_variaveis_pct) * 100).toFixed(1)}%</Text>
+                    </View>
+                  )}
+                  {Number(result.despesas_fixas_pct) > 0 && (
+                    <View style={styles.breakdownRow}>
+                      <Text style={styles.breakdownLabel}>Despesas fixas</Text>
+                      <Text style={styles.breakdownValue}>{(Number(result.despesas_fixas_pct) * 100).toFixed(1)}%</Text>
+                    </View>
+                  )}
+                  {Number(result.margem_alvo_pct) > 0 && (
+                    <View style={styles.breakdownRow}>
+                      <Text style={styles.breakdownLabel}>Margem alvo</Text>
+                      <Text style={styles.breakdownValue}>{(Number(result.margem_alvo_pct) * 100).toFixed(1)}%</Text>
+                    </View>
+                  )}
+                </View>
+              )}
 
               {result.racional ? (
                 <View style={styles.section}>
@@ -175,6 +222,34 @@ function marginColor(m) {
   if (v >= 0.3) return colors.success;
   if (v >= 0.15) return colors.warning;
   return colors.error;
+}
+
+// P0: valida que a sugestão é numericamente útil (evita NaN/Infinity quando despesas+margem >= 100%
+// ou quando produto não tem custo). Sem isso o modal mostrava "R$ NaN" sem explicação.
+function isResultValid(result) {
+  if (!result) return false;
+  const p = Number(result.preco_sugerido);
+  return isFinite(p) && p > 0;
+}
+
+// P1: mostra diferença vs preço atual (delta absoluto + %), dá contexto pro usuário
+function PriceDelta({ atual, sugerido }) {
+  const a = Number(atual) || 0;
+  const s = Number(sugerido) || 0;
+  if (a <= 0 || s <= 0) return null;
+  const diff = s - a;
+  const pct = (diff / a) * 100;
+  const up = diff > 0;
+  const color = up ? colors.success : (diff < 0 ? colors.error : colors.textSecondary);
+  const arrow = up ? '↑' : (diff < 0 ? '↓' : '=');
+  const sign = diff > 0 ? '+' : '';
+  return (
+    <Text style={[styles.precoPsico, { marginTop: 6 }]}>
+      vs preço atual: <Text style={{ color, fontFamily: fontFamily.bold, fontWeight: '700' }}>
+        {arrow} {sign}{pct.toFixed(1)}% ({sign}{((diff).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))})
+      </Text>
+    </Text>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -273,6 +348,25 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: fonts.regular, color: colors.text,
     fontFamily: fontFamily.bold, fontWeight: '700',
+  },
+
+  // Breakdown da composição (P1)
+  breakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  breakdownLabel: {
+    fontSize: fonts.small,
+    color: colors.textSecondary,
+    fontFamily: fontFamily.regular,
+  },
+  breakdownValue: {
+    fontSize: fonts.small,
+    color: colors.text,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
   },
 
   section: { marginBottom: spacing.md },

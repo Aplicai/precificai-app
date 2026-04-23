@@ -36,6 +36,9 @@ export default function ExportPDFScreen({ navigation }) {
   const [exporting, setExporting] = useState(false);
   const [busca, setBusca] = useState('');
   const [incluirAdicionais, setIncluirAdicionais] = useState(true);
+  // Audit P0: estados de erro (catches eram silent — usuário não sabia que falhou)
+  const [loadError, setLoadError] = useState(null);
+  const [exportError, setExportError] = useState(null);
 
   useFocusEffect(useCallback(() => {
     loadProdutos();
@@ -50,6 +53,7 @@ export default function ExportPDFScreen({ navigation }) {
 
   const loadProdutos = async () => {
     try {
+      setLoadError(null);
       const db = await getDatabase();
       const [rawProds, prodCats, comboRows, comboItensRows] = await Promise.all([
         db.getAllAsync('SELECT * FROM produtos ORDER BY nome'),
@@ -78,6 +82,9 @@ export default function ExportPDFScreen({ navigation }) {
 
       setProdutos([...rows, ...comboItems]);
     } catch (e) {
+      // Audit P0: era silent — agora loga + banner com retry.
+      console.error('[ExportPDF.loadProdutos]', e);
+      setLoadError('Não foi possível carregar seus produtos. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -96,6 +103,9 @@ export default function ExportPDFScreen({ navigation }) {
         .sort((a, b) => (a.categoria_nome || 'zzz').localeCompare(b.categoria_nome || 'zzz') || a.nome.localeCompare(b.nome));
       setPreparos(rows);
     } catch (e) {
+      // Audit P0: era silent.
+      console.error('[ExportPDF.loadPreparos]', e);
+      setLoadError('Não foi possível carregar seus preparos. Tente novamente.');
     }
   };
 
@@ -177,8 +187,11 @@ export default function ExportPDFScreen({ navigation }) {
       const html = buildPreparosHTML(fichas, perfil, incluirAdicionais);
       exportarPDF(html, preOpenedWindow);
     } catch (e) {
+      // Audit P0: alert exibia stack trace para usuário final. Agora msg amigável + log.
+      console.error('[ExportPDF.handleExportPreparos]', e);
       if (preOpenedWindow && !preOpenedWindow.closed) preOpenedWindow.close();
-      if (Platform.OS === 'web') alert('Erro ao exportar: ' + (e.message || e));
+      setExportError('Não foi possível exportar o PDF. Verifique sua conexão e tente novamente.');
+      setTimeout(() => setExportError(null), 4000);
     } finally {
       setExporting(false);
     }
@@ -401,8 +414,11 @@ export default function ExportPDFScreen({ navigation }) {
       const html = buildHTML(fichas, perfil, config, incluirAdicionais);
       exportarPDF(html, preOpenedWindow);
     } catch (e) {
+      // Audit P0: alert com e.message não é amigável.
+      console.error('[ExportPDF.handleExport]', e);
       if (preOpenedWindow && !preOpenedWindow.closed) preOpenedWindow.close();
-      if (Platform.OS === 'web') alert('Erro ao exportar: ' + (e.message || e));
+      setExportError('Não foi possível exportar o PDF. Verifique sua conexão e tente novamente.');
+      setTimeout(() => setExportError(null), 4000);
     } finally {
       setExporting(false);
     }
@@ -418,6 +434,31 @@ export default function ExportPDFScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* Audit P0: banners de erro */}
+      {loadError ? (
+        <TouchableOpacity
+          style={styles.errorBanner}
+          onPress={() => {
+            setLoadError(null);
+            setLoading(true);
+            loadProdutos();
+            if (activeTab === 'preparos') loadPreparos();
+          }}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Tentar carregar dados novamente"
+        >
+          <Feather name="alert-circle" size={16} color="#dc2626" style={{ marginRight: 8 }} />
+          <Text style={styles.errorBannerText}>{loadError}</Text>
+        </TouchableOpacity>
+      ) : null}
+      {exportError ? (
+        <View style={styles.errorBanner} accessibilityRole="alert">
+          <Feather name="alert-circle" size={16} color="#dc2626" style={{ marginRight: 8 }} />
+          <Text style={styles.errorBannerText}>{exportError}</Text>
+        </View>
+      ) : null}
+
       {/* Header info */}
       <View style={styles.infoCard}>
         <Feather name="printer" size={22} color={colors.primary} />
@@ -552,9 +593,24 @@ export default function ExportPDFScreen({ navigation }) {
         onPress={handleExport}
         activeOpacity={0.7}
         disabled={selectedCount === 0 || exporting}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: selectedCount === 0 || exporting, busy: exporting }}
+        accessibilityLabel={
+          exporting
+            ? 'Gerando PDF, aguarde'
+            : selectedCount === 0
+              ? 'Selecione ao menos um item para exportar'
+              : `Exportar PDF com ${selectedCount} ${activeTab === 'produtos' ? (selectedCount === 1 ? 'produto' : 'produtos') : (selectedCount === 1 ? 'preparo' : 'preparos')}`
+        }
       >
         {exporting ? (
-          <ActivityIndicator size="small" color="#fff" />
+          <>
+            <ActivityIndicator size="small" color="#fff" />
+            {/* Audit P1: contexto durante o export longo (era só spinner) */}
+            <Text style={[styles.exportBtnText, { marginLeft: 8 }]}>
+              Gerando PDF...
+            </Text>
+          </>
         ) : (
           <>
             <Feather name="printer" size={18} color="#fff" />
@@ -1259,6 +1315,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  // Audit P0: banners de erro (loadError + exportError)
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fef2f2', padding: 10,
+    borderRadius: borderRadius.sm, marginBottom: spacing.sm,
+    borderLeftWidth: 3, borderLeftColor: '#dc2626',
+  },
+  errorBannerText: { color: '#dc2626', fontSize: fonts.small, flex: 1, fontFamily: fontFamily.regular },
   content: {
     padding: spacing.md,
     paddingBottom: 40,

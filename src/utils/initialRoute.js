@@ -56,7 +56,13 @@ export async function determineInitialRoute({ skipWelcomeTour = false } = {}) {
     // Verifica financeiro: se completo vai direto, senão guia pelo onboarding
     const status = await getSetupStatus();
     return status.financeiroCompleto ? 'MainTabs' : 'Onboarding';
-  } catch {
-    return 'MainTabs';
+  } catch (err) {
+    // Audit P1: silent catch original lançava o usuário direto em MainTabs em
+    // qualquer falha (DB não montada, perfil corrompido, etc.) — pior UX possível
+    // pois mostra app vazio sem explicação. Loga a falha (Sentry capta via
+    // global handler) e devolve ProfileSetup, que é benigno tanto para usuário
+    // novo quanto para retornante (vai apenas re-confirmar nome).
+    console.error('[determineInitialRoute]', err);
+    return 'ProfileSetup';
   }
 }

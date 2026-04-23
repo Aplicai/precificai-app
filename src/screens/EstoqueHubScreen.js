@@ -26,10 +26,12 @@ import { supabase } from '../config/supabase';
 import { listarSaldosConsolidados } from '../services/estoque';
 import { formatCurrency } from '../utils/calculations';
 import { formatTimeAgo } from '../utils/timeAgo';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import EmptyState from '../components/EmptyState';
 import Skeleton from '../components/Skeleton';
 import FAB from '../components/FAB';
 import SearchBar from '../components/SearchBar';
+import usePersistedState from '../hooks/usePersistedState';
 
 const TABS = [
   { key: 'saldos',     label: 'Saldos',     icon: 'package' },
@@ -60,9 +62,10 @@ function StatusChip({ status }) {
 }
 
 export default function EstoqueHubScreen({ navigation }) {
-  const [tab, setTab] = useState('saldos');
+  const { isDesktop } = useResponsiveLayout();
+  const [tab, setTab] = usePersistedState('estoque.tab', 'saldos');
   const [busca, setBusca] = useState('');
-  const [periodo, setPeriodo] = useState('30'); // filtro de movimentos
+  const [periodo, setPeriodo] = usePersistedState('estoque.periodo', '30'); // filtro de movimentos
   const [saldos, setSaldos] = useState([]);
   const [movimentos, setMovimentos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -86,6 +89,7 @@ export default function EstoqueHubScreen({ navigation }) {
       if (error) throw error;
       if (Array.isArray(movs)) setMovimentos(movs);
     } catch (e) {
+      console.error('[EstoqueHub.carregar]', e);
       setErro(e?.message || 'Não foi possível carregar o estoque.');
     } finally {
       setLoading(false);
@@ -252,16 +256,23 @@ export default function EstoqueHubScreen({ navigation }) {
         )}
       />
 
-      {/* Modal de ações sobre o item — substituto do Alert.alert */}
+      {/* Modal de ações sobre o item — substituto do Alert.alert.
+          Responsivo: bottom-sheet no mobile, dialog centralizado no desktop. */}
       <Modal
         visible={!!actionItem}
         transparent
-        animationType="fade"
+        animationType={isDesktop ? 'fade' : 'slide'}
         onRequestClose={closeAction}
       >
-        <Pressable style={styles.modalOverlay} onPress={closeAction}>
-          <Pressable style={styles.modalSheet} onPress={() => {}}>
-            <View style={styles.modalHandle} />
+        <Pressable
+          style={[styles.modalOverlay, isDesktop && styles.modalOverlayDesktop]}
+          onPress={closeAction}
+        >
+          <Pressable
+            style={[styles.modalSheet, isDesktop && styles.modalSheetDesktop]}
+            onPress={() => {}}
+          >
+            {!isDesktop && <View style={styles.modalHandle} />}
             <View style={styles.modalHeader}>
               <View style={[styles.modalAvatar, {
                 backgroundColor: (actionItem?._tipo === 'embalagem' ? colors.purple : colors.primary) + '18',
@@ -364,10 +375,15 @@ function SaldosTab({ loading, items, busca, setBusca, refreshing, onRefresh, onI
 }
 
 function SaldoRow({ item, onPress }) {
-  const qtd = Number(item.quantidade_estoque) || 0;
-  const min = Number(item.estoque_minimo) || 0;
-  const cm  = Number(item.custo_medio) || 0;
+  const safeNum = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
+  const qtd = safeNum(item.quantidade_estoque);
+  const min = safeNum(item.estoque_minimo);
+  const cm  = safeNum(item.custo_medio);
   const valor = qtd * cm;
+  const statusIcon = item._status === 'zerado' ? 'alert-circle'
+                   : item._status === 'baixo'  ? 'alert-triangle'
+                   : 'check-circle';
+  const statusLabel = item._status === 'zerado' ? 'Zerado' : item._status === 'baixo' ? 'Baixo' : 'OK';
   const isEmb = item._tipo === 'embalagem';
   const accent = isEmb ? colors.purple : colors.primary;
   const statusColor = item._status === 'zerado' ? colors.error
@@ -418,10 +434,9 @@ function SaldoRow({ item, onPress }) {
         {valor > 0 && (
           <Text style={[styles.produtoValor, { color: statusColor }]}>{formatCurrency(valor)}</Text>
         )}
-        <View style={[styles.statusPill, { backgroundColor: statusBg }]}>
-          <Text style={[styles.statusPillText, { color: statusColor }]}>
-            {item._status === 'zerado' ? 'Zerado' : item._status === 'baixo' ? 'Baixo' : 'OK'}
-          </Text>
+        <View style={[styles.statusPill, { backgroundColor: statusBg, flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+          <Feather name={statusIcon} size={11} color={statusColor} />
+          <Text style={[styles.statusPillText, { color: statusColor }]}>{statusLabel}</Text>
         </View>
       </View>
 
@@ -648,10 +663,16 @@ const styles = StyleSheet.create({
   statusPillText: {
     fontSize: 10, fontFamily: fontFamily.semiBold, fontWeight: '600',
   },
-  // Modal de ações (substitui Alert.alert quebrado no web)
+  // Modal de ações (substitui Alert.alert quebrado no web).
+  // Mobile (default): bottom-sheet com handle, animação slide-up.
+  // Desktop (override): dialog centralizado com max-width, animação fade.
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
+  },
+  modalOverlayDesktop: {
+    justifyContent: 'center', alignItems: 'center',
+    padding: spacing.lg,
   },
   modalSheet: {
     backgroundColor: colors.surface,
@@ -659,6 +680,18 @@ const styles = StyleSheet.create({
     borderTopRightRadius: borderRadius.xl || 20,
     paddingHorizontal: spacing.md, paddingTop: 8, paddingBottom: spacing.lg,
     maxWidth: 560, width: '100%', alignSelf: 'center',
+  },
+  modalSheetDesktop: {
+    width: '100%', maxWidth: 480, alignSelf: 'center',
+    borderRadius: borderRadius.xl || 20,
+    paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.lg,
+    ...Platform.select({
+      web: { boxShadow: '0 24px 64px rgba(0,0,0,0.18)' },
+      default: {
+        shadowColor: '#000', shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.18, shadowRadius: 32, elevation: 12,
+      },
+    }),
   },
   modalHandle: {
     width: 40, height: 4, borderRadius: 2,

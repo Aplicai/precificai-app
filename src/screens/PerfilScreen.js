@@ -13,7 +13,10 @@ export default function PerfilScreen({ navigation, route }) {
     telefone: '',
   });
   const [saveStatus, setSaveStatus] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  // P1: feedback visível quando o usuário tenta avançar sem nome (acessibilidade).
+  const [showNameError, setShowNameError] = useState(false);
   const saveTimerRef = useRef(null);
   const perfilRef = useRef(perfil);
   perfilRef.current = perfil;
@@ -29,6 +32,7 @@ export default function PerfilScreen({ navigation, route }) {
 
   async function loadPerfil() {
     try {
+      setLoadError(null);
       const db = await getDatabase();
       const row = await db.getFirstAsync('SELECT * FROM perfil LIMIT 1');
       if (row) {
@@ -39,12 +43,20 @@ export default function PerfilScreen({ navigation, route }) {
         });
       }
     } catch (err) {
+      // Audit P0: silent catch original mascarava falhas de DB. Agora loga e
+      // mostra banner para o usuário poder reagir (tentar de novo).
+      console.error('[Perfil.loadPerfil]', err);
+      setLoadError('Não foi possível carregar seu perfil. Toque para tentar de novo.');
     }
     setLoaded(true);
   }
 
   function updateField(key, value) {
     setPerfil(p => ({ ...p, [key]: value }));
+    // Limpa erro de nome assim que o usuário começa a digitar.
+    if (key === 'nome_negocio' && showNameError && value.trim()) {
+      setShowNameError(false);
+    }
     if (!loaded) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
@@ -54,22 +66,37 @@ export default function PerfilScreen({ navigation, route }) {
 
   async function autoSave(data) {
     setSaveStatus('saving');
-    const db = await getDatabase();
-    // Try update first (Supabase has auto-generated id)
-    const existing = await db.getFirstAsync('SELECT id FROM perfil LIMIT 1');
-    if (existing) {
-      await db.runAsync(
-        'UPDATE perfil SET nome_negocio = ?, segmento = ?, telefone = ? WHERE id = ?',
-        [data.nome_negocio, data.segmento, data.telefone, existing.id]
-      );
-    } else {
-      await db.runAsync(
-        'INSERT INTO perfil (nome_negocio, segmento, telefone) VALUES (?, ?, ?)',
-        [data.nome_negocio, data.segmento, data.telefone]
-      );
+    try {
+      const db = await getDatabase();
+      // Try update first (Supabase has auto-generated id)
+      const existing = await db.getFirstAsync('SELECT id FROM perfil LIMIT 1');
+      if (existing) {
+        await db.runAsync(
+          'UPDATE perfil SET nome_negocio = ?, segmento = ?, telefone = ? WHERE id = ?',
+          [data.nome_negocio, data.segmento, data.telefone, existing.id]
+        );
+      } else {
+        await db.runAsync(
+          'INSERT INTO perfil (nome_negocio, segmento, telefone) VALUES (?, ?, ?)',
+          [data.nome_negocio, data.segmento, data.telefone]
+        );
+      }
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus(null), 1500);
+    } catch (e) {
+      // Audit P0: autoSave silencioso fazia o usuário perder dados sem perceber.
+      console.error('[Perfil.autoSave]', e);
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus(null), 3500);
     }
-    setSaveStatus('saved');
-    setTimeout(() => setSaveStatus(null), 1500);
+  }
+
+  function onContinuePress() {
+    if (!perfil.nome_negocio.trim()) {
+      setShowNameError(true);
+      return;
+    }
+    navigation.replace('KitInicio', { setup: true });
   }
 
   const inicial = (perfil.nome_negocio || 'N').charAt(0).toUpperCase();
@@ -77,6 +104,14 @@ export default function PerfilScreen({ navigation, route }) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+
+      {/* Audit P0: banner de erro de carregamento (antes era silent) */}
+      {loadError ? (
+        <TouchableOpacity style={styles.errorBanner} onPress={loadPerfil} activeOpacity={0.8}>
+          <Feather name="alert-circle" size={16} color="#dc2626" style={{ marginRight: 8 }} />
+          <Text style={styles.errorBannerText}>{loadError}</Text>
+        </TouchableOpacity>
+      ) : null}
 
       {/* Avatar */}
       <View style={styles.avatarSection}>
@@ -92,12 +127,20 @@ export default function PerfilScreen({ navigation, route }) {
         <View style={styles.field}>
           <Text style={styles.label}>Nome do Negócio</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, showNameError && styles.inputError]}
             value={perfil.nome_negocio}
             onChangeText={(v) => updateField('nome_negocio', v)}
             placeholder="Ex: Doces da Maria"
             placeholderTextColor={colors.disabled}
+            accessibilityLabel="Nome do negócio"
+            accessibilityHint={showNameError ? 'Campo obrigatório' : undefined}
           />
+          {showNameError ? (
+            <View style={styles.fieldErrorRow}>
+              <Feather name="alert-circle" size={12} color="#dc2626" style={{ marginRight: 4 }} />
+              <Text style={styles.fieldErrorText}>Nome do negócio é obrigatório para continuar.</Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.field}>
@@ -126,10 +169,11 @@ export default function PerfilScreen({ navigation, route }) {
 
       {isSetup && (
         <TouchableOpacity
-          style={[styles.continueBtn, !perfil.nome_negocio.trim() && styles.continueBtnDisabled]}
-          disabled={!perfil.nome_negocio.trim()}
+          style={styles.continueBtn}
           activeOpacity={0.8}
-          onPress={() => navigation.replace('KitInicio', { setup: true })}
+          onPress={onContinuePress}
+          accessibilityRole="button"
+          accessibilityLabel="Continuar para próxima etapa"
         >
           <Text style={styles.continueBtnText}>Continuar</Text>
           <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
@@ -139,13 +183,18 @@ export default function PerfilScreen({ navigation, route }) {
       <View style={{ height: 40 }} />
     </ScrollView>
 
-    {/* Auto-save feedback */}
+    {/* Auto-save feedback (audit P0: agora trata erro também) */}
     {saveStatus && (
-      <View style={styles.toast}>
+      <View style={[styles.toast, saveStatus === 'error' && styles.toastError]}>
         {saveStatus === 'saving' ? (
           <>
             <Feather name="loader" size={13} color="#fff" style={{ marginRight: 6 }} />
             <Text style={styles.toastText}>Salvando...</Text>
+          </>
+        ) : saveStatus === 'error' ? (
+          <>
+            <Feather name="alert-circle" size={13} color="#fff" style={{ marginRight: 6 }} />
+            <Text style={styles.toastText}>Falha ao salvar. Tente de novo.</Text>
           </>
         ) : (
           <>
@@ -194,6 +243,18 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.sm, paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.sm, fontSize: fonts.regular, color: colors.text,
   },
+  // Audit P1: borda vermelha + ícone para feedback de validação acessível.
+  inputError: { borderColor: '#dc2626', borderWidth: 1.5 },
+  fieldErrorRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+  fieldErrorText: { fontSize: fonts.tiny, color: '#dc2626', fontFamily: fontFamily.medium },
+  // Audit P0: banner de falha no load com borda lateral vermelha (acessibilidade daltonismo).
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fef2f2', padding: 10, borderRadius: borderRadius.sm,
+    borderLeftWidth: 3, borderLeftColor: '#dc2626',
+    marginBottom: spacing.sm,
+  },
+  errorBannerText: { color: '#dc2626', fontSize: fonts.small, flex: 1, fontFamily: fontFamily.regular },
   toast: {
     position: 'absolute', bottom: 20, alignSelf: 'center',
     flexDirection: 'row', alignItems: 'center',
@@ -202,6 +263,8 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2, shadowRadius: 4, elevation: 4,
   },
+  // Variante de erro do toast (audit P0).
+  toastError: { backgroundColor: '#dc2626' },
   toastText: { color: '#fff', fontSize: fonts.small, fontWeight: '600' },
 
   continueBtn: {
@@ -209,6 +272,5 @@ const styles = StyleSheet.create({
     paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     marginTop: spacing.lg,
   },
-  continueBtnDisabled: { opacity: 0.4 },
   continueBtnText: { color: '#fff', fontSize: 16, fontWeight: '600', fontFamily: fontFamily.semiBold },
 });

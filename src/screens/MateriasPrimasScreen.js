@@ -74,6 +74,7 @@ export default function MateriasPrimasScreen({ navigation }) {
   const [collapsedDesktop, setCollapsedDesktop] = useState({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   // Soft-delete via UndoToast (P1-11)
   const undoDelete = useUndoableDelete();
   // Ordenação (P1-22)
@@ -104,83 +105,91 @@ export default function MateriasPrimasScreen({ navigation }) {
 
   async function loadData() {
     setLoading(true);
-    const db = await getDatabase();
-    const cats = await db.getAllAsync('SELECT * FROM categorias_insumos ORDER BY nome');
-    setCategorias(cats);
+    setLoadError(null);
+    try {
+      const db = await getDatabase();
+      const cats = await db.getAllAsync('SELECT * FROM categorias_insumos ORDER BY nome');
+      setCategorias(cats);
 
-    // Monta mapa de cores fixo por ID
-    const colorMap = {};
-    cats.forEach((c, i) => { colorMap[c.id] = getCategoryColor(i); });
-    colorMap['null'] = colors.disabled;
-    setCatColorMap(colorMap);
+      // Monta mapa de cores fixo por ID
+      const colorMap = {};
+      cats.forEach((c, i) => { colorMap[c.id] = getCategoryColor(i); });
+      colorMap['null'] = colors.disabled;
+      setCatColorMap(colorMap);
 
-    // Ordenação dinâmica via sortBy (P1-22 + P3-H/I)
-    const orderClauses = {
-      nome_asc: 'nome COLLATE NOCASE ASC',
-      nome_desc: 'nome COLLATE NOCASE DESC',
-      recentes: 'id DESC',
-      preco_desc: 'preco_por_kg DESC',
-      preco_asc: 'preco_por_kg ASC',
-      modificados: 'updated_at DESC', // P3-I
-      favoritos: 'nome COLLATE NOCASE ASC', // P3-H — busca por nome, sort final em JS
-    };
-    const orderBy = orderClauses[sortBy] || orderClauses.nome_asc;
-    let materias = await db.getAllAsync(`SELECT * FROM materias_primas ORDER BY ${orderBy}`);
-    // P3-H: re-sort em JS para colocar favoritos no topo (parser SQL não suporta multi-col ORDER BY)
-    if (sortBy === 'favoritos') {
-      materias = [...materias].sort((a, b) => {
-        const fa = a.favorito ? 1 : 0, fb = b.favorito ? 1 : 0;
-        if (fa !== fb) return fb - fa;
-        return String(a.nome || '').localeCompare(String(b.nome || ''));
-      });
-    }
-    setTotalInsumos(materias.length);
-
-    let materiasFiltradas = materias;
-    if (busca.trim()) {
-      const termo = normalizeSearch(busca);
-      materiasFiltradas = materias.filter(m =>
-        normalizeSearch(m.nome).includes(termo) ||
-        (m.marca && normalizeSearch(m.marca).includes(termo))
-      );
-    }
-
-    const grouped = {};
-    const semCategoria = { id: null, nome: 'Sem categoria', icone: 'inbox' };
-
-    cats.forEach(c => { grouped[c.id] = { ...c, data: [] }; });
-    grouped['null'] = { ...semCategoria, data: [] };
-
-    materiasFiltradas.forEach(m => {
-      const catId = m.categoria_id || 'null';
-      if (grouped[catId]) {
-        grouped[catId].data.push(m);
-      } else {
-        grouped['null'].data.push(m);
+      // Ordenação dinâmica via sortBy (P1-22 + P3-H/I)
+      const orderClauses = {
+        nome_asc: 'nome COLLATE NOCASE ASC',
+        nome_desc: 'nome COLLATE NOCASE DESC',
+        recentes: 'id DESC',
+        preco_desc: 'preco_por_kg DESC',
+        preco_asc: 'preco_por_kg ASC',
+        modificados: 'updated_at DESC', // P3-I
+        favoritos: 'nome COLLATE NOCASE ASC', // P3-H — busca por nome, sort final em JS
+      };
+      const orderBy = orderClauses[sortBy] || orderClauses.nome_asc;
+      let materias = await db.getAllAsync(`SELECT * FROM materias_primas ORDER BY ${orderBy}`);
+      // P3-H: re-sort em JS para colocar favoritos no topo (parser SQL não suporta multi-col ORDER BY)
+      if (sortBy === 'favoritos') {
+        materias = [...materias].sort((a, b) => {
+          const fa = a.favorito ? 1 : 0, fb = b.favorito ? 1 : 0;
+          if (fa !== fb) return fb - fa;
+          return String(a.nome || '').localeCompare(String(b.nome || ''));
+        });
       }
-    });
+      setTotalInsumos(materias.length);
 
-    let secs = Object.values(grouped)
-      .filter(g => g.data.length > 0 || filtroCategoria === g.id)
-      .sort((a, b) => {
-        if (a.id === null) return 1;
-        if (b.id === null) return -1;
-        return a.nome.localeCompare(b.nome);
-      })
-      .map((g) => ({
-        title: g.nome,
-        catId: g.id,
-        catColor: colorMap[g.id] || colors.disabled,
-        data: g.data,
-        totalCount: g.data.length,
-      }));
+      let materiasFiltradas = materias;
+      if (busca.trim()) {
+        const termo = normalizeSearch(busca);
+        materiasFiltradas = materias.filter(m =>
+          normalizeSearch(m.nome).includes(termo) ||
+          (m.marca && normalizeSearch(m.marca).includes(termo))
+        );
+      }
 
-    if (filtroCategoria !== null) {
-      secs = secs.filter(s => s.catId === filtroCategoria);
+      const grouped = {};
+      const semCategoria = { id: null, nome: 'Sem categoria', icone: 'inbox' };
+
+      cats.forEach(c => { grouped[c.id] = { ...c, data: [] }; });
+      grouped['null'] = { ...semCategoria, data: [] };
+
+      materiasFiltradas.forEach(m => {
+        const catId = m.categoria_id || 'null';
+        if (grouped[catId]) {
+          grouped[catId].data.push(m);
+        } else {
+          grouped['null'].data.push(m);
+        }
+      });
+
+      let secs = Object.values(grouped)
+        .filter(g => g.data.length > 0 || filtroCategoria === g.id)
+        .sort((a, b) => {
+          if (a.id === null) return 1;
+          if (b.id === null) return -1;
+          return a.nome.localeCompare(b.nome);
+        })
+        .map((g) => ({
+          title: g.nome,
+          catId: g.id,
+          catColor: colorMap[g.id] || colors.disabled,
+          data: g.data,
+          totalCount: g.data.length,
+        }));
+
+      if (filtroCategoria !== null) {
+        secs = secs.filter(s => s.catId === filtroCategoria);
+      }
+
+      setSections(secs);
+    } catch (e) {
+      const msg = (e && e.message) ? e.message : 'Falha ao carregar insumos.';
+      setLoadError(msg);
+      if (typeof console !== 'undefined' && console.error) console.error('[MateriasPrimasScreen.loadData]', e);
+    } finally {
+      setLoading(false);
     }
-
-    setSections(secs);
-    setLoading(false);
   }
 
   async function duplicarInsumo(item) {
@@ -396,15 +405,19 @@ export default function MateriasPrimasScreen({ navigation }) {
       titulo: 'Remover Categoria',
       nome: cat ? cat.nome : 'esta categoria',
       onConfirm: async () => {
-        const db = await getDatabase();
-        const items = await db.getAllAsync('SELECT * FROM materias_primas WHERE categoria_id = ?', [catId]);
-        for (const item of items) {
-          await db.runAsync('UPDATE materias_primas SET categoria_id=? WHERE id=?', [null, item.id]);
+        try {
+          const db = await getDatabase();
+          // P2: single bulk UPDATE em vez de loop N+1
+          await db.runAsync('UPDATE materias_primas SET categoria_id = NULL WHERE categoria_id = ?', [catId]);
+          await db.runAsync('DELETE FROM categorias_insumos WHERE id = ?', [catId]);
+          if (filtroCategoria === catId) setFiltroCategoria(null);
+        } catch (e) {
+          if (typeof console !== 'undefined' && console.error) console.error('[MateriasPrimasScreen.removerCategoria]', e);
+          setInfoToast({ message: 'Não foi possível remover a categoria.', icon: 'alert-triangle' });
+        } finally {
+          setConfirmDelete(null);
+          loadData();
         }
-        await db.runAsync('DELETE FROM categorias_insumos WHERE id = ?', [catId]);
-        if (filtroCategoria === catId) setFiltroCategoria(null);
-        setConfirmDelete(null);
-        loadData();
       },
     });
   }
@@ -488,6 +501,20 @@ export default function MateriasPrimasScreen({ navigation }) {
           )}
         </View>
       </View>
+
+      {/* Banner de erro de carregamento (P1) */}
+      {loadError && (
+        <View style={styles.errorBanner}>
+          <Feather name="alert-triangle" size={16} color={colors.error || '#c0392b'} style={{ marginRight: 8, marginTop: 2 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.errorBannerTitle}>Não conseguimos carregar seus insumos</Text>
+            <Text style={styles.errorBannerDesc} numberOfLines={3}>{loadError}</Text>
+          </View>
+          <TouchableOpacity onPress={() => loadData()} style={styles.errorBannerBtn}>
+            <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Botão Adicionar */}
       <TouchableOpacity
@@ -848,6 +875,44 @@ export default function MateriasPrimasScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+
+  // Banner de erro de carregamento (P1)
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: (colors.error || '#c0392b') + '12',
+    borderWidth: 1,
+    borderColor: (colors.error || '#c0392b') + '40',
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+  },
+  errorBannerTitle: {
+    fontSize: 13,
+    fontFamily: fontFamily.semiBold,
+    color: colors.error || '#c0392b',
+    marginBottom: 2,
+  },
+  errorBannerDesc: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontFamily: fontFamily.regular,
+  },
+  errorBannerBtn: {
+    backgroundColor: colors.error || '#c0392b',
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    marginLeft: spacing.sm,
+    alignSelf: 'center',
+  },
+  errorBannerBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontFamily: fontFamily.semiBold,
+  },
 
   // Header
   headerBar: {

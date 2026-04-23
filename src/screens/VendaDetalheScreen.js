@@ -92,8 +92,9 @@ export default function VendaDetalheScreen({ route }) {
          JOIN embalagens em ON em.id = pe.embalagem_id WHERE pe.produto_id = ?`, [produtoId]);
       const custoEmb = embs.reduce((a, e) => a + e.preco_unitario * e.quantidade_utilizada, 0);
 
-      const custoUn = (custoIng + custoPr + custoEmb) / getDivisorRendimento(prod);
-      setCustoUnitario(custoUn);
+      const divisor = getDivisorRendimento(prod) || 1;
+      const custoUn = (custoIng + custoPr + custoEmb) / divisor;
+      setCustoUnitario(Number.isFinite(custoUn) && custoUn >= 0 ? custoUn : 0);
 
       // Load sales for selected month (filter in JS for web DB compatibility)
       const todasVendas = await db.getAllAsync('SELECT * FROM vendas');
@@ -102,16 +103,18 @@ export default function VendaDetalheScreen({ route }) {
       vendasFiltradas.sort((a, b) => b.data.localeCompare(a.data));
       setVendasDoMes(vendasFiltradas);
     } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[VendaDetalheScreen.loadData]', e);
     }
   }
 
   async function registrarVenda() {
     // Guard contra double-tap (useRef sincroniza imediato; setState é async).
     if (savingRef.current) return;
-    if (!quantidade || parseFloat(quantidade.replace(',', '.')) <= 0) {
-      return Alert.alert('Atenção', 'Informe a quantidade');
+    const qtdNum = parseFloat(String(quantidade).replace(',', '.'));
+    if (!quantidade || !Number.isFinite(qtdNum) || qtdNum <= 0) {
+      return Alert.alert('Atenção', 'Informe uma quantidade válida (maior que zero)');
     }
-    if (!dataVenda || dataVenda.length < 10) {
+    if (!dataVenda || !/^\d{4}-\d{2}-\d{2}$/.test(dataVenda)) {
       return Alert.alert('Atenção', 'Informe uma data válida (AAAA-MM-DD)');
     }
     savingRef.current = true;
@@ -119,7 +122,7 @@ export default function VendaDetalheScreen({ route }) {
     let vendaInseridaId = null;
     try {
       const db = await getDatabase();
-      const qtd = parseFloat(quantidade.replace(',', '.'));
+      const qtd = qtdNum;
       const result = await db.runAsync(
         'INSERT INTO vendas (produto_id, data, quantidade) VALUES (?, ?, ?)',
         [produtoId, dataVenda, qtd]

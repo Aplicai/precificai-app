@@ -8,6 +8,12 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { SEGMENTOS, INSUMOS_POR_SEGMENTO, CATEGORIAS_POR_SEGMENTO } from '../data/templates';
 import { calcPrecoBase, calcFatorCorrecao } from '../utils/calculations';
 
+// Audit P0: helper defensivo para formatação de valores numéricos vindos do template.
+function safeNum(v) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 const SEGMENT_ICONS = {
   confeitaria: { set: 'material', name: 'cake-variant' },
   hamburgueria: { set: 'material', name: 'hamburger' },
@@ -32,6 +38,15 @@ export default function KitInicioScreen({ navigation, route }) {
   async function navegarAposKit() {
     try {
       await AsyncStorage.setItem('onboarding_done', 'true');
+      // Audit P1: persistir o segmento escolhido para futura referência (relatórios,
+      // sugestões de templates, recomendações). Falha não bloqueia navegação.
+      if (selected) {
+        try {
+          await AsyncStorage.setItem('segmento_negocio', selected);
+        } catch (e) {
+          console.error('[KitInicio.persistSegmento]', e);
+        }
+      }
       if (isSetup) {
         navigation.replace('Onboarding');
       } else {
@@ -42,6 +57,7 @@ export default function KitInicioScreen({ navigation, route }) {
         }
       }
     } catch (e) {
+      console.error('[KitInicio.navegarAposKit]', e);
       navigation.replace('MainTabs');
     }
   }
@@ -183,7 +199,9 @@ export default function KitInicioScreen({ navigation, route }) {
       setTimeout(() => navegarAposKit(), 300);
     } catch (e) {
       setLoading(false);
-      const errMsg = `Não foi possível aplicar o kit.\n\nDetalhes: ${e?.message || String(e)}`;
+      // Audit P1: log técnico no console + mensagem amigável (sem expor stack/SQL).
+      console.error('[KitInicio.executarKit]', e);
+      const errMsg = 'Não foi possível aplicar o kit. Verifique sua conexão e tente novamente. Se o problema continuar, fale com o suporte.';
       if (Platform.OS === 'web') {
         window.alert(errMsg);
       } else {
@@ -278,7 +296,7 @@ export default function KitInicioScreen({ navigation, route }) {
               {(INSUMOS_POR_SEGMENTO[selected] || []).map((ins, i) => (
                 <View key={i} style={styles.previewListItem}>
                   <Text style={styles.previewListName} numberOfLines={1}>{ins.nome}</Text>
-                  <Text style={styles.previewListPrice}>R$ {ins.valor_pago.toFixed(2)}</Text>
+                  <Text style={styles.previewListPrice}>R$ {safeNum(ins.valor_pago).toFixed(2)}</Text>
                 </View>
               ))}
             </View>

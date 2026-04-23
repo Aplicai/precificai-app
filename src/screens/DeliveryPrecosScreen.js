@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
@@ -12,6 +12,19 @@ import EmptyState from '../components/EmptyState';
 import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+import usePersistedState from '../hooks/usePersistedState';
+
+// Numeric helpers (defesa contra NaN/Infinity em precificação)
+function safeNum(v) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseInputNumber(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const parsed = parseFloat(String(raw).replace(',', '.'));
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 // Color cycling for avatars and category headers (matches MateriasPrimasScreen)
 const CATEGORY_COLORS = [
@@ -33,11 +46,13 @@ export default function DeliveryPrecosScreen() {
   const [produtos, setProdutos] = useState([]);
   const [combos, setCombos] = useState([]);
   const [categorias, setCategorias] = useState([]);
-  const [searchText, setSearchText] = useState('');
+  const [searchText, setSearchText] = usePersistedState('deliveryPrecos.busca', '');
   const [expandedCats, setExpandedCats] = useState({});
   const [expandedItems, setExpandedItems] = useState({});
-  const [customPrices, setCustomPrices] = useState({});
+  const [customPrices, setCustomPrices] = usePersistedState('deliveryPrecos.customPrices', {});
   const [showLegend, setShowLegend] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const isLoadingRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -46,7 +61,11 @@ export default function DeliveryPrecosScreen() {
   );
 
   async function loadData() {
-    const db = await getDatabase();
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    setLoadError(null);
+    try {
+      const db = await getDatabase();
 
     const [plats, cats, prods, allIngs, allPreps, allEmbs,
            embalagensList, preparosList, materiasList, adicionaisList,
@@ -168,17 +187,32 @@ export default function DeliveryPrecosScreen() {
       combosResult.push({
         id: `combo-${combo.id}`,
         nome: combo.nome,
-        precoVenda: combo.preco_venda || 0,
-        custoUnitario: custo,
+        precoVenda: safeNum(combo.preco_venda),
+        custoUnitario: safeNum(custo),
         tipo: 'combo',
       });
     }
     setCombos(combosResult);
+    } catch (e) {
+      console.error('[DeliveryPrecosScreen.loadData]', e);
+      setLoadError('Não conseguimos carregar os dados de precificação. Verifique sua conexão e tente novamente.');
+    } finally {
+      isLoadingRef.current = false;
+    }
   }
 
+  // Calcula preço sugerido para cobrir taxa da plataforma.
+  // Defesas: precoVenda inválido → 0; taxa ≥ 100% (inviável) → retorna null para sinalizar inviabilidade.
   function calcDeliveryPrice(precoVenda, taxaPlataforma) {
-    if (taxaPlataforma >= 100) return precoVenda;
-    return roundUpTo50(precoVenda / (1 - taxaPlataforma / 100));
+    const preco = safeNum(precoVenda);
+    const taxa = safeNum(taxaPlataforma);
+    if (preco <= 0) return 0;
+    if (taxa >= 100) return null; // taxa cobre/excede o preço — inviável
+    const divisor = 1 - taxa / 100;
+    if (divisor <= 0) return null;
+    const result = preco / divisor;
+    if (!Number.isFinite(result)) return null;
+    return roundUpTo50(result);
   }
 
   function toggleCategory(catId) {
@@ -197,9 +231,10 @@ export default function DeliveryPrecosScreen() {
     const key = `${itemId}-${platId}`;
     const custom = customPrices[key];
     if (custom !== undefined && custom !== '') {
-      const parsed = parseFloat(String(custom).replace(',', '.'));
-      if (!isNaN(parsed)) return parsed;
+      const parsed = parseInputNumber(custom);
+      if (parsed !== null && parsed >= 0) return parsed;
     }
+    // suggestedPrice pode ser null (inviável) — preserva null
     return suggestedPrice;
   }
 
@@ -249,23 +284,37 @@ export default function DeliveryPrecosScreen() {
     let totalLucro = 0;
     let countItems = 0;
     let negativos = 0;
+    let inviaveis = 0;
     for (const item of allItems) {
-      if (item.precoVenda <= 0) continue;
+      const precoVenda = safeNum(item.precoVenda);
+      if (precoVenda <= 0) continue;
+      const custoUn = safeNum(item.custoUnitario);
       for (const plat of plataformas) {
-        const suggested = calcDeliveryPrice(item.precoVenda, plat.taxa_plataforma);
+        const suggested = calcDeliveryPrice(precoVenda, plat.taxa_plataforma);
         const price = getEffectivePrice(item.id, plat.id, suggested);
-        const taxa = price * (plat.taxa_plataforma / 100);
-        const comissao = plat.comissao_app || 0;
-        const desc = price * ((plat.desconto_promocao || 0) / 100);
-        const lucro = price - item.custoUnitario - taxa - comissao - desc;
-        totalLucro += lucro;
+        // price pode ser null (inviável). Conta como inviável e pula soma.
+        if (price === null || !Number.isFinite(price) || price <= 0) {
+          inviaveis++;
+          countItems++;
+          negativos++;
+          continue;
+        }
+        const taxaPct = safeNum(plat.taxa_plataforma);
+        const taxa = price * (taxaPct / 100);
+        const comissao = safeNum(plat.comissao_app);
+        const desc = price * (safeNum(plat.desconto_promocao) / 100);
+        const lucro = price - custoUn - taxa - comissao - desc;
+        if (Number.isFinite(lucro)) {
+          totalLucro += lucro;
+          if (lucro < 0) negativos++;
+        }
         countItems++;
-        if (lucro < 0) negativos++;
       }
     }
     return {
       lucroMedio: countItems > 0 ? totalLucro / countItems : 0,
       negativos,
+      inviaveis,
       totalCombinacoes: countItems,
     };
   }, [allItems, plataformas, customPrices]);
@@ -280,15 +329,21 @@ export default function DeliveryPrecosScreen() {
   }, [categorias]);
 
   function renderPlatformRow(item, plat) {
-    const precoSugerido = calcDeliveryPrice(item.precoVenda, plat.taxa_plataforma);
-    const precoDelivery = getEffectivePrice(item.id, plat.id, precoSugerido);
-    const taxaPlatValor = precoDelivery * (plat.taxa_plataforma / 100);
-    const comissaoApp = plat.comissao_app || 0;
-    const descontoPct = plat.desconto_promocao || 0;
+    const custoUn = safeNum(item.custoUnitario);
+    const precoVenda = safeNum(item.precoVenda);
+    const precoSugerido = calcDeliveryPrice(precoVenda, plat.taxa_plataforma);
+    const precoDeliveryRaw = getEffectivePrice(item.id, plat.id, precoSugerido);
+    const inviavel = precoDeliveryRaw === null || !Number.isFinite(precoDeliveryRaw) || precoDeliveryRaw <= 0;
+    const precoDelivery = inviavel ? 0 : precoDeliveryRaw;
+    const taxaPct = safeNum(plat.taxa_plataforma);
+    const taxaPlatValor = precoDelivery * (taxaPct / 100);
+    const comissaoApp = safeNum(plat.comissao_app);
+    const descontoPct = safeNum(plat.desconto_promocao);
     const descontoValor = precoDelivery * (descontoPct / 100);
-    const lucro = precoDelivery - item.custoUnitario - taxaPlatValor - comissaoApp - descontoValor;
-    const isPositive = lucro >= 0;
-    const margem = precoDelivery > 0 ? (lucro / precoDelivery) * 100 : 0;
+    const lucroRaw = precoDelivery - custoUn - taxaPlatValor - comissaoApp - descontoValor;
+    const lucro = Number.isFinite(lucroRaw) ? lucroRaw : 0;
+    const isPositive = !inviavel && lucro >= 0;
+    const margem = (!inviavel && precoDelivery > 0) ? (lucro / precoDelivery) * 100 : 0;
     const customKey = `${item.id}-${plat.id}`;
 
     return (
@@ -305,30 +360,52 @@ export default function DeliveryPrecosScreen() {
           />
         </View>
 
+        {inviavel && (
+          <View
+            style={styles.inviavelBanner}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+          >
+            <Feather name="alert-octagon" size={12} color={colors.error} style={{ marginRight: 4 }} />
+            <Text style={styles.inviavelBannerText}>
+              Taxa da plataforma cobre/excede o preço — defina um preço delivery manualmente.
+            </Text>
+          </View>
+        )}
+
         <View style={styles.priceRow}>
           <View style={styles.priceCol}>
             <Text style={styles.priceLabel}>Sugerido</Text>
-            <Text style={styles.priceValue}>{formatCurrency(precoSugerido)}</Text>
+            <Text style={styles.priceValue}>
+              {precoSugerido === null ? '—' : formatCurrency(precoSugerido)}
+            </Text>
           </View>
           <View style={[styles.priceCol, { flex: 1.2 }]}>
             <Text style={styles.priceLabel}>Preço Delivery</Text>
             <InputField
-              value={customPrices[customKey] !== undefined ? String(customPrices[customKey]) : String(precoSugerido.toFixed(2).replace('.', ','))}
+              value={
+                customPrices[customKey] !== undefined
+                  ? String(customPrices[customKey])
+                  : (precoSugerido !== null && Number.isFinite(precoSugerido))
+                    ? String(precoSugerido.toFixed(2).replace('.', ','))
+                    : ''
+              }
               onChangeText={(val) => handleCustomPrice(item.id, plat.id, val)}
               keyboardType="numeric"
               placeholder="0,00"
               style={styles.deliveryInput}
               inputStyle={styles.deliveryInputField}
+              accessibilityLabel={`Preço delivery em ${plat.plataforma} para ${item.nome}`}
             />
           </View>
           <View style={[styles.priceCol, { alignItems: 'flex-end' }]}>
             <Text style={styles.priceLabel}>Lucro</Text>
             <Text style={[styles.lucroValue, { color: isPositive ? colors.success : colors.error }]}>
-              {formatCurrency(lucro)}
+              {inviavel ? '—' : formatCurrency(lucro)}
             </Text>
             <View style={[styles.margemChip, { backgroundColor: isPositive ? colors.success + '14' : colors.error + '14' }]}>
               <Text style={[styles.margemChipText, { color: isPositive ? colors.success : colors.error }]}>
-                {margem.toFixed(1)}%
+                {inviavel ? '—' : `${margem.toFixed(1)}%`}
               </Text>
             </View>
           </View>
@@ -364,6 +441,25 @@ export default function DeliveryPrecosScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <FinanceiroPendenteBanner />
+
+      {loadError && (
+        <View
+          style={styles.errorBanner}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+        >
+          <Feather name="alert-triangle" size={14} color={colors.error} style={{ marginRight: 6 }} />
+          <Text style={styles.errorBannerText}>{loadError}</Text>
+          <TouchableOpacity
+            onPress={loadData}
+            style={styles.errorRetryBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Tentar carregar novamente"
+          >
+            <Text style={styles.errorRetryText}>Tentar novamente</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Summary card */}
       {summaryStats && (
@@ -465,8 +561,10 @@ export default function DeliveryPrecosScreen() {
                     {/* Grouped card rows */}
                     {isExpanded && group.items.map((item, itemIndex) => {
                       const isItemExpanded = expandedItems[item.id];
-                      const margem = item.precoVenda > 0
-                        ? ((item.precoVenda - item.custoUnitario) / item.precoVenda * 100)
+                      const itemPreco = safeNum(item.precoVenda);
+                      const itemCusto = safeNum(item.custoUnitario);
+                      const margem = itemPreco > 0
+                        ? ((itemPreco - itemCusto) / itemPreco * 100)
                         : 0;
                       const isFirst = itemIndex === 0;
                       const isLast = itemIndex === group.items.length - 1;
@@ -952,5 +1050,53 @@ const styles = StyleSheet.create({
     backgroundColor: colors.inputBg,
     padding: spacing.sm,
     borderRadius: borderRadius.sm,
+  },
+
+  // Error / inviability banners (P0 fix)
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    borderLeftWidth: 3,
+    borderLeftColor: '#dc2626',
+    padding: spacing.sm,
+    borderRadius: borderRadius.sm,
+    marginBottom: spacing.sm,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: fonts.small,
+    fontFamily: fontFamily.regular,
+    color: '#991b1b',
+  },
+  errorRetryBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    backgroundColor: '#dc2626',
+    borderRadius: borderRadius.sm,
+    marginLeft: spacing.xs,
+  },
+  errorRetryText: {
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.bold,
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  inviavelBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    borderLeftWidth: 3,
+    borderLeftColor: colors.error,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 4,
+    marginBottom: spacing.xs,
+  },
+  inviavelBannerText: {
+    flex: 1,
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.semiBold,
+    color: '#991b1b',
   },
 });

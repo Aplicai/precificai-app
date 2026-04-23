@@ -1,5 +1,6 @@
-import React, { useState, useCallback } from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Switch, Modal } from 'react-native';
+import React, { useState, useCallback, useRef } from 'react';
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Switch, Modal, Alert } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
@@ -9,6 +10,20 @@ import InfoTooltip from '../components/InfoTooltip';
 import EmptyState from '../components/EmptyState';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
 import { formatCurrency, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+
+// Whitelist (defesa SQL injection — campo vem do caller, jamais user input)
+const PLAT_NUMERIC_FIELDS = Object.freeze(['taxa_plataforma', 'taxa_entrega', 'embalagem_extra', 'comissao_app', 'desconto_promocao', 'ativo']);
+
+function safeNum(v) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseInputNumber(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const parsed = parseFloat(String(raw).replace(',', '.'));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
 
 const DEFAULT_PLATFORMS = [
   { plataforma: 'iFood', taxa_plataforma: 27, taxa_entrega: 0, embalagem_extra: 0, ativo: 1 },
@@ -48,6 +63,11 @@ export default function DeliveryScreen() {
   const [showComboModal, setShowComboModal] = useState(false);
   const [novoCombo, setNovoCombo] = useState({ nome: '', preco_venda: '', itens: [] });
 
+  // Error/feedback state (P1 fix)
+  const [loadError, setLoadError] = useState(null);
+  const [saveError, setSaveError] = useState(null);
+  const isLoadingRef = useRef(false);
+
   useFocusEffect(
     useCallback(() => {
       loadData();
@@ -56,7 +76,11 @@ export default function DeliveryScreen() {
   );
 
   async function loadData() {
-    const db = await getDatabase();
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    setLoadError(null);
+    try {
+      const db = await getDatabase();
 
     // Load or seed platforms
     let plats = await db.getAllAsync('SELECT * FROM delivery_config ORDER BY id');
@@ -172,14 +196,39 @@ export default function DeliveryScreen() {
       combosWithCost.push({ ...combo, itens, custo });
     }
     setCombos(combosWithCost);
+    } catch (e) {
+      console.error('[DeliveryScreen.loadData]', e);
+      setLoadError('Não conseguimos carregar os dados de delivery. Verifique sua conexão e tente novamente.');
+    } finally {
+      isLoadingRef.current = false;
+    }
+  }
+
+  function showSaveError(msg) {
+    setSaveError(msg);
+    setTimeout(() => setSaveError(null), 4000);
   }
 
   async function updatePlatform(id, field, value) {
-    const db = await getDatabase();
-    await db.runAsync(`UPDATE delivery_config SET ${field} = ? WHERE id = ?`, [value, id]);
-    setPlataformas(prev =>
-      prev.map(p => (p.id === id ? { ...p, [field]: value } : p))
-    );
+    if (!PLAT_NUMERIC_FIELDS.includes(field)) {
+      console.error('[DeliveryScreen.updatePlatform] campo não permitido:', field);
+      return;
+    }
+    const numValue = safeNum(value);
+    if (numValue < 0) {
+      showSaveError('Valor não pode ser negativo.');
+      return;
+    }
+    try {
+      const db = await getDatabase();
+      await db.runAsync(`UPDATE delivery_config SET ${field} = ? WHERE id = ?`, [numValue, id]);
+      setPlataformas(prev =>
+        prev.map(p => (p.id === id ? { ...p, [field]: numValue } : p))
+      );
+    } catch (e) {
+      console.error('[DeliveryScreen.updatePlatform]', field, e);
+      showSaveError('Não foi possível salvar essa alteração. Tente novamente.');
+    }
   }
 
   async function togglePlatform(id, currentValue) {
@@ -188,16 +237,29 @@ export default function DeliveryScreen() {
   }
 
   async function adicionarPlataforma() {
-    if (!novaPlataforma.trim()) {
-      return Alert.alert('Erro', 'Informe o nome da plataforma');
+    const nome = novaPlataforma.trim();
+    if (!nome) {
+      showSaveError('Informe o nome da plataforma.');
+      return;
     }
-    const db = await getDatabase();
-    await db.runAsync(
-      'INSERT INTO delivery_config (plataforma, taxa_plataforma, taxa_entrega, embalagem_extra, ativo) VALUES (?, ?, ?, ?, ?)',
-      [novaPlataforma.trim(), 0, 0, 0, 1]
-    );
-    setNovaPlataforma('');
-    loadData();
+    // Dedupe (case-insensitive)
+    const exists = plataformas.some(p => (p.plataforma || '').toLowerCase() === nome.toLowerCase());
+    if (exists) {
+      showSaveError(`A plataforma "${nome}" já existe.`);
+      return;
+    }
+    try {
+      const db = await getDatabase();
+      await db.runAsync(
+        'INSERT INTO delivery_config (plataforma, taxa_plataforma, taxa_entrega, embalagem_extra, ativo) VALUES (?, ?, ?, ?, ?)',
+        [nome, 0, 0, 0, 1]
+      );
+      setNovaPlataforma('');
+      loadData();
+    } catch (e) {
+      console.error('[DeliveryScreen.adicionarPlataforma]', e);
+      showSaveError('Não foi possível adicionar a plataforma. Tente novamente.');
+    }
   }
 
   function removerPlataforma(id, nome) {
@@ -205,77 +267,126 @@ export default function DeliveryScreen() {
       id,
       nome,
       onConfirm: async () => {
-        const db = await getDatabase();
-        await db.runAsync('DELETE FROM delivery_config WHERE id = ?', [id]);
-        if (expandedId === id) setExpandedId(null);
-        setConfirmRemove(null);
-        loadData();
+        try {
+          const db = await getDatabase();
+          await db.runAsync('DELETE FROM delivery_config WHERE id = ?', [id]);
+          if (expandedId === id) setExpandedId(null);
+          setConfirmRemove(null);
+          loadData();
+        } catch (e) {
+          console.error('[DeliveryScreen.removerPlataforma]', e);
+          setConfirmRemove(null);
+          showSaveError('Não foi possível remover a plataforma. Tente novamente.');
+        }
       },
     });
   }
 
+  // Defesa contra NaN/Infinity em precificação delivery
   function calcDeliveryPrice(precoVenda, taxaPlataforma, embalagemExtra) {
-    if (taxaPlataforma >= 100) return precoVenda + embalagemExtra;
-    const precoSugerido = precoVenda / (1 - taxaPlataforma / 100);
-    return roundUpTo50(precoSugerido) + embalagemExtra;
+    const preco = safeNum(precoVenda);
+    const taxa = safeNum(taxaPlataforma);
+    const emb = safeNum(embalagemExtra);
+    if (preco <= 0) return null;
+    if (taxa >= 100) return null; // taxa cobre/excede preço — inviável
+    const divisor = 1 - taxa / 100;
+    if (divisor <= 0) return null;
+    const sugerido = preco / divisor;
+    if (!Number.isFinite(sugerido)) return null;
+    return roundUpTo50(sugerido) + emb;
   }
 
   function parseInputValue(text) {
-    return parseFloat(text.replace(',', '.')) || 0;
+    const parsed = parseInputNumber(text);
+    return parsed === null ? 0 : parsed;
   }
 
   // === ADICIONAIS ===
   async function adicionarAdicional() {
-    if (!novoAdicional.nome.trim()) return;
-    const db = await getDatabase();
-    await db.runAsync(
-      'INSERT INTO delivery_adicionais (nome, custo, preco_cobrado) VALUES (?, ?, ?)',
-      [novoAdicional.nome.trim(), parseInputValue(novoAdicional.custo), parseInputValue(novoAdicional.preco_cobrado)]
-    );
-    setNovoAdicional({ nome: '', custo: '', preco_cobrado: '' });
-    loadData();
+    const nome = novoAdicional.nome.trim();
+    if (!nome) {
+      showSaveError('Informe o nome do adicional.');
+      return;
+    }
+    try {
+      const db = await getDatabase();
+      await db.runAsync(
+        'INSERT INTO delivery_adicionais (nome, custo, preco_cobrado) VALUES (?, ?, ?)',
+        [nome, parseInputValue(novoAdicional.custo), parseInputValue(novoAdicional.preco_cobrado)]
+      );
+      setNovoAdicional({ nome: '', custo: '', preco_cobrado: '' });
+      loadData();
+    } catch (e) {
+      console.error('[DeliveryScreen.adicionarAdicional]', e);
+      showSaveError('Não foi possível salvar o adicional. Tente novamente.');
+    }
   }
 
   function removerAdicional(id, nome) {
     setConfirmRemove({
       id, nome,
       onConfirm: async () => {
-        const db = await getDatabase();
-        await db.runAsync('DELETE FROM delivery_adicionais WHERE id = ?', [id]);
-        setConfirmRemove(null);
-        loadData();
+        try {
+          const db = await getDatabase();
+          await db.runAsync('DELETE FROM delivery_adicionais WHERE id = ?', [id]);
+          setConfirmRemove(null);
+          loadData();
+        } catch (e) {
+          console.error('[DeliveryScreen.removerAdicional]', e);
+          setConfirmRemove(null);
+          showSaveError('Não foi possível remover o adicional. Tente novamente.');
+        }
       },
     });
   }
 
   // === PRODUTOS DELIVERY ===
   async function salvarProdutoDelivery() {
-    if (!novoProdutoDelivery.nome.trim() || novoProdutoDelivery.itens.length === 0) return;
-    const db = await getDatabase();
-    const res = await db.runAsync(
-      'INSERT INTO delivery_produtos (nome, preco_venda) VALUES (?, ?)',
-      [novoProdutoDelivery.nome.trim(), parseInputValue(novoProdutoDelivery.preco_venda)]
-    );
-    const dpId = res.lastInsertRowId;
-    for (const item of novoProdutoDelivery.itens) {
-      await db.runAsync(
-        'INSERT INTO delivery_produto_itens (delivery_produto_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
-        [dpId, item.tipo, item.item_id, item.quantidade]
-      );
+    const nome = novoProdutoDelivery.nome.trim();
+    if (!nome) {
+      showSaveError('Informe o nome do produto delivery.');
+      return;
     }
-    setShowProdutoModal(false);
-    setNovoProdutoDelivery({ nome: '', preco_venda: '', itens: [] });
-    loadData();
+    if (novoProdutoDelivery.itens.length === 0) {
+      showSaveError('Adicione ao menos um item ao produto.');
+      return;
+    }
+    try {
+      const db = await getDatabase();
+      const res = await db.runAsync(
+        'INSERT INTO delivery_produtos (nome, preco_venda) VALUES (?, ?)',
+        [nome, parseInputValue(novoProdutoDelivery.preco_venda)]
+      );
+      const dpId = res.lastInsertRowId;
+      for (const item of novoProdutoDelivery.itens) {
+        await db.runAsync(
+          'INSERT INTO delivery_produto_itens (delivery_produto_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
+          [dpId, item.tipo, item.item_id, safeNum(item.quantidade) || 1]
+        );
+      }
+      setShowProdutoModal(false);
+      setNovoProdutoDelivery({ nome: '', preco_venda: '', itens: [] });
+      loadData();
+    } catch (e) {
+      console.error('[DeliveryScreen.salvarProdutoDelivery]', e);
+      showSaveError('Não foi possível salvar o produto delivery. Tente novamente.');
+    }
   }
 
   function removerProdutoDelivery(id, nome) {
     setConfirmRemove({
       id, nome,
       onConfirm: async () => {
-        const db = await getDatabase();
-        await db.runAsync('DELETE FROM delivery_produtos WHERE id = ?', [id]);
-        setConfirmRemove(null);
-        loadData();
+        try {
+          const db = await getDatabase();
+          await db.runAsync('DELETE FROM delivery_produtos WHERE id = ?', [id]);
+          setConfirmRemove(null);
+          loadData();
+        } catch (e) {
+          console.error('[DeliveryScreen.removerProdutoDelivery]', e);
+          setConfirmRemove(null);
+          showSaveError('Não foi possível remover o produto. Tente novamente.');
+        }
       },
     });
   }
@@ -302,32 +413,51 @@ export default function DeliveryScreen() {
 
   // === COMBOS ===
   async function salvarCombo() {
-    if (!novoCombo.nome.trim() || novoCombo.itens.length === 0) return;
-    const db = await getDatabase();
-    const res = await db.runAsync(
-      'INSERT INTO delivery_combos (nome, preco_venda) VALUES (?, ?)',
-      [novoCombo.nome.trim(), parseInputValue(novoCombo.preco_venda)]
-    );
-    const comboId = res.lastInsertRowId;
-    for (const item of novoCombo.itens) {
-      await db.runAsync(
-        'INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
-        [comboId, item.tipo, item.item_id, item.quantidade]
-      );
+    const nome = novoCombo.nome.trim();
+    if (!nome) {
+      showSaveError('Informe o nome do combo.');
+      return;
     }
-    setShowComboModal(false);
-    setNovoCombo({ nome: '', preco_venda: '', itens: [] });
-    loadData();
+    if (novoCombo.itens.length === 0) {
+      showSaveError('Adicione ao menos um item ao combo.');
+      return;
+    }
+    try {
+      const db = await getDatabase();
+      const res = await db.runAsync(
+        'INSERT INTO delivery_combos (nome, preco_venda) VALUES (?, ?)',
+        [nome, parseInputValue(novoCombo.preco_venda)]
+      );
+      const comboId = res.lastInsertRowId;
+      for (const item of novoCombo.itens) {
+        await db.runAsync(
+          'INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
+          [comboId, item.tipo, item.item_id, safeNum(item.quantidade) || 1]
+        );
+      }
+      setShowComboModal(false);
+      setNovoCombo({ nome: '', preco_venda: '', itens: [] });
+      loadData();
+    } catch (e) {
+      console.error('[DeliveryScreen.salvarCombo]', e);
+      showSaveError('Não foi possível salvar o combo. Tente novamente.');
+    }
   }
 
   function removerCombo(id, nome) {
     setConfirmRemove({
       id, nome,
       onConfirm: async () => {
-        const db = await getDatabase();
-        await db.runAsync('DELETE FROM delivery_combos WHERE id = ?', [id]);
-        setConfirmRemove(null);
-        loadData();
+        try {
+          const db = await getDatabase();
+          await db.runAsync('DELETE FROM delivery_combos WHERE id = ?', [id]);
+          setConfirmRemove(null);
+          loadData();
+        } catch (e) {
+          console.error('[DeliveryScreen.removerCombo]', e);
+          setConfirmRemove(null);
+          showSaveError('Não foi possível remover o combo. Tente novamente.');
+        }
       },
     });
   }
@@ -342,6 +472,27 @@ export default function DeliveryScreen() {
   return (
     <>
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {(loadError || saveError) && (
+        <View
+          style={styles.errorBanner}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+        >
+          <Feather name="alert-triangle" size={14} color={colors.error} style={{ marginRight: 6 }} />
+          <Text style={styles.errorBannerText}>{loadError || saveError}</Text>
+          {loadError && (
+            <TouchableOpacity
+              onPress={loadData}
+              style={styles.errorRetryBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Tentar carregar novamente"
+            >
+              <Text style={styles.errorRetryText}>Tentar novamente</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       {/* === CONFIGURAR PLATAFORMAS === */}
       <Card
         title="Configurar Plataformas"
@@ -380,6 +531,9 @@ export default function DeliveryScreen() {
                 onValueChange={() => togglePlatform(plat.id, plat.ativo)}
                 trackColor={{ false: colors.disabled, true: colors.primaryLight }}
                 thumbColor={plat.ativo ? colors.primary : '#f4f3f4'}
+                accessibilityRole="switch"
+                accessibilityLabel={`Ativar plataforma ${plat.plataforma}`}
+                accessibilityState={{ checked: plat.ativo === 1 }}
               />
             </TouchableOpacity>
 
@@ -483,15 +637,18 @@ export default function DeliveryScreen() {
 
               {/* Product rows */}
               {produtos.map((prod, index) => {
-                const precoDelivery = calcDeliveryPrice(
-                  prod.precoVenda,
-                  plat.taxa_plataforma,
-                  plat.embalagem_extra
-                );
-                const taxaPlatValor = precoDelivery * (plat.taxa_plataforma / 100);
-                const custoDelivery = prod.custoUnitario + plat.embalagem_extra;
-                const lucro = precoDelivery - custoDelivery - taxaPlatValor;
-                const isPositive = lucro >= 0;
+                const precoVenda = safeNum(prod.precoVenda);
+                const custoUn = safeNum(prod.custoUnitario);
+                const embExtra = safeNum(plat.embalagem_extra);
+                const taxaPct = safeNum(plat.taxa_plataforma);
+                const precoDeliveryRaw = calcDeliveryPrice(precoVenda, taxaPct, embExtra);
+                const inviavel = precoDeliveryRaw === null || !Number.isFinite(precoDeliveryRaw);
+                const precoDelivery = inviavel ? 0 : precoDeliveryRaw;
+                const taxaPlatValor = precoDelivery * (taxaPct / 100);
+                const custoDelivery = custoUn + embExtra;
+                const lucroRaw = precoDelivery - custoDelivery - taxaPlatValor;
+                const lucro = Number.isFinite(lucroRaw) ? lucroRaw : 0;
+                const isPositive = !inviavel && lucro >= 0;
 
                 return (
                   <View
@@ -505,18 +662,21 @@ export default function DeliveryScreen() {
                       {prod.nome}
                     </Text>
                     <Text style={[styles.tableCellValue, { flex: 0.8, textAlign: 'right' }]}>
-                      {formatCurrency(prod.precoVenda)}
+                      {formatCurrency(precoVenda)}
                     </Text>
                     <Text style={[styles.tableCellDelivery, { flex: 0.8, textAlign: 'right' }]}>
-                      {formatCurrency(precoDelivery)}
+                      {inviavel ? '—' : formatCurrency(precoDelivery)}
                     </Text>
                     <Text
                       style={[
                         styles.tableCellLucro,
                         { flex: 0.7, textAlign: 'right', color: isPositive ? colors.success : colors.error },
                       ]}
+                      accessibilityLabel={inviavel
+                        ? `${prod.nome}: precificação inviável nesta plataforma`
+                        : `${prod.nome}: lucro ${isPositive ? 'positivo' : 'negativo'} de ${formatCurrency(lucro)}`}
                     >
-                      {formatCurrency(lucro)}
+                      {inviavel ? '—' : formatCurrency(lucro)}
                     </Text>
                   </View>
                 );
@@ -1241,6 +1401,35 @@ const styles = StyleSheet.create({
   },
   modalSaveText: {
     color: colors.textLight,
+    fontWeight: '700',
+  },
+
+  // Error banner (P1 fix)
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    borderLeftWidth: 3,
+    borderLeftColor: '#dc2626',
+    padding: spacing.sm,
+    borderRadius: borderRadius.sm,
+    marginBottom: spacing.sm,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: fonts.small,
+    color: '#991b1b',
+  },
+  errorRetryBtn: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    backgroundColor: '#dc2626',
+    borderRadius: borderRadius.sm,
+    marginLeft: spacing.xs,
+  },
+  errorRetryText: {
+    fontSize: fonts.tiny,
+    color: '#ffffff',
     fontWeight: '700',
   },
 });

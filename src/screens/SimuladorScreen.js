@@ -19,6 +19,12 @@ function normalizeStr(str) {
   return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
 
+// Helper: extrai número finito ou 0 (evita NaN/Infinity em cálculos)
+const safeNum = (v) => {
+  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+};
+
 export default function SimuladorScreen({ navigation }) {
   const { isDesktop } = useResponsiveLayout();
   const isWeb = Platform.OS === 'web';
@@ -42,10 +48,12 @@ export default function SimuladorScreen({ navigation }) {
   const [totalVarDecimal, setTotalVarDecimal] = useState(0);
   const [metaCmvPercent, setMetaCmvPercent] = useState(0);
   const [metaResultado, setMetaResultado] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
   async function loadData() {
+    setLoadError(null);
     try {
       setLoading(true);
       const db = await getDatabase();
@@ -106,6 +114,8 @@ export default function SimuladorScreen({ navigation }) {
       setMetaCmvPercent(cmvMedioPerc);
       setMetaProdutos(prodsR); // keep only for empty state check
     } catch (e) {
+      console.error('[Simulador.loadData]', e);
+      setLoadError(e?.message || 'Não foi possível carregar os dados do simulador.');
     } finally {
       setLoading(false);
     }
@@ -120,32 +130,34 @@ export default function SimuladorScreen({ navigation }) {
 
   // ── "E se?" logic ──
   function simular() {
-    const pct = parseFloat(ajuste.replace(',', '.')) / 100;
-    if (isNaN(pct)) return;
+    const pct = safeNum(ajuste) / 100;
+    if (!Number.isFinite(pct)) return;
 
     const results = produtos.map(p => {
       let novoCustoIng = p.ingredientes.reduce((a, ing) => {
-        let preco = ing.preco_por_kg || 0;
+        let preco = safeNum(ing.preco_por_kg);
         if (!insumoSelecionado || ing.mp_id === insumoSelecionado) {
           preco = preco * (1 + pct);
         }
-        if ((ing.unidade_medida || '').toLowerCase() === 'un') return a + ing.quantidade_utilizada * preco;
-        return a + (converterParaBase(ing.quantidade_utilizada, ing.unidade_medida || 'g') / 1000) * preco;
+        if ((ing.unidade_medida || '').toLowerCase() === 'un') return a + safeNum(ing.quantidade_utilizada) * preco;
+        return a + (converterParaBase(safeNum(ing.quantidade_utilizada), ing.unidade_medida || 'g') / 1000) * preco;
       }, 0);
-      const custoPr = p.preparos.reduce((a, pp) => a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
-      const custoEmb = p.embalagens.reduce((a, pe) => a + (pe.quantidade_utilizada || 0) * (pe.preco_unitario || 0), 0);
+      const custoPr = p.preparos.reduce((a, pp) => a + calcCustoPreparo(safeNum(pp.custo_por_kg), pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
+      const custoEmb = p.embalagens.reduce((a, pe) => a + safeNum(pe.quantidade_utilizada) * safeNum(pe.preco_unitario), 0);
 
-      const novoCusto = (novoCustoIng + custoPr + custoEmb) / getDivisorRendimento(p);
-      const novaMargemVal = p.preco_venda - novoCusto;
-      const novaMargem = p.preco_venda > 0 ? novaMargemVal / p.preco_venda : 0;
-      const impacto = novoCusto - p.custoAtual;
+      const divisor = getDivisorRendimento(p);
+      const novoCusto = divisor > 0 ? safeNum((novoCustoIng + custoPr + custoEmb) / divisor) : 0;
+      const preco = safeNum(p.preco_venda);
+      const novaMargemVal = preco - novoCusto;
+      const novaMargem = preco > 0 ? safeNum(novaMargemVal / preco) : 0;
+      const impacto = novoCusto - safeNum(p.custoAtual);
 
       return {
         ...p,
         custoNovo: novoCusto,
         margemNova: novaMargem,
         impacto,
-        impactoPercent: p.custoAtual > 0 ? impacto / p.custoAtual : 0,
+        impactoPercent: safeNum(p.custoAtual) > 0 ? safeNum(impacto / p.custoAtual) : 0,
       };
     }).sort((a, b) => a.margemNova - b.margemNova);
 
@@ -159,26 +171,27 @@ export default function SimuladorScreen({ navigation }) {
   // ── "Meta de Vendas" logic ──
   // Fórmula simplificada: Faturamento = (Fixos + Lucro) / (1 - CMV% - Var%)
   function calcularMeta(valor) {
-    const lucro = parseFloat(valor) || 0;
+    const lucro = safeNum(valor);
     if (lucro <= 0) {
       setMetaResultado(null);
       return;
     }
 
-    const margemDisponivel = 1 - metaCmvPercent - totalVarDecimal;
-    if (margemDisponivel <= 0) {
-      setMetaResultado(null);
+    const margemDisponivel = 1 - safeNum(metaCmvPercent) - safeNum(totalVarDecimal);
+    if (!Number.isFinite(margemDisponivel) || margemDisponivel <= 0) {
+      // CMV + custos variáveis ≥ 100% → modelo inviável (lucro impossível)
+      setMetaResultado({ inviavel: true });
       return;
     }
 
-    const faturamentoMensal = (custoFixoMensal + lucro) / margemDisponivel;
-    const faturamentoDiario = faturamentoMensal / 30;
+    const faturamentoMensal = safeNum((safeNum(custoFixoMensal) + lucro) / margemDisponivel);
+    const faturamentoDiario = safeNum(faturamentoMensal / 30);
 
     setMetaResultado({
       faturamentoMensal,
       faturamentoDiario,
-      cmvValor: faturamentoMensal * metaCmvPercent,
-      varValor: faturamentoMensal * totalVarDecimal,
+      cmvValor: safeNum(faturamentoMensal * metaCmvPercent),
+      varValor: safeNum(faturamentoMensal * totalVarDecimal),
     });
   }
 
@@ -408,8 +421,21 @@ export default function SimuladorScreen({ navigation }) {
           </View>
         </View>
 
+        {/* Resultado inviável (CMV+Var ≥ 100%) */}
+        {metaResultado?.inviavel && (
+          <View style={[styles.metaResultCard, { backgroundColor: '#fee2e2', borderLeftWidth: 3, borderLeftColor: colors.error }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <Feather name="alert-octagon" size={18} color={colors.error} />
+              <Text style={{ fontSize: 14, fontFamily: fontFamily.bold, color: colors.error }}>Modelo financeiro inviável</Text>
+            </View>
+            <Text style={{ fontSize: 12, color: colors.text, fontFamily: fontFamily.regular }}>
+              Seus custos variáveis (CMV {formatPercent(metaCmvPercent)} + variáveis {formatPercent(totalVarDecimal)}) somam ≥ 100% do faturamento. Não há margem para lucro com a estrutura atual. Reduza CMV/variáveis em Configurações antes de definir uma meta.
+            </Text>
+          </View>
+        )}
+
         {/* Resultado */}
-        {metaResultado && (
+        {metaResultado && !metaResultado.inviavel && (
           <View style={styles.metaResultCard}>
             <Text style={styles.metaResultLabel}>Você precisa faturar</Text>
             <Text style={styles.metaResultBig}>{formatCurrency(metaResultado.faturamentoMensal)}<Text style={styles.metaResultSuffix}>/mês</Text></Text>
@@ -440,7 +466,7 @@ export default function SimuladorScreen({ navigation }) {
 
               <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 4, marginTop: 2, flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: 12, fontFamily: fontFamily.bold, color: colors.success }}>= Lucro líquido</Text>
-                <Text style={{ fontSize: 12, fontFamily: fontFamily.bold, color: colors.success }}>{formatCurrency(parseFloat(metaLucro) || 0)}/mês</Text>
+                <Text style={{ fontSize: 12, fontFamily: fontFamily.bold, color: colors.success }}>{formatCurrency(safeNum(metaLucro))}/mês</Text>
               </View>
             </View>
           </View>
@@ -470,6 +496,15 @@ export default function SimuladorScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      {loadError && (
+        <View style={styles.errorBanner}>
+          <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: 8 }} />
+          <Text style={styles.errorBannerText}>{loadError}</Text>
+          <TouchableOpacity onPress={loadData} style={styles.errorBannerBtn} activeOpacity={0.7}>
+            <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       {/* Tabs */}
       <View style={[styles.tabsRow, isDesktop && styles.tabsRowDesktop]}>
         {TABS.map(tab => {
@@ -923,5 +958,26 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: spacing.xs,
+  },
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fee2e2',
+    borderLeftWidth: 3, borderLeftColor: colors.error,
+    padding: spacing.sm,
+    margin: spacing.md, marginBottom: 0,
+    borderRadius: borderRadius.sm,
+  },
+  errorBannerText: {
+    flex: 1, fontSize: fonts.small, color: colors.error,
+    fontFamily: fontFamily.regular,
+  },
+  errorBannerBtn: {
+    paddingHorizontal: spacing.sm, paddingVertical: 4,
+    backgroundColor: colors.error, borderRadius: borderRadius.sm,
+    marginLeft: 8,
+  },
+  errorBannerBtnText: {
+    fontSize: fonts.tiny, color: '#fff',
+    fontFamily: fontFamily.semiBold, fontWeight: '600',
   },
 });

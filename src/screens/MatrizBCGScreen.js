@@ -6,9 +6,16 @@ import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
 import InfoTooltip from '../components/InfoTooltip';
 import Loader from '../components/Loader';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import usePersistedState from '../hooks/usePersistedState';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+
+// Safe number helper: evita NaN/Infinity vazando para cálculos financeiros.
+function safeNum(v) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
 
 // Classification config (audit P1-07): nomes afetivos em vez de jargão BCG.
 // Chaves mantidas em português gastronômico para compatibilidade com dados
@@ -58,11 +65,12 @@ export default function MatrizBCGScreen({ navigation }) {
   const [vendasMap, setVendasMap] = useState({});
   const [prevVendasMap, setPrevVendasMap] = useState({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [showVendas, setShowVendas] = useState(false);
   const [needsUpdate, setNeedsUpdate] = useState(false);
-  const [filterClass, setFilterClass] = useState(null);
-  const [sortBy, setSortBy] = useState('classificacao');
-  const [sortDir, setSortDir] = useState('asc');
+  const [filterClass, setFilterClass] = usePersistedState('bcg.filterClass', null);
+  const [sortBy, setSortBy] = usePersistedState('bcg.sortBy', 'classificacao');
+  const [sortDir, setSortDir] = usePersistedState('bcg.sortDir', 'asc');
   const [searchText, setSearchText] = useState('');
   const { isDesktop } = useResponsiveLayout();
   const saveTimer = useRef(null);
@@ -93,98 +101,105 @@ export default function MatrizBCGScreen({ navigation }) {
 
   async function loadData() {
     setLoading(true);
-    const db = await getDatabase();
-    const [prods, allIngs, allPreps, allEmbs, vendas, prevVendas, cats, comboRows, comboItensRows] = await Promise.all([
-      db.getAllAsync('SELECT * FROM produtos ORDER BY nome'),
-      db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
-      db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
-      db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
-      db.getAllAsync(`SELECT * FROM vendas WHERE data = '${currentMonth}'`),
-      db.getAllAsync(`SELECT * FROM vendas WHERE data = '${prevMonthStr}'`),
-      db.getAllAsync('SELECT * FROM categorias_produtos ORDER BY nome'),
-      db.getAllAsync('SELECT * FROM delivery_combos ORDER BY nome'),
-      db.getAllAsync('SELECT * FROM delivery_combo_itens'),
-    ]);
-    setCategorias(cats || []);
+    setLoadError(null);
+    try {
+      const db = await getDatabase();
+      const [prods, allIngs, allPreps, allEmbs, vendas, prevVendas, cats, comboRows, comboItensRows] = await Promise.all([
+        db.getAllAsync('SELECT * FROM produtos ORDER BY nome'),
+        db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
+        db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
+        db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
+        db.getAllAsync(`SELECT * FROM vendas WHERE data = '${currentMonth}'`),
+        db.getAllAsync(`SELECT * FROM vendas WHERE data = '${prevMonthStr}'`),
+        db.getAllAsync('SELECT * FROM categorias_produtos ORDER BY nome'),
+        db.getAllAsync('SELECT * FROM delivery_combos ORDER BY nome'),
+        db.getAllAsync('SELECT * FROM delivery_combo_itens'),
+      ]);
+      setCategorias(cats || []);
 
-    const ingsByProd = {}, prepsByProd = {}, embsByProd = {};
-    (allIngs || []).forEach(i => { (ingsByProd[i.produto_id] = ingsByProd[i.produto_id] || []).push(i); });
-    (allPreps || []).forEach(p => { (prepsByProd[p.produto_id] = prepsByProd[p.produto_id] || []).push(p); });
-    (allEmbs || []).forEach(e => { (embsByProd[e.produto_id] = embsByProd[e.produto_id] || []).push(e); });
+      const ingsByProd = {}, prepsByProd = {}, embsByProd = {};
+      (allIngs || []).forEach(i => { (ingsByProd[i.produto_id] = ingsByProd[i.produto_id] || []).push(i); });
+      (allPreps || []).forEach(p => { (prepsByProd[p.produto_id] = prepsByProd[p.produto_id] || []).push(p); });
+      (allEmbs || []).forEach(e => { (embsByProd[e.produto_id] = embsByProd[e.produto_id] || []).push(e); });
 
-    const vMap = {};
-    (vendas || []).forEach(v => { vMap[v.produto_id] = v.quantidade || 0; });
-    setVendasMap(vMap);
+      const vMap = {};
+      (vendas || []).forEach(v => { vMap[v.produto_id] = safeNum(v.quantidade); });
+      setVendasMap(vMap);
 
-    const pvMap = {};
-    (prevVendas || []).forEach(v => { pvMap[v.produto_id] = v.quantidade || 0; });
-    setPrevVendasMap(pvMap);
+      const pvMap = {};
+      (prevVendas || []).forEach(v => { pvMap[v.produto_id] = safeNum(v.quantidade); });
+      setPrevVendasMap(pvMap);
 
-    const hasCurrentMonth = vendas && vendas.length > 0;
-    setNeedsUpdate(!hasCurrentMonth);
-    setShowVendas(!hasCurrentMonth);
+      const hasCurrentMonth = vendas && vendas.length > 0;
+      setNeedsUpdate(!hasCurrentMonth);
+      setShowVendas(!hasCurrentMonth);
 
-    const result = [];
-    for (const p of prods) {
-      const ings = ingsByProd[p.id] || [];
-      const custoIng = ings.reduce((a, i) => a + calcCustoIngrediente(i.preco_por_kg || 0, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida), 0);
-      const preps = prepsByProd[p.id] || [];
-      const custoPr = preps.reduce((a, pp) => a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
-      const embs = embsByProd[p.id] || [];
-      const custoEmb = embs.reduce((a, e) => a + (e.preco_unitario || 0) * e.quantidade_utilizada, 0);
-      const custoUnitario = (custoIng + custoPr + custoEmb) / getDivisorRendimento(p);
-      const precoVenda = p.preco_venda || 0;
-      const margemPerc = precoVenda > 0 ? ((precoVenda - custoUnitario) / precoVenda) * 100 : 0;
-      const qtdVendida = vMap[p.id] || 0;
-      result.push({ ...p, custoUnitario, margemPerc, precoVenda, qtdVendida, isCombo: false });
-    }
+      const result = [];
+      for (const p of prods) {
+        const ings = ingsByProd[p.id] || [];
+        const custoIng = ings.reduce((a, i) => a + safeNum(calcCustoIngrediente(safeNum(i.preco_por_kg), i.quantidade_utilizada, i.unidade_medida, i.unidade_medida)), 0);
+        const preps = prepsByProd[p.id] || [];
+        const custoPr = preps.reduce((a, pp) => a + safeNum(calcCustoPreparo(safeNum(pp.custo_por_kg), pp.quantidade_utilizada, pp.unidade_medida || 'g')), 0);
+        const embs = embsByProd[p.id] || [];
+        const custoEmb = embs.reduce((a, e) => a + safeNum(e.preco_unitario) * safeNum(e.quantidade_utilizada), 0);
+        const divisor = getDivisorRendimento(p);
+        const custoUnitario = divisor > 0 ? safeNum((custoIng + custoPr + custoEmb) / divisor) : 0;
+        const precoVenda = safeNum(p.preco_venda);
+        const margemPerc = precoVenda > 0 ? safeNum(((precoVenda - custoUnitario) / precoVenda) * 100) : 0;
+        const qtdVendida = safeNum(vMap[p.id]);
+        result.push({ ...p, custoUnitario, margemPerc, precoVenda, qtdVendida, isCombo: false });
+      }
 
-    // Add combos
-    const prodCostMap = {};
-    result.forEach(p => { prodCostMap[p.id] = p.custoUnitario; });
-    const itensByCombo = {};
-    (comboItensRows || []).forEach(ci => { (itensByCombo[ci.combo_id] = itensByCombo[ci.combo_id] || []).push(ci); });
+      // Add combos
+      const prodCostMap = {};
+      result.forEach(p => { prodCostMap[p.id] = p.custoUnitario; });
+      const itensByCombo = {};
+      (comboItensRows || []).forEach(ci => { (itensByCombo[ci.combo_id] = itensByCombo[ci.combo_id] || []).push(ci); });
 
-    for (const c of (comboRows || [])) {
-      const precoVenda = c.preco_venda || 0;
-      if (precoVenda <= 0) continue;
-      const itens = itensByCombo[c.id] || [];
-      const custoUnitario = itens.reduce((a, item) => a + (prodCostMap[item.item_id] || 0) * (item.quantidade || 1), 0);
-      const margemPerc = precoVenda > 0 ? ((precoVenda - custoUnitario) / precoVenda) * 100 : 0;
-      // Use negative ID for combo vendas to avoid collision with product IDs
-      const comboVendaKey = -c.id;
-      const qtdVendida = vMap[comboVendaKey] || 0;
-      result.push({
-        ...c, id: comboVendaKey, nome: c.nome + ' (Combo)', custoUnitario, margemPerc,
-        precoVenda, qtdVendida, isCombo: true, comboId: c.id,
+      for (const c of (comboRows || [])) {
+        const precoVenda = safeNum(c.preco_venda);
+        if (precoVenda <= 0) continue;
+        const itens = itensByCombo[c.id] || [];
+        const custoUnitario = itens.reduce((a, item) => a + safeNum(prodCostMap[item.item_id]) * safeNum(item.quantidade || 1), 0);
+        const margemPerc = precoVenda > 0 ? safeNum(((precoVenda - custoUnitario) / precoVenda) * 100) : 0;
+        // Use negative ID for combo vendas to avoid collision with product IDs
+        const comboVendaKey = -c.id;
+        const qtdVendida = safeNum(vMap[comboVendaKey]);
+        result.push({
+          ...c, id: comboVendaKey, nome: c.nome + ' (Combo)', custoUnitario, margemPerc,
+          precoVenda, qtdVendida, isCombo: true, comboId: c.id,
+        });
+      }
+
+      // Classify using median
+      const validItems = result.filter(p => p.precoVenda > 0);
+      if (validItems.length < 2) {
+        setProdutos(result.map(p => ({ ...p, classificacao: 'Quebra-Cabeça' })));
+        return;
+      }
+      const sorted = (arr) => [...arr].sort((a, b) => a - b);
+      const median = (arr) => { const s = sorted(arr); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+      const medianaVendas = median(validItems.map(p => p.qtdVendida));
+      const medianaMargem = median(validItems.map(p => p.margemPerc));
+
+      const classified = result.map(p => {
+        const altaMargem = p.margemPerc >= medianaMargem;
+        const altaVenda = p.qtdVendida >= medianaVendas;
+        let classificacao;
+        if (altaMargem && altaVenda) classificacao = 'Estrela';
+        else if (!altaMargem && altaVenda) classificacao = 'Cavalo de Batalha';
+        else if (altaMargem && !altaVenda) classificacao = 'Quebra-Cabeça';
+        else classificacao = 'Abacaxi';
+        return { ...p, classificacao };
       });
-    }
 
-    // Classify using median
-    const validItems = result.filter(p => p.precoVenda > 0);
-    if (validItems.length < 2) {
-      setProdutos(result.map(p => ({ ...p, classificacao: 'Quebra-Cabeça' })));
+      setProdutos(classified);
+    } catch (e) {
+      console.error('[MatrizBCG.loadData]', e);
+      setLoadError('Não foi possível carregar a análise. Verifique seus dados e tente novamente.');
+    } finally {
       setLoading(false);
-      return;
     }
-    const sorted = (arr) => [...arr].sort((a, b) => a - b);
-    const median = (arr) => { const s = sorted(arr); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
-    const medianaVendas = median(validItems.map(p => p.qtdVendida));
-    const medianaMargem = median(validItems.map(p => p.margemPerc));
-
-    const classified = result.map(p => {
-      const altaMargem = p.margemPerc >= medianaMargem;
-      const altaVenda = p.qtdVendida >= medianaVendas;
-      let classificacao;
-      if (altaMargem && altaVenda) classificacao = 'Estrela';
-      else if (!altaMargem && altaVenda) classificacao = 'Cavalo de Batalha';
-      else if (altaMargem && !altaVenda) classificacao = 'Quebra-Cabeça';
-      else classificacao = 'Abacaxi';
-      return { ...p, classificacao };
-    });
-
-    setProdutos(classified);
-    setLoading(false);
   }
 
   function navigateToProduto(item) {
@@ -291,6 +306,16 @@ export default function MatrizBCGScreen({ navigation }) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 1200, alignSelf: 'center', width: '100%' }]}>
       <FinanceiroPendenteBanner />
+
+      {loadError ? (
+        <View style={styles.errorBanner}>
+          <Feather name="alert-octagon" size={16} color={colors.error} />
+          <Text style={styles.errorBannerText}>{loadError}</Text>
+          <TouchableOpacity style={styles.errorBannerBtn} onPress={loadData} activeOpacity={0.7}>
+            <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {/* Step 1: Header */}
       <View style={styles.header}>
@@ -428,8 +453,18 @@ export default function MatrizBCGScreen({ navigation }) {
               const cfg = CLASSIFICATIONS[key];
               const isActive = filterClass === key;
               return (
-                <TouchableOpacity key={key} style={[styles.summaryBadge, { backgroundColor: cfg.bg, borderColor: isActive ? cfg.color : cfg.border, borderWidth: isActive ? 2 : 1 }]} activeOpacity={0.7} onPress={() => setFilterClass(isActive ? null : key)}>
-                  <Text style={styles.summaryEmoji}>{cfg.emoji}</Text>
+                <TouchableOpacity
+                  key={key}
+                  style={[styles.summaryBadge, { backgroundColor: cfg.bg, borderColor: isActive ? cfg.color : cfg.border, borderWidth: isActive ? 2 : 1 }]}
+                  activeOpacity={0.7}
+                  onPress={() => setFilterClass(isActive ? null : key)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${cfg.label}: ${counts[key]} produtos. ${isActive ? 'Filtro ativo, toque para limpar' : 'Toque para filtrar'}`}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Feather name={cfg.icon} size={12} color={cfg.color} />
+                    <Text style={styles.summaryEmoji}>{cfg.emoji}</Text>
+                  </View>
                   <Text style={[styles.summaryCount, { color: cfg.color }]}>{counts[key]}</Text>
                   <Text style={[styles.summaryLabel, { color: cfg.color }]}>{cfg.label}</Text>
                 </TouchableOpacity>
@@ -528,8 +563,11 @@ export default function MatrizBCGScreen({ navigation }) {
 
                       {/* Classification badge */}
                       <View style={[styles.tableCell, { flex: 1.3, alignItems: 'center' }]}>
-                        <View style={[styles.classBadge, { backgroundColor: cfg.bg, borderColor: cfg.border }]}>
-                          <Text style={styles.classBadgeEmoji}>{cfg.emoji}</Text>
+                        <View
+                          style={[styles.classBadge, { backgroundColor: cfg.bg, borderColor: cfg.border }]}
+                          accessibilityLabel={`Classificação: ${cfg.label}`}
+                        >
+                          <Feather name={cfg.icon} size={11} color={cfg.color} />
                           <Text style={[styles.classBadgeText, { color: cfg.color }]} numberOfLines={1}>
                             {cfg.short}
                           </Text>
@@ -861,5 +899,22 @@ const styles = StyleSheet.create({
   },
   quadrantMiniCountText: { fontSize: 11, fontFamily: fontFamily.bold, fontWeight: '700' },
   quadrantMiniDesc: { fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary, lineHeight: 16 },
+
+  // Error banner (audit P0 — feedback de carga)
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#fee2e2', borderLeftWidth: 3, borderLeftColor: colors.error,
+    borderRadius: borderRadius.md, padding: spacing.sm, marginBottom: spacing.md,
+  },
+  errorBannerText: {
+    flex: 1, fontSize: 12, fontFamily: fontFamily.medium, color: colors.error,
+  },
+  errorBannerBtn: {
+    backgroundColor: colors.error, borderRadius: borderRadius.sm,
+    paddingHorizontal: 10, paddingVertical: 6,
+  },
+  errorBannerBtnText: {
+    fontSize: 11, fontFamily: fontFamily.semiBold, color: '#fff',
+  },
 
 });

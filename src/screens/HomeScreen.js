@@ -3,6 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Dimensions, Activ
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
@@ -15,6 +16,26 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { useAuth } from '../contexts/AuthContext';
 
 const GAP = spacing.sm;
+
+// Chaves AsyncStorage para metas configuráveis no Home (não estão no schema
+// SQLite porque são preferências de UI, não regra de negócio compartilhada).
+// Margem também espelha em `configuracao.lucro_desejado` (regra de negócio).
+const PREF_CMV_META = '@pref:cmv_meta_pct';
+const PREF_MARGEM_META = '@pref:margem_meta_pct';
+
+// Range válido para metas — evita valores impossíveis (>100%) ou inúteis (<5%)
+// que quebrariam fórmulas downstream (ex: pontoEquilibrio = totalFixas / (1 - cmv - var)
+// com cmv > 1 dá denominador negativo).
+const META_MIN = 5;
+const META_MAX = 95;
+
+function clampMeta(v) {
+  const n = parseFloat(v);
+  if (!isFinite(n)) return null;
+  if (n < META_MIN) return String(META_MIN);
+  if (n > META_MAX) return String(META_MAX);
+  return String(Math.round(n));
+}
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -42,8 +63,23 @@ export default function HomeScreen({ navigation }) {
   const [cmvMetaValue, setCmvMetaValue] = useState('35');
   const [showMargemMeta, setShowMargemMeta] = useState(false);
   const [margemMetaValue, setMargemMetaValue] = useState('15');
+  const [loadError, setLoadError] = useState(null);
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
+
+  // Hidrata metas persistidas (P1: antes o "Aplicar" do CMV era no-op).
+  useEffect(() => {
+    (async () => {
+      try {
+        const [cmv, marg] = await Promise.all([
+          AsyncStorage.getItem(PREF_CMV_META),
+          AsyncStorage.getItem(PREF_MARGEM_META),
+        ]);
+        if (cmv) setCmvMetaValue(cmv);
+        if (marg) setMargemMetaValue(marg);
+      } catch {}
+    })();
+  }, []);
 
   useFocusEffect(useCallback(() => { loadAll(); }, []));
 
@@ -53,6 +89,7 @@ export default function HomeScreen({ navigation }) {
   }
 
   async function loadAll() {
+    setLoadError(null);
     try {
       const db = await getDatabase();
 
@@ -302,7 +339,13 @@ export default function HomeScreen({ navigation }) {
 
       setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, produtosMargBaixa: uniqueProds, produtosSemPreco, cmvPercent, pontoEquilibrio, fatMedio, insights, featuredInsight });
       setAlertas(pendencias);
-    } catch (e) { /* error handled silently */ }
+    } catch (e) {
+      // Antes: catch silencioso → usuário via tudo zerado sem entender por quê.
+      // Agora: banner vermelho com mensagem + botão "Tentar de novo".
+      const msg = (e && e.message) ? e.message : 'Falha ao carregar indicadores.';
+      setLoadError(msg);
+      if (typeof console !== 'undefined' && console.error) console.error('[HomeScreen.loadAll]', e);
+    }
     setLoading(false);
   }
 
@@ -370,9 +413,15 @@ export default function HomeScreen({ navigation }) {
   if (d.totalPreparos === 0 && acoes.length < 4) acoes.push({ label: 'Novo Preparo', icon: 'pot-steam-outline', set: 'material', tab: 'Preparos' });
   if (d.totalProdutos === 0 && acoes.length < 4) acoes.push({ label: 'Novo Produto', icon: 'box', set: 'feather', tab: 'ProdutoFormHome' });
   if (d.impactoDelivery === 0 && d.totalProdutos > 0 && acoes.length < 4) acoes.push({ label: 'Configurar Delivery', icon: 'moped-outline', set: 'material', tab: 'Delivery' });
+  // Defaults proativos. Ordem reflete frequência de uso:
+  // 1) Atualizar preços (alta) → 2) Novo produto (média) →
+  // 3) Estoque (alta, alimenta custo médio que vira preço sugerido — só aparece
+  //    quando já há insumos cadastrados, senão é fluxo morto) →
+  // 4) Engenharia do cardápio (análise) → 5) Delivery (contextual).
   const defaults = [
     { label: 'Atualizar Preços', icon: 'refresh-cw', set: 'feather', tab: 'AtualizarPrecos' },
     { label: 'Novo Produto', icon: 'box', set: 'feather', tab: 'ProdutoFormHome' },
+    ...(d.totalInsumos > 0 ? [{ label: 'Estoque', icon: 'package', set: 'feather', tab: 'EstoqueHub' }] : []),
     { label: 'Engenharia do Cardápio', icon: 'bar-chart-2', set: 'feather', tab: 'BCG' },
     { label: 'Delivery', icon: 'moped-outline', set: 'material', tab: 'Delivery' },
   ];
@@ -458,6 +507,21 @@ export default function HomeScreen({ navigation }) {
           {pendente ? 'Complete a configuração para começar' : d.totalProdutos === 0 ? 'Cadastre seus primeiros produtos' : 'Veja como está sua precificação'}
         </Text>
       </View>
+
+      {/* Banner de erro do loadAll — antes era catch silencioso, agora superficie
+          a falha pra o usuário poder reagir (P1 da auditoria HomeScreen). */}
+      {loadError && (
+        <View style={styles.errorBanner}>
+          <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginTop: 1 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.errorBannerTitle}>Não conseguimos atualizar seus indicadores</Text>
+            <Text style={styles.errorBannerDesc} numberOfLines={3}>{loadError}</Text>
+          </View>
+          <TouchableOpacity onPress={() => loadAll()} style={styles.errorBannerBtn} activeOpacity={0.7}>
+            <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Kit de Início banner — prominent for new users with no data */}
       {d.totalInsumos === 0 && d.totalProdutos === 0 && !loading && (
@@ -836,7 +900,15 @@ export default function HomeScreen({ navigation }) {
             <TouchableOpacity onPress={() => setShowCmvMeta(false)} style={{ paddingVertical: 8, paddingHorizontal: 24, backgroundColor: colors.background, borderRadius: borderRadius.md }}>
               <Text style={{ color: colors.textSecondary, fontFamily: fontFamily.semiBold, fontSize: 14 }}>Fechar</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowCmvMeta(false)} style={{ paddingVertical: 8, paddingHorizontal: 24, backgroundColor: colors.primary, borderRadius: borderRadius.md }}>
+            <TouchableOpacity onPress={async () => {
+              // P1 fix: antes só fechava o modal sem salvar. Agora valida range
+              // (5-95%) e persiste em AsyncStorage para sobreviver ao reload.
+              const safe = clampMeta(cmvMetaValue);
+              if (safe == null) { setShowCmvMeta(false); return; }
+              setCmvMetaValue(safe);
+              try { await AsyncStorage.setItem(PREF_CMV_META, safe); } catch {}
+              setShowCmvMeta(false);
+            }} style={{ paddingVertical: 8, paddingHorizontal: 24, backgroundColor: colors.primary, borderRadius: borderRadius.md }}>
               <Text style={{ color: '#fff', fontFamily: fontFamily.semiBold, fontSize: 14 }}>Aplicar</Text>
             </TouchableOpacity>
           </View>
@@ -876,11 +948,19 @@ export default function HomeScreen({ navigation }) {
               <Text style={{ color: colors.textSecondary, fontFamily: fontFamily.semiBold, fontSize: 14 }}>Fechar</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={async () => {
+              // P2 fix: clamp para 5-95% antes de tocar em DB e AsyncStorage —
+              // 150% ou negativo quebrava cálculo de pontoEquilibrio downstream.
+              const safe = clampMeta(margemMetaValue);
+              if (safe == null) { setShowMargemMeta(false); return; }
+              setMargemMetaValue(safe);
+              const val = parseFloat(safe) / 100;
               try {
                 const db = await getDatabase();
-                const val = parseFloat(margemMetaValue) / 100;
                 if (val > 0) await db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [val]);
-              } catch (e) {}
+              } catch (e) {
+                if (typeof console !== 'undefined' && console.error) console.error('[HomeScreen.saveMargemMeta]', e);
+              }
+              try { await AsyncStorage.setItem(PREF_MARGEM_META, safe); } catch {}
               setShowMargemMeta(false);
               loadAll();
             }} style={{ paddingVertical: 8, paddingHorizontal: 24, backgroundColor: colors.success, borderRadius: borderRadius.md }}>
@@ -902,6 +982,20 @@ const styles = StyleSheet.create({
   greetingRow: { marginBottom: spacing.md },
   greetingText: { fontSize: 20, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.text },
   greetingDesc: { fontSize: 13, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 2 },
+
+  // Error banner — usado quando loadAll() falha. Cor coral/error + retry inline.
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm,
+    backgroundColor: colors.error + '10', borderColor: colors.error + '40', borderWidth: 1,
+    borderRadius: borderRadius.md, padding: spacing.sm + 2, marginBottom: spacing.md,
+  },
+  errorBannerTitle: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, color: colors.error },
+  errorBannerDesc: { fontSize: fonts.tiny, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 2 },
+  errorBannerBtn: {
+    paddingHorizontal: spacing.sm + 2, paddingVertical: 6,
+    backgroundColor: colors.error, borderRadius: borderRadius.sm,
+  },
+  errorBannerBtnText: { color: '#fff', fontSize: fonts.tiny, fontFamily: fontFamily.semiBold },
 
   // Custom header
   customHeader: {

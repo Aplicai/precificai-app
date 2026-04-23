@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
+import Constants from 'expo-constants';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Platform, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useListDensity from '../hooks/useListDensity';
+
+// Versão dinâmica via expoConfig (em vez de hardcoded — evita desync após release).
+const APP_VERSION = Constants?.expoConfig?.version || Constants?.manifest?.version || '1.0.0';
 
 const OPCOES = [
   { key: 'perfil', icon: 'user', label: 'Perfil do Negócio', desc: 'Nome, segmento e telefone', screen: 'Perfil', color: colors.primary },
@@ -24,19 +28,35 @@ export default function ConfiguracoesScreen({ navigation }) {
   const [exporting, setExporting] = useState(false);
   const { density, setDensity } = useListDensity();
 
+  // Confirmação prévia antes de gerar backup. Web baixa arquivo no clique do usuário,
+  // que pode ter dados sensíveis (custos, faturamento) — evita download acidental.
+  function pedirConfirmacaoExport() {
+    Alert.alert(
+      'Exportar backup?',
+      'Será gerado um arquivo JSON com todos os seus dados (insumos, produtos, configurações financeiras, vendas). Guarde em local seguro.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Exportar', onPress: exportBackup },
+      ]
+    );
+  }
+
   async function exportBackup() {
     setExporting(true);
     try {
       const db = await getDatabase();
       const backup = {};
+      const tabelasFaltantes = [];
       for (const table of BACKUP_TABLES) {
         try {
           backup[table] = await db.getAllAsync(`SELECT * FROM ${table}`);
         } catch (e) {
           backup[table] = [];
+          tabelasFaltantes.push(table);
+          if (typeof console !== 'undefined' && console.warn) console.warn('[ConfiguracoesScreen.exportBackup] tabela ausente:', table, e?.message);
         }
       }
-      backup._meta = { date: new Date().toISOString(), version: '1.0.0' };
+      backup._meta = { date: new Date().toISOString(), version: APP_VERSION, tabelasFaltantes };
 
       if (Platform.OS === 'web') {
         const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
@@ -46,12 +66,14 @@ export default function ConfiguracoesScreen({ navigation }) {
         a.download = `precificai-backup-${new Date().toISOString().split('T')[0]}.json`;
         a.click();
         URL.revokeObjectURL(url);
-        Alert.alert('Backup exportado', 'O arquivo JSON foi baixado com sucesso.');
+        const aviso = tabelasFaltantes.length > 0 ? ` (${tabelasFaltantes.length} tabela(s) sem dados)` : '';
+        Alert.alert('Backup exportado', `O arquivo JSON foi baixado com sucesso.${aviso}`);
       } else {
         Alert.alert('Backup', 'Exportação disponível apenas na versão web por enquanto.');
       }
     } catch (e) {
-      Alert.alert('Erro', 'Não foi possível exportar o backup.');
+      if (typeof console !== 'undefined' && console.error) console.error('[ConfiguracoesScreen.exportBackup]', e);
+      Alert.alert('Erro', `Não foi possível exportar o backup.\n\nDetalhe: ${e?.message || 'erro desconhecido'}`);
     } finally {
       setExporting(false);
     }
@@ -66,6 +88,7 @@ export default function ConfiguracoesScreen({ navigation }) {
           key={op.key}
           style={styles.row}
           activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           onPress={() => {
             if (op.screen) {
               navigation.navigate(op.screen);
@@ -153,9 +176,9 @@ export default function ConfiguracoesScreen({ navigation }) {
         </Text>
 
         <TouchableOpacity
-          style={styles.backupBtn}
+          style={[styles.backupBtn, exporting && { opacity: 0.5 }]}
           activeOpacity={0.7}
-          onPress={exportBackup}
+          onPress={pedirConfirmacaoExport}
           disabled={exporting}
         >
           {exporting ? (
@@ -178,7 +201,7 @@ export default function ConfiguracoesScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.version}>PrecificaApp v1.0.0</Text>
+      <Text style={styles.version}>PrecificaApp v{APP_VERSION}</Text>
 
     </ScrollView>
   );

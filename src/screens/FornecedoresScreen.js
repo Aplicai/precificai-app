@@ -1,5 +1,5 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import React, { useState, useCallback, useRef } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
@@ -8,6 +8,13 @@ import { formatCurrency } from '../utils/calculations';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import usePersistedState from '../hooks/usePersistedState';
+
+// Audit P1: helper defensivo para qualquer valor numérico vindo de DB.
+function safeNum(v) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
 
 const CATEGORY_COLORS = [
   colors.primary, colors.accent, colors.coral, colors.purple,
@@ -27,75 +34,94 @@ export default function FornecedoresScreen({ navigation }) {
   const { isDesktop } = useResponsiveLayout();
   const [groups, setGroups] = useState([]);
   const [totalSavings, setTotalSavings] = useState(0);
-  const [busca, setBusca] = useState('');
-  const [filtroCategoria, setFiltroCategoria] = useState(null);
+  // Audit P1: persistir filtros entre navegações (padrão da casa)
+  const [busca, setBusca] = usePersistedState('fornecedores.busca', '');
+  const [filtroCategoria, setFiltroCategoria] = usePersistedState('fornecedores.filtroCategoria', null);
   const [categorias, setCategorias] = useState([]);
+  // Audit P0: estados de erro/loading (antes era silent + tela travada)
+  const [loadError, setLoadError] = useState(null);
+  const [loading, setLoading] = useState(true);
+  // Audit P0: guard contra race condition em loadData concorrente
+  const isLoadingRef = useRef(false);
 
   useFocusEffect(useCallback(() => { loadData(); }, [busca, filtroCategoria]));
 
   async function loadData() {
-    const db = await getDatabase();
-    const [insumosBrutos, cats] = await Promise.all([
-      db.getAllAsync('SELECT * FROM materias_primas ORDER BY nome'),
-      db.getAllAsync('SELECT * FROM categorias_insumos ORDER BY nome'),
-    ]);
-    setCategorias(cats);
+    if (isLoadingRef.current) return; // P0: evita corridas
+    isLoadingRef.current = true;
+    setLoading(true);
+    try {
+      setLoadError(null);
+      const db = await getDatabase();
+      const [insumosBrutos, cats] = await Promise.all([
+        db.getAllAsync('SELECT * FROM materias_primas ORDER BY nome'),
+        db.getAllAsync('SELECT * FROM categorias_insumos ORDER BY nome'),
+      ]);
+      setCategorias(cats);
 
-    // Filter by search and category
-    let insumos = insumosBrutos;
-    if (busca.trim()) {
-      const termo = normalizeStr(busca);
-      insumos = insumos.filter(i => normalizeStr(i.nome).includes(termo) || normalizeStr(i.marca).includes(termo));
+      // Filter by search and category
+      let insumos = insumosBrutos;
+      if (busca.trim()) {
+        const termo = normalizeStr(busca);
+        insumos = insumos.filter(i => normalizeStr(i.nome).includes(termo) || normalizeStr(i.marca).includes(termo));
+      }
+      if (filtroCategoria !== null) {
+        insumos = insumos.filter(i => i.categoria_id === filtroCategoria);
+      }
+
+      // Group insumos by base name (ignoring brand differences)
+      // Normalize: lowercase, trim
+      const nameMap = {};
+      for (const ins of insumos) {
+        const baseName = ins.nome.trim().toLowerCase();
+        if (!nameMap[baseName]) nameMap[baseName] = [];
+        nameMap[baseName].push(ins);
+      }
+
+      // Build comparison groups (only where there are multiple entries or a brand is set)
+      const result = [];
+      let savings = 0;
+
+      for (const [baseName, items] of Object.entries(nameMap)) {
+        if (items.length < 2) continue; // Need at least 2 to compare
+
+        // Audit P1: safeNum em vez de `|| 0` — protege contra NaN/Infinity
+        const sorted = [...items].sort((a, b) => safeNum(a.preco_por_kg) - safeNum(b.preco_por_kg));
+        const cheapest = sorted[0];
+        const mostExpensive = sorted[sorted.length - 1];
+
+        // Calculate savings per unit (difference between most expensive and cheapest)
+        const savingPerKg = safeNum(mostExpensive.preco_por_kg) - safeNum(cheapest.preco_por_kg);
+        savings += savingPerKg;
+
+        result.push({
+          baseName: items[0].nome, // Use the original casing from first item
+          items: sorted.map(item => ({
+            id: item.id,
+            nome: item.nome,
+            marca: item.marca || 'Sem marca',
+            preco_por_kg: safeNum(item.preco_por_kg),
+            unidade_medida: item.unidade_medida || 'kg',
+            isCheapest: item.id === cheapest.id,
+          })),
+          savingPerKg,
+          monthlySaving: savingPerKg,
+          cheapestMarca: cheapest.marca || 'Sem marca',
+        });
+      }
+
+      // Sort groups by potential savings descending
+      result.sort((a, b) => b.monthlySaving - a.monthlySaving);
+      setGroups(result);
+      setTotalSavings(savings);
+    } catch (e) {
+      // Audit P0: era silent — agora loga e mostra banner com retry.
+      console.error('[Fornecedores.loadData]', e);
+      setLoadError('Não foi possível carregar a comparação de fornecedores. Tente novamente.');
+    } finally {
+      setLoading(false);
+      isLoadingRef.current = false;
     }
-    if (filtroCategoria !== null) {
-      insumos = insumos.filter(i => i.categoria_id === filtroCategoria);
-    }
-
-    // Group insumos by base name (ignoring brand differences)
-    // Normalize: lowercase, trim
-    const nameMap = {};
-    for (const ins of insumos) {
-      const baseName = ins.nome.trim().toLowerCase();
-      if (!nameMap[baseName]) nameMap[baseName] = [];
-      nameMap[baseName].push(ins);
-    }
-
-    // Build comparison groups (only where there are multiple entries or a brand is set)
-    const result = [];
-    let savings = 0;
-
-    for (const [baseName, items] of Object.entries(nameMap)) {
-      if (items.length < 2) continue; // Need at least 2 to compare
-
-      // Sort by price per kg ascending
-      const sorted = [...items].sort((a, b) => (a.preco_por_kg || 0) - (b.preco_por_kg || 0));
-      const cheapest = sorted[0];
-      const mostExpensive = sorted[sorted.length - 1];
-
-      // Calculate savings per unit (difference between most expensive and cheapest)
-      const savingPerKg = (mostExpensive.preco_por_kg || 0) - (cheapest.preco_por_kg || 0);
-      savings += savingPerKg;
-
-      result.push({
-        baseName: items[0].nome, // Use the original casing from first item
-        items: sorted.map(item => ({
-          id: item.id,
-          nome: item.nome,
-          marca: item.marca || 'Sem marca',
-          preco_por_kg: item.preco_por_kg || 0,
-          unidade_medida: item.unidade_medida || 'kg',
-          isCheapest: item.id === cheapest.id,
-        })),
-        savingPerKg,
-        monthlySaving: savingPerKg,
-        cheapestMarca: cheapest.marca || 'Sem marca',
-      });
-    }
-
-    // Sort groups by potential savings descending
-    result.sort((a, b) => b.monthlySaving - a.monthlySaving);
-    setGroups(result);
-    setTotalSavings(savings);
   }
 
   const isWeb = Platform.OS === 'web';
@@ -176,6 +202,9 @@ export default function FornecedoresScreen({ navigation }) {
                 key={String(item.id)}
                 style={[styles.filtroChip, isActive && { backgroundColor: chipColor, borderColor: chipColor }]}
                 onPress={() => setFiltroCategoria(item.id === filtroCategoria ? null : item.id)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
+                accessibilityLabel={`Filtrar por ${item.nome}${isActive ? ' (selecionado)' : ''}`}
               >
                 {item.id === null ? (
                   <Feather name="list" size={11} color={isActive ? '#fff' : colors.textSecondary} style={{ marginRight: 3 }} />
@@ -191,6 +220,28 @@ export default function FornecedoresScreen({ navigation }) {
         </ScrollView>
         <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar insumo ou marca..." />
       </View>
+
+      {/* Audit P0: banner de erro de carregamento (era silent) */}
+      {loadError ? (
+        <TouchableOpacity
+          style={styles.errorBanner}
+          onPress={loadData}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Tentar carregar fornecedores novamente"
+        >
+          <Feather name="alert-circle" size={16} color="#dc2626" style={{ marginRight: 8 }} />
+          <Text style={styles.errorBannerText}>{loadError}</Text>
+        </TouchableOpacity>
+      ) : null}
+
+      {/* Audit P0: loading visível (antes era tela em branco) */}
+      {loading && groups.length === 0 && !loadError ? (
+        <View style={styles.loadingBox}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={styles.loadingText}>Carregando comparações...</Text>
+        </View>
+      ) : null}
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Total savings summary */}
@@ -237,6 +288,8 @@ export default function FornecedoresScreen({ navigation }) {
                   ]}
                   activeOpacity={0.6}
                   onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: item.id, returnTo: 'Fornecedores' } })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Editar ${item.nome} marca ${item.marca}, ${formatCurrency(item.preco_por_kg)} por ${item.unidade_medida === 'un' ? 'unidade' : 'kg'}${item.isCheapest ? ', melhor preço' : ''}`}
                 >
                   <View style={styles.itemInfo}>
                     <Text style={styles.itemMarca} numberOfLines={1}>{item.marca}</Text>
@@ -277,6 +330,21 @@ export default function FornecedoresScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, maxWidth: 1200, width: '100%' },
+
+  // Audit P0: banner de erro de carregamento + loading visível
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fef2f2', padding: 10,
+    marginHorizontal: spacing.md, marginTop: spacing.sm,
+    borderRadius: borderRadius.sm,
+    borderLeftWidth: 3, borderLeftColor: '#dc2626',
+  },
+  errorBannerText: { color: '#dc2626', fontSize: fonts.small, flex: 1, fontFamily: fontFamily.regular },
+  loadingBox: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    padding: spacing.lg, gap: 8,
+  },
+  loadingText: { fontSize: fonts.small, color: colors.textSecondary, fontFamily: fontFamily.regular },
 
   // Header bar
   headerBar: {

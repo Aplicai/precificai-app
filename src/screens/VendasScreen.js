@@ -4,8 +4,15 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import Card from '../components/Card';
 import EmptyState from '../components/EmptyState';
+import usePersistedState from '../hooks/usePersistedState';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
 import { formatCurrency, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+
+// Garante valor finito ≥ 0; usado para evitar NaN/negativo nos somatórios.
+function safeNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
 
 function getUltimos6Meses() {
   const meses = [];
@@ -21,17 +28,20 @@ function getUltimos6Meses() {
 }
 
 export default function VendasScreen({ navigation }) {
-  const [mesAtual, setMesAtual] = useState(getUltimos6Meses()[0].key);
+  const meses = getUltimos6Meses();
+  const [mesAtual, setMesAtual] = usePersistedState('vendas.mesAtual', meses[0].key);
   const [produtos, setProdutos] = useState([]);
   const [resumo, setResumo] = useState({ totalQty: 0, faturamento: 0, lucro: 0, ticketMedio: 0 });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
-  const meses = getUltimos6Meses();
+  // Se o mês persistido não existir mais na janela atual (passagem de mês), recai pro mais recente.
+  const mesValido = meses.some(m => m.key === mesAtual) ? mesAtual : meses[0].key;
 
   useFocusEffect(useCallback(() => {
     loadData();
-  }, [mesAtual]));
+  }, [mesValido]));
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -40,6 +50,7 @@ export default function VendasScreen({ navigation }) {
 
   async function loadData() {
     setLoading(true);
+    setLoadError(false);
     try {
       const db = await getDatabase();
 
@@ -55,18 +66,18 @@ export default function VendasScreen({ navigation }) {
         db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
       ]);
 
-      const totalFixas = fixas.reduce((a, d) => a + (d.valor || 0), 0);
-      const totalVar = variaveis.reduce((a, d) => a + (d.percentual || 0), 0);
-      const mesesComFat = fat.filter(f => f.valor > 0);
-      const fatMedio = mesesComFat.length > 0 ? mesesComFat.reduce((a, f) => a + f.valor, 0) / mesesComFat.length : 0;
+      const totalFixas = fixas.reduce((a, d) => a + safeNum(d.valor), 0);
+      const totalVar = variaveis.reduce((a, d) => a + safeNum(d.percentual), 0);
+      const mesesComFat = fat.filter(f => safeNum(f.valor) > 0);
+      const fatMedio = mesesComFat.length > 0 ? mesesComFat.reduce((a, f) => a + safeNum(f.valor), 0) / mesesComFat.length : 0;
       const dfPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
 
       // Filter vendas by month in JS (web DB compatibility)
-      const vendasDoMes = todasVendas.filter(v => v.data && v.data.startsWith(mesAtual));
+      const vendasDoMes = todasVendas.filter(v => v.data && v.data.startsWith(mesValido));
       const vendasPorProduto = {};
       vendasDoMes.forEach(v => {
         if (!vendasPorProduto[v.produto_id]) vendasPorProduto[v.produto_id] = 0;
-        vendasPorProduto[v.produto_id] += v.quantidade;
+        vendasPorProduto[v.produto_id] += safeNum(v.quantidade);
       });
 
       // Build lookup maps
@@ -82,25 +93,26 @@ export default function VendasScreen({ navigation }) {
       for (const p of prods) {
         const ings = ingsByProd[p.id] || [];
         const custoIng = ings.reduce((a, i) => {
-          return a + calcCustoIngrediente(i.preco_por_kg, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida);
+          return a + safeNum(calcCustoIngrediente(i.preco_por_kg, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida));
         }, 0);
 
         const preps = prepsByProd[p.id] || [];
         const custoPr = preps.reduce((a, pp) => {
-          return a + calcCustoPreparo(pp.custo_por_kg, pp.quantidade_utilizada, pp.unidade_medida || 'g');
+          return a + safeNum(calcCustoPreparo(pp.custo_por_kg, pp.quantidade_utilizada, pp.unidade_medida || 'g'));
         }, 0);
 
         const embs = embsByProd[p.id] || [];
-        const custoEmb = embs.reduce((a, e) => a + e.preco_unitario * e.quantidade_utilizada, 0);
+        const custoEmb = embs.reduce((a, e) => a + safeNum(e.preco_unitario) * safeNum(e.quantidade_utilizada), 0);
 
-        const custoUn = (custoIng + custoPr + custoEmb) / getDivisorRendimento(p);
-        const precoVenda = p.preco_venda || 0;
+        const divisor = getDivisorRendimento(p) || 1;
+        const custoUn = safeNum((custoIng + custoPr + custoEmb) / divisor);
+        const precoVenda = safeNum(p.preco_venda);
         const despFixasVal = precoVenda * dfPerc;
         const despVarVal = precoVenda * totalVar;
         const lucroUn = precoVenda - custoUn - despFixasVal - despVarVal;
         const margemPerc = precoVenda > 0 ? (lucroUn / precoVenda) * 100 : 0;
 
-        const qtdVendida = vendasPorProduto[p.id] || 0;
+        const qtdVendida = safeNum(vendasPorProduto[p.id]);
         const receita = qtdVendida * precoVenda;
         const lucroTotal = qtdVendida * lucroUn;
 
@@ -132,6 +144,8 @@ export default function VendasScreen({ navigation }) {
       setProdutos(result);
       setResumo({ totalQty, faturamento, lucro, ticketMedio });
     } catch (e) {
+      setLoadError(true);
+      if (typeof console !== 'undefined' && console.error) console.error('[VendasScreen.loadData]', e);
     } finally {
       setLoading(false);
     }
@@ -199,16 +213,25 @@ export default function VendasScreen({ navigation }) {
           {meses.map(m => (
             <TouchableOpacity
               key={m.key}
-              style={[styles.mesChip, mesAtual === m.key && styles.mesChipAtivo]}
+              style={[styles.mesChip, mesValido === m.key && styles.mesChipAtivo]}
               onPress={() => setMesAtual(m.key)}
             >
-              <Text style={[styles.mesTexto, mesAtual === m.key && styles.mesTextoAtivo]}>
+              <Text style={[styles.mesTexto, mesValido === m.key && styles.mesTextoAtivo]}>
                 {m.label}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
+
+      {loadError && (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>Não foi possível carregar as vendas.</Text>
+          <TouchableOpacity onPress={loadData} style={styles.errorBannerBtn} activeOpacity={0.7}>
+            <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <FlatList
         data={produtos}
@@ -310,6 +333,36 @@ const styles = StyleSheet.create({
   },
   mesTextoAtivo: {
     color: colors.textLight,
+  },
+
+  // Error banner
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fee2e2',
+    borderLeftWidth: 4,
+    borderLeftColor: colors.error,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: fonts.small,
+    color: colors.error,
+    fontWeight: '600',
+    marginRight: spacing.sm,
+  },
+  errorBannerBtn: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.error,
+    borderRadius: borderRadius.sm,
+  },
+  errorBannerBtnText: {
+    color: colors.textLight,
+    fontSize: fonts.tiny,
+    fontWeight: '700',
   },
 
   // List

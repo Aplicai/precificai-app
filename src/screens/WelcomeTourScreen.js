@@ -81,9 +81,14 @@ export default function WelcomeTourScreen({ navigation }) {
     (async () => {
       try {
         const raw = await AsyncStorage.getItem('welcome_tour_count');
-        const count = (Number(raw) || 0) + 1;
+        // Audit P2: parse defensivo — se valor corrompido, reinicia em 0.
+        const parsed = Number(raw);
+        const count = (Number.isFinite(parsed) ? parsed : 0) + 1;
         await AsyncStorage.setItem('welcome_tour_count', String(count));
-      } catch {}
+      } catch (e) {
+        // Audit P2: log para debug; falha do AsyncStorage não bloqueia o tour.
+        console.error('[WelcomeTour.incrementCount]', e);
+      }
     })();
   }, []);
 
@@ -107,12 +112,15 @@ export default function WelcomeTourScreen({ navigation }) {
   const finish = useCallback(async () => {
     try {
       await AsyncStorage.setItem('welcome_tour_done', 'true');
-    } catch {}
+    } catch (e) {
+      console.error('[WelcomeTour.finish.persistDone]', e);
+    }
     // Determina a próxima rota (pulando o próprio tour) e navega
     let next = 'ProfileSetup';
     try {
       next = await determineInitialRoute({ skipWelcomeTour: true });
-    } catch {
+    } catch (e) {
+      console.error('[WelcomeTour.finish.initialRoute]', e);
       next = 'ProfileSetup';
     }
     if (navigation.replace) {

@@ -6,6 +6,11 @@ import { useAuth } from '../contexts/AuthContext';
 import useRateLimit from '../hooks/useRateLimit';
 import { mapAuthError } from '../utils/authErrors';
 
+// Validação simples: nome@dominio.tld (subset de RFC 5322 suficiente para UX antes do backend).
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+// Timeout para sair de spinner infinito quando o backend trava (audit P2).
+const LOGIN_TIMEOUT_MS = 30000;
+
 export default function LoginScreen({ navigation }) {
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
@@ -16,25 +21,58 @@ export default function LoginScreen({ navigation }) {
   const rateLimit = useRateLimit();
   const passwordRef = useRef(null);
 
+  // P2 quick-win: limpa erro ao digitar (evita feedback "preso" quando usuário corrige)
+  const onChangeEmail = (v) => { if (error) setError(''); setEmail(v); };
+  const onChangePassword = (v) => { if (error) setError(''); setPassword(v); };
+
   const handleLogin = async () => {
     const limitMsg = rateLimit.checkLimit();
     if (limitMsg) { setError(limitMsg); return; }
-    if (!email.trim() || !password.trim()) {
+    // P0: validação por campo + regex de email
+    const emailTrim = email.trim();
+    const passwordTrim = password.trim();
+    if (!emailTrim && !passwordTrim) {
       setError('Informe email e senha para continuar.');
+      return;
+    }
+    if (!emailTrim) {
+      setError('Informe seu email.');
+      return;
+    }
+    if (!passwordTrim) {
+      setError('Informe sua senha.');
+      return;
+    }
+    if (!EMAIL_RE.test(emailTrim)) {
+      setError('Email inválido. Verifique se está no formato nome@dominio.com');
       return;
     }
     setError('');
     setLoading(true);
+    // P2: timeout para evitar spinner infinito se backend não responder
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      setLoading(false);
+      setError('Servidor demorou para responder. Verifique sua conexão e tente novamente.');
+    }, LOGIN_TIMEOUT_MS);
     try {
-      await signIn(email.trim().toLowerCase(), password);
+      await signIn(emailTrim.toLowerCase(), password);
+      if (timedOut) return;
       rateLimit.reset();
     } catch (err) {
+      if (timedOut) return;
+      console.error('[LoginScreen.handleLogin]', err);
       rateLimit.recordAttempt();
       setError(mapAuthError(err, { context: 'signIn' }));
     } finally {
-      setLoading(false);
+      clearTimeout(timeoutId);
+      if (!timedOut) setLoading(false);
     }
   };
+
+  // P1: botão fica desabilitado durante loading OU rate-limit ativo
+  const btnDisabled = loading || !!rateLimit.isLocked;
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -63,7 +101,7 @@ export default function LoginScreen({ navigation }) {
           <TextInput
             style={styles.input}
             value={email}
-            onChangeText={setEmail}
+            onChangeText={onChangeEmail}
             placeholder="seu@email.com"
             keyboardType="email-address"
             autoCapitalize="none"
@@ -81,7 +119,7 @@ export default function LoginScreen({ navigation }) {
               ref={passwordRef}
               style={styles.passwordInput}
               value={password}
-              onChangeText={setPassword}
+              onChangeText={onChangePassword}
               placeholder="Sua senha"
               secureTextEntry={!showPassword}
               autoComplete="password"
@@ -103,7 +141,13 @@ export default function LoginScreen({ navigation }) {
             <Text style={styles.forgotText}>Esqueci minha senha</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.primaryBtn} onPress={handleLogin} disabled={loading} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={[styles.primaryBtn, btnDisabled && styles.primaryBtnDisabled]}
+            onPress={handleLogin}
+            disabled={btnDisabled}
+            activeOpacity={0.7}
+            accessibilityState={{ disabled: btnDisabled }}
+          >
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
@@ -164,13 +208,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary, borderRadius: borderRadius.md, paddingVertical: 14,
     alignItems: 'center', justifyContent: 'center', minHeight: 48,
   },
+  // Audit P1: feedback visual de bot\u00e3o desabilitado durante rate-limit/loading
+  primaryBtnDisabled: { opacity: 0.5 },
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '600', fontFamily: fontFamily.semiBold },
   registerRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
   registerText: { fontSize: 14, color: colors.textSecondary, fontFamily: fontFamily.regular },
   registerLink: { fontSize: 14, color: colors.primary, fontWeight: '600', fontFamily: fontFamily.semiBold },
+  // Audit P2: borda esquerda vermelha para acessibilidade daltonismo
   errorBox: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fef2f2', padding: 10, borderRadius: borderRadius.sm,
+    borderLeftWidth: 3, borderLeftColor: '#dc2626',
     marginBottom: 4,
   },
   errorText: { color: '#dc2626', fontSize: 13, fontFamily: fontFamily.regular, flex: 1 },

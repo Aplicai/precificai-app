@@ -156,7 +156,11 @@ export default function PreparoFormScreen({ route, navigation }) {
     }
   }
 
-  const parseNum = (v) => parseFloat(String(v).replace(',', '.')) || 0;
+  const parseNum = (v) => {
+    const n = parseFloat(String(v).replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  };
+  const safeCusto = (v) => (Number.isFinite(v) && v >= 0 ? v : 0);
 
   function getUnidadeIngrediente(mpId) {
     const mp = materiasPrimas.find(m => m.id === mpId);
@@ -172,11 +176,11 @@ export default function PreparoFormScreen({ route, navigation }) {
     const mp = materiasPrimas.find(m => m.id === ing.materia_prima_id);
     const precoBase = mp?.preco_por_kg || ing.preco_por_kg || 0;
     const unidade = getUnidadeDoIngrediente(ing);
-    return acc + calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade);
+    return acc + safeCusto(calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade));
   }, 0);
 
   const rendimento = parseNum(form.rendimento_total);
-  const custoKg = rendimento > 0 ? (custoTotal / rendimento) * 1000 : 0;
+  const custoKg = rendimento > 0 && Number.isFinite(custoTotal) ? (custoTotal / rendimento) * 1000 : 0;
   const temCustos = ingredientes.length > 0;
 
   function openQuantityPrompt(mpId) {
@@ -195,7 +199,10 @@ export default function PreparoFormScreen({ route, navigation }) {
   function confirmQuantity() {
     if (!quantityPrompt) return;
     const qtd = parseNum(quantityPrompt.quantidade);
-    if (qtd <= 0) return Alert.alert('Quantidade', 'Informe a quantidade utilizada.');
+    if (!Number.isFinite(qtd) || qtd <= 0) {
+      // mantém modal aberto para o usuário corrigir
+      return Alert.alert('Quantidade', 'Informe uma quantidade válida (maior que zero).');
+    }
     setIngredientes(prev => [...prev, {
       materia_prima_id: quantityPrompt.materia_prima_id,
       mp_nome: quantityPrompt.nome,
@@ -223,35 +230,44 @@ export default function PreparoFormScreen({ route, navigation }) {
     const f = formRef.current;
     if (!f.nome.trim()) return; // não salva sem nome
 
-    const rend = parseFloat(String(f.rendimento_total).replace(',', '.')) || 0;
+    const rend = parseNum(f.rendimento_total);
     const ings = ingredientesRef.current;
 
     const ct = ings.reduce((acc, ing) => {
       const mp = materiasPrimas.find(m => m.id === ing.materia_prima_id);
       const precoBase = mp?.preco_por_kg || ing.preco_por_kg || 0;
       const unidade = getUnidadeDoIngrediente(ing);
-      return acc + calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade);
+      return acc + safeCusto(calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade));
     }, 0);
-    const ck = rend > 0 ? (ct / rend) * 1000 : 0;
+    const ck = rend > 0 && Number.isFinite(ct) ? (ct / rend) * 1000 : 0;
+    const validadeDias = parseNum(f.validade_dias);
 
     setSaveStatus('saving');
     try {
       const db = await getDatabase();
       await db.runAsync('UPDATE preparos SET nome=?, categoria_id=?, rendimento_total=?, unidade_medida=?, custo_total=?, custo_por_kg=?, modo_preparo=?, observacoes=?, validade_dias=?, temp_congelado=?, tempo_congelado=?, temp_refrigerado=?, tempo_refrigerado=?, temp_ambiente=?, tempo_ambiente=? WHERE id=?',
-        [f.nome, f.categoria_id, rend, f.unidade_medida, ct, ck, f.modo_preparo || '', f.observacoes || '', parseFloat(f.validade_dias) || 0, f.temp_congelado || '', f.tempo_congelado || '', f.temp_refrigerado || '', f.tempo_refrigerado || '', f.temp_ambiente || '', f.tempo_ambiente || '', editId]);
-      // Re-save ingredientes
+        [f.nome, f.categoria_id, rend, f.unidade_medida, ct, ck, f.modo_preparo || '', f.observacoes || '', validadeDias, f.temp_congelado || '', f.tempo_congelado || '', f.temp_refrigerado || '', f.tempo_refrigerado || '', f.temp_ambiente || '', f.tempo_ambiente || '', editId]);
+      // Re-save ingredientes — DELETE + bulk INSERT (single statement quando possível)
       await db.runAsync('DELETE FROM preparo_ingredientes WHERE preparo_id = ?', [editId]);
-      for (const ing of ings) {
-        const mp = materiasPrimas.find(m => m.id === ing.materia_prima_id);
-        const precoBase = mp?.preco_por_kg || ing.preco_por_kg || 0;
-        const unidade = getUnidadeDoIngrediente(ing);
-        const custo = calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade);
-        await db.runAsync('INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
-          [editId, ing.materia_prima_id, ing.quantidade_utilizada, custo]);
+      if (ings.length > 0) {
+        const placeholders = ings.map(() => '(?,?,?,?)').join(',');
+        const params = [];
+        for (const ing of ings) {
+          const mp = materiasPrimas.find(m => m.id === ing.materia_prima_id);
+          const precoBase = mp?.preco_por_kg || ing.preco_por_kg || 0;
+          const unidade = getUnidadeDoIngrediente(ing);
+          const custo = safeCusto(calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade));
+          params.push(editId, ing.materia_prima_id, ing.quantidade_utilizada, custo);
+        }
+        await db.runAsync(
+          `INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES ${placeholders}`,
+          params
+        );
       }
       setSaveStatus('saved');
     } catch (e) {
-      setSaveStatus(null);
+      console.error('[PreparoForm.autoSave]', e);
+      setSaveStatus('error');
     }
   }
 

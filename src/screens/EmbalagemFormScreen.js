@@ -130,7 +130,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
       try {
         const hist = await db.getAllAsync('SELECT * FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC LIMIT 10', [editId]);
         setHistoricoPrecos((hist || []).reverse());
-      } catch(e) {}
+      } catch(e) { console.error('[EmbalagemForm.loadItem.historico]', e); }
       // Marca como carregado após setar o form para evitar auto-save imediato
       setTimeout(() => setLoaded(true), 100);
     } else {
@@ -138,7 +138,10 @@ export default function EmbalagemFormScreen({ route, navigation }) {
     }
   }
 
-  const parseNum = (v) => parseFloat(String(v).replace(',', '.')) || 0;
+  const parseNum = (v) => {
+    const n = parseFloat(String(v).replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  };
   const qtd = parseNum(form.quantidade);
   const preco = parseNum(form.preco_embalagem);
   const precoUn = calcPrecoUnitarioEmbalagem(preco, qtd);
@@ -152,20 +155,21 @@ export default function EmbalagemFormScreen({ route, navigation }) {
     const f = formRef.current;
     if (!f.nome.trim()) return; // não salva sem nome
 
-    const q = parseFloat(String(f.quantidade).replace(',', '.')) || 0;
-    const p = parseFloat(String(f.preco_embalagem).replace(',', '.')) || 0;
+    const q = parseNum(f.quantidade);
+    const p = parseNum(f.preco_embalagem);
     const pu = calcPrecoUnitarioEmbalagem(p, q);
 
     setSaveStatus('saving');
     try {
       const db = await getDatabase();
       await db.runAsync(
-        'UPDATE embalagens SET nome=?, marca=?, categoria_id=?, quantidade=?, unidade_medida=?, preco_embalagem=?, preco_unitario=? WHERE id=?',
-        [f.nome, f.marca, f.categoria_id, q, f.unidade_medida, p, pu, editId]
+        'UPDATE embalagens SET nome=?, marca=?, categoria_id=?, quantidade=?, unidade_medida=?, preco_embalagem=?, preco_unitario=?, updated_at=? WHERE id=?',
+        [f.nome, f.marca, f.categoria_id, q, f.unidade_medida, p, pu, new Date().toISOString(), editId]
       );
       setSaveStatus('saved');
     } catch (e) {
-      setSaveStatus(null);
+      console.error('[EmbalagemForm.autoSave]', e);
+      setSaveStatus('error');
     }
   }
 
@@ -358,7 +362,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
                                   const db = await getDatabase();
                                   await db.runAsync('DELETE FROM historico_precos WHERE id = ?', [h.id]);
                                   setHistoricoPrecos(prev => prev.filter(x => x.id !== h.id));
-                                } catch (e) {}
+                                } catch (e) { console.error('[EmbalagemForm.deleteHistorico]', e); }
                                 setConfirmDelete(null);
                               },
                             })}
@@ -385,11 +389,16 @@ export default function EmbalagemFormScreen({ route, navigation }) {
           <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.md, marginTop: spacing.sm }}>
             {isFormComplete(form) && <TouchableOpacity style={[styles.btnDelete, { borderColor: colors.primary + '30' }]} onPress={async () => {
               const f = formRef.current;
-              try { await autoSave(); } catch(e) {}
-              const db = await getDatabase();
-              const result = await db.runAsync('INSERT INTO embalagens (nome, marca, categoria_id, quantidade, unidade_medida, preco_embalagem, preco_unitario) VALUES (?,?,?,?,?,?,?)',
-                [f.nome.trim() + ' (cópia)', f.marca, f.categoria_id, parseFloat(f.quantidade) || 0, f.unidade_medida, parseFloat(String(f.preco_embalagem).replace(',','.')) || 0, parseFloat(f.preco_unitario) || 0]);
-              if (result?.lastInsertRowId) { allowExit.current = true; navigation.replace('EmbalagemForm', { id: result.lastInsertRowId }); }
+              try { await autoSave(); } catch(e) { console.error('[EmbalagemForm.duplicate.autoSave]', e); }
+              try {
+                const db = await getDatabase();
+                const result = await db.runAsync('INSERT INTO embalagens (nome, marca, categoria_id, quantidade, unidade_medida, preco_embalagem, preco_unitario, updated_at) VALUES (?,?,?,?,?,?,?,?)',
+                  [f.nome.trim() + ' (cópia)', f.marca, f.categoria_id, parseNum(f.quantidade), f.unidade_medida, parseNum(f.preco_embalagem), parseNum(f.preco_unitario), new Date().toISOString()]);
+                if (result?.lastInsertRowId) { allowExit.current = true; navigation.replace('EmbalagemForm', { id: result.lastInsertRowId }); }
+              } catch (e) {
+                console.error('[EmbalagemForm.duplicate]', e);
+                Alert.alert('Erro', 'Não foi possível duplicar a embalagem. Tente novamente.');
+              }
             }}>
               <Feather name="copy" size={13} color={colors.primary} style={{ marginRight: 5 }} />
               <Text style={[styles.btnDeleteText, { color: colors.primary }]}>Duplicar</Text>
@@ -422,7 +431,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
                 if (!lastHist?.[0] || Math.abs(lastHist[0].valor_pago - price) > 0.001) {
                   await db.runAsync('INSERT INTO historico_precos (materia_prima_id, valor_pago, preco_por_kg) VALUES (?,?,?)', [editId, price, 0]);
                 }
-              } catch(e) {}
+              } catch(e) { console.error('[EmbalagemForm.priceHistory]', e); }
             }
             autoSave();
             setTimeout(() => {

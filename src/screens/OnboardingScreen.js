@@ -1,13 +1,20 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts, borderRadius, fontFamily } from '../utils/theme';
 import { getSetupStatus } from '../utils/setupStatus';
 
+// Audit P1: mapeamento centralizado para evitar duplicar regras de navegação.
+const STEP_NAV_MAP = {
+  financeiro: { screen: 'Mais', params: { screen: 'FinanceiroMain' } },
+  delivery: { screen: 'Mais', params: { screen: 'DeliveryHub' } },
+};
+
 export default function OnboardingScreen({ navigation }) {
   const [status, setStatus] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
 
   useFocusEffect(
@@ -17,35 +24,88 @@ export default function OnboardingScreen({ navigation }) {
   );
 
   async function loadStatus() {
-    const s = await getSetupStatus();
-    setStatus(s);
-    if (s.completo) {
-      setShowCompleteModal(true);
+    try {
+      const s = await getSetupStatus();
+      setStatus(s);
+      setLoadError(null);
+      if (s.completo) {
+        // Audit P1: só mostra o modal de "configuração concluída" UMA vez.
+        // Se o usuário já viu, não atrapalha mais ao revisitar a tela.
+        try {
+          const shown = await AsyncStorage.getItem('onboarding_complete_shown');
+          if (shown !== 'true') {
+            setShowCompleteModal(true);
+            await AsyncStorage.setItem('onboarding_complete_shown', 'true');
+          }
+        } catch (e) {
+          // Falha do AsyncStorage não impede mostrar modal pela primeira vez.
+          console.error('[Onboarding.loadStatus.shownFlag]', e);
+          setShowCompleteModal(true);
+        }
+      }
+    } catch (err) {
+      console.error('[Onboarding.loadStatus]', err);
+      setLoadError('Não foi possível carregar seu progresso. Tente novamente.');
     }
   }
 
   async function goToHome() {
-    await AsyncStorage.setItem('onboarding_done', 'true');
+    try {
+      await AsyncStorage.setItem('onboarding_done', 'true');
+    } catch (e) {
+      console.error('[Onboarding.goToHome]', e);
+    }
     setShowCompleteModal(false);
     navigation.replace('MainTabs');
   }
 
   function navToStep(etapa) {
-    if (etapa.key === 'financeiro') {
-      navigation.navigate('MainTabs', { screen: 'Mais', params: { screen: 'FinanceiroMain' } });
-    } else if (etapa.key === 'delivery') {
-      navigation.navigate('MainTabs', { screen: 'Mais', params: { screen: 'DeliveryHub' } });
+    const target = STEP_NAV_MAP[etapa.key];
+    if (target) {
+      navigation.navigate('MainTabs', target);
     } else {
       navigation.navigate('MainTabs', { screen: etapa.tab });
     }
   }
 
   async function skipToHome() {
-    await AsyncStorage.setItem('onboarding_done', 'true');
+    try {
+      await AsyncStorage.setItem('onboarding_done', 'true');
+    } catch (e) {
+      console.error('[Onboarding.skipToHome]', e);
+    }
     navigation.replace('MainTabs');
   }
 
-  if (!status) return <View style={styles.container} />;
+  // Audit P2: feedback de loading inicial (antes era tela em branco).
+  if (!status && !loadError) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ marginTop: 12, fontSize: fonts.small, color: colors.textSecondary }}>
+          Carregando seu progresso…
+        </Text>
+      </View>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: spacing.lg }]}>
+        <Feather name="alert-circle" size={32} color={colors.warning} />
+        <Text style={{ marginTop: 12, fontSize: fonts.regular, color: colors.text, textAlign: 'center', marginBottom: 16 }}>
+          {loadError}
+        </Text>
+        <TouchableOpacity
+          style={{ backgroundColor: colors.primary, paddingVertical: 10, paddingHorizontal: 20, borderRadius: borderRadius.sm }}
+          onPress={loadStatus}
+          activeOpacity={0.8}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Tentar de novo</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   const finStep = status.etapas[0];
 
@@ -252,7 +312,9 @@ const styles = StyleSheet.create({
   finSubIcon: { fontSize: 13, color: colors.disabled, marginRight: spacing.sm, width: 18, textAlign: 'center' },
   finSubIconDone: { color: colors.success },
   finSubText: { fontSize: fonts.small, color: colors.textSecondary },
-  finSubTextDone: { color: colors.success, textDecorationLine: 'line-through' },
+  // Audit P1 acessibilidade: removido `line-through` (redundante com check-icon
+  // e prejudica leitura para baixa visão). Mantém só cor verde + ícone.
+  finSubTextDone: { color: colors.success, fontFamily: fontFamily.semiBold },
   finCta: {
     backgroundColor: '#FF8F00', borderRadius: borderRadius.sm,
     paddingVertical: spacing.sm + 2, alignItems: 'center',

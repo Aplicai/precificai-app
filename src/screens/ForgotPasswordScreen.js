@@ -6,6 +6,11 @@ import { useAuth } from '../contexts/AuthContext';
 import useRateLimit from '../hooks/useRateLimit';
 import { mapAuthError } from '../utils/authErrors';
 
+// Validação simples: nome@dominio.tld (subset de RFC 5322 suficiente para UX antes do backend).
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+// Timeout para sair de spinner infinito quando o backend trava (audit P2).
+const RESET_TIMEOUT_MS = 30000;
+
 export default function ForgotPasswordScreen({ navigation }) {
   const { resetPassword } = useAuth();
   const [email, setEmail] = useState('');
@@ -14,31 +19,48 @@ export default function ForgotPasswordScreen({ navigation }) {
   const [error, setError] = useState('');
   const rateLimit = useRateLimit();
 
+  // P2 quick-win: limpa erro ao digitar (evita feedback "preso" quando usuário corrige)
+  const onChangeEmail = (v) => { if (error) setError(''); setEmail(v); };
+
   const handleReset = async () => {
     const limitMsg = rateLimit.checkLimit();
     if (limitMsg) { setError(limitMsg); return; }
-    if (!email.trim()) {
-      setError('Digite seu email');
+    const emailTrim = email.trim();
+    if (!emailTrim) {
+      setError('Informe seu email para receber o link de recuperação.');
       return;
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
-      setError('Digite um email válido');
+    if (!EMAIL_RE.test(emailTrim)) {
+      setError('Email inválido. Verifique se está no formato nome@dominio.com');
       return;
     }
     setError('');
     setLoading(true);
+    // P2: timeout para evitar spinner infinito se backend não responder
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      setLoading(false);
+      setError('Servidor demorou para responder. Verifique sua conexão e tente novamente.');
+    }, RESET_TIMEOUT_MS);
     try {
-      await resetPassword(email.trim().toLowerCase());
+      await resetPassword(emailTrim.toLowerCase());
+      if (timedOut) return;
       rateLimit.reset();
       setSent(true);
     } catch (err) {
+      if (timedOut) return;
+      console.error('[ForgotPassword.handleReset]', err);
       rateLimit.recordAttempt();
       setError(mapAuthError(err, { context: 'reset' }));
     } finally {
-      setLoading(false);
+      clearTimeout(timeoutId);
+      if (!timedOut) setLoading(false);
     }
   };
+
+  // P1: botão fica desabilitado durante loading OU rate-limit ativo
+  const btnDisabled = loading || !!rateLimit.isLocked;
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -84,7 +106,7 @@ export default function ForgotPasswordScreen({ navigation }) {
               <TextInput
                 style={styles.input}
                 value={email}
-                onChangeText={setEmail}
+                onChangeText={onChangeEmail}
                 placeholder="seu@email.com"
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -96,7 +118,13 @@ export default function ForgotPasswordScreen({ navigation }) {
                 placeholderTextColor={colors.disabled}
               />
 
-              <TouchableOpacity style={[styles.primaryBtn, { marginTop: 24 }]} onPress={handleReset} disabled={loading} activeOpacity={0.8}>
+              <TouchableOpacity
+                style={[styles.primaryBtn, { marginTop: 24 }, btnDisabled && styles.primaryBtnDisabled]}
+                onPress={handleReset}
+                disabled={btnDisabled}
+                activeOpacity={0.8}
+                accessibilityState={{ disabled: btnDisabled }}
+              >
                 {loading ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
@@ -136,12 +164,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary, borderRadius: borderRadius.md, paddingVertical: 14,
     alignItems: 'center', justifyContent: 'center', minHeight: 48,
   },
+  // Audit P1: feedback visual de botão desabilitado durante rate-limit/loading
+  primaryBtnDisabled: { opacity: 0.5 },
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '600', fontFamily: fontFamily.semiBold },
   backBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 16 },
   backText: { fontSize: 14, color: colors.primary, fontFamily: fontFamily.medium },
+  // Audit P2: borda esquerda vermelha para acessibilidade daltonismo
   errorBox: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fef2f2', padding: 10, borderRadius: borderRadius.sm,
+    borderLeftWidth: 3, borderLeftColor: '#dc2626',
     marginBottom: 8,
   },
   errorText: { color: '#dc2626', fontSize: 13, fontFamily: fontFamily.regular, flex: 1 },

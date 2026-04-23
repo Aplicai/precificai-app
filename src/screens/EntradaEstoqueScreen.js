@@ -36,14 +36,19 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
   const [quantidade, setQuantidade] = useState('');
   const [custoUnitario, setCustoUnitario] = useState('');
   const [motivo, setMotivo] = useState('');
+  const [loadError, setLoadError] = useState(null);
 
   const carregar = useCallback(async () => {
+    setLoadError(null);
     try {
       const db = await getDatabase();
       const mps = await db.getAllAsync('SELECT id, nome, unidade_medida, custo_medio FROM materias_primas ORDER BY nome');
       const embs = await db.getAllAsync('SELECT id, nome, custo_medio FROM embalagens ORDER BY nome');
       setInsumos(mps);
       setEmbalagens(embs);
+    } catch (e) {
+      console.error('[EntradaEstoque.carregar]', e);
+      setLoadError(e?.message || 'Não foi possível carregar a lista de itens.');
     } finally {
       setCarregando(false);
     }
@@ -88,6 +93,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
       }
       navigation.goBack();
     } catch (e) {
+      console.error('[EntradaEstoque.salvar]', e);
       setSalvando(false);
       const msg = e?.message || 'Tente novamente.';
       if (Platform.OS === 'web') {
@@ -116,9 +122,22 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
     );
   }
 
+  // Validações específicas (mensagens explícitas em vez de só desabilitar botão)
+  const qtdInvalida = quantidade !== '' && (qtdNum === null || qtdNum <= 0);
+  const custoInvalido = custoUnitario !== '' && (custoNum === null || custoNum <= 0);
+
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content}>
+        {loadError && (
+          <View style={styles.errorBanner}>
+            <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: 8 }} />
+            <Text style={styles.errorBannerText}>{loadError}</Text>
+            <TouchableOpacity onPress={carregar} style={styles.errorBannerBtn} activeOpacity={0.7}>
+              <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <Text style={styles.label}>Tipo de item</Text>
         <View style={styles.toggle}>
           {[
@@ -141,7 +160,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
           value={itemId}
           options={opcoesItens}
           onValueChange={setItemId}
-          placeholder={`Escolha um ${tipo === 'embalagem' ? 'embalagem' : 'insumo'}…`}
+          placeholder={`Escolha ${tipo === 'embalagem' ? 'uma embalagem' : 'um insumo'}…`}
         />
 
         {itemSelecionado && Number(itemSelecionado.custo_medio) > 0 && (
@@ -155,23 +174,29 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
 
         <Text style={styles.label}>Quantidade recebida ({unidade})</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, qtdInvalida && styles.inputError]}
           value={quantidade}
           onChangeText={setQuantidade}
           keyboardType="decimal-pad"
           placeholder="0,00"
           placeholderTextColor={colors.disabled}
         />
+        {qtdInvalida && (
+          <Text style={styles.fieldError}>Informe uma quantidade maior que zero.</Text>
+        )}
 
         <Text style={styles.label}>Custo unitário (R$ / {unidade})</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, custoInvalido && styles.inputError]}
           value={custoUnitario}
           onChangeText={setCustoUnitario}
           keyboardType="decimal-pad"
           placeholder="0,00"
           placeholderTextColor={colors.disabled}
         />
+        {custoInvalido && (
+          <Text style={styles.fieldError}>Custo deve ser maior que zero. Para zerar custo use Ajuste de estoque.</Text>
+        )}
 
         {valorTotal > 0 && (
           <View style={styles.totalCard}>
@@ -287,5 +312,31 @@ const styles = StyleSheet.create({
     fontSize: fonts.tiny, color: colors.textSecondary,
     fontFamily: fontFamily.regular,
     marginTop: spacing.md, lineHeight: 16, textAlign: 'center',
+  },
+  inputError: { borderColor: colors.error },
+  fieldError: {
+    fontSize: fonts.tiny, color: colors.error,
+    fontFamily: fontFamily.regular,
+    marginTop: 4,
+  },
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fee2e2',
+    borderLeftWidth: 3, borderLeftColor: colors.error,
+    padding: spacing.sm, borderRadius: borderRadius.sm,
+    marginBottom: spacing.md,
+  },
+  errorBannerText: {
+    flex: 1, fontSize: fonts.small, color: colors.error,
+    fontFamily: fontFamily.regular,
+  },
+  errorBannerBtn: {
+    paddingHorizontal: spacing.sm, paddingVertical: 4,
+    backgroundColor: colors.error, borderRadius: borderRadius.sm,
+    marginLeft: 8,
+  },
+  errorBannerBtnText: {
+    fontSize: fonts.tiny, color: '#fff',
+    fontFamily: fontFamily.semiBold, fontWeight: '600',
   },
 });

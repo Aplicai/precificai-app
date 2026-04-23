@@ -35,14 +35,19 @@ export default function AjusteEstoqueScreen({ navigation }) {
   const [direcao, setDirecao] = useState('saida'); // 'entrada' | 'saida'
   const [quantidade, setQuantidade] = useState('');
   const [motivo, setMotivo] = useState('');
+  const [loadError, setLoadError] = useState(null);
 
   const carregar = useCallback(async () => {
+    setLoadError(null);
     try {
       const db = await getDatabase();
       const mps = await db.getAllAsync('SELECT id, nome, unidade_medida, quantidade_estoque, custo_medio FROM materias_primas ORDER BY nome');
       const embs = await db.getAllAsync('SELECT id, nome, quantidade_estoque, custo_medio FROM embalagens ORDER BY nome');
       setInsumos(mps);
       setEmbalagens(embs);
+    } catch (e) {
+      console.error('[AjusteEstoque.carregar]', e);
+      setLoadError(e?.message || 'Não foi possível carregar a lista de itens.');
     } finally {
       setCarregando(false);
     }
@@ -60,6 +65,38 @@ export default function AjusteEstoqueScreen({ navigation }) {
   const qtdNum = parseNum(quantidade);
   const motivoOk = motivo.trim().length >= 3;
   const podeSalvar = itemId && qtdNum && qtdNum > 0 && motivoOk && !salvando;
+
+  // Pré-cálculo do saldo resultante (mostra ao usuário antes de confirmar)
+  const saldoAtual = Number(itemSelecionado?.quantidade_estoque) || 0;
+  const delta = (qtdNum || 0) * (direcao === 'saida' ? -1 : 1);
+  const saldoNovo = saldoAtual + delta;
+  const saldoNegativo = direcao === 'saida' && qtdNum && saldoNovo < 0;
+
+  function confirmar(msg, onYes) {
+    if (Platform.OS === 'web') {
+      try {
+        if (window.confirm(msg)) onYes();
+      } catch { onYes(); }
+    } else {
+      Alert.alert('Confirmar ajuste', msg, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Confirmar', onPress: onYes },
+      ]);
+    }
+  }
+
+  function pedirConfirmacao() {
+    if (!podeSalvar) return;
+    const fmt = (n) => Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+    const verbo = direcao === 'saida' ? 'reduzir' : 'aumentar';
+    const aviso = saldoNegativo
+      ? `\n\n⚠ ATENÇÃO: o saldo final ficará NEGATIVO (${fmt(saldoNovo)} ${unidade}). Continuar mesmo assim?`
+      : '';
+    confirmar(
+      `Vamos ${verbo} ${fmt(qtdNum)} ${unidade} de "${itemSelecionado?.nome}".\n\nSaldo atual: ${fmt(saldoAtual)} ${unidade}\nSaldo novo:  ${fmt(saldoNovo)} ${unidade}${aviso}`,
+      salvar,
+    );
+  }
 
   async function salvar() {
     if (!podeSalvar) return;
@@ -91,6 +128,7 @@ export default function AjusteEstoqueScreen({ navigation }) {
       }
       navigation.goBack();
     } catch (e) {
+      console.error('[AjusteEstoque.salvar]', e);
       setSalvando(false);
       const msg = e?.message || 'Tente novamente.';
       if (Platform.OS === 'web') {
@@ -112,6 +150,15 @@ export default function AjusteEstoqueScreen({ navigation }) {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content}>
+        {loadError && (
+          <View style={styles.errorBanner}>
+            <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: 8 }} />
+            <Text style={styles.errorBannerText}>{loadError}</Text>
+            <TouchableOpacity onPress={carregar} style={styles.errorBannerBtn} activeOpacity={0.7}>
+              <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <Text style={styles.label}>Tipo de item</Text>
         <View style={styles.toggle}>
           {[
@@ -134,7 +181,7 @@ export default function AjusteEstoqueScreen({ navigation }) {
           value={itemId}
           options={opcoesItens}
           onValueChange={setItemId}
-          placeholder={`Escolha um ${tipo === 'embalagem' ? 'embalagem' : 'insumo'}…`}
+          placeholder={`Escolha ${tipo === 'embalagem' ? 'uma embalagem' : 'um insumo'}…`}
         />
 
         <Text style={styles.label}>Direção do ajuste</Text>
@@ -180,9 +227,27 @@ export default function AjusteEstoqueScreen({ navigation }) {
           <Text style={styles.errText}>Mínimo 3 caracteres.</Text>
         )}
 
+        {qtdNum > 0 && itemSelecionado && (
+          <View style={[styles.previewCard, saldoNegativo && styles.previewCardWarn]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Feather
+                name={saldoNegativo ? 'alert-triangle' : 'arrow-right-circle'}
+                size={14}
+                color={saldoNegativo ? colors.error : colors.primary}
+              />
+              <Text style={[styles.previewLabel, saldoNegativo && { color: colors.error }]}>
+                {saldoNegativo ? 'Saldo ficará negativo' : 'Saldo após o ajuste'}
+              </Text>
+            </View>
+            <Text style={[styles.previewValue, saldoNegativo && { color: colors.error }]}>
+              {Number(saldoAtual).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} → {Number(saldoNovo).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} {unidade}
+            </Text>
+          </View>
+        )}
+
         <TouchableOpacity
           style={[styles.btnPrimary, !podeSalvar && styles.btnDisabled]}
-          onPress={salvar}
+          onPress={pedirConfirmacao}
           disabled={!podeSalvar}
           activeOpacity={0.8}
         >
@@ -260,5 +325,42 @@ const styles = StyleSheet.create({
     fontSize: fonts.tiny, color: colors.textSecondary,
     fontFamily: fontFamily.regular,
     marginTop: spacing.md, lineHeight: 16, textAlign: 'center',
+  },
+  previewCard: {
+    backgroundColor: colors.primary + '10',
+    padding: spacing.md, borderRadius: borderRadius.md,
+    marginTop: spacing.md, gap: 4,
+  },
+  previewCardWarn: {
+    backgroundColor: '#fee2e2',
+    borderLeftWidth: 3, borderLeftColor: colors.error,
+  },
+  previewLabel: {
+    fontSize: fonts.small, color: colors.primary,
+    fontFamily: fontFamily.semiBold, fontWeight: '600',
+  },
+  previewValue: {
+    fontSize: fonts.regular, color: colors.text,
+    fontFamily: fontFamily.bold, fontWeight: '700',
+  },
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fee2e2',
+    borderLeftWidth: 3, borderLeftColor: colors.error,
+    padding: spacing.sm, borderRadius: borderRadius.sm,
+    marginBottom: spacing.md,
+  },
+  errorBannerText: {
+    flex: 1, fontSize: fonts.small, color: colors.error,
+    fontFamily: fontFamily.regular,
+  },
+  errorBannerBtn: {
+    paddingHorizontal: spacing.sm, paddingVertical: 4,
+    backgroundColor: colors.error, borderRadius: borderRadius.sm,
+    marginLeft: 8,
+  },
+  errorBannerBtnText: {
+    fontSize: fonts.tiny, color: '#fff',
+    fontFamily: fontFamily.semiBold, fontWeight: '600',
   },
 });

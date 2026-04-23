@@ -1,15 +1,19 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TextInput, TouchableOpacity, Switch, ActivityIndicator } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 import EmptyState from '../components/EmptyState';
 import Loader from '../components/Loader';
 
+const PREF_META_LUCRO = '@pref:metaLucroMensal';
+
 export default function MetaVendasScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [metaLucro, setMetaLucro] = useState('');
   const [produtos, setProdutos] = useState([]);
   const [custoFixoMensal, setCustoFixoMensal] = useState(0);
@@ -19,9 +23,31 @@ export default function MetaVendasScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
+  // Hidrata meta persistida
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(PREF_META_LUCRO);
+        if (raw) {
+          setMetaLucro(raw);
+          // Recalcula assim que dados básicos estiverem disponíveis (próximo render)
+        }
+      } catch (e) {
+        if (typeof console !== 'undefined' && console.error) console.error('[MetaVendasScreen.loadMeta]', e);
+      }
+    })();
+  }, []);
+
+  // Recalcula sempre que dados base ou meta mudarem
+  useEffect(() => {
+    if (metaLucro) calcular(metaLucro);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cmvMedioPercent, totalVarDecimal, custoFixoMensal]);
+
   async function loadData() {
     try {
       setLoading(true);
+      setLoadError(false);
       const db = await getDatabase();
 
       // Load ALL data in parallel
@@ -66,6 +92,8 @@ export default function MetaVendasScreen({ navigation }) {
 
       setProdutos(prodsR); // keep for empty state check
     } catch (e) {
+      setLoadError(true);
+      if (typeof console !== 'undefined' && console.error) console.error('[MetaVendasScreen.loadData]', e);
     } finally {
       setLoading(false);
     }
@@ -73,19 +101,23 @@ export default function MetaVendasScreen({ navigation }) {
 
   // Fórmula simplificada: Faturamento = (Fixos + Lucro) / (1 - CMV% - Var%)
   function calcular(valor) {
-    const lucro = parseFloat(valor) || 0;
-    if (lucro <= 0) {
+    const lucro = parseFloat(String(valor).replace(',', '.'));
+    if (!Number.isFinite(lucro) || lucro <= 0) {
       setResultado(null);
       return;
     }
 
     const margemDisponivel = 1 - cmvMedioPercent - totalVarDecimal;
-    if (margemDisponivel <= 0) {
+    if (!Number.isFinite(margemDisponivel) || margemDisponivel <= 0) {
       setResultado(null);
       return;
     }
 
     const faturamentoMensal = (custoFixoMensal + lucro) / margemDisponivel;
+    if (!Number.isFinite(faturamentoMensal) || faturamentoMensal <= 0) {
+      setResultado(null);
+      return;
+    }
     const faturamentoDiario = faturamentoMensal / 30;
 
     setResultado({
@@ -96,17 +128,25 @@ export default function MetaVendasScreen({ navigation }) {
     });
   }
 
+  function persistMeta(str) {
+    AsyncStorage.setItem(PREF_META_LUCRO, str || '').catch((e) => {
+      if (typeof console !== 'undefined' && console.error) console.error('[MetaVendasScreen.persistMeta]', e);
+    });
+  }
+
   function onChangeMeta(text) {
     // Allow only numbers
-    const numericOnly = text.replace(/[^0-9]/g, '');
+    const numericOnly = String(text || '').replace(/[^0-9]/g, '');
     setMetaLucro(numericOnly);
     calcular(numericOnly);
+    persistMeta(numericOnly);
   }
 
   function onQuickValue(valor) {
     const str = String(valor);
     setMetaLucro(str);
     calcular(str);
+    persistMeta(str);
   }
 
   if (loading) {
@@ -120,6 +160,16 @@ export default function MetaVendasScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {loadError && (
+          <View style={styles.errorBanner}>
+            <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: spacing.xs }} />
+            <Text style={styles.errorBannerText}>Não foi possível carregar os dados.</Text>
+            <TouchableOpacity onPress={loadData} style={styles.errorBannerBtn} activeOpacity={0.7}>
+              <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Info card */}
         <View style={styles.infoCard}>
           <View style={styles.infoIconWrap}>
@@ -181,21 +231,33 @@ export default function MetaVendasScreen({ navigation }) {
                 <Text style={{ fontSize: 11, fontFamily: fontFamily.bold, color: colors.text }}>{formatCurrency(resultado.faturamentoMensal)}</Text>
               </View>
 
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.error }}>− CMV médio ({formatPercent(cmvMedioPercent)})</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <Feather name="minus-circle" size={11} color={colors.error} style={{ marginRight: 4 }} />
+                  <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.error }}>CMV médio ({formatPercent(cmvMedioPercent)})</Text>
+                </View>
                 <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.error }}>-{formatCurrency(resultado.cmvValor)}</Text>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.error }}>− Custos variáveis ({formatPercent(totalVarDecimal)})</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <Feather name="minus-circle" size={11} color={colors.error} style={{ marginRight: 4 }} />
+                  <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.error }}>Custos variáveis ({formatPercent(totalVarDecimal)})</Text>
+                </View>
                 <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.error }}>-{formatCurrency(resultado.varValor)}</Text>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.error }}>− Custos fixos mensais</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <Feather name="minus-circle" size={11} color={colors.error} style={{ marginRight: 4 }} />
+                  <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.error }}>Custos fixos mensais</Text>
+                </View>
                 <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.error }}>-{formatCurrency(custoFixoMensal)}</Text>
               </View>
 
-              <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 4, marginTop: 2, flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 12, fontFamily: fontFamily.bold, color: colors.success }}>= Lucro líquido</Text>
+              <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 4, marginTop: 2, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Feather name="check-circle" size={12} color={colors.success} style={{ marginRight: 4 }} />
+                  <Text style={{ fontSize: 12, fontFamily: fontFamily.bold, color: colors.success }}>Lucro líquido</Text>
+                </View>
                 <Text style={{ fontSize: 12, fontFamily: fontFamily.bold, color: colors.success }}>{formatCurrency(parseFloat(metaLucro) || 0)}/mês</Text>
               </View>
             </View>
@@ -233,6 +295,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.background,
+  },
+
+  // Error banner
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fee2e2',
+    borderLeftWidth: 4,
+    borderLeftColor: colors.error,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.sm,
+    marginBottom: spacing.md,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: fonts.small,
+    color: colors.error,
+    fontWeight: '600',
+    marginRight: spacing.sm,
+  },
+  errorBannerBtn: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.error,
+    borderRadius: borderRadius.sm,
+  },
+  errorBannerBtnText: {
+    color: colors.textLight,
+    fontSize: fonts.tiny,
+    fontWeight: '700',
   },
 
   // Info card

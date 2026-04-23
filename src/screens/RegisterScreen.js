@@ -21,35 +21,54 @@ export default function RegisterScreen({ navigation }) {
   const [showPassword, setShowPassword] = useState(false);
   const passwordRef = useRef(null);
 
+  // P2 quick-win: limpa erro ao digitar (evita feedback "preso" depois de corrigir)
+  const onChangeEmail = (v) => { if (error) setError(''); setEmail(v); };
+  const onChangePassword = (v) => { if (error) setError(''); setPassword(v); };
+
   const handleRegister = async () => {
     const limitMsg = rateLimit.checkLimit();
     if (limitMsg) { setError(limitMsg); return; }
-    if (!email.trim() || !password.trim()) {
-      setError('Preencha email e senha');
+    // P1/P2 audit: validação por campo (não "preencha tudo" genérico)
+    const emailTrim = email.trim();
+    if (!emailTrim && !password.trim()) {
+      setError('Preencha email e senha para continuar.');
       return;
     }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
-      setError('Digite um email válido');
+    if (!emailTrim) {
+      setError('Informe seu email.');
+      return;
+    }
+    if (!password.trim()) {
+      setError('Informe sua senha.');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!emailRegex.test(emailTrim)) {
+      setError('Email inválido. Verifique se está no formato nome@dominio.com');
       return;
     }
     if (password.length < MIN_PASSWORD_LENGTH) {
-      setError(`A senha precisa ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres`);
+      // Audit P1: não expor regra exata (security through ambiguity ajuda contra brute-force)
+      setError('Senha muito curta. Use uma senha mais segura para proteger sua conta.');
       return;
     }
     setError('');
     setLoading(true);
     try {
-      await signUp(email.trim().toLowerCase(), password);
+      await signUp(emailTrim.toLowerCase(), password);
       rateLimit.reset();
       setSuccess(true);
     } catch (err) {
+      console.error('[RegisterScreen.handleRegister]', err);
       rateLimit.recordAttempt();
       setError(mapAuthError(err, { context: 'signUp' }));
     } finally {
       setLoading(false);
     }
   };
+
+  // P1: botão fica desabilitado durante loading OU rate-limit ativo
+  const btnDisabled = loading || !!rateLimit.isLocked;
 
   if (success) {
     return (
@@ -102,7 +121,7 @@ export default function RegisterScreen({ navigation }) {
           <TextInput
             style={styles.input}
             value={email}
-            onChangeText={setEmail}
+            onChangeText={onChangeEmail}
             placeholder="seu@email.com"
             keyboardType="email-address"
             autoCapitalize="none"
@@ -120,8 +139,8 @@ export default function RegisterScreen({ navigation }) {
               ref={passwordRef}
               style={styles.passwordInput}
               value={password}
-              onChangeText={setPassword}
-              placeholder="Mínimo 6 caracteres"
+              onChangeText={onChangePassword}
+              placeholder="Crie uma senha segura"
               secureTextEntry={!showPassword}
               autoComplete="new-password"
               textContentType="newPassword"
@@ -139,10 +158,11 @@ export default function RegisterScreen({ navigation }) {
           </View>
 
           <TouchableOpacity
-            style={[styles.primaryBtn, { marginTop: 20 }]}
+            style={[styles.primaryBtn, { marginTop: 20 }, btnDisabled && styles.primaryBtnDisabled]}
             onPress={handleRegister}
-            disabled={loading}
+            disabled={btnDisabled}
             activeOpacity={0.8}
+            accessibilityState={{ disabled: btnDisabled }}
           >
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
@@ -312,15 +332,18 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', minHeight: 48,
     flexDirection: 'row',
   },
+  // Audit P1: feedback visual de bot\u00e3o desabilitado durante rate-limit/loading
+  primaryBtnDisabled: { opacity: 0.5 },
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '600', fontFamily: fontFamily.semiBold },
   registerRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
   registerText: { fontSize: 14, color: colors.textSecondary, fontFamily: fontFamily.regular },
   registerLink: { fontSize: 14, color: colors.primary, fontWeight: '600', fontFamily: fontFamily.semiBold },
 
-  // Error
+  // Error (audit P2: borda esquerda vermelha para acessibilidade daltonismo)
   errorBox: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#fef2f2', padding: 10, borderRadius: borderRadius.sm,
+    borderLeftWidth: 3, borderLeftColor: '#dc2626',
     marginBottom: 4, marginTop: 8,
   },
   errorText: { color: '#dc2626', fontSize: 13, fontFamily: fontFamily.regular, flex: 1 },

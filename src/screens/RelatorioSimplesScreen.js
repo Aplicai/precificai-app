@@ -8,6 +8,12 @@ import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPerc
 import EmptyState from '../components/EmptyState';
 import Loader from '../components/Loader';
 
+// Helper: extrai número finito ou 0
+const safeNum = (v) => {
+  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+};
+
 function escapeHtml(text) {
   if (!text) return '';
   return String(text)
@@ -22,12 +28,14 @@ export default function RelatorioSimplesScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [perfilNome, setPerfilNome] = useState('');
+  const [loadError, setLoadError] = useState(null);
 
   useFocusEffect(useCallback(() => {
     loadData();
   }, []));
 
   async function loadData() {
+    setLoadError(null);
     try {
       setLoading(true);
       const db = await getDatabase();
@@ -38,7 +46,10 @@ export default function RelatorioSimplesScreen({ navigation }) {
         const perfil = await db.getAllAsync('SELECT * FROM configuracao');
         if (perfil && perfil[0] && perfil[0].nome_negocio) setPerfilNome(perfil[0].nome_negocio);
         else setPerfilNome('Meu Negócio');
-      } catch (e) { setPerfilNome('Meu Negócio'); }
+      } catch (e) {
+        console.warn('[RelatorioSimples.perfilNome]', e);
+        setPerfilNome('Meu Negócio');
+      }
 
       const [fixas, variaveis, fat, configRows, prods, allIngs, allEmbs, allPreps] = await Promise.all([
         db.getAllAsync('SELECT * FROM despesas_fixas'),
@@ -77,13 +88,14 @@ export default function RelatorioSimplesScreen({ navigation }) {
         }, 0);
         const custoEmb = (embsByProd[p.id] || []).reduce((a, e) => a + (e.preco_unitario || 0) * e.quantidade_utilizada, 0);
 
-        const custoTotal = custoIng + custoPr + custoEmb;
-        const custoUn = custoTotal / getDivisorRendimento(p);
-        const precoVenda = p.preco_venda || 0;
-        const despFixasVal = precoVenda * dfPerc;
-        const despVarVal = precoVenda * totalVar;
+        const custoTotal = safeNum(custoIng) + safeNum(custoPr) + safeNum(custoEmb);
+        const divisor = getDivisorRendimento(p);
+        const custoUn = divisor > 0 ? safeNum(custoTotal / divisor) : 0;
+        const precoVenda = safeNum(p.preco_venda);
+        const despFixasVal = safeNum(precoVenda * dfPerc);
+        const despVarVal = safeNum(precoVenda * totalVar);
         const lucro = precoVenda - custoUn - despFixasVal - despVarVal;
-        const margem = precoVenda > 0 ? lucro / precoVenda : 0;
+        const margem = precoVenda > 0 ? safeNum(lucro / precoVenda) : 0;
 
         return { ...p, custoUn, precoVenda, lucro, margem, margemReais: lucro, despFixasVal, despVarVal };
       });
@@ -214,6 +226,8 @@ export default function RelatorioSimplesScreen({ navigation }) {
         produtosComPreco: produtosComPreco.length,
       });
     } catch (e) {
+      console.error('[RelatorioSimples.loadData]', e);
+      setLoadError(e?.message || 'Não foi possível gerar o relatório.');
     } finally {
       setLoading(false);
     }
@@ -322,6 +336,15 @@ export default function RelatorioSimplesScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {loadError && (
+        <View style={styles.errorBanner}>
+          <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: 8 }} />
+          <Text style={styles.errorBannerText}>{loadError}</Text>
+          <TouchableOpacity onPress={loadData} style={styles.errorBannerBtn} activeOpacity={0.7}>
+            <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       {/* Header */}
       <View style={styles.header}>
         <Feather name="book-open" size={24} color={colors.primary} />
@@ -836,5 +859,25 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: spacing.sm,
     textAlign: 'center',
+  },
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fee2e2',
+    borderLeftWidth: 3, borderLeftColor: colors.error,
+    padding: spacing.sm, borderRadius: borderRadius.sm,
+    marginBottom: spacing.md,
+  },
+  errorBannerText: {
+    flex: 1, fontSize: fonts.small, color: colors.error,
+    fontFamily: fontFamily.regular,
+  },
+  errorBannerBtn: {
+    paddingHorizontal: spacing.sm, paddingVertical: 4,
+    backgroundColor: colors.error, borderRadius: borderRadius.sm,
+    marginLeft: 8,
+  },
+  errorBannerBtnText: {
+    fontSize: fonts.tiny, color: '#fff',
+    fontFamily: fontFamily.semiBold, fontWeight: '600',
   },
 });

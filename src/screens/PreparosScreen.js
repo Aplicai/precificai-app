@@ -67,7 +67,8 @@ export default function PreparosScreen({ navigation }) {
   const [sections, setSections] = useState([]);
   const [totalPreparos, setTotalPreparos] = useState(0);
   const [categorias, setCategorias] = useState([]);
-  const [filtroCategoria, setFiltroCategoria] = useState(null);
+  const [filtroCategoria, setFiltroCategoria] = usePersistedState('preparos.filtroCategoria', null);
+  const [loadError, setLoadError] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [novaCategoria, setNovaCategoria] = useState('');
   const [novoIcone, setNovoIcone] = useState('tag');
@@ -106,6 +107,8 @@ export default function PreparosScreen({ navigation }) {
 
   async function loadData() {
     setLoading(true);
+    setLoadError(false);
+    try {
     const db = await getDatabase();
     const cats = await db.getAllAsync('SELECT * FROM categorias_preparos ORDER BY nome');
     setCategorias(cats);
@@ -176,25 +179,43 @@ export default function PreparosScreen({ navigation }) {
     }
 
     setSections(secs);
-    setLoading(false);
+    } catch (e) {
+      console.error('[PreparosScreen.loadData]', e);
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function duplicarPreparo(item) {
-    const db = await getDatabase();
-    const result = await db.runAsync(
-      'INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg) VALUES (?,?,?,?,?,?)',
-      [item.nome + ' (cópia)', item.categoria_id, item.rendimento_total, item.unidade_medida, item.custo_total, item.custo_por_kg]
-    );
-    const newId = result?.lastInsertRowId;
-    if (newId) {
-      // Copy ingredients in parallel
-      const ings = await db.getAllAsync('SELECT * FROM preparo_ingredientes WHERE preparo_id = ?', [item.id]);
-      await Promise.all(ings.map(ing =>
-        db.runAsync('INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES (?,?,?,?)', [newId, ing.materia_prima_id, ing.quantidade_utilizada, ing.custo])
-      ));
-      navigation.navigate('PreparoForm', { id: newId });
-    } else {
-      loadData();
+    try {
+      const db = await getDatabase();
+      const result = await db.runAsync(
+        'INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg, updated_at) VALUES (?,?,?,?,?,?,?)',
+        [item.nome + ' (cópia)', item.categoria_id, item.rendimento_total, item.unidade_medida, item.custo_total, item.custo_por_kg, new Date().toISOString()]
+      );
+      const newId = result?.lastInsertRowId;
+      if (newId) {
+        // Copy ingredients in single bulk INSERT
+        const ings = await db.getAllAsync('SELECT * FROM preparo_ingredientes WHERE preparo_id = ?', [item.id]);
+        if (ings.length > 0) {
+          const placeholders = ings.map(() => '(?,?,?,?)').join(',');
+          const params = [];
+          for (const ing of ings) {
+            params.push(newId, ing.materia_prima_id, ing.quantidade_utilizada, ing.custo);
+          }
+          await db.runAsync(
+            `INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES ${placeholders}`,
+            params
+          );
+        }
+        navigation.navigate('PreparoForm', { id: newId });
+      } else {
+        loadData();
+      }
+    } catch (e) {
+      console.error('[PreparosScreen.duplicarPreparo]', e);
+      Alert.alert('Erro', 'Não foi possível duplicar o preparo.');
     }
   }
 
@@ -478,6 +499,15 @@ export default function PreparosScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      {loadError && (
+        <View style={styles.errorBanner}>
+          <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: 8 }} />
+          <Text style={styles.errorBannerText}>Não foi possível carregar os preparos.</Text>
+          <TouchableOpacity onPress={loadData} style={styles.errorBannerBtn} activeOpacity={0.7}>
+            <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       {/* Filtros + busca */}
       <View style={styles.headerBar}>
         <ScrollView
@@ -1096,5 +1126,22 @@ const styles = StyleSheet.create({
   modalSaveText: {
     color: colors.textLight, fontFamily: fontFamily.bold,
     fontWeight: '700', fontSize: fonts.regular,
+  },
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fee2e2', borderLeftWidth: 3, borderLeftColor: colors.error,
+    padding: spacing.sm + 2, marginHorizontal: spacing.md, marginTop: spacing.sm,
+    borderRadius: borderRadius.sm,
+  },
+  errorBannerText: {
+    flex: 1, color: colors.error, fontFamily: fontFamily.semiBold,
+    fontWeight: '600', fontSize: fonts.small,
+  },
+  errorBannerBtn: {
+    paddingHorizontal: spacing.sm + 2, paddingVertical: 6,
+    backgroundColor: colors.error, borderRadius: borderRadius.sm,
+  },
+  errorBannerBtnText: {
+    color: '#fff', fontFamily: fontFamily.bold, fontWeight: '700', fontSize: fonts.small,
   },
 });

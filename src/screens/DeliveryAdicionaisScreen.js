@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -7,8 +7,22 @@ import Card from '../components/Card';
 import InputField from '../components/InputField';
 import InfoTooltip from '../components/InfoTooltip';
 import EmptyState from '../components/EmptyState';
-import { colors, spacing, fonts, borderRadius } from '../utils/theme';
+import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency } from '../utils/calculations';
+
+// ─── Numeric helpers (audit P0) ─────────────
+function safeNum(v) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseInputNumber(raw) {
+  if (raw === null || raw === undefined) return null;
+  const str = String(raw).trim().replace(',', '.');
+  if (str === '') return null;
+  const n = parseFloat(str);
+  return Number.isFinite(n) ? n : null;
+}
 
 export default function DeliveryAdicionaisScreen() {
   const isFocused = useIsFocused();
@@ -18,6 +32,18 @@ export default function DeliveryAdicionaisScreen() {
   const [editingId, setEditingId] = useState(null);
   const [editValues, setEditValues] = useState({ nome: '', custo: '', preco_cobrado: '' });
 
+  // Audit P0: error states + race-guard
+  const [loadError, setLoadError] = useState(null);
+  const [saveError, setSaveError] = useState(null);
+  const isLoadingRef = useRef(false);
+  const saveErrorTimerRef = useRef(null);
+
+  function showSaveError(msg) {
+    setSaveError(msg);
+    if (saveErrorTimerRef.current) clearTimeout(saveErrorTimerRef.current);
+    saveErrorTimerRef.current = setTimeout(() => setSaveError(null), 4000);
+  }
+
   useFocusEffect(
     useCallback(() => {
       loadData();
@@ -26,35 +52,64 @@ export default function DeliveryAdicionaisScreen() {
   );
 
   async function loadData() {
-    const db = await getDatabase();
-    const adds = await db.getAllAsync('SELECT * FROM delivery_adicionais ORDER BY nome');
-    setAdicionais(adds);
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    setLoadError(null);
+    try {
+      const db = await getDatabase();
+      const adds = await db.getAllAsync('SELECT * FROM delivery_adicionais ORDER BY nome');
+      setAdicionais(adds);
+    } catch (e) {
+      console.error('[DeliveryAdicionaisScreen.loadData]', e);
+      setLoadError('Não foi possível carregar os adicionais. Tente novamente.');
+    } finally {
+      isLoadingRef.current = false;
+    }
   }
 
   function parseInputValue(text) {
-    return parseFloat(text.replace(',', '.')) || 0;
+    const n = parseInputNumber(text);
+    return n !== null && n >= 0 ? n : 0;
   }
 
   async function adicionarAdicional() {
-    if (!novoAdicional.nome.trim()) return;
-    const db = await getDatabase();
-    await db.runAsync(
-      'INSERT INTO delivery_adicionais (nome, custo, preco_cobrado) VALUES (?, ?, ?)',
-      [novoAdicional.nome.trim(), parseInputValue(novoAdicional.custo), parseInputValue(novoAdicional.preco_cobrado)]
-    );
-    setNovoAdicional({ nome: '', custo: '', preco_cobrado: '' });
-    loadData();
+    const nome = novoAdicional.nome.trim();
+    if (!nome) return;
+    // Audit P1: dedupe case-insensitive
+    const exists = adicionais.some(a => (a.nome || '').trim().toLowerCase() === nome.toLowerCase());
+    if (exists) {
+      showSaveError('Já existe um adicional com esse nome.');
+      return;
+    }
+    try {
+      const db = await getDatabase();
+      await db.runAsync(
+        'INSERT INTO delivery_adicionais (nome, custo, preco_cobrado) VALUES (?, ?, ?)',
+        [nome, parseInputValue(novoAdicional.custo), parseInputValue(novoAdicional.preco_cobrado)]
+      );
+      setNovoAdicional({ nome: '', custo: '', preco_cobrado: '' });
+      loadData();
+    } catch (e) {
+      console.error('[DeliveryAdicionaisScreen.adicionarAdicional]', e);
+      showSaveError('Falha ao adicionar. Tente novamente.');
+    }
   }
 
   function removerAdicional(id, nome) {
     setConfirmRemove({
       id, nome,
       onConfirm: async () => {
-        const db = await getDatabase();
-        await db.runAsync('DELETE FROM delivery_adicionais WHERE id = ?', [id]);
-        setConfirmRemove(null);
-        setEditingId(null);
-        loadData();
+        try {
+          const db = await getDatabase();
+          await db.runAsync('DELETE FROM delivery_adicionais WHERE id = ?', [id]);
+          setConfirmRemove(null);
+          setEditingId(null);
+          loadData();
+        } catch (e) {
+          console.error('[DeliveryAdicionaisScreen.removerAdicional]', e);
+          setConfirmRemove(null);
+          showSaveError('Falha ao remover. Tente novamente.');
+        }
       },
     });
   }
@@ -63,8 +118,8 @@ export default function DeliveryAdicionaisScreen() {
     setEditingId(add.id);
     setEditValues({
       nome: add.nome,
-      custo: add.custo > 0 ? String(add.custo).replace('.', ',') : '',
-      preco_cobrado: add.preco_cobrado > 0 ? String(add.preco_cobrado).replace('.', ',') : '',
+      custo: safeNum(add.custo) > 0 ? String(add.custo).replace('.', ',') : '',
+      preco_cobrado: safeNum(add.preco_cobrado) > 0 ? String(add.preco_cobrado).replace('.', ',') : '',
     });
   }
 
@@ -75,19 +130,52 @@ export default function DeliveryAdicionaisScreen() {
 
   async function salvarEdicao() {
     if (!editValues.nome.trim()) return;
-    const db = await getDatabase();
-    await db.runAsync(
-      'UPDATE delivery_adicionais SET nome = ?, custo = ?, preco_cobrado = ? WHERE id = ?',
-      [editValues.nome.trim(), parseInputValue(editValues.custo), parseInputValue(editValues.preco_cobrado), editingId]
-    );
-    setEditingId(null);
-    setEditValues({ nome: '', custo: '', preco_cobrado: '' });
-    loadData();
+    try {
+      const db = await getDatabase();
+      await db.runAsync(
+        'UPDATE delivery_adicionais SET nome = ?, custo = ?, preco_cobrado = ? WHERE id = ?',
+        [editValues.nome.trim(), parseInputValue(editValues.custo), parseInputValue(editValues.preco_cobrado), editingId]
+      );
+      setEditingId(null);
+      setEditValues({ nome: '', custo: '', preco_cobrado: '' });
+      loadData();
+    } catch (e) {
+      console.error('[DeliveryAdicionaisScreen.salvarEdicao]', e);
+      showSaveError('Falha ao salvar edição. Tente novamente.');
+    }
   }
 
   return (
     <>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        {/* Audit P0: error banners */}
+        {loadError && (
+          <View
+            style={styles.errorBanner}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+          >
+            <Text style={styles.errorBannerText}>{loadError}</Text>
+            <TouchableOpacity
+              onPress={loadData}
+              style={styles.errorRetryBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Tentar carregar adicionais novamente"
+            >
+              <Text style={styles.errorRetryText}>Tentar novamente</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {saveError && (
+          <View
+            style={styles.errorBanner}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+          >
+            <Text style={styles.errorBannerText}>{saveError}</Text>
+          </View>
+        )}
+
         <Card
           title="Adicionais por Pedido"
           headerRight={
@@ -111,8 +199,10 @@ export default function DeliveryAdicionaisScreen() {
           ) : (
             adicionais.map((add) => {
               const isEditing = editingId === add.id;
-              const lucro = add.preco_cobrado - add.custo;
-              const margem = add.preco_cobrado > 0 ? (lucro / add.preco_cobrado) * 100 : 0;
+              const custoNum = safeNum(add.custo);
+              const precoNum = safeNum(add.preco_cobrado);
+              const lucro = precoNum - custoNum;
+              const margem = precoNum > 0 ? (lucro / precoNum) * 100 : 0;
 
               if (isEditing) {
                 return (
@@ -166,12 +256,16 @@ export default function DeliveryAdicionaisScreen() {
                   <View style={styles.itemMain}>
                     <Text style={styles.itemName} numberOfLines={1}>{add.nome}</Text>
                     <View style={styles.itemMeta}>
-                      <Text style={styles.itemMetaText}>Custo: {formatCurrency(add.custo)}</Text>
+                      <Text style={styles.itemMetaText}>Custo: {formatCurrency(custoNum)}</Text>
                       <Text style={styles.itemMetaSep}> · </Text>
-                      <Text style={styles.itemMetaText}>Preço: {formatCurrency(add.preco_cobrado)}</Text>
+                      <Text style={styles.itemMetaText}>Preço: {formatCurrency(precoNum)}</Text>
                     </View>
                   </View>
-                  <View style={styles.itemRight}>
+                  <View
+                    style={styles.itemRight}
+                    accessibilityRole="text"
+                    accessibilityLabel={`Lucro ${formatCurrency(lucro)}, margem ${margem.toFixed(0)} por cento`}
+                  >
                     <Text style={[styles.itemLucro, { color: lucro >= 0 ? colors.success : colors.error }]}>
                       {formatCurrency(lucro)}
                     </Text>
@@ -183,6 +277,8 @@ export default function DeliveryAdicionaisScreen() {
                     style={styles.deleteBtn}
                     onPress={() => removerAdicional(add.id, add.nome)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remover adicional ${add.nome}`}
                   >
                     <Text style={styles.deleteText}>✕</Text>
                   </TouchableOpacity>
@@ -214,7 +310,12 @@ export default function DeliveryAdicionaisScreen() {
                 keyboardType="numeric"
                 style={{ flex: 1, marginRight: spacing.xs, marginBottom: 0 }}
               />
-              <TouchableOpacity style={styles.addBtn} onPress={adicionarAdicional}>
+              <TouchableOpacity
+                style={styles.addBtn}
+                onPress={adicionarAdicional}
+                accessibilityRole="button"
+                accessibilityLabel="Adicionar novo adicional"
+              >
                 <Text style={styles.addBtnText}>+</Text>
               </TouchableOpacity>
             </View>
@@ -238,6 +339,31 @@ export default function DeliveryAdicionaisScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, paddingBottom: 40 },
+
+  // Audit P0: error banners
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#fef2f2',
+    borderLeftWidth: 3, borderLeftColor: '#dc2626',
+    paddingVertical: spacing.xs, paddingHorizontal: spacing.sm,
+    marginBottom: spacing.sm,
+    borderRadius: 4,
+  },
+  errorBannerText: {
+    flex: 1,
+    color: '#991b1b',
+    fontSize: fonts.small,
+    fontFamily: fontFamily.medium,
+    fontWeight: '500',
+  },
+  errorRetryBtn: {
+    paddingHorizontal: spacing.sm, paddingVertical: 4,
+    backgroundColor: '#dc2626', borderRadius: 4, marginLeft: spacing.xs,
+  },
+  errorRetryText: {
+    color: '#fff', fontSize: fonts.tiny, fontWeight: '700',
+    fontFamily: fontFamily.bold,
+  },
 
   // Empty state
   emptyState: { alignItems: 'center', paddingVertical: spacing.xl },

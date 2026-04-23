@@ -1,9 +1,24 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking, Image } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 
-const VERSION = '2.0.0';
+const VERSION = Constants?.expoConfig?.version || '2.0.0';
+
+async function openExternal(url, onError) {
+  try {
+    const supported = await Linking.canOpenURL(url);
+    if (!supported) {
+      onError?.('Não foi possível abrir este link no seu dispositivo.');
+      return;
+    }
+    await Linking.openURL(url);
+  } catch (e) {
+    console.error('[SobreScreen.openExternal]', url, e);
+    onError?.('Não foi possível abrir o link. Tente novamente.');
+  }
+}
 
 const FEATURES = [
   { icon: 'file-text', label: 'Cadastro completo', desc: 'Insumos, preparos, embalagens e produtos' },
@@ -28,8 +43,19 @@ const FEATURES = [
 ];
 
 export default function SobreScreen() {
+  const [linkError, setLinkError] = useState(null);
+  const handleLink = (url) => openExternal(url, (msg) => {
+    setLinkError(msg);
+    setTimeout(() => setLinkError(null), 4000);
+  });
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {linkError && (
+        <View style={styles.errorBanner} accessibilityLiveRegion="polite">
+          <Feather name="alert-circle" size={16} color="#dc2626" />
+          <Text style={styles.errorBannerText}>{linkError}</Text>
+        </View>
+      )}
       {/* Logo e nome */}
       <View style={styles.logoSection}>
         <Image
@@ -78,7 +104,10 @@ export default function SobreScreen() {
         <Text style={styles.cardTitle}>Contato e Suporte</Text>
         <TouchableOpacity
           style={styles.linkRow}
-          onPress={() => Linking.openURL('https://www.precificaiapp.com')}
+          onPress={() => handleLink('https://www.precificaiapp.com')}
+          activeOpacity={0.6}
+          accessibilityRole="link"
+          accessibilityLabel="Abrir site www.precificaiapp.com"
         >
           <Feather name="globe" size={16} color={colors.primary} />
           <Text style={styles.linkText}>www.precificaiapp.com</Text>
@@ -86,10 +115,40 @@ export default function SobreScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.linkRow}
-          onPress={() => Linking.openURL('mailto:contato@precificaiapp.com')}
+          onPress={() => handleLink('mailto:contato@precificaiapp.com')}
+          activeOpacity={0.6}
+          accessibilityRole="link"
+          accessibilityLabel="Enviar e-mail para contato@precificaiapp.com"
         >
           <Feather name="mail" size={16} color={colors.primary} />
           <Text style={styles.linkText}>contato@precificaiapp.com</Text>
+          <Feather name="external-link" size={14} color={colors.disabled} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Legal links */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Termos e privacidade</Text>
+        <TouchableOpacity
+          style={styles.linkRow}
+          onPress={() => handleLink('https://www.precificaiapp.com/termos')}
+          activeOpacity={0.6}
+          accessibilityRole="link"
+          accessibilityLabel="Abrir Termos de Uso"
+        >
+          <Feather name="file-text" size={16} color={colors.primary} />
+          <Text style={styles.linkText}>Termos de Uso</Text>
+          <Feather name="external-link" size={14} color={colors.disabled} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.linkRow}
+          onPress={() => handleLink('https://www.precificaiapp.com/privacidade')}
+          activeOpacity={0.6}
+          accessibilityRole="link"
+          accessibilityLabel="Abrir Política de Privacidade"
+        >
+          <Feather name="shield" size={16} color={colors.primary} />
+          <Text style={styles.linkText}>Política de Privacidade</Text>
           <Feather name="external-link" size={14} color={colors.disabled} />
         </TouchableOpacity>
       </View>
@@ -116,6 +175,16 @@ export default function SobreScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, maxWidth: 720, alignSelf: 'center', width: '100%', paddingBottom: 40 },
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: '#fef2f2', padding: spacing.md,
+    borderRadius: borderRadius.md, marginBottom: spacing.md,
+    borderLeftWidth: 3, borderLeftColor: '#dc2626',
+  },
+  errorBannerText: {
+    flex: 1, fontSize: fonts.small, color: '#991b1b',
+    fontFamily: fontFamily.regular, lineHeight: 18,
+  },
 
   logoSection: {
     alignItems: 'center', backgroundColor: colors.primary,

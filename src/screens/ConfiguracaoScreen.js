@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal, Keyboard, TextInput, Switch, RefreshControl, Platform } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import CurrencyInputModal from '../components/CurrencyInputModal';
-import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import InfoTooltip from '../components/InfoTooltip';
 import Chip from '../components/Chip';
@@ -11,6 +11,13 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, calcDespesasFixasPercentual, calcMarkup } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
+
+// Parsing seguro: aceita "12,5" e "12.5", retorna NaN para entrada inválida (não 0 silencioso).
+function parseNum(str) {
+  if (str == null) return NaN;
+  const n = parseFloat(String(str).replace(',', '.'));
+  return Number.isFinite(n) ? n : NaN;
+}
 
 const SUGESTOES_FIXAS = [
   'Aluguel', 'Energia elétrica', 'Água', 'Gás', 'Internet', 'Telefone',
@@ -35,6 +42,8 @@ const SUGESTOES_VARIAVEIS = [
 export default function ConfiguracaoScreen() {
   const { isDesktop } = useResponsiveLayout();
   const isFocused = useIsFocused();
+  const navigation = useNavigation();
+  const [loadError, setLoadError] = useState(false);
   const [lucroDesejado, setLucroDesejado] = useState('');
   const [despesasFixas, setDespesasFixas] = useState([]);
   const [despesasVariaveis, setDespesasVariaveis] = useState([]);
@@ -74,7 +83,13 @@ export default function ConfiguracaoScreen() {
     setTimeout(() => setSavedFeedback(null), 1500);
   }
 
+  function showError(msg) {
+    Alert.alert('Erro ao salvar', msg || 'Tente novamente.');
+  }
+
   async function loadData() {
+    try {
+      setLoadError(false);
     const db = await getDatabase();
     const [configs, fixas, variaveis, fatRaw] = await Promise.all([
       db.getAllAsync('SELECT * FROM configuracao'),
@@ -132,6 +147,10 @@ export default function ConfiguracaoScreen() {
 
     const status = await getFinanceiroStatus();
     setFinStatus(status);
+    } catch (e) {
+      setLoadError(true);
+      if (typeof console !== 'undefined' && console.error) console.error('[ConfiguracaoScreen.loadData]', e);
+    }
   }
 
   async function salvarLucro() {
@@ -229,15 +248,22 @@ export default function ConfiguracaoScreen() {
   }
 
   async function salvarFaturamentoMedio(valorStr) {
-    const valor = parseFloat(valorStr.replace(',', '.')) || 0;
-    if (valor <= 0) return;
-    const db = await getDatabase();
-    // Apply same value to all 12 months
-    for (const f of faturamento) {
-      await db.runAsync('UPDATE faturamento_mensal SET valor = ? WHERE id = ?', [valor, f.id]);
+    const valor = parseNum(valorStr);
+    if (!Number.isFinite(valor) || valor <= 0) {
+      return Alert.alert('Valor inválido', 'O faturamento médio deve ser maior que zero.');
     }
-    showSaved('Faturamento salvo');
-    loadData();
+    try {
+      const db = await getDatabase();
+      // Apply same value to all 12 months
+      for (const f of faturamento) {
+        await db.runAsync('UPDATE faturamento_mensal SET valor = ? WHERE id = ?', [valor, f.id]);
+      }
+      showSaved('Faturamento salvo');
+      loadData();
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[ConfiguracaoScreen.salvarFaturamentoMedio]', e);
+      showError('Não foi possível salvar o faturamento.');
+    }
   }
 
   function debounceSave(fn, delay = 600) {
@@ -293,15 +319,22 @@ export default function ConfiguracaoScreen() {
     }
   }
 
-  const totalFixas = despesasFixas.reduce((acc, d) => acc + (d.valor || 0), 0);
-  const totalVariaveis = despesasVariaveis.reduce((acc, d) => acc + (d.percentual || 0), 0);
-  const mesesComFat = faturamento.filter(f => f.valor > 0);
+  const totalFixas = despesasFixas.reduce((acc, d) => acc + (Number.isFinite(d.valor) ? d.valor : 0), 0);
+  const totalVariaveis = despesasVariaveis.reduce((acc, d) => acc + (Number.isFinite(d.percentual) ? d.percentual : 0), 0);
+  const mesesComFat = faturamento.filter(f => Number.isFinite(f.valor) && f.valor > 0);
   const faturamentoMedio = mesesComFat.length > 0
     ? mesesComFat.reduce((acc, f) => acc + f.valor, 0) / mesesComFat.length : 0;
   const despFixasPerc = calcDespesasFixasPercentual(totalFixas, faturamentoMedio);
-  const lucroPerc = parseFloat(lucroDesejado.replace(',', '.')) / 100 || 0;
+  const lucroPercRaw = parseNum(lucroDesejado);
+  const lucroPerc = Number.isFinite(lucroPercRaw) ? lucroPercRaw / 100 : 0;
   const markup = calcMarkup(despFixasPerc, totalVariaveis, lucroPerc);
-  const custoMaxPerc = Math.max(0, 1 - despFixasPerc - totalVariaveis - lucroPerc);
+  // custoBruto = quanto sobra do preço para o ingrediente após deduzir despesas/lucro.
+  // Se >= 1 → modelo inviável (despesas + lucro absorvem 100%+ do preço).
+  const custoBruto = 1 - despFixasPerc - totalVariaveis - lucroPerc;
+  const custoMaxPerc = Math.max(0, custoBruto);
+  const modeloInviavel = Number.isFinite(custoBruto) && custoBruto <= 0 && (despFixasPerc > 0 || totalVariaveis > 0 || lucroPerc > 0);
+  const markupValido = Number.isFinite(markup) && markup > 0;
+  const markupDisplay = markupValido ? `${markup.toFixed(2)}x` : '∞';
 
   const faturamentoOrdenado = [...faturamento].sort((a, b) => mesesCurtos.indexOf(a.mes) - mesesCurtos.indexOf(b.mes));
 
@@ -331,7 +364,7 @@ export default function ConfiguracaoScreen() {
         {/* KPI Cards */}
         <View style={s.kpiRow}>
           <View style={s.kpiCard}>
-            <Text style={s.kpiValue}>{markup.toFixed(2)}x</Text>
+            <Text style={[s.kpiValue, !markupValido && { color: colors.error }]}>{markupDisplay}</Text>
             <Text style={s.kpiLabel}>Mark-up</Text>
           </View>
           <View style={s.kpiCard}>
@@ -378,6 +411,15 @@ export default function ConfiguracaoScreen() {
                 </View>
               ))}
             </View>
+          </View>
+        )}
+
+        {modeloInviavel && (
+          <View style={s.inviabilityBanner}>
+            <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: 6 }} />
+            <Text style={s.inviabilityText}>
+              Modelo financeiro inviável: despesas + lucro ({formatPercent(despFixasPerc + totalVariaveis + lucroPerc)}) absorvem 100% ou mais do preço. Reduza despesas, aumente faturamento, ou diminua a margem de lucro.
+            </Text>
           </View>
         )}
 
@@ -503,7 +545,7 @@ export default function ConfiguracaoScreen() {
             <View style={s.markupPreview}>
               <Feather name="zap" size={13} color={colors.accent} />
               <Text style={s.markupPreviewText}>
-                Mark-up resultante: <Text style={{ fontWeight: '800', color: colors.primary }}>{markup.toFixed(2)}x</Text>
+                Mark-up resultante: <Text style={{ fontWeight: '800', color: markupValido ? colors.primary : colors.error }}>{markupDisplay}</Text>
               </Text>
             </View>
 
@@ -935,6 +977,15 @@ export default function ConfiguracaoScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         ) : undefined}
       >
+        {loadError && (
+          <View style={s.errorBanner}>
+            <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: 8 }} />
+            <Text style={s.errorBannerText}>Não foi possível carregar a configuração financeira.</Text>
+            <TouchableOpacity onPress={loadData} style={s.errorBannerBtn} activeOpacity={0.7}>
+              <Text style={s.errorBannerBtnText}>Tentar de novo</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {/* Page header */}
         <View style={s.pageHeader}>
           <View style={s.pageHeaderIcon}>
@@ -1161,6 +1212,55 @@ const s = StyleSheet.create({
   },
   summaryWarningText: {
     fontSize: 11, color: '#E65100', flex: 1,
+  },
+
+  inviabilityBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#fee2e2',
+    borderRadius: borderRadius.sm,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.error,
+    padding: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  inviabilityText: {
+    flex: 1,
+    fontSize: 11,
+    fontFamily: fontFamily.semiBold,
+    color: colors.error,
+    lineHeight: 16,
+  },
+
+  // Error banner (loadData)
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fee2e2',
+    borderLeftWidth: 4,
+    borderLeftColor: colors.error,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.sm,
+    marginBottom: spacing.md,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: fonts.small,
+    color: colors.error,
+    fontWeight: '600',
+    marginRight: spacing.sm,
+  },
+  errorBannerBtn: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.error,
+    borderRadius: borderRadius.sm,
+  },
+  errorBannerBtnText: {
+    color: '#fff',
+    fontSize: fonts.tiny,
+    fontWeight: '700',
   },
 
   // Progress

@@ -7,6 +7,13 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { formatCurrency, converterParaBase } from '../utils/calculations';
 import EmptyState from '../components/EmptyState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import usePersistedState from '../hooks/usePersistedState';
+
+// Audit P1: helper defensivo para qualquer número vindo de DB.
+function safeNum(v) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
 
 const CATEGORY_COLORS = [
   '#004d47', '#265bb0', '#e3b842', '#e3704d', '#6a4fb0',
@@ -30,7 +37,11 @@ export default function ListaComprasScreen({ navigation }) {
   const [lista, setLista] = useState(null);
   const [loading, setLoading] = useState(true);
   const [gerando, setGerando] = useState(false);
-  const [busca, setBusca] = useState('');
+  // Audit P1: persistir busca entre navegações (padrão da casa).
+  const [busca, setBusca] = usePersistedState('listaCompras.busca', '');
+  // Audit P0: estados de erro (loadProdutos + gerarLista eram silent).
+  const [loadError, setLoadError] = useState(null);
+  const [gerarError, setGerarError] = useState(null);
 
   useFocusEffect(useCallback(() => {
     loadProdutos();
@@ -39,40 +50,48 @@ export default function ListaComprasScreen({ navigation }) {
 
   async function loadProdutos() {
     setLoading(true);
-    const db = await getDatabase();
-    const [rawProds, cats, comboRows, comboItensRows] = await Promise.all([
-      db.getAllAsync('SELECT * FROM produtos ORDER BY nome'),
-      db.getAllAsync('SELECT * FROM categorias_produtos'),
-      db.getAllAsync('SELECT * FROM delivery_combos ORDER BY nome'),
-      db.getAllAsync('SELECT * FROM delivery_combo_itens'),
-    ]);
-    const catMap = {};
-    (cats || []).forEach(c => { catMap[c.id] = c.nome; });
+    setLoadError(null);
+    try {
+      const db = await getDatabase();
+      const [rawProds, cats, comboRows, comboItensRows] = await Promise.all([
+        db.getAllAsync('SELECT * FROM produtos ORDER BY nome'),
+        db.getAllAsync('SELECT * FROM categorias_produtos'),
+        db.getAllAsync('SELECT * FROM delivery_combos ORDER BY nome'),
+        db.getAllAsync('SELECT * FROM delivery_combo_itens'),
+      ]);
+      const catMap = {};
+      (cats || []).forEach(c => { catMap[c.id] = c.nome; });
 
-    // Build combo items lookup
-    const itensByCombo = {};
-    (comboItensRows || []).forEach(ci => { (itensByCombo[ci.combo_id] = itensByCombo[ci.combo_id] || []).push(ci); });
+      // Build combo items lookup
+      const itensByCombo = {};
+      (comboItensRows || []).forEach(ci => { (itensByCombo[ci.combo_id] = itensByCombo[ci.combo_id] || []).push(ci); });
 
-    const prods = rawProds.map(p => ({ ...p, categoria_nome: catMap[p.categoria_id] || null, isCombo: false }))
-      .sort((a, b) => (a.categoria_nome || 'zzz').localeCompare(b.categoria_nome || 'zzz') || a.nome.localeCompare(b.nome));
+      const prods = rawProds.map(p => ({ ...p, categoria_nome: catMap[p.categoria_id] || null, isCombo: false }))
+        .sort((a, b) => (a.categoria_nome || 'zzz').localeCompare(b.categoria_nome || 'zzz') || a.nome.localeCompare(b.nome));
 
-    // Add combos as items with categoria_nome "Combos Delivery"
-    const comboItems = (comboRows || []).filter(c => c.preco_venda > 0).map(c => ({
-      ...c,
-      id: 'combo_' + c.id,
-      comboId: c.id,
-      nome: c.nome,
-      categoria_nome: 'Combos Delivery',
-      isCombo: true,
-      comboItens: itensByCombo[c.id] || [],
-    }));
+      // Add combos as items with categoria_nome "Combos Delivery"
+      const comboItems = (comboRows || []).filter(c => safeNum(c.preco_venda) > 0).map(c => ({
+        ...c,
+        id: 'combo_' + c.id,
+        comboId: c.id,
+        nome: c.nome,
+        categoria_nome: 'Combos Delivery',
+        isCombo: true,
+        comboItens: itensByCombo[c.id] || [],
+      }));
 
-    const allItems = [...prods, ...comboItems];
-    setProdutos(allItems);
-    const qtds = {};
-    allItems.forEach(p => { qtds[p.id] = '0'; });
-    setQuantidades(qtds);
-    setLoading(false);
+      const allItems = [...prods, ...comboItems];
+      setProdutos(allItems);
+      const qtds = {};
+      allItems.forEach(p => { qtds[p.id] = '0'; });
+      setQuantidades(qtds);
+    } catch (err) {
+      // Audit P0: era silent — agora loga e mostra banner.
+      console.error('[ListaCompras.loadProdutos]', err);
+      setLoadError('Não foi possível carregar a lista de produtos. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   function setQtd(prodId, val) {
@@ -81,6 +100,7 @@ export default function ListaComprasScreen({ navigation }) {
 
   async function gerarLista() {
     setGerando(true);
+    setGerarError(null);
     try {
       const db = await getDatabase();
 
@@ -126,13 +146,14 @@ export default function ListaComprasScreen({ navigation }) {
             nome: mp.nome,
             categoria: mp.categoria || 'Sem categoria',
             unidade_medida: mp.unidade_medida || 'Grama(s)',
-            valor_pago: mp.valor_pago || 0,
-            quantidade_bruta: mp.quantidade_bruta || 1,
-            quantidade_liquida: mp.quantidade_liquida || 1,
+            // Audit P1: safeNum protege contra NaN em estimativas.
+            valor_pago: safeNum(mp.valor_pago),
+            quantidade_bruta: safeNum(mp.quantidade_bruta) || 1,
+            quantidade_liquida: safeNum(mp.quantidade_liquida) || 1,
             totalGramas: 0,
           };
         }
-        consolidado[mpId].totalGramas += qtGramas;
+        consolidado[mpId].totalGramas += safeNum(qtGramas);
       }
 
       // Helper to add a product's ingredients to consolidado
@@ -242,9 +263,10 @@ export default function ListaComprasScreen({ navigation }) {
         }
 
         // Custo estimado: (totalGramas / quantidade_liquida_em_gramas) * valor_pago
-        const qtLiqGramas = converterParaBase(item.quantidade_liquida, item.unidade_medida || 'g');
-        const pacotesNecessarios = qtLiqGramas > 0 ? item.totalGramas / qtLiqGramas : 0;
-        const custoEstimado = pacotesNecessarios * item.valor_pago;
+        const qtLiqGramas = safeNum(converterParaBase(item.quantidade_liquida, item.unidade_medida || 'g'));
+        // Audit P1: divisão por zero já protegida; safeNum garante consistência.
+        const pacotesNecessarios = qtLiqGramas > 0 ? safeNum(item.totalGramas / qtLiqGramas) : 0;
+        const custoEstimado = safeNum(pacotesNecessarios * item.valor_pago);
 
         return { ...item, displayQty, displayUnit, custoEstimado };
       });
@@ -257,7 +279,7 @@ export default function ListaComprasScreen({ navigation }) {
       });
       Object.keys(grouped).forEach(cat => grouped[cat].sort((a, b) => a.nome.localeCompare(b.nome)));
 
-      const custoTotal = items.reduce((a, i) => a + i.custoEstimado, 0);
+      const custoTotal = items.reduce((a, i) => a + safeNum(i.custoEstimado), 0);
       const categorias = Object.keys(grouped).sort((a, b) => {
         if (a === 'Sem categoria') return 1;
         return a.localeCompare(b);
@@ -265,8 +287,12 @@ export default function ListaComprasScreen({ navigation }) {
 
       setLista({ grouped, categorias, custoTotal, totalItems: items.length });
     } catch (e) {
+      // Audit P0: catch silencioso fazia "Gerar Lista" não responder.
+      console.error('[ListaCompras.gerarLista]', e);
+      setGerarError('Não foi possível gerar a lista. Verifique seus dados e tente novamente.');
+    } finally {
+      setGerando(false);
     }
-    setGerando(false);
   }
 
   function exportarPDF() {
@@ -334,6 +360,25 @@ export default function ListaComprasScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
+        {/* Audit P0: banner de erro de carregamento (era silent) */}
+        {loadError ? (
+          <TouchableOpacity
+            style={styles.errorBanner}
+            onPress={loadProdutos}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Tentar carregar produtos novamente"
+          >
+            <Feather name="alert-circle" size={16} color="#dc2626" style={{ marginRight: 8 }} />
+            <Text style={styles.errorBannerText}>{loadError}</Text>
+          </TouchableOpacity>
+        ) : null}
+        {gerarError ? (
+          <View style={styles.errorBanner} accessibilityRole="alert">
+            <Feather name="alert-circle" size={16} color="#dc2626" style={{ marginRight: 8 }} />
+            <Text style={styles.errorBannerText}>{gerarError}</Text>
+          </View>
+        ) : null}
         {/* Info */}
         <View style={styles.infoCard}>
           <Feather name="shopping-cart" size={18} color={colors.primary} />
@@ -410,6 +455,8 @@ export default function ListaComprasScreen({ navigation }) {
                                 const cur = parseInt(quantidades[p.id]) || 0;
                                 if (cur > 0) setQtd(p.id, String(cur - 1));
                               }}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Diminuir quantidade de ${p.nome}`}
                             >
                               <Feather name="minus" size={isDesktop ? 12 : 14} color={colors.textSecondary} />
                             </TouchableOpacity>
@@ -419,6 +466,7 @@ export default function ListaComprasScreen({ navigation }) {
                               onChangeText={v => setQtd(p.id, v.replace(/[^0-9]/g, ''))}
                               keyboardType="numeric"
                               selectTextOnFocus
+                              accessibilityLabel={`Quantidade de ${p.nome}`}
                             />
                             <TouchableOpacity
                               style={isDesktop ? styles.qtyBtnSm : styles.qtyBtn}
@@ -426,6 +474,8 @@ export default function ListaComprasScreen({ navigation }) {
                                 const cur = parseInt(quantidades[p.id]) || 0;
                                 setQtd(p.id, String(cur + 1));
                               }}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Aumentar quantidade de ${p.nome}`}
                             >
                               <Feather name="plus" size={isDesktop ? 12 : 14} color={colors.primary} />
                             </TouchableOpacity>
@@ -445,6 +495,9 @@ export default function ListaComprasScreen({ navigation }) {
           style={[styles.gerarBtn, !temProdutosSelecionados && styles.gerarBtnDisabled]}
           onPress={gerarLista}
           disabled={!temProdutosSelecionados || gerando}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !temProdutosSelecionados || gerando, busy: gerando }}
+          accessibilityLabel={gerando ? 'Gerando lista de compras' : 'Gerar lista de compras'}
         >
           {gerando ? (
             <ActivityIndicator color="#fff" size="small" />
@@ -484,7 +537,7 @@ export default function ListaComprasScreen({ navigation }) {
                           <Text style={styles.gridCardName} numberOfLines={1}>{item.nome}</Text>
                         )}
                         <Text style={styles.gridCardPrice}>
-                          {item.displayQty % 1 === 0 ? item.displayQty : item.displayQty.toFixed(2)} {item.displayUnit} &middot; {formatCurrency(item.custoEstimado)}
+                          {item.displayQty % 1 === 0 ? item.displayQty : item.displayQty.toFixed(2)} {item.displayUnit} • {formatCurrency(item.custoEstimado)}
                         </Text>
                       </View>
                     ))}
@@ -512,7 +565,12 @@ export default function ListaComprasScreen({ navigation }) {
             </View>
 
             {/* Export PDF button */}
-            <TouchableOpacity style={styles.exportBtn} onPress={exportarPDF}>
+            <TouchableOpacity
+              style={styles.exportBtn}
+              onPress={exportarPDF}
+              accessibilityRole="button"
+              accessibilityLabel="Exportar lista de compras em PDF"
+            >
               <Feather name="printer" size={16} color={colors.primary} />
               <Text style={styles.exportBtnText}>Exportar PDF / Imprimir</Text>
             </TouchableOpacity>
@@ -526,6 +584,15 @@ export default function ListaComprasScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, maxWidth: 1200, width: '100%', paddingBottom: 40, alignSelf: 'center' },
+
+  // Audit P0: banner de erro (loadError + gerarError)
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fef2f2', padding: 10,
+    borderRadius: borderRadius.sm, marginBottom: spacing.sm,
+    borderLeftWidth: 3, borderLeftColor: '#dc2626',
+  },
+  errorBannerText: { color: '#dc2626', fontSize: fonts.small, flex: 1, fontFamily: fontFamily.regular },
 
   infoCard: {
     flexDirection: 'row', alignItems: 'flex-start',

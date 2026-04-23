@@ -12,6 +12,21 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import usePersistedState from '../hooks/usePersistedState';
+
+// ─── Numeric helpers (audit P0 — defesa contra NaN/Infinity) ─────────────
+function safeNum(v) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseInputNumber(raw) {
+  if (raw === null || raw === undefined) return null;
+  const str = String(raw).trim().replace(',', '.');
+  if (str === '') return null;
+  const n = parseFloat(str);
+  return Number.isFinite(n) ? n : null;
+}
 
 // Color cycling for combo avatars
 const COMBO_COLORS = [
@@ -37,8 +52,20 @@ export default function DeliveryCombosScreen() {
   const isFocused = useIsFocused();
   const { isDesktop } = useResponsiveLayout();
   const [combos, setCombos] = useState([]);
-  const [busca, setBusca] = useState('');
+  const [busca, setBusca] = usePersistedState('deliveryCombos.busca', '');
   const [confirmRemove, setConfirmRemove] = useState(null);
+
+  // Audit P0: error states + race-guard
+  const [loadError, setLoadError] = useState(null);
+  const [saveError, setSaveError] = useState(null);
+  const isLoadingRef = useRef(false);
+  const saveErrorTimerRef = useRef(null);
+
+  function showSaveError(msg) {
+    setSaveError(msg);
+    if (saveErrorTimerRef.current) clearTimeout(saveErrorTimerRef.current);
+    saveErrorTimerRef.current = setTimeout(() => setSaveError(null), 4000);
+  }
 
   // Modal state
   const [showComboModal, setShowComboModal] = useState(false);
@@ -94,6 +121,10 @@ export default function DeliveryCombosScreen() {
   }, []);
 
   async function loadData() {
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    setLoadError(null);
+    try {
     const db = await getDatabase();
 
     const [prods, allIngs, allPreps, allEmbs, embalagensList, preparosList, materiasList,
@@ -196,10 +227,17 @@ export default function DeliveryCombosScreen() {
       combosWithCost.push({ ...combo, itens, custo });
     }
     setCombos(combosWithCost);
+    } catch (e) {
+      console.error('[DeliveryCombosScreen.loadData]', e);
+      setLoadError('Não foi possível carregar os combos. Tente novamente.');
+    } finally {
+      isLoadingRef.current = false;
+    }
   }
 
   function parseInputValue(text) {
-    return parseFloat(text.replace(',', '.')) || 0;
+    const n = parseInputNumber(text);
+    return n !== null && n >= 0 ? n : 0;
   }
 
   // Filtered combos for search
@@ -284,7 +322,9 @@ export default function DeliveryCombosScreen() {
       }
       setSaveStatus('saved');
     } catch (e) {
+      console.error('[DeliveryCombosScreen.autoSave]', e);
       setSaveStatus(null);
+      showSaveError('Falha ao salvar combo. Tente novamente.');
     }
   }
 
@@ -314,32 +354,38 @@ export default function DeliveryCombosScreen() {
       }
       setSaveStatus('saved');
     } catch (e) {
+      console.error('[DeliveryCombosScreen.autoSaveImmediate]', e);
       setSaveStatus(null);
+      showSaveError('Falha ao salvar combo. Tente novamente.');
     }
   }
 
   // Save for NEW combos only
   async function salvarNovo() {
     if (!novoCombo.nome.trim() || novoCombo.itens.length === 0) return;
-    const db = await getDatabase();
-
-    const res = await db.runAsync(
-      'INSERT INTO delivery_combos (nome, preco_venda) VALUES (?, ?)',
-      [novoCombo.nome.trim(), parseInputValue(novoCombo.preco_venda)]
-    );
-    const comboId = res.lastInsertRowId;
-    for (const item of novoCombo.itens) {
-      await db.runAsync(
-        'INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
-        [comboId, item.tipo, item.item_id, item.quantidade]
+    try {
+      const db = await getDatabase();
+      const res = await db.runAsync(
+        'INSERT INTO delivery_combos (nome, preco_venda) VALUES (?, ?)',
+        [novoCombo.nome.trim(), parseInputValue(novoCombo.preco_venda)]
       );
-    }
+      const comboId = res.lastInsertRowId;
+      for (const item of novoCombo.itens) {
+        await db.runAsync(
+          'INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
+          [comboId, item.tipo, item.item_id, item.quantidade]
+        );
+      }
 
-    setShowComboModal(false);
-    setEditingCombo(null);
-    setNovoCombo({ nome: '', preco_venda: '', itens: [] });
-    setLoaded(false);
-    loadData();
+      setShowComboModal(false);
+      setEditingCombo(null);
+      setNovoCombo({ nome: '', preco_venda: '', itens: [] });
+      setLoaded(false);
+      loadData();
+    } catch (e) {
+      console.error('[DeliveryCombosScreen.salvarNovo]', e);
+      showSaveError('Falha ao criar combo. Tente novamente.');
+    }
   }
 
   // Handle closing modal with validation
@@ -385,40 +431,56 @@ export default function DeliveryCombosScreen() {
   async function handleDeleteAndExit() {
     setShowIncompleteModal(false);
     const isEditing = editingCombo !== null;
-    if (isEditing && editingCombo.id) {
-      const db = await getDatabase();
-      await db.runAsync('DELETE FROM delivery_combo_itens WHERE combo_id = ?', [editingCombo.id]);
-      await db.runAsync('DELETE FROM delivery_combos WHERE id = ?', [editingCombo.id]);
+    try {
+      if (isEditing && editingCombo.id) {
+        const db = await getDatabase();
+        await db.runAsync('DELETE FROM delivery_combo_itens WHERE combo_id = ?', [editingCombo.id]);
+        await db.runAsync('DELETE FROM delivery_combos WHERE id = ?', [editingCombo.id]);
+      }
+      setShowComboModal(false);
+      setEditingCombo(null);
+      setNovoCombo({ nome: '', preco_venda: '', itens: [] });
+      setLoaded(false);
+      loadData();
+    } catch (e) {
+      console.error('[DeliveryCombosScreen.handleDeleteAndExit]', e);
+      showSaveError('Falha ao excluir combo. Tente novamente.');
     }
-    setShowComboModal(false);
-    setEditingCombo(null);
-    setNovoCombo({ nome: '', preco_venda: '', itens: [] });
-    setLoaded(false);
-    loadData();
   }
 
   async function duplicarCombo(combo) {
-    const db = await getDatabase();
-    const result = await db.runAsync('INSERT INTO delivery_combos (nome, preco_venda) VALUES (?,?)', [combo.nome + ' (cópia)', combo.preco_venda]);
-    const newId = result?.lastInsertRowId;
-    if (newId) {
-      const itens = await db.getAllAsync('SELECT * FROM delivery_combo_itens WHERE combo_id = ?', [combo.id]);
-      await Promise.all(itens.map(item =>
-        db.runAsync('INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?,?,?,?)', [newId, item.tipo, item.item_id, item.quantidade])
-      ));
+    try {
+      const db = await getDatabase();
+      const result = await db.runAsync('INSERT INTO delivery_combos (nome, preco_venda) VALUES (?,?)', [combo.nome + ' (cópia)', combo.preco_venda]);
+      const newId = result?.lastInsertRowId;
+      if (newId) {
+        const itens = await db.getAllAsync('SELECT * FROM delivery_combo_itens WHERE combo_id = ?', [combo.id]);
+        await Promise.all(itens.map(item =>
+          db.runAsync('INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?,?,?,?)', [newId, item.tipo, item.item_id, item.quantidade])
+        ));
+      }
+      loadData();
+    } catch (e) {
+      console.error('[DeliveryCombosScreen.duplicarCombo]', e);
+      showSaveError('Falha ao duplicar combo. Tente novamente.');
     }
-    loadData();
   }
 
   function removerCombo(id, nome) {
     setConfirmRemove({
       id, nome,
       onConfirm: async () => {
-        const db = await getDatabase();
-        await db.runAsync('DELETE FROM delivery_combo_itens WHERE combo_id = ?', [id]);
-        await db.runAsync('DELETE FROM delivery_combos WHERE id = ?', [id]);
-        setConfirmRemove(null);
-        loadData();
+        try {
+          const db = await getDatabase();
+          await db.runAsync('DELETE FROM delivery_combo_itens WHERE combo_id = ?', [id]);
+          await db.runAsync('DELETE FROM delivery_combos WHERE id = ?', [id]);
+          setConfirmRemove(null);
+          loadData();
+        } catch (e) {
+          console.error('[DeliveryCombosScreen.removerCombo]', e);
+          setConfirmRemove(null);
+          showSaveError('Falha ao remover combo. Tente novamente.');
+        }
       },
     });
   }
@@ -455,10 +517,12 @@ export default function DeliveryCombosScreen() {
   }
 
   function alterarQuantidadeItem(index, val) {
+    const parsed = parseInputNumber(val);
+    const valid = parsed !== null && parsed > 0 ? parsed : 1;
     setNovoCombo(prev => {
       const updated = {
         ...prev,
-        itens: prev.itens.map((it, i) => i === index ? { ...it, quantidade: parseFloat(val) || 1 } : it),
+        itens: prev.itens.map((it, i) => i === index ? { ...it, quantidade: valid } : it),
       };
       if (editingComboRef.current && loaded) {
         autoSaveImmediate(updated);
@@ -468,7 +532,7 @@ export default function DeliveryCombosScreen() {
   }
 
   function calcSomaItens() {
-    return novoCombo.itens.reduce((acc, item) => acc + (item.custoUnit || 0) * item.quantidade, 0);
+    return novoCombo.itens.reduce((acc, item) => acc + safeNum(item.custoUnit) * safeNum(item.quantidade), 0);
   }
 
   const custoTotal = calcSomaItens();
@@ -477,10 +541,10 @@ export default function DeliveryCombosScreen() {
   const isEditing = editingCombo !== null;
 
   // Breakdown by type
-  const custoProdutos = novoCombo.itens.filter(i => i.tipo === 'produto' || i.tipo === 'delivery_produto').reduce((a, i) => a + (i.custoUnit || 0) * i.quantidade, 0);
-  const custoInsumos = novoCombo.itens.filter(i => i.tipo === 'materia_prima').reduce((a, i) => a + (i.custoUnit || 0) * i.quantidade, 0);
-  const custoPreparosCombo = novoCombo.itens.filter(i => i.tipo === 'preparo').reduce((a, i) => a + (i.custoUnit || 0) * i.quantidade, 0);
-  const custoEmbalagensCombo = novoCombo.itens.filter(i => i.tipo === 'embalagem').reduce((a, i) => a + (i.custoUnit || 0) * i.quantidade, 0);
+  const custoProdutos = novoCombo.itens.filter(i => i.tipo === 'produto' || i.tipo === 'delivery_produto').reduce((a, i) => a + safeNum(i.custoUnit) * safeNum(i.quantidade), 0);
+  const custoInsumos = novoCombo.itens.filter(i => i.tipo === 'materia_prima').reduce((a, i) => a + safeNum(i.custoUnit) * safeNum(i.quantidade), 0);
+  const custoPreparosCombo = novoCombo.itens.filter(i => i.tipo === 'preparo').reduce((a, i) => a + safeNum(i.custoUnit) * safeNum(i.quantidade), 0);
+  const custoEmbalagensCombo = novoCombo.itens.filter(i => i.tipo === 'embalagem').reduce((a, i) => a + safeNum(i.custoUnit) * safeNum(i.quantidade), 0);
   const lucroCombo = precoVendaModal - custoTotal;
   const margemDesejada = 0.35; // 35% default
   const precoSugerido = custoTotal > 0 ? custoTotal / (1 - margemDesejada) : 0;
@@ -488,7 +552,9 @@ export default function DeliveryCombosScreen() {
   // ─── RENDER ───────────────────────────────────────────────
 
   function renderComboCard({ item: combo, index }) {
-    const margem = combo.preco_venda > 0 ? ((combo.preco_venda - combo.custo) / combo.preco_venda) * 100 : 0;
+    const precoV = safeNum(combo.preco_venda);
+    const custoC = safeNum(combo.custo);
+    const margem = precoV > 0 ? ((precoV - custoC) / precoV) * 100 : 0;
     const margemColor = margem >= 25 ? colors.success : margem >= 15 ? colors.accent : colors.error;
     const comboColor = getComboColor(index);
     const inicial = (combo.nome || '?').charAt(0).toUpperCase();
@@ -528,6 +594,8 @@ export default function DeliveryCombosScreen() {
           onPress={() => removerCombo(combo.id, combo.nome)}
           style={styles.deleteBtn}
           hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Remover combo ${combo.nome}`}
         >
           <Feather name="trash-2" size={13} color={colors.disabled} />
         </TouchableOpacity>
@@ -536,7 +604,9 @@ export default function DeliveryCombosScreen() {
   }
 
   function renderDesktopGridCard({ item: combo, index }) {
-    const margem = combo.preco_venda > 0 ? ((combo.preco_venda - combo.custo) / combo.preco_venda) * 100 : 0;
+    const precoV = safeNum(combo.preco_venda);
+    const custoC = safeNum(combo.custo);
+    const margem = precoV > 0 ? ((precoV - custoC) / precoV) * 100 : 0;
     const margemColor = margem >= 25 ? colors.success : margem >= 15 ? colors.accent : colors.error;
     const comboColor = getComboColor(index);
     const inicial = (combo.nome || '?').charAt(0).toUpperCase();
@@ -557,6 +627,8 @@ export default function DeliveryCombosScreen() {
               onPress={() => removerCombo(combo.id, combo.nome)}
               style={styles.gridDeleteBtn}
               hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Remover combo ${combo.nome}`}
             >
               <Feather name="trash-2" size={12} color={colors.disabled} />
             </TouchableOpacity>
@@ -582,6 +654,34 @@ export default function DeliveryCombosScreen() {
       <View style={[styles.headerBar, isDesktop && { maxWidth: 1200, alignSelf: 'center', width: '100%' }]}>
         <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar combo..." />
       </View>
+
+      {/* Audit P0: error banners */}
+      {loadError && (
+        <View
+          style={styles.errorBanner}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+        >
+          <Text style={styles.errorBannerText}>{loadError}</Text>
+          <TouchableOpacity
+            onPress={loadData}
+            style={styles.errorRetryBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Tentar carregar combos novamente"
+          >
+            <Text style={styles.errorRetryText}>Tentar novamente</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      {saveError && (
+        <View
+          style={styles.errorBanner}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+        >
+          <Text style={styles.errorBannerText}>{saveError}</Text>
+        </View>
+      )}
 
       {/* Combo list */}
       {isDesktop ? (
@@ -857,7 +957,7 @@ export default function DeliveryCombosScreen() {
                     <TouchableOpacity style={styles.modalCloseBtnFull} onPress={handleCloseModal}>
                       <Text style={styles.modalCloseText}>Fechar</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.saveBackBtn} onPress={async () => { try { await autoSaveImmediate(); } catch(e) {} handleCloseModal(); }}>
+                    <TouchableOpacity style={styles.saveBackBtn} onPress={async () => { try { await autoSaveImmediate(); } catch(e) { console.error('[DeliveryCombosScreen.saveBackBtn]', e); } handleCloseModal(); }}>
                       <Feather name="check" size={16} color="#fff" />
                       <Text style={styles.saveBackBtnText}>Salvar e voltar</Text>
                     </TouchableOpacity>
@@ -907,6 +1007,31 @@ export default function DeliveryCombosScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+
+  // Audit P0: error banners
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#fef2f2',
+    borderLeftWidth: 3, borderLeftColor: '#dc2626',
+    paddingVertical: spacing.xs, paddingHorizontal: spacing.sm,
+    marginHorizontal: spacing.md, marginTop: spacing.xs,
+    borderRadius: 4,
+  },
+  errorBannerText: {
+    flex: 1,
+    color: '#991b1b',
+    fontSize: fonts.small,
+    fontFamily: fontFamily.medium,
+    fontWeight: '500',
+  },
+  errorRetryBtn: {
+    paddingHorizontal: spacing.sm, paddingVertical: 4,
+    backgroundColor: '#dc2626', borderRadius: 4, marginLeft: spacing.xs,
+  },
+  errorRetryText: {
+    color: '#fff', fontSize: fonts.tiny, fontWeight: '700',
+    fontFamily: fontFamily.bold,
+  },
 
   // Header
   headerBar: {

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -10,8 +10,20 @@ import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
 import { Feather } from '@expo/vector-icons';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import usePersistedState from '../hooks/usePersistedState';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+
+function safeNum(v) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseInputNumber(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const parsed = parseFloat(String(raw).replace(',', '.'));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
 
 // Color palette for product avatars
 const AVATAR_COLORS = [
@@ -55,13 +67,18 @@ export default function DeliveryProdutosScreen() {
   const [novoProdutoDelivery, setNovoProdutoDelivery] = useState({ nome: '', preco_venda: '', itens: [] });
   const [confirmRemove, setConfirmRemove] = useState(null);
 
-  const [buscaItem, setBuscaItem] = useState('');
+  const [buscaItem, setBuscaItem] = usePersistedState('deliveryProdutos.buscaItem', '');
 
   const [allProdutos, setAllProdutos] = useState([]);
   const [allPreparos, setAllPreparos] = useState([]);
   const [allEmbalagens, setAllEmbalagens] = useState([]);
   const [allMaterias, setAllMaterias] = useState([]);
   const [allAdicionais, setAllAdicionais] = useState([]);
+
+  // Error/feedback state (P1 fix)
+  const [loadError, setLoadError] = useState(null);
+  const [saveError, setSaveError] = useState(null);
+  const isLoadingRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -70,8 +87,17 @@ export default function DeliveryProdutosScreen() {
     }, [])
   );
 
+  function showSaveError(msg) {
+    setSaveError(msg);
+    setTimeout(() => setSaveError(null), 4000);
+  }
+
   async function loadData() {
-    const db = await getDatabase();
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    setLoadError(null);
+    try {
+      const db = await getDatabase();
 
     const [prods, allIngs, allPreps, allEmbs, preparosList, embalagensList, materiasList,
            adicionaisList, dProds, allDProdItens] = await Promise.all([
@@ -146,13 +172,20 @@ export default function DeliveryProdutosScreen() {
         }
         itensNamed.push({ ...item, nome });
       }
-      dProdsWithCost.push({ ...dp, itens: itensNamed, custo });
+      dProdsWithCost.push({ ...dp, itens: itensNamed, custo: safeNum(custo) });
     }
     setDeliveryProdutos(dProdsWithCost);
+    } catch (e) {
+      console.error('[DeliveryProdutosScreen.loadData]', e);
+      setLoadError('Não conseguimos carregar os produtos delivery. Verifique sua conexão e tente novamente.');
+    } finally {
+      isLoadingRef.current = false;
+    }
   }
 
   function parseInputValue(text) {
-    return parseFloat(text.replace(',', '.')) || 0;
+    const parsed = parseInputNumber(text);
+    return parsed === null ? 0 : parsed;
   }
 
   function abrirModalCriar() {
@@ -174,47 +207,67 @@ export default function DeliveryProdutosScreen() {
   }
 
   async function salvarProdutoDelivery() {
-    if (!novoProdutoDelivery.nome.trim() || novoProdutoDelivery.itens.length === 0) return;
-    const db = await getDatabase();
-
-    if (editingProdutoId) {
-      await db.runAsync('UPDATE delivery_produtos SET nome = ?, preco_venda = ? WHERE id = ?',
-        [novoProdutoDelivery.nome.trim(), parseInputValue(novoProdutoDelivery.preco_venda), editingProdutoId]);
-      await db.runAsync('DELETE FROM delivery_produto_itens WHERE delivery_produto_id = ?', [editingProdutoId]);
-      for (const item of novoProdutoDelivery.itens) {
-        await db.runAsync(
-          'INSERT INTO delivery_produto_itens (delivery_produto_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
-          [editingProdutoId, item.tipo, item.item_id, item.quantidade]
-        );
-      }
-    } else {
-      const res = await db.runAsync(
-        'INSERT INTO delivery_produtos (nome, preco_venda) VALUES (?, ?)',
-        [novoProdutoDelivery.nome.trim(), parseInputValue(novoProdutoDelivery.preco_venda)]
-      );
-      const dpId = res.lastInsertRowId;
-      for (const item of novoProdutoDelivery.itens) {
-        await db.runAsync(
-          'INSERT INTO delivery_produto_itens (delivery_produto_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
-          [dpId, item.tipo, item.item_id, item.quantidade]
-        );
-      }
+    const nome = novoProdutoDelivery.nome.trim();
+    if (!nome) {
+      showSaveError('Informe o nome do produto.');
+      return;
     }
-    setShowProdutoModal(false);
-    setNovoProdutoDelivery({ nome: '', preco_venda: '', itens: [] });
-    setEditingProdutoId(null);
-    loadData();
+    if (novoProdutoDelivery.itens.length === 0) {
+      showSaveError('Adicione pelo menos um item ao produto.');
+      return;
+    }
+    try {
+      const db = await getDatabase();
+      const precoVenda = parseInputValue(novoProdutoDelivery.preco_venda);
+
+      if (editingProdutoId) {
+        await db.runAsync('UPDATE delivery_produtos SET nome = ?, preco_venda = ? WHERE id = ?',
+          [nome, precoVenda, editingProdutoId]);
+        await db.runAsync('DELETE FROM delivery_produto_itens WHERE delivery_produto_id = ?', [editingProdutoId]);
+        for (const item of novoProdutoDelivery.itens) {
+          await db.runAsync(
+            'INSERT INTO delivery_produto_itens (delivery_produto_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
+            [editingProdutoId, item.tipo, item.item_id, safeNum(item.quantidade) || 1]
+          );
+        }
+      } else {
+        const res = await db.runAsync(
+          'INSERT INTO delivery_produtos (nome, preco_venda) VALUES (?, ?)',
+          [nome, precoVenda]
+        );
+        const dpId = res.lastInsertRowId;
+        for (const item of novoProdutoDelivery.itens) {
+          await db.runAsync(
+            'INSERT INTO delivery_produto_itens (delivery_produto_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
+            [dpId, item.tipo, item.item_id, safeNum(item.quantidade) || 1]
+          );
+        }
+      }
+      setShowProdutoModal(false);
+      setNovoProdutoDelivery({ nome: '', preco_venda: '', itens: [] });
+      setEditingProdutoId(null);
+      loadData();
+    } catch (e) {
+      console.error('[DeliveryProdutosScreen.salvarProdutoDelivery]', e);
+      showSaveError('Não foi possível salvar o produto delivery. Tente novamente.');
+    }
   }
 
   function removerProdutoDelivery(id, nome) {
     setConfirmRemove({
       id, nome,
       onConfirm: async () => {
-        const db = await getDatabase();
-        await db.runAsync('DELETE FROM delivery_produto_itens WHERE delivery_produto_id = ?', [id]);
-        await db.runAsync('DELETE FROM delivery_produtos WHERE id = ?', [id]);
-        setConfirmRemove(null);
-        loadData();
+        try {
+          const db = await getDatabase();
+          await db.runAsync('DELETE FROM delivery_produto_itens WHERE delivery_produto_id = ?', [id]);
+          await db.runAsync('DELETE FROM delivery_produtos WHERE id = ?', [id]);
+          setConfirmRemove(null);
+          loadData();
+        } catch (e) {
+          console.error('[DeliveryProdutosScreen.removerProdutoDelivery]', e);
+          setConfirmRemove(null);
+          showSaveError('Não foi possível remover o produto. Tente novamente.');
+        }
       },
     });
   }
@@ -228,15 +281,38 @@ export default function DeliveryProdutosScreen() {
   }
 
   function atualizarQtdItemProduto(index, qtd) {
+    const parsed = parseInputNumber(qtd);
+    const valid = parsed !== null && parsed > 0 ? parsed : 1;
     setNovoProdutoDelivery(prev => ({
       ...prev,
-      itens: prev.itens.map((item, i) => i === index ? { ...item, quantidade: parseFloat(qtd) || 1 } : item),
+      itens: prev.itens.map((item, i) => i === index ? { ...item, quantidade: valid } : item),
     }));
   }
 
   return (
     <>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        {(loadError || saveError) && (
+          <View
+            style={styles.errorBanner}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+          >
+            <Feather name="alert-triangle" size={14} color={colors.error} style={{ marginRight: 6 }} />
+            <Text style={styles.errorBannerText}>{loadError || saveError}</Text>
+            {loadError && (
+              <TouchableOpacity
+                onPress={loadData}
+                style={styles.errorRetryBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Tentar carregar novamente"
+              >
+                <Text style={styles.errorRetryText}>Tentar novamente</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         <Card
           title="Produtos Delivery"
           headerRight={
@@ -262,8 +338,10 @@ export default function DeliveryProdutosScreen() {
           ) : (
             <>
               {deliveryProdutos.map((dp, dpIndex) => {
-                const lucro = dp.preco_venda - dp.custo;
-                const margem = dp.preco_venda > 0 ? (lucro / dp.preco_venda) * 100 : 0;
+                const precoVenda = safeNum(dp.preco_venda);
+                const custo = safeNum(dp.custo);
+                const lucro = precoVenda - custo;
+                const margem = precoVenda > 0 ? (lucro / precoVenda) * 100 : 0;
                 const avatarColor = getAvatarColor(dpIndex);
                 const inicial = (dp.nome || '?').charAt(0).toUpperCase();
 
@@ -288,7 +366,7 @@ export default function DeliveryProdutosScreen() {
                     <View style={styles.rowInfo}>
                       <Text style={styles.rowNome} numberOfLines={1}>{dp.nome}</Text>
                       <View style={styles.rowMeta}>
-                        <Text style={styles.rowMetaText}>Custo: {formatCurrency(dp.custo)}</Text>
+                        <Text style={styles.rowMetaText}>Custo: {formatCurrency(custo)}</Text>
                         <Text style={styles.rowMetaSep}> · </Text>
                         <Text style={styles.rowMetaText}>{dp.itens.length} {dp.itens.length === 1 ? 'item' : 'itens'}</Text>
                       </View>
@@ -296,10 +374,15 @@ export default function DeliveryProdutosScreen() {
 
                     {/* Price + margin */}
                     <View style={styles.rowRight}>
-                      <Text style={styles.rowPreco}>{formatCurrency(dp.preco_venda)}</Text>
-                      <View style={[styles.margemBadge, { backgroundColor: (lucro >= 0 ? colors.success : colors.error) + '12' }]}>
+                      <Text style={styles.rowPreco}>{formatCurrency(precoVenda)}</Text>
+                      <View
+                        style={[styles.margemBadge, { backgroundColor: (lucro >= 0 ? colors.success : colors.error) + '12' }]}
+                        accessibilityLabel={precoVenda > 0
+                          ? `Margem ${margem.toFixed(1)}%`
+                          : 'Sem preço de venda definido'}
+                      >
                         <Text style={[styles.margemText, { color: lucro >= 0 ? colors.success : colors.error }]}>
-                          {margem.toFixed(0)}%
+                          {precoVenda > 0 ? `${margem.toFixed(0)}%` : '—'}
                         </Text>
                       </View>
                     </View>
@@ -309,6 +392,8 @@ export default function DeliveryProdutosScreen() {
                       style={styles.deleteBtn}
                       onPress={() => removerProdutoDelivery(dp.id, dp.nome)}
                       hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remover produto delivery ${dp.nome}`}
                     >
                       <Feather name="trash-2" size={13} color={colors.disabled} />
                     </TouchableOpacity>
@@ -662,5 +747,27 @@ const styles = StyleSheet.create({
   modalSaveText: {
     color: colors.textLight, fontFamily: fontFamily.bold,
     fontWeight: '700', fontSize: fonts.regular,
+  },
+
+  // Error banner (P1 fix)
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    borderLeftWidth: 3, borderLeftColor: '#dc2626',
+    padding: spacing.sm, borderRadius: borderRadius.sm,
+    marginBottom: spacing.sm,
+  },
+  errorBannerText: {
+    flex: 1, fontSize: fonts.small,
+    fontFamily: fontFamily.regular, color: '#991b1b',
+  },
+  errorRetryBtn: {
+    paddingHorizontal: spacing.sm, paddingVertical: 4,
+    backgroundColor: '#dc2626', borderRadius: borderRadius.sm,
+    marginLeft: spacing.xs,
+  },
+  errorRetryText: {
+    fontSize: fonts.tiny, fontFamily: fontFamily.bold,
+    color: '#ffffff', fontWeight: '700',
   },
 });

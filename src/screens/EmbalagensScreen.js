@@ -55,7 +55,8 @@ export default function EmbalagensScreen({ navigation }) {
   const [sections, setSections] = useState([]);
   const [totalEmbalagens, setTotalEmbalagens] = useState(0);
   const [categorias, setCategorias] = useState([]);
-  const [filtroCategoria, setFiltroCategoria] = useState(null);
+  const [filtroCategoria, setFiltroCategoria] = usePersistedState('embalagens.filtroCategoria', null);
+  const [loadError, setLoadError] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [novaCategoria, setNovaCategoria] = useState('');
   const [novoIcone, setNovoIcone] = useState('tag');
@@ -94,6 +95,8 @@ export default function EmbalagensScreen({ navigation }) {
 
   async function loadData() {
     setLoading(true);
+    setLoadError(false);
+    try {
     const db = await getDatabase();
     const cats = await db.getAllAsync('SELECT * FROM categorias_embalagens ORDER BY nome');
     setCategorias(cats);
@@ -168,20 +171,30 @@ export default function EmbalagensScreen({ navigation }) {
     }
 
     setSections(secs);
-    setLoading(false);
+    } catch (e) {
+      console.error('[EmbalagensScreen.loadData]', e);
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function duplicarEmbalagem(item) {
-    const db = await getDatabase();
-    const result = await db.runAsync(
-      'INSERT INTO embalagens (nome, marca, categoria_id, quantidade, unidade_medida, preco_embalagem, preco_unitario) VALUES (?,?,?,?,?,?,?)',
-      [item.nome + ' (cópia)', item.marca, item.categoria_id, item.quantidade, item.unidade_medida, item.preco_embalagem, item.preco_unitario]
-    );
-    const newId = result?.lastInsertRowId;
-    if (newId) {
-      navigation.navigate('EmbalagemForm', { id: newId });
-    } else {
-      loadData();
+    try {
+      const db = await getDatabase();
+      const result = await db.runAsync(
+        'INSERT INTO embalagens (nome, marca, categoria_id, quantidade, unidade_medida, preco_embalagem, preco_unitario, updated_at) VALUES (?,?,?,?,?,?,?,?)',
+        [item.nome + ' (cópia)', item.marca, item.categoria_id, item.quantidade, item.unidade_medida, item.preco_embalagem, item.preco_unitario, new Date().toISOString()]
+      );
+      const newId = result?.lastInsertRowId;
+      if (newId) {
+        navigation.navigate('EmbalagemForm', { id: newId });
+      } else {
+        loadData();
+      }
+    } catch (e) {
+      console.error('[EmbalagensScreen.duplicarEmbalagem]', e);
+      Alert.alert('Erro', 'Não foi possível duplicar a embalagem.');
     }
   }
 
@@ -373,15 +386,20 @@ export default function EmbalagensScreen({ navigation }) {
       titulo: 'Remover Categoria',
       nome: cat ? cat.nome : 'esta categoria',
       onConfirm: async () => {
-        const db = await getDatabase();
-        const items = await db.getAllAsync('SELECT * FROM embalagens WHERE categoria_id = ?', [catId]);
-        for (const item of items) {
-          await db.runAsync('UPDATE embalagens SET categoria_id=? WHERE id=?', [null, item.id]);
+        try {
+          const db = await getDatabase();
+          // single bulk UPDATE em vez de loop N+1
+          await db.runAsync('UPDATE embalagens SET categoria_id=NULL, updated_at=? WHERE categoria_id=?', [new Date().toISOString(), catId]);
+          await db.runAsync('DELETE FROM categorias_embalagens WHERE id = ?', [catId]);
+          if (filtroCategoria === catId) setFiltroCategoria(null);
+          setConfirmDelete(null);
+          setInfoToast?.({ message: 'Categoria removida', tone: 'info' });
+          loadData();
+        } catch (e) {
+          console.error('[EmbalagensScreen.removerCategoria]', e);
+          setConfirmDelete(null);
+          Alert.alert('Erro', 'Não foi possível remover a categoria.');
         }
-        await db.runAsync('DELETE FROM categorias_embalagens WHERE id = ?', [catId]);
-        if (filtroCategoria === catId) setFiltroCategoria(null);
-        setConfirmDelete(null);
-        loadData();
       },
     });
   }
@@ -406,6 +424,15 @@ export default function EmbalagensScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      {loadError && (
+        <View style={styles.errorBanner}>
+          <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: 8 }} />
+          <Text style={styles.errorBannerText}>Não foi possível carregar as embalagens.</Text>
+          <TouchableOpacity onPress={loadData} style={styles.errorBannerBtn} activeOpacity={0.7}>
+            <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       {/* Filtros + busca */}
       <View style={styles.headerBar}>
         <ScrollView
@@ -1061,5 +1088,22 @@ const styles = StyleSheet.create({
   modalSaveText: {
     color: colors.textLight, fontFamily: fontFamily.bold,
     fontWeight: '700', fontSize: fonts.regular,
+  },
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fee2e2', borderLeftWidth: 3, borderLeftColor: colors.error,
+    padding: spacing.sm + 2, marginHorizontal: spacing.md, marginTop: spacing.sm,
+    borderRadius: borderRadius.sm,
+  },
+  errorBannerText: {
+    flex: 1, color: colors.error, fontFamily: fontFamily.semiBold,
+    fontWeight: '600', fontSize: fonts.small,
+  },
+  errorBannerBtn: {
+    paddingHorizontal: spacing.sm + 2, paddingVertical: 6,
+    backgroundColor: colors.error, borderRadius: borderRadius.sm,
+  },
+  errorBannerBtnText: {
+    color: '#fff', fontFamily: fontFamily.bold, fontWeight: '700', fontSize: fonts.small,
   },
 });

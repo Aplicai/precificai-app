@@ -274,7 +274,10 @@ export default function ProdutoFormScreen({ route, navigation }) {
         const prodHistId = editId + 1000000;
         const hist = await db.getAllAsync('SELECT * FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC LIMIT 10', [prodHistId]);
         setHistoricoPrecos((hist || []).reverse());
-      } catch(e) {}
+      } catch (e) {
+        // Histórico é nice-to-have; não quebrar o load do form se faltar a tabela
+        if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.loadHistorico]', e);
+      }
 
       // Marca como carregado após setar o form para evitar auto-save imediato
       setTimeout(() => setLoaded(true), 100);
@@ -496,7 +499,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
       );
       setSaveStatus('saved');
     } catch (e) {
-      setSaveStatus(null);
+      // P1: feedback explícito (SaveStatus já tem ícone x-circle "Erro ao salvar")
+      setSaveStatus('error');
+      if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.autoSave]', e);
     }
   }
 
@@ -1210,7 +1215,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
           <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.md, marginTop: spacing.sm }}>
             {isFormComplete(form) && <TouchableOpacity style={[styles.deleteProductBtn, { borderColor: colors.primary + '30' }]} onPress={async () => {
               const f = formRef.current;
-              try { await autoSave(); } catch(e) {}
+              try { await autoSave(); } catch (e) { if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.preDuplicate.autoSave]', e); }
               const db = await getDatabase();
               const margemVal = f.margem_lucro_produto && f.margem_lucro_produto.trim() !== '' ? parseFloat(String(f.margem_lucro_produto).replace(',', '.')) / 100 : null;
               const result = await db.runAsync(
@@ -1423,7 +1428,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
                                       const db = await getDatabase();
                                       await db.runAsync('DELETE FROM historico_precos WHERE id = ?', [h.id]);
                                       setHistoricoPrecos(prev => prev.filter(x => x.id !== h.id));
-                                    } catch (e) {}
+                                    } catch (e) {
+                                      if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.deleteHistorico]', e);
+                                    }
                                     setConfirmDelete(null);
                                   },
                                 })}
@@ -1468,7 +1475,10 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 if (!lastH?.[0] || Math.abs(lastH[0].valor_pago - price) > 0.001) {
                   await db.runAsync('INSERT INTO historico_precos (materia_prima_id, valor_pago, preco_por_kg) VALUES (?,?,?)', [prodHistId, price, -1]);
                 }
-              } catch(e) {}
+              } catch (e) {
+                // histórico é nice-to-have; não bloquear o salvar
+                if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.insertHistorico]', e);
+              }
             }
             // Full save (product + ingredientes + preparos + embalagens)
             salvar();

@@ -7,11 +7,18 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 
+// Helper: extrai número finito ou 0
+const safeNum = (v) => {
+  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+};
+
 export default function MargemBaixaScreen({ navigation }) {
   const [produtos, setProdutos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [margemMeta, setMargemMeta] = useState(0.15);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
@@ -21,6 +28,7 @@ export default function MargemBaixaScreen({ navigation }) {
   }
 
   async function loadData() {
+    setLoadError(null);
     try {
       const db = await getDatabase();
       const status = await getFinanceiroStatus();
@@ -67,19 +75,22 @@ export default function MargemBaixaScreen({ navigation }) {
           return a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g');
         }, 0);
 
-        const custoUnit = (custoIng + custoPr + custoEmb) / getDivisorRendimento(p);
+        // Guarda contra divisor 0 (rendimento ausente/zerado)
+        const divisor = getDivisorRendimento(p);
+        const custoUnit = divisor > 0 ? safeNum((custoIng + custoPr + custoEmb) / divisor) : 0;
 
-        if (p.preco_venda > 0) {
-          const despFixasVal = p.preco_venda * dfPerc;
-          const despVarVal = p.preco_venda * totalVar;
-          const lucro = p.preco_venda - custoUnit - despFixasVal - despVarVal;
-          const margem = lucro / p.preco_venda;
+        const preco = safeNum(p.preco_venda);
+        if (preco > 0) {
+          const despFixasVal = preco * safeNum(dfPerc);
+          const despVarVal = preco * safeNum(totalVar);
+          const lucro = preco - custoUnit - despFixasVal - despVarVal;
+          const margem = preco > 0 ? safeNum(lucro / preco) : 0;
 
           if (margem < meta) {
             result.push({
               id: p.id,
               nome: p.nome,
-              preco: p.preco_venda,
+              preco,
               cmv: custoUnit,
               margem,
             });
@@ -89,7 +100,10 @@ export default function MargemBaixaScreen({ navigation }) {
 
       result.sort((a, b) => a.margem - b.margem);
       setProdutos(result);
-    } catch (e) { /* silent */ }
+    } catch (e) {
+      console.error('[MargemBaixa.loadData]', e);
+      setLoadError(e?.message || 'Não foi possível carregar a análise de margem.');
+    }
     setLoading(false);
   }
 
@@ -97,6 +111,10 @@ export default function MargemBaixaScreen({ navigation }) {
     if (m < margemMeta - 0.10) return colors.error;
     return '#E6A800';
   };
+
+  // Acessibilidade: ícone + label além da cor (daltonismo)
+  const getMargemIcon = (m) => (m < margemMeta - 0.10 ? 'alert-octagon' : 'alert-triangle');
+  const getMargemLabel = (m) => (m < margemMeta - 0.10 ? 'Crítico' : 'Atenção');
 
   const renderItem = ({ item }) => {
     const mc = getMargemColor(item.margem);
@@ -120,7 +138,11 @@ export default function MargemBaixaScreen({ navigation }) {
           </View>
         </View>
         <View style={styles.cardRight}>
-          <Text style={[styles.margemValue, { color: mc }]}>{formatPercent(item.margem)}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Feather name={getMargemIcon(item.margem)} size={12} color={mc} />
+            <Text style={[styles.margemValue, { color: mc }]}>{formatPercent(item.margem)}</Text>
+          </View>
+          <Text style={[styles.margemBadge, { color: mc }]}>{getMargemLabel(item.margem)}</Text>
           <Feather name="chevron-right" size={16} color={colors.disabled} />
         </View>
       </TouchableOpacity>
@@ -129,13 +151,24 @@ export default function MargemBaixaScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      {loadError && (
+        <View style={styles.errorBanner}>
+          <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: 8 }} />
+          <Text style={styles.errorBannerText}>{loadError}</Text>
+          <TouchableOpacity onPress={loadData} style={styles.errorBannerBtn} activeOpacity={0.7}>
+            <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       <View style={styles.summary}>
         <View style={[styles.summaryIcon, { backgroundColor: colors.coral + '12' }]}>
           <Feather name="alert-triangle" size={18} color={colors.coral} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.summaryTitle}>{produtos.length} produto{produtos.length !== 1 ? 's' : ''} com margem abaixo de 10%</Text>
-          <Text style={styles.summaryDesc}>Abra cada produto para ajustar preço ou custos</Text>
+          <Text style={styles.summaryTitle}>
+            {produtos.length} produto{produtos.length !== 1 ? 's' : ''} abaixo da meta de {formatPercent(margemMeta)}
+          </Text>
+          <Text style={styles.summaryDesc}>Toque em cada produto para ajustar preço ou custos</Text>
         </View>
       </View>
 
@@ -192,7 +225,29 @@ const styles = StyleSheet.create({
   cardMetaText: { fontSize: fonts.tiny, fontFamily: fontFamily.regular, color: colors.textSecondary },
   cardMetaSep: { marginHorizontal: 4, color: colors.disabled },
   cardRight: { alignItems: 'flex-end', marginLeft: spacing.sm },
-  margemValue: { fontSize: fonts.body, fontFamily: fontFamily.bold, fontWeight: '700', marginBottom: 2 },
+  margemValue: { fontSize: fonts.body, fontFamily: fontFamily.bold, fontWeight: '700' },
+  margemBadge: { fontSize: fonts.tiny, fontFamily: fontFamily.semiBold, fontWeight: '600', marginTop: 2, marginBottom: 2 },
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fee2e2',
+    borderLeftWidth: 3, borderLeftColor: colors.error,
+    padding: spacing.sm,
+    margin: spacing.md, marginBottom: 0,
+    borderRadius: borderRadius.sm,
+  },
+  errorBannerText: {
+    flex: 1, fontSize: fonts.small, color: colors.error,
+    fontFamily: fontFamily.regular,
+  },
+  errorBannerBtn: {
+    paddingHorizontal: spacing.sm, paddingVertical: 4,
+    backgroundColor: colors.error, borderRadius: borderRadius.sm,
+    marginLeft: 8,
+  },
+  errorBannerBtnText: {
+    fontSize: fonts.tiny, color: '#fff',
+    fontFamily: fontFamily.semiBold, fontWeight: '600',
+  },
   separator: { height: spacing.xs },
   empty: {
     alignItems: 'center', justifyContent: 'center', paddingVertical: 60,

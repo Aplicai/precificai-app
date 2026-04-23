@@ -2,6 +2,21 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking, TextInput, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import usePersistedState from '../hooks/usePersistedState';
+
+async function openExternal(url, onError) {
+  try {
+    const supported = await Linking.canOpenURL(url);
+    if (!supported) {
+      onError?.('Não foi possível abrir este link no seu dispositivo.');
+      return;
+    }
+    await Linking.openURL(url);
+  } catch (e) {
+    console.error('[SuporteScreen.openExternal]', url, e);
+    onError?.('Não foi possível abrir o link. Tente novamente.');
+  }
+}
 
 const CATEGORY_ICONS = {
   'Primeiros Passos': 'play-circle',
@@ -85,7 +100,13 @@ const GUIDE_STEPS = [
 
 export default function SuporteScreen({ navigation }) {
   const [expandedFaq, setExpandedFaq] = useState(null);
-  const [searchText, setSearchText] = useState('');
+  const [searchText, setSearchText] = usePersistedState('suporte.busca', '');
+  const [linkError, setLinkError] = useState(null);
+
+  const handleLink = (url) => openExternal(url, (msg) => {
+    setLinkError(msg);
+    setTimeout(() => setLinkError(null), 4000);
+  });
 
   const toggleFaq = (index) => {
     setExpandedFaq(expandedFaq === index ? null : index);
@@ -101,7 +122,14 @@ export default function SuporteScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.header}>Central de Suporte</Text>
+      <Text style={styles.header} accessibilityRole="header">Central de Suporte</Text>
+
+      {linkError && (
+        <View style={styles.errorBanner} accessibilityLiveRegion="polite">
+          <Feather name="alert-circle" size={16} color="#dc2626" />
+          <Text style={styles.errorBannerText}>{linkError}</Text>
+        </View>
+      )}
 
       {/* Search bar */}
       <View style={styles.searchBar}>
@@ -112,9 +140,15 @@ export default function SuporteScreen({ navigation }) {
           placeholderTextColor={colors.disabled}
           value={searchText}
           onChangeText={setSearchText}
+          accessibilityLabel="Buscar nas perguntas frequentes"
         />
         {searchText.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchText('')} activeOpacity={0.7}>
+          <TouchableOpacity
+            onPress={() => setSearchText('')}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Limpar busca"
+          >
             <Feather name="x" size={16} color={colors.textSecondary} />
           </TouchableOpacity>
         )}
@@ -132,7 +166,7 @@ export default function SuporteScreen({ navigation }) {
           </View>
         ) : (
           filteredFaqItems.map((item, index) => (
-            <View key={index}>
+            <View key={item.question}>
               {item.category && (
                 <View style={[styles.faqCategoryRow, index > 0 && { marginTop: spacing.md }]}>
                   <View style={styles.faqCategoryIcon}>
@@ -148,6 +182,9 @@ export default function SuporteScreen({ navigation }) {
                 style={styles.faqItem}
                 activeOpacity={0.7}
                 onPress={() => toggleFaq(index)}
+                accessibilityRole="button"
+                accessibilityLabel={item.question}
+                accessibilityState={{ expanded: expandedFaq === index }}
               >
                 <View style={styles.faqHeader}>
                   <Text style={styles.faqQuestion}>{item.question}</Text>
@@ -195,7 +232,9 @@ export default function SuporteScreen({ navigation }) {
         <TouchableOpacity
           style={styles.contactRow}
           activeOpacity={0.7}
-          onPress={() => Linking.openURL('mailto:suporte@precificaiapp.com')}
+          onPress={() => handleLink('mailto:suporte@precificaiapp.com')}
+          accessibilityRole="link"
+          accessibilityLabel="Enviar e-mail para suporte@precificaiapp.com"
         >
           <View style={[styles.contactIcon, { backgroundColor: colors.primary + '12' }]}>
             <Feather name="mail" size={18} color={colors.primary} />
@@ -212,7 +251,9 @@ export default function SuporteScreen({ navigation }) {
         <TouchableOpacity
           style={styles.contactRow}
           activeOpacity={0.7}
-          onPress={() => Linking.openURL('https://www.precificaiapp.com')}
+          onPress={() => handleLink('https://www.precificaiapp.com')}
+          accessibilityRole="link"
+          accessibilityLabel="Abrir site www.precificaiapp.com"
         >
           <View style={[styles.contactIcon, { backgroundColor: colors.accent + '12' }]}>
             <Feather name="globe" size={18} color={colors.accent} />
@@ -241,6 +282,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: '#fef2f2', padding: spacing.md,
+    borderRadius: borderRadius.md, marginBottom: spacing.md,
+    borderLeftWidth: 3, borderLeftColor: '#dc2626',
+  },
+  errorBannerText: {
+    flex: 1, fontSize: fonts.small, color: '#991b1b',
+    fontFamily: fontFamily.regular, lineHeight: 18,
   },
   content: {
     padding: spacing.md,

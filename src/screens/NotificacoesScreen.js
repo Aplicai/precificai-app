@@ -6,7 +6,7 @@
  *  - Margem crítica (após reajuste, imediato)
  *  - Resumo diário (20h)
  */
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, Switch, ScrollView, ActivityIndicator, TouchableOpacity, Alert, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
@@ -16,15 +16,22 @@ import { getNotifPrefs, saveNotifPrefs, requestAndRegisterPush, isPushSupported 
 export default function NotificacoesScreen() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [saveError, setSaveError] = useState(null);
+  const [activating, setActivating] = useState(false);
   const [prefs, setPrefs] = useState({
     estoque_baixo: true,
     margem_critica: true,
     resumo_diario: false,
   });
   const [pushAtivo, setPushAtivo] = useState(false);
+  const isLoadingRef = useRef(false);
 
   const carregar = useCallback(async () => {
     if (!user?.id) { setLoading(false); return; }
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    setLoadError(null);
     try {
       const p = await getNotifPrefs(user.id);
       if (p) setPrefs({
@@ -32,26 +39,50 @@ export default function NotificacoesScreen() {
         margem_critica: !!p.margem_critica,
         resumo_diario: !!p.resumo_diario,
       });
+    } catch (e) {
+      console.error('[NotificacoesScreen.carregar]', e);
+      setLoadError('Não foi possível carregar suas preferências. Toque para tentar novamente.');
     } finally {
       setLoading(false);
+      isLoadingRef.current = false;
     }
   }, [user?.id]);
 
   useEffect(() => { carregar(); }, [carregar]);
 
-  function toggle(k) {
+  async function toggle(k) {
+    const prev = prefs;
     const next = { ...prefs, [k]: !prefs[k] };
     setPrefs(next);
-    saveNotifPrefs(user.id, next).catch(() => {});
+    setSaveError(null);
+    try {
+      await saveNotifPrefs(user.id, next);
+    } catch (e) {
+      console.error('[NotificacoesScreen.toggle]', e);
+      setPrefs(prev); // rollback otimista
+      setSaveError('Não conseguimos salvar essa mudança. Verifique sua conexão.');
+      setTimeout(() => setSaveError(null), 4000);
+    }
   }
 
   async function ativarPush() {
-    const r = await requestAndRegisterPush(user.id);
-    if (r.granted && r.token) {
-      setPushAtivo(true);
-      Alert.alert('Notificações ativadas', 'Você passará a receber alertas configurados abaixo.');
-    } else {
-      Alert.alert('Permissão negada', 'Habilite notificações nas configurações do sistema para receber alertas.');
+    if (activating) return;
+    setActivating(true);
+    setSaveError(null);
+    try {
+      const r = await requestAndRegisterPush(user.id);
+      if (r.granted && r.token) {
+        setPushAtivo(true);
+        Alert.alert('Notificações ativadas', 'Você passará a receber alertas configurados abaixo.');
+      } else {
+        Alert.alert('Permissão negada', 'Habilite notificações nas configurações do sistema para receber alertas.');
+      }
+    } catch (e) {
+      console.error('[NotificacoesScreen.ativarPush]', e);
+      setSaveError('Não foi possível ativar notificações. Tente novamente em alguns instantes.');
+      setTimeout(() => setSaveError(null), 4000);
+    } finally {
+      setActivating(false);
     }
   }
 
@@ -65,6 +96,25 @@ export default function NotificacoesScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ padding: spacing.md }}>
+      {loadError && (
+        <TouchableOpacity
+          style={styles.errorBanner}
+          onPress={carregar}
+          accessibilityRole="button"
+          accessibilityLabel="Tentar carregar preferências novamente"
+        >
+          <Feather name="alert-circle" size={16} color="#dc2626" />
+          <Text style={styles.errorBannerText}>{loadError}</Text>
+        </TouchableOpacity>
+      )}
+
+      {saveError && (
+        <View style={styles.errorBanner} accessibilityLiveRegion="polite">
+          <Feather name="alert-circle" size={16} color="#dc2626" />
+          <Text style={styles.errorBannerText}>{saveError}</Text>
+        </View>
+      )}
+
       {!isPushSupported() && Platform.OS === 'web' && (
         <View style={styles.notice}>
           <Feather name="info" size={16} color={colors.info} />
@@ -75,13 +125,27 @@ export default function NotificacoesScreen() {
       )}
 
       {isPushSupported() && !pushAtivo && (
-        <TouchableOpacity style={styles.activateBtn} onPress={ativarPush} activeOpacity={0.8}>
-          <Feather name="bell" size={18} color="#fff" />
-          <Text style={styles.activateText}>Ativar notificações</Text>
+        <TouchableOpacity
+          style={[styles.activateBtn, activating && { opacity: 0.7 }]}
+          onPress={ativarPush}
+          activeOpacity={0.8}
+          disabled={activating}
+          accessibilityRole="button"
+          accessibilityLabel={activating ? 'Ativando notificações, aguarde' : 'Ativar notificações push'}
+          accessibilityState={{ disabled: activating, busy: activating }}
+        >
+          {activating ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Feather name="bell" size={18} color="#fff" />
+          )}
+          <Text style={styles.activateText}>
+            {activating ? 'Ativando...' : 'Ativar notificações'}
+          </Text>
         </TouchableOpacity>
       )}
 
-      <Text style={styles.sectionTitle}>Tipos de notificação</Text>
+      <Text style={styles.sectionTitle} accessibilityRole="header">Tipos de notificação</Text>
 
       <Item
         icon="package"
@@ -114,7 +178,13 @@ export default function NotificacoesScreen() {
 
 function Item({ icon, title, desc, value, onChange }) {
   return (
-    <View style={styles.item}>
+    <View
+      style={styles.item}
+      accessible
+      accessibilityRole="switch"
+      accessibilityLabel={`${title}. ${desc}`}
+      accessibilityState={{ checked: value }}
+    >
       <View style={styles.itemIcon}>
         <Feather name={icon} size={18} color={colors.primary} />
       </View>
@@ -127,6 +197,8 @@ function Item({ icon, title, desc, value, onChange }) {
         onValueChange={onChange}
         trackColor={{ false: colors.border, true: colors.primary + '60' }}
         thumbColor={value ? colors.primary : '#fff'}
+        accessibilityLabel={`Alternar ${title}`}
+        accessibilityState={{ checked: value }}
       />
     </View>
   );
@@ -135,6 +207,16 @@ function Item({ icon, title, desc, value, onChange }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: '#fef2f2', padding: spacing.md,
+    borderRadius: borderRadius.md, marginBottom: spacing.md,
+    borderLeftWidth: 3, borderLeftColor: '#dc2626',
+  },
+  errorBannerText: {
+    flex: 1, fontSize: fonts.small, color: '#991b1b',
+    fontFamily: fontFamily.regular, lineHeight: 18,
+  },
   notice: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8,
     backgroundColor: colors.info + '12', padding: spacing.md,

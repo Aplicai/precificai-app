@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Switch } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -8,6 +8,28 @@ import InputField from '../components/InputField';
 import InfoTooltip from '../components/InfoTooltip';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+
+// ─── Numeric helpers (audit P0) ─────────────
+function safeNum(v) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseInputNumber(raw) {
+  if (raw === null || raw === undefined) return null;
+  const str = String(raw).trim().replace(',', '.');
+  if (str === '') return null;
+  const n = parseFloat(str);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Audit P0: SQL injection defense — whitelist permitted UPDATE fields
+const PLAT_NUMERIC_FIELDS = Object.freeze([
+  'taxa_plataforma', 'taxa_entrega', 'comissao_app', 'desconto_promocao', 'ativo',
+]);
+
+// Field-specific validation: percent fields capped at [0, 100]
+const PLAT_PERCENT_FIELDS = new Set(['taxa_plataforma', 'desconto_promocao']);
 
 // Color cycling for platform avatars (same pattern as MateriasPrimasScreen)
 const PLATFORM_COLORS = [
@@ -55,6 +77,18 @@ export default function DeliveryPlataformasScreen() {
   const [novaPlataforma, setNovaPlataforma] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(null);
 
+  // Audit P0: error states + race-guard
+  const [loadError, setLoadError] = useState(null);
+  const [saveError, setSaveError] = useState(null);
+  const isLoadingRef = useRef(false);
+  const saveErrorTimerRef = useRef(null);
+
+  function showSaveError(msg) {
+    setSaveError(msg);
+    if (saveErrorTimerRef.current) clearTimeout(saveErrorTimerRef.current);
+    saveErrorTimerRef.current = setTimeout(() => setSaveError(null), 4000);
+  }
+
   useFocusEffect(
     useCallback(() => {
       loadData();
@@ -63,24 +97,53 @@ export default function DeliveryPlataformasScreen() {
   );
 
   async function loadData() {
-    const db = await getDatabase();
-    let plats = await db.getAllAsync('SELECT * FROM delivery_config ORDER BY id');
-    if (plats.length === 0) {
-      for (const p of DEFAULT_PLATFORMS) {
-        await db.runAsync(
-          'INSERT INTO delivery_config (plataforma, taxa_plataforma, taxa_entrega, comissao_app, desconto_promocao, ativo) VALUES (?, ?, ?, ?, ?, ?)',
-          [p.plataforma, p.taxa_plataforma, p.taxa_entrega, p.comissao_app, p.desconto_promocao, p.ativo]
-        );
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    setLoadError(null);
+    try {
+      const db = await getDatabase();
+      let plats = await db.getAllAsync('SELECT * FROM delivery_config ORDER BY id');
+      if (plats.length === 0) {
+        for (const p of DEFAULT_PLATFORMS) {
+          await db.runAsync(
+            'INSERT INTO delivery_config (plataforma, taxa_plataforma, taxa_entrega, comissao_app, desconto_promocao, ativo) VALUES (?, ?, ?, ?, ?, ?)',
+            [p.plataforma, p.taxa_plataforma, p.taxa_entrega, p.comissao_app, p.desconto_promocao, p.ativo]
+          );
+        }
+        plats = await db.getAllAsync('SELECT * FROM delivery_config ORDER BY id');
       }
-      plats = await db.getAllAsync('SELECT * FROM delivery_config ORDER BY id');
+      setPlataformas(plats);
+    } catch (e) {
+      console.error('[DeliveryPlataformasScreen.loadData]', e);
+      setLoadError('Não foi possível carregar as plataformas. Tente novamente.');
+    } finally {
+      isLoadingRef.current = false;
     }
-    setPlataformas(plats);
   }
 
   async function updatePlatform(id, field, value) {
-    const db = await getDatabase();
-    await db.runAsync(`UPDATE delivery_config SET ${field} = ? WHERE id = ?`, [value, id]);
-    setPlataformas(prev => prev.map(p => (p.id === id ? { ...p, [field]: value } : p)));
+    // Audit P0: SQL injection defense — only allow whitelisted fields
+    if (!PLAT_NUMERIC_FIELDS.includes(field)) {
+      console.error('[DeliveryPlataformasScreen.updatePlatform] campo não permitido:', field);
+      return;
+    }
+    const numValue = safeNum(value);
+    if (numValue < 0) {
+      showSaveError('Valor não pode ser negativo.');
+      return;
+    }
+    if (PLAT_PERCENT_FIELDS.has(field) && numValue > 100) {
+      showSaveError('Percentual não pode ultrapassar 100%.');
+      return;
+    }
+    try {
+      const db = await getDatabase();
+      await db.runAsync(`UPDATE delivery_config SET ${field} = ? WHERE id = ?`, [numValue, id]);
+      setPlataformas(prev => prev.map(p => (p.id === id ? { ...p, [field]: numValue } : p)));
+    } catch (e) {
+      console.error('[DeliveryPlataformasScreen.updatePlatform]', e);
+      showSaveError('Falha ao salvar alteração. Tente novamente.');
+    }
   }
 
   async function togglePlatform(id, currentValue) {
@@ -88,31 +151,52 @@ export default function DeliveryPlataformasScreen() {
   }
 
   async function adicionarPlataforma() {
-    if (!novaPlataforma.trim()) return;
-    const db = await getDatabase();
-    await db.runAsync(
-      'INSERT INTO delivery_config (plataforma, taxa_plataforma, taxa_entrega, comissao_app, desconto_promocao, ativo) VALUES (?, ?, ?, ?, ?, ?)',
-      [novaPlataforma.trim(), 0, 0, 0, 0, 1]
-    );
-    setNovaPlataforma('');
-    loadData();
+    const nome = novaPlataforma.trim();
+    if (!nome) return;
+    // Audit P1: case-insensitive dedupe
+    const exists = plataformas.some(p => (p.plataforma || '').trim().toLowerCase() === nome.toLowerCase());
+    if (exists) {
+      showSaveError('Já existe uma plataforma com esse nome.');
+      return;
+    }
+    try {
+      const db = await getDatabase();
+      await db.runAsync(
+        'INSERT INTO delivery_config (plataforma, taxa_plataforma, taxa_entrega, comissao_app, desconto_promocao, ativo) VALUES (?, ?, ?, ?, ?, ?)',
+        [nome, 0, 0, 0, 0, 1]
+      );
+      setNovaPlataforma('');
+      loadData();
+    } catch (e) {
+      console.error('[DeliveryPlataformasScreen.adicionarPlataforma]', e);
+      showSaveError('Falha ao adicionar plataforma. Tente novamente.');
+    }
   }
 
   function removerPlataforma(id, nome) {
     setConfirmRemove({
       id, nome,
       onConfirm: async () => {
-        const db = await getDatabase();
-        await db.runAsync('DELETE FROM delivery_config WHERE id = ?', [id]);
-        if (expandedId === id) setExpandedId(null);
-        setConfirmRemove(null);
-        loadData();
+        try {
+          const db = await getDatabase();
+          await db.runAsync('DELETE FROM delivery_config WHERE id = ?', [id]);
+          if (expandedId === id) setExpandedId(null);
+          setConfirmRemove(null);
+          loadData();
+        } catch (e) {
+          console.error('[DeliveryPlataformasScreen.removerPlataforma]', e);
+          setConfirmRemove(null);
+          showSaveError('Falha ao remover plataforma. Tente novamente.');
+        }
       },
     });
   }
 
-  function parseInputValue(text) {
-    return parseFloat(text.replace(',', '.')) || 0;
+  function parseInputValue(text, { percent = false } = {}) {
+    const n = parseInputNumber(text);
+    if (n === null || n < 0) return 0;
+    if (percent && n > 100) return 100;
+    return n;
   }
 
   const ativas = plataformas.filter(p => p.ativo === 1).length;
@@ -121,6 +205,34 @@ export default function DeliveryPlataformasScreen() {
   return (
     <>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        {/* Audit P0: error banners */}
+        {loadError && (
+          <View
+            style={styles.errorBanner}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+          >
+            <Text style={styles.errorBannerText}>{loadError}</Text>
+            <TouchableOpacity
+              onPress={loadData}
+              style={styles.errorRetryBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Tentar carregar plataformas novamente"
+            >
+              <Text style={styles.errorRetryText}>Tentar novamente</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {saveError && (
+          <View
+            style={styles.errorBanner}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+          >
+            <Text style={styles.errorBannerText}>{saveError}</Text>
+          </View>
+        )}
+
         {/* Status bar */}
         <View style={styles.statusRow}>
           <View style={[styles.statusChip, { backgroundColor: colors.success + '15' }]}>
@@ -182,9 +294,9 @@ export default function DeliveryPlataformasScreen() {
                         <Text style={[styles.platformName, !isActive && { color: colors.disabled }]} numberOfLines={1}>
                           {plat.plataforma}
                         </Text>
-                        {plat.taxa_plataforma > 0 && (
+                        {safeNum(plat.taxa_plataforma) > 0 && (
                           <View style={[styles.taxaBadge, !isActive && { backgroundColor: colors.disabled }]}>
-                            <Text style={styles.taxaBadgeText}>{plat.taxa_plataforma}%</Text>
+                            <Text style={styles.taxaBadgeText}>{safeNum(plat.taxa_plataforma)}%</Text>
                           </View>
                         )}
                       </View>
@@ -210,6 +322,9 @@ export default function DeliveryPlataformasScreen() {
                     onValueChange={() => togglePlatform(plat.id, plat.ativo)}
                     trackColor={{ false: colors.disabled, true: colors.primaryLight }}
                     thumbColor={isActive ? colors.primary : '#f4f3f4'}
+                    accessibilityRole="switch"
+                    accessibilityLabel={`Ativar plataforma ${plat.plataforma}`}
+                    accessibilityState={{ checked: isActive }}
                   />
                 </TouchableOpacity>
 
@@ -217,38 +332,44 @@ export default function DeliveryPlataformasScreen() {
                   <View style={styles.platformFields}>
                     <InputField
                       label="Taxa da Plataforma (%)"
-                      value={plat.taxa_plataforma > 0 ? String(plat.taxa_plataforma) : ''}
-                      onChangeText={(val) => updatePlatform(plat.id, 'taxa_plataforma', parseInputValue(val))}
+                      value={safeNum(plat.taxa_plataforma) > 0 ? String(plat.taxa_plataforma) : ''}
+                      onChangeText={(val) => updatePlatform(plat.id, 'taxa_plataforma', parseInputValue(val, { percent: true }))}
                       keyboardType="numeric"
                       placeholder="0"
+                      accessibilityLabel={`Taxa da plataforma ${plat.plataforma} em porcentagem`}
                     />
                     <InputField
                       label="Taxa de Entrega (R$ por pedido)"
-                      value={plat.taxa_entrega > 0 ? String(plat.taxa_entrega) : ''}
+                      value={safeNum(plat.taxa_entrega) > 0 ? String(plat.taxa_entrega) : ''}
                       onChangeText={(val) => updatePlatform(plat.id, 'taxa_entrega', parseInputValue(val))}
                       keyboardType="numeric"
                       placeholder="0,00"
+                      accessibilityLabel={`Taxa de entrega da plataforma ${plat.plataforma} em reais`}
                     />
                     <InputField
                       label="Comissão do App (R$ por pedido)"
-                      value={plat.comissao_app > 0 ? String(plat.comissao_app) : ''}
+                      value={safeNum(plat.comissao_app) > 0 ? String(plat.comissao_app) : ''}
                       onChangeText={(val) => updatePlatform(plat.id, 'comissao_app', parseInputValue(val))}
                       keyboardType="numeric"
                       placeholder="0,00"
+                      accessibilityLabel={`Comissão do app ${plat.plataforma} em reais`}
                     />
                     <InputField
                       label="Descontos e Promoções (%)"
-                      value={plat.desconto_promocao > 0 ? String(plat.desconto_promocao) : ''}
-                      onChangeText={(val) => updatePlatform(plat.id, 'desconto_promocao', parseInputValue(val))}
+                      value={safeNum(plat.desconto_promocao) > 0 ? String(plat.desconto_promocao) : ''}
+                      onChangeText={(val) => updatePlatform(plat.id, 'desconto_promocao', parseInputValue(val, { percent: true }))}
                       keyboardType="numeric"
                       placeholder="0"
                       style={{ marginBottom: spacing.xs }}
+                      accessibilityLabel={`Desconto promocional da plataforma ${plat.plataforma} em porcentagem`}
                     />
                     <TouchableOpacity
                       style={styles.removeBtn}
                       onPress={() => removerPlataforma(plat.id, plat.plataforma)}
                       activeOpacity={0.6}
                       hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remover plataforma ${plat.plataforma}`}
                     >
                       <Feather name="trash-2" size={13} color={colors.disabled} />
                       <Text style={styles.removeBtnText}>Remover</Text>
@@ -268,7 +389,12 @@ export default function DeliveryPlataformasScreen() {
               onChangeText={setNovaPlataforma}
               placeholder="Nome da plataforma"
             />
-            <TouchableOpacity style={styles.addBtn} onPress={adicionarPlataforma}>
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={adicionarPlataforma}
+              accessibilityRole="button"
+              accessibilityLabel="Adicionar plataforma"
+            >
               <Feather name="plus" size={20} color={colors.textLight} />
             </TouchableOpacity>
           </View>
@@ -291,6 +417,31 @@ export default function DeliveryPlataformasScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, paddingBottom: 40 },
+
+  // Audit P0: error banners
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#fef2f2',
+    borderLeftWidth: 3, borderLeftColor: '#dc2626',
+    paddingVertical: spacing.xs, paddingHorizontal: spacing.sm,
+    marginBottom: spacing.sm,
+    borderRadius: 4,
+  },
+  errorBannerText: {
+    flex: 1,
+    color: '#991b1b',
+    fontSize: fonts.small,
+    fontFamily: fontFamily.medium,
+    fontWeight: '500',
+  },
+  errorRetryBtn: {
+    paddingHorizontal: spacing.sm, paddingVertical: 4,
+    backgroundColor: '#dc2626', borderRadius: 4, marginLeft: spacing.xs,
+  },
+  errorRetryText: {
+    color: '#fff', fontSize: fonts.tiny, fontWeight: '700',
+    fontFamily: fontFamily.bold,
+  },
 
   // Status bar
   statusRow: { flexDirection: 'row', marginBottom: spacing.md },

@@ -90,6 +90,7 @@ export default function ProdutosListScreen({ navigation }) {
   const [collapsedDesktop, setCollapsedDesktop] = useState({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [previewItem, setPreviewItem] = useState(null);
@@ -109,6 +110,8 @@ export default function ProdutosListScreen({ navigation }) {
 
   async function loadData() {
     setLoading(true);
+    setLoadError(null);
+    try {
     const db = await getDatabase();
 
     const [fixas, variaveis, fat, cats, prods, rawProdIngs, rawMPs, rawProdPreps, rawPreparos, rawProdEmbs, rawEmbalagens, configRows] = await Promise.all([
@@ -273,7 +276,13 @@ export default function ProdutosListScreen({ navigation }) {
     }
 
     setSections(secs);
-    setLoading(false);
+    } catch (e) {
+      const msg = (e && e.message) ? e.message : 'Falha ao carregar produtos.';
+      setLoadError(msg);
+      if (typeof console !== 'undefined' && console.error) console.error('[ProdutosListScreen.loadData]', e);
+    } finally {
+      setLoading(false);
+    }
   }
 
   function solicitarExclusao(id, nome) {
@@ -335,15 +344,21 @@ export default function ProdutosListScreen({ navigation }) {
     const ids = Array.from(bulk.selectedIds);
     setShowMoveModal(false);
     if (ids.length === 0) return;
-    const db = await getDatabase();
-    const placeholders = ids.map(() => '?').join(',');
-    await db.runAsync(
-      `UPDATE produtos SET categoria_id = ? WHERE id IN (${placeholders})`,
-      [catId, ...ids]
-    );
-    bulk.clear();
-    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'produto movido' : 'produtos movidos'}`, icon: 'folder' });
-    loadData();
+    try {
+      const db = await getDatabase();
+      const placeholders = ids.map(() => '?').join(',');
+      await db.runAsync(
+        `UPDATE produtos SET categoria_id = ? WHERE id IN (${placeholders})`,
+        [catId, ...ids]
+      );
+      bulk.clear();
+      setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'produto movido' : 'produtos movidos'}`, icon: 'folder' });
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[ProdutosListScreen.moverEmMassa]', e);
+      setInfoToast({ message: 'Não foi possível mover os produtos.', icon: 'alert-triangle' });
+    } finally {
+      loadData();
+    }
   }
 
   async function duplicarEmMassa() {
@@ -381,27 +396,48 @@ export default function ProdutosListScreen({ navigation }) {
     const ids = Array.from(bulk.selectedIds);
     setShowPriceModal(false);
     if (ids.length === 0 || !value) return;
-    const db = await getDatabase();
-    const placeholders = ids.map(() => '?').join(',');
-    const itens = await db.getAllAsync(`SELECT * FROM produtos WHERE id IN (${placeholders})`, ids);
-    const factor = mode === 'percent' ? 1 + (sign * value) / 100 : null;
-    await Promise.all(itens.map((item) => {
-      const oldPreco = Number(item.preco_venda) || 0;
-      let novoPreco = mode === 'percent' ? oldPreco * factor : oldPreco + sign * value;
-      if (novoPreco < 0) novoPreco = 0;
-      return db.runAsync(
-        'UPDATE produtos SET preco_venda = ? WHERE id = ?',
-        [novoPreco, item.id]
-      );
-    }));
-    bulk.clear();
-    const sigStr = sign === 1 ? '+' : '−';
-    const valStr = mode === 'percent' ? `${value}%` : `R$ ${value.toFixed(2).replace('.', ',')}`;
-    setInfoToast({
-      message: `${ids.length} ${ids.length === 1 ? 'produto reajustado' : 'produtos reajustados'} (${sigStr}${valStr})`,
-      icon: 'trending-up',
-    });
-    loadData();
+    try {
+      const db = await getDatabase();
+      const placeholders = ids.map(() => '?').join(',');
+      const itens = await db.getAllAsync(`SELECT * FROM produtos WHERE id IN (${placeholders})`, ids);
+      const factor = mode === 'percent' ? 1 + (sign * value) / 100 : null;
+      // P1: tracking de produtos que ficariam com margem negativa (preço abaixo do CMV)
+      // — não bloqueia, mas avisa; o usuário pode estar fazendo promoção consciente.
+      let abaixoDoCusto = 0;
+      // Map de custo total por id (já calculado no loadData via visibleItems)
+      const custoMap = {};
+      visibleItems.forEach((it) => { custoMap[it.id] = Number(it.custoTotal) || 0; });
+      await Promise.all(itens.map((item) => {
+        const oldPreco = Number(item.preco_venda) || 0;
+        let novoPreco = mode === 'percent' ? oldPreco * factor : oldPreco + sign * value;
+        if (novoPreco < 0) novoPreco = 0;
+        const cmv = custoMap[item.id] || 0;
+        if (cmv > 0 && novoPreco > 0 && novoPreco < cmv) abaixoDoCusto++;
+        return db.runAsync(
+          'UPDATE produtos SET preco_venda = ? WHERE id = ?',
+          [novoPreco, item.id]
+        );
+      }));
+      bulk.clear();
+      const sigStr = sign === 1 ? '+' : '−';
+      const valStr = mode === 'percent' ? `${value}%` : `R$ ${value.toFixed(2).replace('.', ',')}`;
+      if (abaixoDoCusto > 0) {
+        setInfoToast({
+          message: `${ids.length} reajustado (${sigStr}${valStr}) — ${abaixoDoCusto} ficou abaixo do custo`,
+          icon: 'alert-triangle',
+        });
+      } else {
+        setInfoToast({
+          message: `${ids.length} ${ids.length === 1 ? 'produto reajustado' : 'produtos reajustados'} (${sigStr}${valStr})`,
+          icon: 'trending-up',
+        });
+      }
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[ProdutosListScreen.reajustarEmMassa]', e);
+      setInfoToast({ message: 'Não foi possível reajustar os preços.', icon: 'alert-triangle' });
+    } finally {
+      loadData();
+    }
   }
 
   async function favoritarEmMassa() {
@@ -498,15 +534,19 @@ export default function ProdutosListScreen({ navigation }) {
       titulo: 'Remover Categoria',
       nome: cat ? cat.nome : 'esta categoria',
       onConfirm: async () => {
-        const db = await getDatabase();
-        const items = await db.getAllAsync('SELECT * FROM produtos WHERE categoria_id = ?', [catId]);
-        for (const item of items) {
-          await db.runAsync('UPDATE produtos SET categoria_id=? WHERE id=?', [null, item.id]);
+        try {
+          const db = await getDatabase();
+          // P2: single bulk UPDATE em vez de loop N+1
+          await db.runAsync('UPDATE produtos SET categoria_id = NULL WHERE categoria_id = ?', [catId]);
+          await db.runAsync('DELETE FROM categorias_produtos WHERE id = ?', [catId]);
+          if (filtroCategoria === catId) setFiltroCategoria(null);
+        } catch (e) {
+          if (typeof console !== 'undefined' && console.error) console.error('[ProdutosListScreen.removerCategoria]', e);
+          setInfoToast({ message: 'Não foi possível remover a categoria.', icon: 'alert-triangle' });
+        } finally {
+          setConfirmDelete(null);
+          loadData();
         }
-        await db.runAsync('DELETE FROM categorias_produtos WHERE id = ?', [catId]);
-        if (filtroCategoria === catId) setFiltroCategoria(null);
-        setConfirmDelete(null);
-        loadData();
       },
     });
   }
@@ -665,6 +705,20 @@ export default function ProdutosListScreen({ navigation }) {
       </View>
 
       <FinanceiroPendenteBanner />
+
+      {/* Banner de erro de carregamento (P1) */}
+      {loadError && (
+        <View style={styles.errorBanner}>
+          <Feather name="alert-triangle" size={16} color={colors.error || '#c0392b'} style={{ marginRight: 8, marginTop: 2 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.errorBannerTitle}>Não conseguimos carregar seus produtos</Text>
+            <Text style={styles.errorBannerDesc} numberOfLines={3}>{loadError}</Text>
+          </View>
+          <TouchableOpacity onPress={() => loadData()} style={styles.errorBannerBtn}>
+            <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Botão Adicionar */}
       <TouchableOpacity
@@ -977,6 +1031,44 @@ export default function ProdutosListScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+
+  // Banner de erro de carregamento (P1)
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: (colors.error || '#c0392b') + '12',
+    borderWidth: 1,
+    borderColor: (colors.error || '#c0392b') + '40',
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+  },
+  errorBannerTitle: {
+    fontSize: 13,
+    fontFamily: fontFamily.semiBold,
+    color: colors.error || '#c0392b',
+    marginBottom: 2,
+  },
+  errorBannerDesc: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontFamily: fontFamily.regular,
+  },
+  errorBannerBtn: {
+    backgroundColor: colors.error || '#c0392b',
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    marginLeft: spacing.sm,
+    alignSelf: 'center',
+  },
+  errorBannerBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontFamily: fontFamily.semiBold,
+  },
 
   // Header
   headerBar: {

@@ -69,6 +69,9 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   const formRef = useRef(form);
   formRef.current = form;
   const allowExit = useRef(false);
+  // P2: throttle do check de margin erosion (caro: N+1 queries) — não rodar em todo auto-save
+  const lastMarginCheckRef = useRef(0);
+  const MARGIN_CHECK_MIN_INTERVAL_MS = 5000;
 
   // Validação dos campos obrigatórios
   function validateForm(f) {
@@ -228,43 +231,51 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
       );
       // Histórico de preço NÃO é registrado no auto-save
       // Apenas no "Salvar e voltar" para evitar erros de digitação
-      // Check margin erosion
-      try {
-        const affected = await db.getAllAsync(
-          'SELECT DISTINCT p.id, p.nome, p.preco_venda FROM produto_ingredientes pi JOIN produtos p ON p.id = pi.produto_id WHERE pi.materia_prima_id = ? AND p.preco_venda > 0',
-          [editId]
-        );
-        if (affected.length > 0) {
-          const warnings = [];
-          for (const prod of affected) {
-            const ings = await db.getAllAsync('SELECT pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id WHERE pi.produto_id = ?', [prod.id]);
-            const custoIng = ings.reduce((a, ing) => {
-              return a + calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada, ing.unidade_medida || 'g', ing.unidade_medida || 'g');
-            }, 0);
-            const preps = await db.getAllAsync('SELECT pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id WHERE pp.produto_id = ?', [prod.id]);
-            const custoPr = preps.reduce((a, pp) => {
-              return a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g');
-            }, 0);
-            const embs = await db.getAllAsync('SELECT pe.quantidade_utilizada, e.preco_unitario FROM produto_embalagens pe JOIN embalagens e ON e.id = pe.embalagem_id WHERE pe.produto_id = ?', [prod.id]);
-            const custoEmb = embs.reduce((a, pe) => a + (pe.quantidade_utilizada || 0) * (pe.preco_unitario || 0), 0);
-            const custoTotal = custoIng + custoPr + custoEmb;
-            const margem = prod.preco_venda > 0 ? (prod.preco_venda - custoTotal) / prod.preco_venda : 0;
-            if (margem < 0.10) {
-              warnings.push(`${prod.nome}: margem ${(margem * 100).toFixed(1)}%`);
+      // Check margin erosion (P2: throttle — caro com N+1 queries por produto)
+      const now = Date.now();
+      if (now - lastMarginCheckRef.current >= MARGIN_CHECK_MIN_INTERVAL_MS) {
+        lastMarginCheckRef.current = now;
+        try {
+          const affected = await db.getAllAsync(
+            'SELECT DISTINCT p.id, p.nome, p.preco_venda FROM produto_ingredientes pi JOIN produtos p ON p.id = pi.produto_id WHERE pi.materia_prima_id = ? AND p.preco_venda > 0',
+            [editId]
+          );
+          if (affected.length > 0) {
+            const warnings = [];
+            for (const prod of affected) {
+              const ings = await db.getAllAsync('SELECT pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id WHERE pi.produto_id = ?', [prod.id]);
+              const custoIng = ings.reduce((a, ing) => {
+                return a + calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada, ing.unidade_medida || 'g', ing.unidade_medida || 'g');
+              }, 0);
+              const preps = await db.getAllAsync('SELECT pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id WHERE pp.produto_id = ?', [prod.id]);
+              const custoPr = preps.reduce((a, pp) => {
+                return a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g');
+              }, 0);
+              const embs = await db.getAllAsync('SELECT pe.quantidade_utilizada, e.preco_unitario FROM produto_embalagens pe JOIN embalagens e ON e.id = pe.embalagem_id WHERE pe.produto_id = ?', [prod.id]);
+              const custoEmb = embs.reduce((a, pe) => a + (pe.quantidade_utilizada || 0) * (pe.preco_unitario || 0), 0);
+              const custoTotal = custoIng + custoPr + custoEmb;
+              const margem = prod.preco_venda > 0 ? (prod.preco_venda - custoTotal) / prod.preco_venda : 0;
+              if (margem < 0.10) {
+                warnings.push(`${prod.nome}: margem ${(margem * 100).toFixed(1)}%`);
+              }
+            }
+            if (warnings.length > 0) {
+              Alert.alert(
+                '⚠️ Margem em risco',
+                `A alteração de preço impactou ${warnings.length} produto(s):\n\n${warnings.join('\n')}\n\nConsidere ajustar os preços de venda.`,
+                [{ text: 'Entendi' }]
+              );
             }
           }
-          if (warnings.length > 0) {
-            Alert.alert(
-              '⚠️ Margem em risco',
-              `A alteração de preço impactou ${warnings.length} produto(s):\n\n${warnings.join('\n')}\n\nConsidere ajustar os preços de venda.`,
-              [{ text: 'Entendi' }]
-            );
-          }
+        } catch (e) {
+          if (typeof console !== 'undefined' && console.error) console.error('[MateriaPrimaForm.marginCheck]', e);
         }
-      } catch (e) { /* silently ignore */ }
+      }
       setSaveStatus('saved');
     } catch (e) {
-      setSaveStatus(null);
+      // P1: feedback explícito de erro (SaveStatus já suporta 'error')
+      setSaveStatus('error');
+      if (typeof console !== 'undefined' && console.error) console.error('[MateriaPrimaForm.autoSave]', e);
     }
   }
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, ActivityIndicator, Modal, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../config/supabase';
@@ -6,6 +6,25 @@ import { useAuth } from '../contexts/AuthContext';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { t } from '../i18n/pt-BR';
+
+// Mapeia mensagens cruas do Supabase auth para textos amigáveis (sem expor stack/tokens)
+function mapAuthError(rawMsg) {
+  const m = String(rawMsg || '').toLowerCase();
+  if (!m) return t.feedback.genericError;
+  if (m.includes('rate') || m.includes('too many')) return 'Muitas tentativas. Aguarde alguns minutos antes de tentar de novo.';
+  if (m.includes('email') && (m.includes('invalid') || m.includes('format'))) return 'E-mail em formato inválido.';
+  if (m.includes('email') && m.includes('use')) return 'Este e-mail já está em uso por outra conta.';
+  if (m.includes('password') && m.includes('weak')) return 'Senha muito fraca. Use letras maiúsculas, minúsculas e números.';
+  if (m.includes('network') || m.includes('fetch')) return 'Sem conexão. Verifique sua internet e tente novamente.';
+  if (m.includes('invalid') && m.includes('credential')) return 'Senha incorreta.';
+  if (m.includes('user') && m.includes('not')) return 'Usuário não encontrado.';
+  return 'Não foi possível concluir a operação. Tente novamente em alguns instantes.';
+}
+
+// Validação de e-mail mais robusta
+function isValidEmail(s) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '').trim());
+}
 
 export default function ContaSegurancaScreen({ navigation }) {
   const { user } = useAuth();
@@ -18,12 +37,31 @@ export default function ContaSegurancaScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [showCurrentPass, setShowCurrentPass] = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
 
+  // Limpa senhas em RAM ao desmontar a tela (security)
+  useEffect(() => {
+    return () => {
+      setCurrentPass('');
+      setNewPass('');
+      setConfirmPass('');
+    };
+  }, []);
+
+  // Limpa senhas ao trocar de seção (security)
+  useEffect(() => {
+    if (section !== 'senha') {
+      setCurrentPass('');
+      setNewPass('');
+      setConfirmPass('');
+    }
+  }, [section]);
+
   async function handleUpdateEmail() {
-    if (!newEmail.trim() || !newEmail.includes('@')) {
+    if (!isValidEmail(newEmail)) {
       Alert.alert(t.alertAttention, t.validation.invalidEmail);
       return;
     }
@@ -40,7 +78,8 @@ export default function ContaSegurancaScreen({ navigation }) {
       setConfirmEmail('');
       setSection(null);
     } catch (err) {
-      Alert.alert(t.alertError, err.message || t.feedback.genericError);
+      console.error('[ContaSegurancaScreen.handleUpdateEmail]', err);
+      Alert.alert(t.alertError, mapAuthError(err?.message));
     } finally {
       setLoading(false);
     }
@@ -79,7 +118,8 @@ export default function ContaSegurancaScreen({ navigation }) {
       setConfirmPass('');
       setSection(null);
     } catch (err) {
-      Alert.alert(t.alertError, err.message || t.feedback.genericError);
+      console.error('[ContaSegurancaScreen.handleUpdatePassword]', err);
+      Alert.alert(t.alertError, mapAuthError(err?.message));
     } finally {
       setLoading(false);
     }
@@ -134,8 +174,17 @@ export default function ContaSegurancaScreen({ navigation }) {
     try {
       const db = await getDatabase();
       const SAFE_TABLES = Object.freeze(['produto_embalagens', 'produto_preparos', 'produto_ingredientes', 'preparo_ingredientes', 'delivery_combo_itens', 'delivery_produto_itens', 'delivery_combos', 'delivery_produtos', 'delivery_adicionais', 'delivery_config', 'vendas', 'produtos', 'preparos', 'embalagens', 'materias_primas', 'categorias_produtos', 'categorias_preparos', 'categorias_embalagens', 'categorias_insumos', 'faturamento_mensal', 'despesas_variaveis', 'despesas_fixas', 'historico_precos', 'perfil', 'configuracao']);
+      const failedTables = [];
       for (const table of SAFE_TABLES) {
-        try { await supabase.from(table).delete().eq('user_id', user.id); } catch(e) {}
+        try {
+          await supabase.from(table).delete().eq('user_id', user.id);
+        } catch(e) {
+          console.error('[ContaSegurancaScreen.excluirConta] delete failed for table', table, e);
+          failedTables.push(table);
+        }
+      }
+      if (failedTables.length > 0) {
+        console.warn('[ContaSegurancaScreen.excluirConta] tables not fully deleted:', failedTables);
       }
       await supabase.auth.signOut();
       if (Platform.OS === 'web') {
@@ -144,7 +193,8 @@ export default function ContaSegurancaScreen({ navigation }) {
         Alert.alert('Exclusão solicitada', 'Seus dados serão retidos por 30 dias conforme a LGPD e depois excluídos permanentemente. Um e-mail de confirmação será enviado.');
       }
     } catch(e) {
-      Alert.alert(t.alertError, t.feedback.genericError);
+      console.error('[ContaSegurancaScreen.excluirConta]', e);
+      Alert.alert(t.alertError, mapAuthError(e?.message));
     } finally {
       setDeleting(false);
       setShowDeleteModal(false);
@@ -240,7 +290,13 @@ export default function ContaSegurancaScreen({ navigation }) {
               secureTextEntry={!showCurrentPass}
               placeholderTextColor={colors.disabled}
             />
-            <TouchableOpacity onPress={() => setShowCurrentPass(!showCurrentPass)} style={styles.eyeBtn}>
+            <TouchableOpacity
+              onPress={() => setShowCurrentPass(!showCurrentPass)}
+              style={styles.eyeBtn}
+              accessibilityRole="button"
+              accessibilityLabel={showCurrentPass ? 'Ocultar senha atual' : 'Mostrar senha atual'}
+              accessibilityState={{ checked: showCurrentPass }}
+            >
               <Feather name={showCurrentPass ? 'eye-off' : 'eye'} size={18} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -255,20 +311,38 @@ export default function ContaSegurancaScreen({ navigation }) {
               secureTextEntry={!showNewPass}
               placeholderTextColor={colors.disabled}
             />
-            <TouchableOpacity onPress={() => setShowNewPass(!showNewPass)} style={styles.eyeBtn}>
+            <TouchableOpacity
+              onPress={() => setShowNewPass(!showNewPass)}
+              style={styles.eyeBtn}
+              accessibilityRole="button"
+              accessibilityLabel={showNewPass ? 'Ocultar nova senha' : 'Mostrar nova senha'}
+              accessibilityState={{ checked: showNewPass }}
+            >
               <Feather name={showNewPass ? 'eye-off' : 'eye'} size={18} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
           <Text style={styles.fieldLabel}>Confirmar nova senha</Text>
-          <TextInput
-            style={styles.input}
-            value={confirmPass}
-            onChangeText={setConfirmPass}
-            placeholder="Repita a nova senha"
-            secureTextEntry={!showNewPass}
-            placeholderTextColor={colors.disabled}
-          />
+          <View style={styles.passRow}>
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              value={confirmPass}
+              onChangeText={setConfirmPass}
+              placeholder="Repita a nova senha"
+              secureTextEntry={!showConfirmPass}
+              placeholderTextColor={colors.disabled}
+              accessibilityLabel="Confirmar nova senha"
+            />
+            <TouchableOpacity
+              onPress={() => setShowConfirmPass(!showConfirmPass)}
+              style={styles.eyeBtn}
+              accessibilityRole="button"
+              accessibilityLabel={showConfirmPass ? 'Ocultar confirmação' : 'Mostrar confirmação'}
+              accessibilityState={{ checked: showConfirmPass }}
+            >
+              <Feather name={showConfirmPass ? 'eye-off' : 'eye'} size={18} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
 
           <Text style={styles.hint}>A senha deve ter no mínimo 8 caracteres, com letras maiúsculas, minúsculas e números.</Text>
 
@@ -288,7 +362,13 @@ export default function ContaSegurancaScreen({ navigation }) {
       )}
 
       {/* Excluir conta */}
-      <TouchableOpacity style={{ marginTop: 40, alignItems: 'center', padding: 12 }} onPress={handleDeleteAccount}>
+      <TouchableOpacity
+        style={{ marginTop: 40, alignItems: 'center', padding: 12 }}
+        onPress={handleDeleteAccount}
+        accessibilityRole="button"
+        accessibilityLabel="Excluir minha conta. Ação irreversível."
+        accessibilityHint="Abre confirmação dupla antes de iniciar a exclusão"
+      >
         <Text style={{ fontSize: 13, color: colors.error, fontFamily: fontFamily.medium }}>Excluir minha conta</Text>
         <Text style={{ fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.regular, marginTop: 2, textAlign: 'center' }}>Seus dados serão retidos por 30 dias e depois excluídos permanentemente (LGPD)</Text>
       </TouchableOpacity>
@@ -312,12 +392,20 @@ export default function ContaSegurancaScreen({ navigation }) {
               placeholder="Digite EXCLUIR"
               autoCapitalize="characters"
               placeholderTextColor={colors.disabled}
+              accessibilityLabel="Campo de confirmação de exclusão. Digite a palavra EXCLUIR em maiúsculas."
             />
+            {deleteConfirmText.length > 0 && deleteConfirmText !== 'EXCLUIR' && (
+              <Text style={styles.deleteModalHintError} accessibilityLiveRegion="polite">
+                Digite exatamente "EXCLUIR" em letras maiúsculas para liberar o botão.
+              </Text>
+            )}
             <View style={styles.deleteModalBtnRow}>
               <TouchableOpacity
                 style={styles.deleteModalCancelBtn}
                 onPress={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Cancelar exclusão da conta"
               >
                 <Text style={styles.deleteModalCancelBtnText}>Cancelar</Text>
               </TouchableOpacity>
@@ -326,6 +414,9 @@ export default function ContaSegurancaScreen({ navigation }) {
                 onPress={excluirConta}
                 disabled={deleteConfirmText !== 'EXCLUIR' || deleting}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Confirmar exclusão definitiva da conta"
+                accessibilityState={{ disabled: deleteConfirmText !== 'EXCLUIR' || deleting, busy: deleting }}
               >
                 {deleting ? (
                   <ActivityIndicator size="small" color="#fff" />
@@ -402,4 +493,8 @@ const styles = StyleSheet.create({
     alignItems: 'center', backgroundColor: '#dc2626',
   },
   deleteModalDeleteBtnText: { fontSize: 14, fontWeight: '600', color: '#fff' },
+  deleteModalHintError: {
+    fontSize: 12, color: '#dc2626', textAlign: 'center',
+    fontFamily: fontFamily.medium, marginTop: -8, marginBottom: 12,
+  },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch,
   ActivityIndicator, Platform, TextInput, Alert,
@@ -12,11 +12,22 @@ import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import InfoTooltip from '../components/InfoTooltip';
 import Loader from '../components/Loader';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import usePersistedState from '../hooks/usePersistedState';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import SearchBar from '../components/SearchBar';
 import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 
 const isWeb = Platform.OS === 'web';
+
+// Whitelist de campos numéricos editáveis em delivery_config (defesa contra SQL injection no UPDATE dinâmico)
+const PLAT_NUMERIC_FIELDS = Object.freeze([
+  'taxa_plataforma', 'taxa_entrega', 'comissao_app', 'desconto_promocao', 'embalagem_extra',
+]);
+
+function safeNum(v) {
+  const n = typeof v === 'number' ? v : parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
 
 const TABS = [
   { key: 'plataformas', label: 'Plataformas', icon: 'smartphone' },
@@ -36,6 +47,9 @@ export default function DeliveryHubScreen({ navigation }) {
   const { isDesktop } = useResponsiveLayout();
   const [activeTab, setActiveTab] = useState('plataformas');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [saveError, setSaveError] = useState(null);
+  const isLoadingRef = useRef(false);
 
   // Plataformas state
   const [plataformas, setPlataformas] = useState([]);
@@ -52,12 +66,16 @@ export default function DeliveryHubScreen({ navigation }) {
   const [buscaProd, setBuscaProd] = useState('');
   const [precoCustom, setPrecoCustom] = useState('');
   const [expandedPlats, setExpandedPlats] = useState({});
-  const [margemDesejada, setMargemDesejada] = useState('30');
+  const [margemDesejada, setMargemDesejada] = usePersistedState('deliveryHub.margemDesejada', '30');
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
   async function loadData() {
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
     setLoading(true);
+    setLoadError(null);
+    try {
     const db = await getDatabase();
     const [plats, prods, allIngs, allPreps, allEmbs, comboRows, comboItensRows] = await Promise.all([
       db.getAllAsync('SELECT * FROM delivery_config ORDER BY id'),
@@ -105,40 +123,80 @@ export default function DeliveryHubScreen({ navigation }) {
       return { ...c, custoUnit, margem, isCombo: true };
     });
     setCombos(comboData);
-    setLoading(false);
+    } catch (e) {
+      console.error('[DeliveryHubScreen.loadData]', e);
+      setLoadError('Não foi possível carregar dados do delivery. Toque para tentar novamente.');
+    } finally {
+      setLoading(false);
+      isLoadingRef.current = false;
+    }
   }
 
   // ── Plataformas functions ──
   async function togglePlataforma(plat) {
-    const db = await getDatabase();
-    const newAtivo = plat.ativo ? 0 : 1;
-    await db.runAsync('UPDATE delivery_config SET ativo = ? WHERE id = ?', [newAtivo, plat.id]);
-    setPlataformas(prev => prev.map(p => p.id === plat.id ? { ...p, ativo: newAtivo } : p));
+    try {
+      const db = await getDatabase();
+      const newAtivo = plat.ativo ? 0 : 1;
+      await db.runAsync('UPDATE delivery_config SET ativo = ? WHERE id = ?', [newAtivo, plat.id]);
+      setPlataformas(prev => prev.map(p => p.id === plat.id ? { ...p, ativo: newAtivo } : p));
+    } catch (e) {
+      console.error('[DeliveryHubScreen.togglePlataforma]', e);
+      setSaveError('Não foi possível ativar/desativar essa plataforma.');
+      setTimeout(() => setSaveError(null), 4000);
+    }
   }
 
   async function savePlatField(platId, field, value) {
-    const db = await getDatabase();
-    const numVal = parseFloat(String(value).replace(',', '.')) || 0;
-    await db.runAsync(`UPDATE delivery_config SET ${field} = ? WHERE id = ?`, [numVal, platId]);
-    setPlataformas(prev => prev.map(p => p.id === platId ? { ...p, [field]: numVal } : p));
+    // Validação de field name (defesa contra SQL injection no UPDATE dinâmico)
+    if (!PLAT_NUMERIC_FIELDS.includes(field)) {
+      console.error('[DeliveryHubScreen.savePlatField] campo não permitido:', field);
+      return;
+    }
+    const parsed = parseFloat(String(value).replace(',', '.'));
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setSaveError('Digite um valor numérico válido (0 ou maior).');
+      setTimeout(() => setSaveError(null), 4000);
+      return;
+    }
+    try {
+      const db = await getDatabase();
+      await db.runAsync(`UPDATE delivery_config SET ${field} = ? WHERE id = ?`, [parsed, platId]);
+      setPlataformas(prev => prev.map(p => p.id === platId ? { ...p, [field]: parsed } : p));
+    } catch (e) {
+      console.error('[DeliveryHubScreen.savePlatField]', field, e);
+      setSaveError('Não foi possível salvar essa alteração. Tente novamente.');
+      setTimeout(() => setSaveError(null), 4000);
+    }
   }
 
   async function addPlataforma() {
     if (!newPlatNome.trim()) return;
-    const db = await getDatabase();
-    await db.runAsync(
-      'INSERT INTO delivery_config (plataforma, taxa_plataforma, taxa_entrega, comissao_app, desconto_promocao, ativo) VALUES (?,?,?,?,?,?)',
-      [newPlatNome.trim(), 0, 0, 0, 0, 1]
-    );
-    setNewPlatNome('');
-    loadData();
+    try {
+      const db = await getDatabase();
+      await db.runAsync(
+        'INSERT INTO delivery_config (plataforma, taxa_plataforma, taxa_entrega, comissao_app, desconto_promocao, ativo) VALUES (?,?,?,?,?,?)',
+        [newPlatNome.trim(), 0, 0, 0, 0, 1]
+      );
+      setNewPlatNome('');
+      loadData();
+    } catch (e) {
+      console.error('[DeliveryHubScreen.addPlataforma]', e);
+      setSaveError('Não foi possível adicionar a plataforma.');
+      setTimeout(() => setSaveError(null), 4000);
+    }
   }
 
   async function deletePlataforma(id) {
-    const db = await getDatabase();
-    await db.runAsync('DELETE FROM delivery_config WHERE id = ?', [id]);
-    setDeleteModal(null);
-    loadData();
+    try {
+      const db = await getDatabase();
+      await db.runAsync('DELETE FROM delivery_config WHERE id = ?', [id]);
+      setDeleteModal(null);
+      loadData();
+    } catch (e) {
+      console.error('[DeliveryHubScreen.deletePlataforma]', e);
+      setSaveError('Não foi possível remover a plataforma.');
+      setTimeout(() => setSaveError(null), 4000);
+    }
   }
 
   // ── Simulador functions ──
@@ -178,14 +236,18 @@ export default function DeliveryHubScreen({ navigation }) {
     // receitaLiq = (P*(1-d) - c)*(1 - com) - f
     // lucro = receitaLiq - custo = P * margemAlvo
     // P * ((1-d)*(1-com) - margemAlvo) = c*(1-com) + f + custo
-    const margemAlvo = (parseFloat(margemDesejada) || 30) / 100;
+    const margemAlvoRaw = parseFloat(margemDesejada);
+    const margemAlvo = (Number.isFinite(margemAlvoRaw) ? margemAlvoRaw : 30) / 100;
     const numerador = cupomR$ * (1 - comissaoPct) + taxaEntregaR$ + custoUnit;
     const divisor = (1 - descontoPct) * (1 - comissaoPct) - margemAlvo;
-    const precoSugerido = divisor > 0 ? numerador / divisor : 0;
+    // Guarda contra Infinity/NaN: se divisor ≤ 0 (taxas+margem ≥ 100%), preço sugerido é inviável
+    const precoSugerido = (Number.isFinite(divisor) && divisor > 0) ? numerador / divisor : null;
 
     // Preço mínimo (lucro = 0 => receitaLiq = custo)
     const divisorMin = (1 - descontoPct) * (1 - comissaoPct);
-    const precoMinimo = divisorMin > 0 ? (custoUnit + cupomR$ * (1 - comissaoPct) + taxaEntregaR$) / divisorMin : 0;
+    const precoMinimo = (Number.isFinite(divisorMin) && divisorMin > 0)
+      ? (custoUnit + cupomR$ * (1 - comissaoPct) + taxaEntregaR$) / divisorMin
+      : null;
 
     setSimResult({
       prodNome: isComboSel ? prod.nome + ' (Combo)' : prod.nome,
@@ -201,8 +263,9 @@ export default function DeliveryHubScreen({ navigation }) {
       lucroDelivery,
       margemDelivery,
       margemAlvo,
-      precoSugerido: precoSugerido > 0 ? precoSugerido : null,
-      precoMinimo,
+      precoSugerido: (Number.isFinite(precoSugerido) && precoSugerido > 0) ? precoSugerido : null,
+      precoMinimo: (Number.isFinite(precoMinimo) && precoMinimo > 0) ? precoMinimo : null,
+      inviavelPorTaxas: !(Number.isFinite(divisorMin) && divisorMin > 0), // descontos + comissão >= 100%
       // Intermediate values for breakdown display
       valorDesconto,
       precoComDesconto,
@@ -220,8 +283,8 @@ export default function DeliveryHubScreen({ navigation }) {
 
   function calcCustom() {
     if (!simResult) return null;
-    const preco = parseFloat(precoCustom.replace(',', '.'));
-    if (!preco || preco <= 0) return null;
+    const preco = parseFloat(String(precoCustom).replace(',', '.'));
+    if (!Number.isFinite(preco) || preco <= 0) return null;
     // Mesma lógica corrigida do simulador principal:
     // 1. Desconto promo (%) sobre o preço
     const valorDesconto = preco * simResult._descontoPct;
@@ -236,7 +299,7 @@ export default function DeliveryHubScreen({ navigation }) {
     // 4. Receita líquida = preço após cupom - comissão - taxa de entrega
     const recLiq = precoAposCupom - valorComissao - taxa;
     const lucro = recLiq - simResult.custoUnit;
-    const margem = preco > 0 ? lucro / preco : 0;
+    const margem = (Number.isFinite(lucro) && preco > 0) ? lucro / preco : 0;
     return { preco, recLiq, lucro, margem, valorComissao, valorDesconto, precoComDesconto, precoAposCupom, taxaEntrega: taxa };
   }
 
