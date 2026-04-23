@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -75,6 +75,17 @@ export default function WelcomeTourScreen({ navigation }) {
   const slideWidth = isWebDesktop ? Math.min(560, width) : width;
   const scrollRef = useRef(null);
   const [index, setIndex] = useState(0);
+
+  // Incrementa o contador de exibições — após a 2ª vez, initialRoute marca como done.
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem('welcome_tour_count');
+        const count = (Number(raw) || 0) + 1;
+        await AsyncStorage.setItem('welcome_tour_count', String(count));
+      } catch {}
+    })();
+  }, []);
 
   const onScroll = useCallback(
     (e) => {

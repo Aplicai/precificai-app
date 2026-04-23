@@ -28,8 +28,8 @@ const ROUTE_TITLES = {
   'CombosScreen': 'Combos',
   'DeliveryCombosScreen': 'Combos',
   'MargemBaixa': 'Produtos com Margem Baixa',
-  'Ferramentas': 'Ferramentas',
-  'MaisMain': 'Ferramentas',
+  'Mais': 'Mais',
+  'MaisMain': 'Mais',
   'FinanceiroMain': 'Financeiro',
   'DeliveryHub': 'Delivery',
   'DeliveryPlataformas': 'Plataformas',
@@ -112,14 +112,14 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
   // Map child screens to their parent tab + screen
   const PARENT_SCREENS = {
     // Ferramentas sub-screens
-    'ContaSeguranca': { tab: 'Ferramentas', screen: 'Configuracoes' },
-    'Perfil': { tab: 'Ferramentas', screen: 'Configuracoes' },
-    'KitInicio': { tab: 'Ferramentas', screen: 'Configuracoes' },
-    'Sobre': { tab: 'Ferramentas', screen: 'Configuracoes' },
-    'BCGProdutoForm': { tab: 'Ferramentas', screen: 'MatrizBCG' },
-    'DeliveryPlataformas': { tab: 'Ferramentas', screen: 'DeliveryHub' },
-    'DeliveryPrecos': { tab: 'Ferramentas', screen: 'DeliveryHub' },
-    'DeliveryProdutosScreen': { tab: 'Ferramentas', screen: 'DeliveryHub' },
+    'ContaSeguranca': { tab: 'Mais', screen: 'Configuracoes' },
+    'Perfil': { tab: 'Mais', screen: 'Configuracoes' },
+    'KitInicio': { tab: 'Mais', screen: 'Configuracoes' },
+    'Sobre': { tab: 'Mais', screen: 'Configuracoes' },
+    'BCGProdutoForm': { tab: 'Mais', screen: 'MatrizBCG' },
+    'DeliveryPlataformas': { tab: 'Mais', screen: 'DeliveryHub' },
+    'DeliveryPrecos': { tab: 'Mais', screen: 'DeliveryHub' },
+    'DeliveryProdutosScreen': { tab: 'Mais', screen: 'DeliveryHub' },
     // Form screens inside tab stacks
     'ProdutoForm': { tab: 'Produtos', screen: 'ProdutosList' },
     'ProdutoFormHome': { tab: 'Início', screen: 'HomeMain' },
@@ -129,8 +129,8 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
     'EmbalagemForm': { tab: 'Embalagens', screen: 'Embalagens' },
     'PreparoForm': { tab: 'Preparos', screen: 'Preparos' },
     'MargemBaixa': { tab: 'Início', screen: 'HomeMain' },
-    'Fornecedores': { tab: 'Ferramentas', screen: 'Fornecedores' },
-    'Suporte': { tab: 'Ferramentas', screen: 'Suporte' },
+    'Fornecedores': { tab: 'Mais', screen: 'Fornecedores' },
+    'Suporte': { tab: 'Mais', screen: 'Suporte' },
   };
 
   // Check if current screen has a returnTo param or a known parent
@@ -226,7 +226,7 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
               <Feather name="user" size={16} color={colors.text} />
               <span style={{ fontSize: 14, color: colors.text, fontFamily: 'DM Sans' }}>Meu Perfil</span>
             </div>
-            <div onClick={() => { setShowMenu(false); navigation.navigate('Ferramentas', { screen: 'Configuracoes' }); }}
+            <div onClick={() => { setShowMenu(false); navigation.navigate('Mais', { screen: 'Configuracoes' }); }}
               style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', padding: '10px 16px', cursor: 'pointer', gap: 10 }}>
               <Feather name="settings" size={16} color={colors.text} />
               <span style={{ fontSize: 14, color: colors.text, fontFamily: 'DM Sans' }}>Configurações</span>

@@ -1,44 +1,54 @@
 /**
- * EstoqueHubScreen (M1-10/11/12)
+ * EstoqueHubScreen — Hub central de estoque (M1-10/11/12).
  *
- * Hub central de estoque, com 3 tabs:
- *  - Saldos: lista insumos+embalagens com chip OK/Baixo/Zerado e custo médio.
- *  - Movimentos: histórico de entradas/saídas/ajustes.
- *  - Inventário: visão consolidada (valor total em estoque).
+ * Por que isso existe num app de PRECIFICAÇÃO?
+ * → Cada entrada de recebimento atualiza o custo médio ponderado do insumo.
+ *   Esse custo médio é a base do cálculo de preço de venda. Sem isso, seu preço
+ *   fica travado num custo antigo.
  *
- * Pode ser aberto como rota raiz pela Sidebar/MaisScreen ou via FAB do Home
- * (banner "Você tem N itens com estoque baixo").
+ * Layout (tabs):
+ *  - Saldos:     lista de insumos+embalagens (clicáveis → ActionSheet com opções)
+ *  - Movimentos: histórico filtrável por período (7d / 30d / tudo)
+ *  - Inventário: visão consolidada (valor total + composição)
+ *
+ * Aberto via Mais → Estoque ou banner do Home.
  */
 import React, { useState, useCallback, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform,
-  RefreshControl, ActivityIndicator, FlatList,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert,
+  RefreshControl, FlatList,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { getDatabase } from '../database/database';
 import { supabase } from '../config/supabase';
-import { listarSaldosConsolidados, statusEstoque } from '../services/estoque';
+import { listarSaldosConsolidados } from '../services/estoque';
 import { formatCurrency } from '../utils/calculations';
 import { formatTimeAgo } from '../utils/timeAgo';
 import EmptyState from '../components/EmptyState';
 import Skeleton from '../components/Skeleton';
 import FAB from '../components/FAB';
 import SearchBar from '../components/SearchBar';
-import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 const TABS = [
-  { key: 'saldos', label: 'Saldos', icon: 'package' },
+  { key: 'saldos',     label: 'Saldos',     icon: 'package' },
   { key: 'movimentos', label: 'Movimentos', icon: 'list' },
   { key: 'inventario', label: 'Inventário', icon: 'pie-chart' },
 ];
 
 const STATUS_STYLE = {
-  ok:      { label: 'OK',      bg: '#E8F5E9', fg: colors.success },
-  baixo:   { label: 'Baixo',   bg: '#FFF4E5', fg: colors.warning },
-  zerado:  { label: 'Zerado',  bg: '#FDECEC', fg: colors.error },
+  ok:     { label: 'OK',     bg: '#E8F5E9', fg: colors.success },
+  baixo:  { label: 'Baixo',  bg: '#FFF4E5', fg: colors.warning },
+  zerado: { label: 'Zerado', bg: '#FDECEC', fg: colors.error },
 };
+
+const PERIODOS = [
+  { key: '7',   label: '7 dias',  ms: 7 * 24 * 60 * 60 * 1000 },
+  { key: '30',  label: '30 dias', ms: 30 * 24 * 60 * 60 * 1000 },
+  { key: '90',  label: '90 dias', ms: 90 * 24 * 60 * 60 * 1000 },
+  { key: 'all', label: 'Tudo',    ms: null },
+];
 
 function StatusChip({ status }) {
   const s = STATUS_STYLE[status] || STATUS_STYLE.ok;
@@ -50,9 +60,9 @@ function StatusChip({ status }) {
 }
 
 export default function EstoqueHubScreen({ navigation }) {
-  const { isDesktop } = useResponsiveLayout();
   const [tab, setTab] = useState('saldos');
   const [busca, setBusca] = useState('');
+  const [periodo, setPeriodo] = useState('30'); // filtro de movimentos
   const [saldos, setSaldos] = useState([]);
   const [movimentos, setMovimentos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -66,16 +76,14 @@ export default function EstoqueHubScreen({ navigation }) {
       const items = await listarSaldosConsolidados(db);
       setSaldos(items);
 
-      // Movimentos vêm direto do Supabase (RLS garante user-scoped)
       const { data: movs, error } = await supabase
         .from('estoque_movimentos')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(200);
+        .limit(500);
       if (error) throw error;
       if (Array.isArray(movs)) setMovimentos(movs);
     } catch (e) {
-      // Surface ao usuário em vez de engolir.
       setErro(e?.message || 'Não foi possível carregar o estoque.');
     } finally {
       setLoading(false);
@@ -93,6 +101,16 @@ export default function EstoqueHubScreen({ navigation }) {
     return saldos.filter((i) => (i.nome || '').toLowerCase().includes(q));
   }, [saldos, busca]);
 
+  const movimentosFiltrados = useMemo(() => {
+    const p = PERIODOS.find((x) => x.key === periodo);
+    if (!p?.ms) return movimentos;
+    const corte = Date.now() - p.ms;
+    return movimentos.filter((m) => {
+      const t = new Date(m.created_at).getTime();
+      return Number.isFinite(t) && t >= corte;
+    });
+  }, [movimentos, periodo]);
+
   const stats = useMemo(() => {
     let zerado = 0, baixo = 0, ok = 0, valorTotal = 0;
     for (const i of saldos) {
@@ -105,6 +123,34 @@ export default function EstoqueHubScreen({ navigation }) {
     }
     return { zerado, baixo, ok, valorTotal };
   }, [saldos]);
+
+  // ActionSheet: ao tocar num item, abre as opções (entrada/ajuste/edit).
+  const onItemPress = useCallback((item) => {
+    const isEmb = item._tipo === 'embalagem';
+    const editScreen = isEmb ? 'EmbalagemForm' : 'MateriaPrimaForm';
+    const opcoes = [
+      {
+        text: 'Dar entrada (atualiza custo)',
+        onPress: () => navigation.navigate('EntradaEstoque', {
+          entidadeTipo: item._tipo,
+          entidadeId: item.id,
+        }),
+      },
+      {
+        text: 'Ajustar saldo',
+        onPress: () => navigation.navigate('AjusteEstoque', {
+          entidadeTipo: item._tipo,
+          entidadeId: item.id,
+        }),
+      },
+      {
+        text: `Editar ${isEmb ? 'embalagem' : 'insumo'}`,
+        onPress: () => navigation.navigate(editScreen, { id: item.id }),
+      },
+      { text: 'Cancelar', style: 'cancel' },
+    ];
+    Alert.alert(item.nome, 'O que deseja fazer?', opcoes);
+  }, [navigation]);
 
   return (
     <View style={styles.container}>
@@ -137,7 +183,7 @@ export default function EstoqueHubScreen({ navigation }) {
         </View>
       )}
 
-      {/* Stats strip */}
+      {/* Stats strip — visíveis em todas as abas */}
       {!loading && (
         <View style={styles.statsStrip}>
           <View style={styles.statItem}>
@@ -162,13 +208,14 @@ export default function EstoqueHubScreen({ navigation }) {
       {tab === 'saldos' && (
         <SaldosTab
           loading={loading} items={saldosFiltrados} busca={busca} setBusca={setBusca}
-          refreshing={refreshing} onRefresh={onRefresh}
+          refreshing={refreshing} onRefresh={onRefresh} onItemPress={onItemPress}
         />
       )}
       {tab === 'movimentos' && (
         <MovimentosTab
-          loading={loading} items={movimentos} saldos={saldos}
+          loading={loading} items={movimentosFiltrados} saldos={saldos}
           refreshing={refreshing} onRefresh={onRefresh}
+          periodo={periodo} setPeriodo={setPeriodo}
         />
       )}
       {tab === 'inventario' && (
@@ -189,10 +236,17 @@ export default function EstoqueHubScreen({ navigation }) {
   );
 }
 
-function SaldosTab({ loading, items, busca, setBusca, refreshing, onRefresh }) {
+function SaldosTab({ loading, items, busca, setBusca, refreshing, onRefresh, onItemPress }) {
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ paddingHorizontal: spacing.md, paddingTop: spacing.sm }}>
+      {/* Cabeçalho explicativo — por que estoque importa pra precificação */}
+      <View style={styles.infoCard}>
+        <Feather name="info" size={14} color={colors.primary} />
+        <Text style={styles.infoCardText}>
+          Toque em um item para <Text style={{ fontFamily: fontFamily.semiBold }}>dar entrada</Text> (atualiza o custo médio que vira base do preço), <Text style={{ fontFamily: fontFamily.semiBold }}>ajustar saldo</Text> ou editar.
+        </Text>
+      </View>
+      <View style={{ paddingHorizontal: spacing.md, paddingTop: spacing.xs }}>
         <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar item…" />
       </View>
       {loading ? (
@@ -213,20 +267,20 @@ function SaldosTab({ loading, items, busca, setBusca, refreshing, onRefresh }) {
           keyExtractor={(i) => `${i._tipo}:${i.id}`}
           contentContainerStyle={{ padding: spacing.md, paddingBottom: 100 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          renderItem={({ item }) => <SaldoRow item={item} />}
+          renderItem={({ item }) => <SaldoRow item={item} onPress={() => onItemPress(item)} />}
         />
       )}
     </View>
   );
 }
 
-function SaldoRow({ item }) {
+function SaldoRow({ item, onPress }) {
   const qtd = Number(item.quantidade_estoque) || 0;
   const min = Number(item.estoque_minimo) || 0;
-  const cm = Number(item.custo_medio) || 0;
+  const cm  = Number(item.custo_medio) || 0;
   const valor = qtd * cm;
   return (
-    <View style={styles.row}>
+    <TouchableOpacity style={styles.row} activeOpacity={0.65} onPress={onPress}>
       <View style={{ flex: 1 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
           <Text style={styles.rowTitle} numberOfLines={1}>{item.nome}</Text>
@@ -244,66 +298,88 @@ function SaldoRow({ item }) {
         {valor > 0 && <Text style={styles.rowValor}>{formatCurrency(valor)} em estoque</Text>}
       </View>
       <StatusChip status={item._status} />
-    </View>
+      <Feather name="chevron-right" size={18} color={colors.disabled} style={{ marginLeft: 4 }} />
+    </TouchableOpacity>
   );
 }
 
-function MovimentosTab({ loading, items, saldos, refreshing, onRefresh }) {
-  // Index de saldos por `${tipo}:${id}` → nome (cross-reference local).
+function MovimentosTab({ loading, items, saldos, refreshing, onRefresh, periodo, setPeriodo }) {
   const nomePorChave = useMemo(() => {
     const m = new Map();
-    for (const s of saldos || []) {
-      m.set(`${s._tipo}:${s.id}`, s.nome);
-    }
+    for (const s of saldos || []) m.set(`${s._tipo}:${s.id}`, s.nome);
     return m;
   }, [saldos]);
 
-  if (loading) {
-    return (
-      <View style={{ padding: spacing.md }}>
-        <Skeleton height={56} style={{ marginBottom: 8 }} />
-        <Skeleton height={56} style={{ marginBottom: 8 }} />
-        <Skeleton height={56} />
-      </View>
-    );
-  }
-  if (!items.length) {
-    return (
-      <EmptyState
-        icon="list"
-        title="Nenhum movimento registrado"
-        description="Quando você registrar uma entrada, ajuste ou venda, ela aparecerá aqui."
-      />
-    );
-  }
   return (
-    <FlatList
-      data={items}
-      keyExtractor={(m) => String(m.id)}
-      contentContainerStyle={{ padding: spacing.md, paddingBottom: 100 }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      renderItem={({ item }) => (
-        <MovimentoRow
-          mov={item}
-          itemNome={nomePorChave.get(`${item.entidade_tipo}:${item.entidade_id}`)}
+    <View style={{ flex: 1 }}>
+      {/* Filtro de período */}
+      <View style={styles.filtroRow}>
+        {PERIODOS.map((p) => {
+          const active = periodo === p.key;
+          return (
+            <TouchableOpacity
+              key={p.key}
+              style={[styles.filtroChip, active && styles.filtroChipActive]}
+              activeOpacity={0.7}
+              onPress={() => setPeriodo(p.key)}
+            >
+              <Text style={[styles.filtroChipText, active && styles.filtroChipTextActive]}>{p.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {loading ? (
+        <View style={{ padding: spacing.md }}>
+          <Skeleton height={56} style={{ marginBottom: 8 }} />
+          <Skeleton height={56} style={{ marginBottom: 8 }} />
+          <Skeleton height={56} />
+        </View>
+      ) : !items.length ? (
+        <EmptyState
+          icon="list"
+          title={periodo === 'all' ? 'Nenhum movimento registrado' : 'Sem movimentos no período'}
+          description={periodo === 'all'
+            ? 'Quando você registrar uma entrada, ajuste ou venda, ela aparecerá aqui.'
+            : 'Tente um período maior ou registre uma nova entrada/ajuste.'}
+        />
+      ) : (
+        <FlatList
+          data={items}
+          keyExtractor={(m) => String(m.id)}
+          contentContainerStyle={{ padding: spacing.md, paddingBottom: 100 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          renderItem={({ item }) => (
+            <MovimentoRow
+              mov={item}
+              itemNome={nomePorChave.get(`${item.entidade_tipo}:${item.entidade_id}`)}
+            />
+          )}
         />
       )}
-    />
+    </View>
   );
 }
 
 function MovimentoRow({ mov, itemNome }) {
   const isEntrada = mov.tipo === 'entrada';
-  const isSaida = mov.tipo === 'saida';
+  const isSaida   = mov.tipo === 'saida';
   const color = isEntrada ? colors.success : isSaida ? colors.error : colors.warning;
-  const icon = isEntrada ? 'arrow-down-circle' : isSaida ? 'arrow-up-circle' : 'edit-3';
+  const icon  = isEntrada ? 'arrow-down-circle' : isSaida ? 'arrow-up-circle' : 'edit-3';
   const sinal = isSaida ? '-' : isEntrada ? '+' : '±';
   const qtd = Number(mov.quantidade) || 0;
   const tipoLabel = mov.entidade_tipo === 'embalagem' ? 'Embalagem' : 'Insumo';
-  // Se temos o nome do item, mostra; senão fallback para #id
   const itemDescr = itemNome
     ? `${tipoLabel}: ${itemNome}`
     : `${tipoLabel} #${mov.entidade_id}`;
+  // Data formatada absoluta (curta) + relativa
+  let dataAbs = '';
+  try {
+    const d = new Date(mov.created_at);
+    if (!Number.isNaN(d.getTime())) {
+      dataAbs = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    }
+  } catch {}
   return (
     <View style={styles.row}>
       <Feather name={icon} size={22} color={color} style={{ marginRight: spacing.sm }} />
@@ -312,7 +388,7 @@ function MovimentoRow({ mov, itemNome }) {
           {mov.motivo || (isEntrada ? 'Recebimento' : isSaida ? 'Saída' : 'Ajuste')}
         </Text>
         <Text style={styles.rowMeta} numberOfLines={1}>
-          {itemDescr} · {formatTimeAgo(mov.created_at)}
+          {itemDescr} · {dataAbs && `${dataAbs} · `}{formatTimeAgo(mov.created_at)}
           {mov.origem_tipo ? ` · ${mov.origem_tipo}` : ''}
         </Text>
       </View>
@@ -327,10 +403,9 @@ function MovimentoRow({ mov, itemNome }) {
 }
 
 function InventarioTab({ stats, items, refreshing, onRefresh }) {
-  // Agrupa por tipo
-  const insumos = items.filter((i) => i._tipo === 'materia_prima');
+  const insumos    = items.filter((i) => i._tipo === 'materia_prima');
   const embalagens = items.filter((i) => i._tipo === 'embalagem');
-  const valorInsumos = insumos.reduce((s, i) => s + (Number(i.quantidade_estoque) || 0) * (Number(i.custo_medio) || 0), 0);
+  const valorInsumos    = insumos.reduce((s, i) => s + (Number(i.quantidade_estoque) || 0) * (Number(i.custo_medio) || 0), 0);
   const valorEmbalagens = embalagens.reduce((s, i) => s + (Number(i.quantidade_estoque) || 0) * (Number(i.custo_medio) || 0), 0);
 
   return (
@@ -338,6 +413,14 @@ function InventarioTab({ stats, items, refreshing, onRefresh }) {
       contentContainerStyle={{ padding: spacing.md, paddingBottom: 100 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
+      {/* Cabeçalho explicativo — por que estoque importa pra precificação */}
+      <View style={[styles.infoCard, { marginTop: 0, marginBottom: spacing.md }]}>
+        <Feather name="info" size={14} color={colors.primary} />
+        <Text style={styles.infoCardText}>
+          Cada entrada recalcula o <Text style={{ fontFamily: fontFamily.semiBold }}>custo médio ponderado</Text>, que é a base do preço sugerido nos seus produtos.
+        </Text>
+      </View>
+
       <View style={styles.cardBig}>
         <Text style={styles.cardBigLabel}>Valor total em estoque</Text>
         <Text style={styles.cardBigValue}>{formatCurrency(stats.valorTotal)}</Text>
@@ -367,7 +450,7 @@ function InventarioTab({ stats, items, refreshing, onRefresh }) {
           {insumos.length} insumos · {embalagens.length} embalagens
         </Text>
         <Text style={styles.composHelp}>
-          Toque em "Entrada" no canto inferior para registrar um recebimento e atualizar o custo médio ponderado.
+          Toque em "Entrada" no canto inferior para registrar um recebimento — o custo médio é recalculado automaticamente.
         </Text>
       </View>
     </ScrollView>
@@ -405,6 +488,35 @@ const styles = StyleSheet.create({
     fontSize: fonts.tiny, color: colors.textSecondary,
     fontFamily: fontFamily.regular, marginTop: 2,
   },
+  infoCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: colors.primary + '0E',
+    borderLeftWidth: 3, borderLeftColor: colors.primary,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
+    marginHorizontal: spacing.md, marginTop: spacing.sm,
+    borderRadius: borderRadius.sm,
+  },
+  infoCardText: {
+    flex: 1, fontSize: fonts.tiny, color: colors.text,
+    fontFamily: fontFamily.regular, lineHeight: 16,
+  },
+  filtroRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 6,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm,
+  },
+  filtroChip: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 16, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  filtroChipActive: {
+    backgroundColor: colors.primary + '14', borderColor: colors.primary,
+  },
+  filtroChipText: {
+    fontSize: fonts.tiny, color: colors.textSecondary,
+    fontFamily: fontFamily.semiBold, fontWeight: '600',
+  },
+  filtroChipTextActive: { color: colors.primary },
   row: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.surface, borderRadius: borderRadius.md,

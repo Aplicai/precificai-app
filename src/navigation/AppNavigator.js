@@ -104,7 +104,7 @@ const TAB_ICONS = {
   'Embalagens': { set: 'feather', name: 'package' },
   'Preparos':   { set: 'material', name: 'pot-steam-outline' },
   'Produtos':   { set: 'feather', name: 'box' },
-  'Ferramentas': { set: 'feather', name: 'menu' },
+  'Mais': { set: 'feather', name: 'menu' },
 };
 
 function TabIcon({ label, focused, badge }) {
@@ -243,7 +243,7 @@ function FinanceiroStack() {
 function MaisStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="MaisMain" component={MaisScreen} options={({ navigation }) => ({ title: 'Ferramentas', ...backToHomeOption(navigation) })} />
+      <Stack.Screen name="MaisMain" component={MaisScreen} options={({ navigation }) => ({ title: 'Mais', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="FinanceiroMain" component={ConfiguracaoScreen} options={{ title: 'Financeiro' }} />
       <Stack.Screen name="MatrizBCG" component={MatrizBCGScreen} options={{ title: 'Engenharia do Cardápio' }} />
       <Stack.Screen name="BCGProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
@@ -273,7 +273,7 @@ function MaisStack() {
 
 const LAST_TAB_KEY = 'precificai_last_tab';
 // Ordem segue o fluxo de composição (audit P1-08): Insumos→Preparos→Embalagens→Produtos.
-const VALID_TABS = ['Início', 'Insumos', 'Preparos', 'Embalagens', 'Produtos', 'Ferramentas'];
+const VALID_TABS = ['Início', 'Insumos', 'Preparos', 'Embalagens', 'Produtos', 'Mais'];
 
 function MainTabs({ route }) {
   const savedTab = route.params?.initialTab;
@@ -290,7 +290,7 @@ function MainTabs({ route }) {
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ focused }) => (
-          <TabIcon label={route.name} focused={focused} badge={route.name === 'Ferramentas' && finPendente} />
+          <TabIcon label={route.name} focused={focused} badge={route.name === 'Mais' && finPendente} />
         ),
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
@@ -344,7 +344,7 @@ function MainTabs({ route }) {
       <Tab.Screen name="Preparos" component={PreparosStack} />
       <Tab.Screen name="Embalagens" component={EmbalagensStack} />
       <Tab.Screen name="Produtos" component={ProdutosStack} />
-      <Tab.Screen name="Ferramentas" component={MaisStack} />
+      <Tab.Screen name="Mais" component={MaisStack} />
     </Tab.Navigator>
   );
 

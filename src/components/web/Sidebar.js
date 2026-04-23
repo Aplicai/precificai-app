@@ -19,26 +19,26 @@ const NAV_SECTIONS = [
   },
   {
     items: [
-      { key: 'estoque', label: 'Estoque', icon: 'package', iconSet: 'feather', tab: 'Ferramentas', screen: 'EstoqueHub' },
-      { key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign', iconSet: 'feather', tab: 'Ferramentas', screen: 'FinanceiroMain' },
-      { key: 'delivery', label: 'Delivery', icon: 'truck', iconSet: 'feather', tab: 'Ferramentas', screen: 'DeliveryHub' },
-      { key: 'bcg', label: 'Eng. do Cardápio', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Ferramentas', screen: 'MatrizBCG' },
-      { key: 'precos', label: 'Atualizar Preços', icon: 'refresh-cw', iconSet: 'feather', tab: 'Ferramentas', screen: 'AtualizarPrecos' },
-      { key: 'simulador', label: 'Simulador', icon: 'zap', iconSet: 'feather', tab: 'Ferramentas', screen: 'Simulador' },
-      { key: 'relatorio', label: 'Relatório Simples', icon: 'file-text', iconSet: 'feather', tab: 'Ferramentas', screen: 'RelatorioSimples' },
-      { key: 'fornecedores', label: 'Fornecedores', icon: 'users', iconSet: 'feather', tab: 'Ferramentas', screen: 'Fornecedores' },
-      { key: 'listacompras', label: 'Lista de Compras', icon: 'shopping-cart', iconSet: 'feather', tab: 'Ferramentas', screen: 'ListaCompras' },
-      { key: 'exportpdf', label: 'Exportar PDF', icon: 'printer', iconSet: 'feather', tab: 'Ferramentas', screen: 'ExportPDF' },
+      { key: 'estoque', label: 'Estoque', icon: 'package', iconSet: 'feather', tab: 'Mais', screen: 'EstoqueHub' },
+      { key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign', iconSet: 'feather', tab: 'Mais', screen: 'FinanceiroMain' },
+      { key: 'delivery', label: 'Delivery', icon: 'truck', iconSet: 'feather', tab: 'Mais', screen: 'DeliveryHub' },
+      { key: 'bcg', label: 'Eng. do Cardápio', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Mais', screen: 'MatrizBCG' },
+      { key: 'precos', label: 'Atualizar Preços', icon: 'refresh-cw', iconSet: 'feather', tab: 'Mais', screen: 'AtualizarPrecos' },
+      { key: 'simulador', label: 'Simulador', icon: 'zap', iconSet: 'feather', tab: 'Mais', screen: 'Simulador' },
+      { key: 'relatorio', label: 'Relatório Simples', icon: 'file-text', iconSet: 'feather', tab: 'Mais', screen: 'RelatorioSimples' },
+      { key: 'fornecedores', label: 'Fornecedores', icon: 'users', iconSet: 'feather', tab: 'Mais', screen: 'Fornecedores' },
+      { key: 'listacompras', label: 'Lista de Compras', icon: 'shopping-cart', iconSet: 'feather', tab: 'Mais', screen: 'ListaCompras' },
+      { key: 'exportpdf', label: 'Exportar PDF', icon: 'printer', iconSet: 'feather', tab: 'Mais', screen: 'ExportPDF' },
     ],
   },
   {
     items: [
-      { key: 'config', label: 'Configurações', icon: 'settings', iconSet: 'feather', tab: 'Ferramentas', screen: 'Configuracoes' },
+      { key: 'config', label: 'Configurações', icon: 'settings', iconSet: 'feather', tab: 'Mais', screen: 'Configuracoes' },
     ],
   },
   {
     items: [
-      { key: 'suporte', label: 'Suporte', icon: 'help-circle', iconSet: 'feather', tab: 'Ferramentas', screen: 'Suporte' },
+      { key: 'suporte', label: 'Suporte', icon: 'help-circle', iconSet: 'feather', tab: 'Mais', screen: 'Suporte' },
     ],
   },
 ];
@@ -64,7 +64,7 @@ function getActiveKey(navState) {
   }
 
   // Ferramentas sub-screens
-  if (tabName === 'Ferramentas') {
+  if (tabName === 'Mais') {
     const stackState = tabRoute.state;
     const stackRoute = stackState?.routes?.[stackState.index];
     const screenName = stackRoute?.name;

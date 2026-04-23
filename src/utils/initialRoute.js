@@ -21,10 +21,20 @@ export async function determineInitialRoute({ skipWelcomeTour = false } = {}) {
     const onboardingDone = await AsyncStorage.getItem('onboarding_done');
     if (onboardingDone === 'true') return 'MainTabs';
 
-    // Tour interativo apenas para usuários novos que ainda não viram
+    // Tour interativo apenas para usuários novos.
+    // Mostra no máximo 2 vezes (após isso é sempre pulado, mesmo que nunca
+    // tenham completado — feedback do usuário: "tem que aparecer nas 2 primeiras vezes e só").
     if (!skipWelcomeTour) {
       const tourDone = await AsyncStorage.getItem('welcome_tour_done');
-      if (tourDone !== 'true') return 'WelcomeTour';
+      if (tourDone === 'true') {
+        // já completou: nunca mais mostrar
+      } else {
+        const rawCount = await AsyncStorage.getItem('welcome_tour_count');
+        const count = Number(rawCount) || 0;
+        if (count < 2) return 'WelcomeTour';
+        // 2 exibições já consumidas → marca como done permanentemente
+        await AsyncStorage.setItem('welcome_tour_done', 'true');
+      }
     }
 
     const { getDatabase } = require('../database/database');

@@ -32,9 +32,9 @@ export default function OnboardingScreen({ navigation }) {
 
   function navToStep(etapa) {
     if (etapa.key === 'financeiro') {
-      navigation.navigate('MainTabs', { screen: 'Ferramentas', params: { screen: 'FinanceiroMain' } });
+      navigation.navigate('MainTabs', { screen: 'Mais', params: { screen: 'FinanceiroMain' } });
     } else if (etapa.key === 'delivery') {
-      navigation.navigate('MainTabs', { screen: 'Ferramentas', params: { screen: 'DeliveryHub' } });
+      navigation.navigate('MainTabs', { screen: 'Mais', params: { screen: 'DeliveryHub' } });
     } else {
       navigation.navigate('MainTabs', { screen: etapa.tab });
     }

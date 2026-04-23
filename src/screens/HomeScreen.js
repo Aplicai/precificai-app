@@ -314,7 +314,7 @@ export default function HomeScreen({ navigation }) {
     const ferramentasScreens = ['Financeiro', 'BCG', 'Delivery', 'AtualizarPrecos', 'EstoqueHub'];
     const screenMap = { 'Financeiro': 'FinanceiroMain', 'BCG': 'MatrizBCG', 'Delivery': 'DeliveryHub', 'AtualizarPrecos': 'AtualizarPrecos', 'EstoqueHub': 'EstoqueHub' };
     if (ferramentasScreens.includes(tab)) {
-      navigation.getParent()?.navigate('Ferramentas', { screen: screenMap[tab] });
+      navigation.getParent()?.navigate('Mais', { screen: screenMap[tab] });
       return;
     }
     navigation.getParent()?.navigate(tab);
@@ -464,7 +464,7 @@ export default function HomeScreen({ navigation }) {
         <TouchableOpacity
           style={[styles.setupBanner, { backgroundColor: colors.primary + '08', borderColor: colors.primary + '30' }]}
           activeOpacity={0.7}
-          onPress={() => navigation.getParent()?.navigate('Ferramentas', { screen: 'KitInicio', params: { setup: false } })}
+          onPress={() => navigation.getParent()?.navigate('Mais', { screen: 'KitInicio', params: { setup: false } })}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
             <View style={[styles.setupIconCircle, { backgroundColor: colors.primary + '20' }]}>
@@ -645,10 +645,10 @@ export default function HomeScreen({ navigation }) {
             tip: { title: 'CMV Médio', text: 'Custo de Mercadoria Vendida em % do preço de venda. Abra o card para alterar a meta.', examples: ['Referência do setor alimentício:', 'Restaurantes: 28-35%', 'Pizzarias: 25-32%', 'Confeitarias: 20-30%', 'Fast food: 25-35%', `Sua meta: < ${cmvMetaValue}%`] },
             meta: `Atual: ${formatPercent(d.cmvPercent)} · Meta: < ${cmvMetaValue}%`, bench: pendente ? null : cmvBench, onPress: () => setShowCmvMeta(true) },
           { label: 'Resultado Operacional', value: pendente ? '--' : formatCurrency(d.resultadoFinanceiro), icon: 'dollar-sign', color: pendente ? colors.disabled : (d.resultadoFinanceiro >= 0 ? colors.success : colors.error),
-            tip: { title: 'Resultado Operacional', text: 'Calculado automaticamente: faturamento médio mensal menos os custos do mês. Para alterar, ajuste o faturamento ou os custos do mês no Financeiro.', examples: ['Fórmula: Faturamento − Custos do mês', 'Positivo: receita cobre os custos mensais', 'Negativo: custos do mês maiores que o faturamento', '💡 Ajuste no Financeiro (Ferramentas)'] },
+            tip: { title: 'Resultado Operacional', text: 'Calculado automaticamente: faturamento médio mensal menos os custos do mês. Para alterar, ajuste o faturamento ou os custos do mês no Financeiro.', examples: ['Fórmula: Faturamento − Custos do mês', 'Positivo: receita cobre os custos mensais', 'Negativo: custos do mês maiores que o faturamento', '💡 Ajuste no Financeiro (aba Mais)'] },
             meta: d.resultadoFinanceiro >= 0 ? 'Receita cobre custos' : 'Receita abaixo dos custos', bench: pendente ? null : resBench },
           { label: 'Ponto de Equilíbrio', value: pendente ? '--' : formatCurrency(d.pontoEquilibrio), icon: 'target', color: pendente ? colors.disabled : colors.purple,
-            tip: { title: 'Ponto de Equilíbrio', text: 'Calculado automaticamente: faturamento mensal mínimo para cobrir todos os custos. Para alterar, ajuste seus custos e CMV no Financeiro.', examples: ['Fórmula: Custos do mês / (1 - CMV% - Custos por venda%)', 'Compare com seu faturamento médio', '💡 Ajuste no Financeiro (Ferramentas)'] },
+            tip: { title: 'Ponto de Equilíbrio', text: 'Calculado automaticamente: faturamento mensal mínimo para cobrir todos os custos. Para alterar, ajuste seus custos e CMV no Financeiro.', examples: ['Fórmula: Custos do mês / (1 - CMV% - Custos por venda%)', 'Compare com seu faturamento médio', '💡 Ajuste no Financeiro (aba Mais)'] },
             meta: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0
               ? (d.fatMedio >= d.pontoEquilibrio ? `Faturamento ${formatPercent(d.fatMedio / d.pontoEquilibrio - 1)} acima` : `Falta ${formatCurrency(d.pontoEquilibrio - d.fatMedio)}`)
               : 'Configure o financeiro', bench: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0

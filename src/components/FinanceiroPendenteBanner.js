@@ -20,7 +20,7 @@ export default function FinanceiroPendenteBanner() {
       const parent = navigation.getParent();
       const tabNav = parent?.getParent?.() || parent;
       if (tabNav) {
-        tabNav.navigate('Ferramentas', { screen: 'FinanceiroMain' });
+        tabNav.navigate('Mais', { screen: 'FinanceiroMain' });
       } else {
         navigation.navigate('FinanceiroMain');
       }

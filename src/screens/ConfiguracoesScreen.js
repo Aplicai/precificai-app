@@ -3,6 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Platform, 
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import useListDensity from '../hooks/useListDensity';
 
 const OPCOES = [
   { key: 'perfil', icon: 'user', label: 'Perfil do Negócio', desc: 'Nome, segmento e telefone', screen: 'Perfil', color: colors.primary },
@@ -21,6 +22,7 @@ const BACKUP_TABLES = [
 
 export default function ConfiguracoesScreen({ navigation }) {
   const [exporting, setExporting] = useState(false);
+  const { density, setDensity } = useListDensity();
 
   async function exportBackup() {
     setExporting(true);
@@ -82,6 +84,57 @@ export default function ConfiguracoesScreen({ navigation }) {
           <Feather name="chevron-right" size={18} color={colors.disabled} />
         </TouchableOpacity>
       ))}
+
+      {/* Aparência: densidade das listas */}
+      <View style={styles.aparenciaSection}>
+        <View style={styles.backupHeader}>
+          <View style={[styles.iconBox, { backgroundColor: colors.purple + '12' }]}>
+            <Feather name="layout" size={18} color={colors.purple} />
+          </View>
+          <View style={styles.rowBody}>
+            <Text style={styles.rowLabel}>Aparência</Text>
+            <Text style={styles.rowDesc}>Densidade das listas (Insumos, Produtos, etc.)</Text>
+          </View>
+        </View>
+        <View style={styles.densityRow}>
+          <TouchableOpacity
+            onPress={() => setDensity('comfortable')}
+            activeOpacity={0.7}
+            style={[
+              styles.densityBtn,
+              density === 'comfortable' && styles.densityBtnActive,
+            ]}
+          >
+            <Feather
+              name="menu"
+              size={18}
+              color={density === 'comfortable' ? colors.primary : colors.textSecondary}
+            />
+            <Text style={[
+              styles.densityBtnText,
+              density === 'comfortable' && styles.densityBtnTextActive,
+            ]}>Confortável</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setDensity('compact')}
+            activeOpacity={0.7}
+            style={[
+              styles.densityBtn,
+              density === 'compact' && styles.densityBtnActive,
+            ]}
+          >
+            <Feather
+              name="align-justify"
+              size={18}
+              color={density === 'compact' ? colors.primary : colors.textSecondary}
+            />
+            <Text style={[
+              styles.densityBtnText,
+              density === 'compact' && styles.densityBtnTextActive,
+            ]}>Compacto</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
       {/* Backup e Restauração */}
       <View style={styles.backupSection}>
@@ -185,4 +238,39 @@ const styles = StyleSheet.create({
     fontSize: fonts.regular, fontWeight: '700', color: colors.primary,
   },
   version: { fontSize: fonts.tiny, color: colors.disabled, textAlign: 'center', marginTop: spacing.lg },
+  aparenciaSection: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
+  },
+  densityRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  densityBtn: {
+    flex: 1,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: borderRadius.md,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+  },
+  densityBtnActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '10',
+  },
+  densityBtnText: {
+    marginTop: 4,
+    fontSize: fonts.small,
+    fontFamily: fontFamily.semiBold,
+    color: colors.textSecondary,
+  },
+  densityBtnTextActive: {
+    color: colors.primary,
+  },
 });

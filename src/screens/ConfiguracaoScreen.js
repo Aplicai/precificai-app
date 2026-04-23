@@ -8,7 +8,6 @@ import InfoTooltip from '../components/InfoTooltip';
 import Chip from '../components/Chip';
 import { Feather } from '@expo/vector-icons';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
-import useListDensity from '../hooks/useListDensity';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, calcDespesasFixasPercentual, calcMarkup } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
@@ -52,7 +51,6 @@ export default function ConfiguracaoScreen() {
   const [faturamentoMode, setFaturamentoMode] = useState('media'); // 'media' or 'mensal'
   const [faturamentoMedioInput, setFaturamentoMedioInput] = useState('');
   // Densidade global de listas (P3-G)
-  const { density, setDensity } = useListDensity();
 
   const mesesCurtos = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
@@ -919,66 +917,6 @@ export default function ConfiguracaoScreen() {
               <Text style={s.totalValue}>{formatPercent(totalVariaveis)}</Text>
             </View>
 
-          </View>
-        </View>
-
-        {/* APARÊNCIA: Densidade da lista (P3-G) */}
-        <View style={s.stepCard}>
-          <View style={s.stepHeader}>
-            <View style={[s.stepCircle, { backgroundColor: colors.purple }]}>
-              <Feather name="layout" size={16} color="#fff" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.stepTitle}>Aparência</Text>
-              <Text style={s.stepSubtitle}>Densidade das listas</Text>
-            </View>
-          </View>
-          <View style={s.stepBody}>
-            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-              <TouchableOpacity
-                onPress={() => setDensity('comfortable')}
-                style={{
-                  flex: 1,
-                  paddingVertical: spacing.sm + 2,
-                  borderRadius: borderRadius.md,
-                  borderWidth: 2,
-                  borderColor: density === 'comfortable' ? colors.primary : colors.border,
-                  backgroundColor: density === 'comfortable' ? colors.primary + '10' : colors.surface,
-                  alignItems: 'center',
-                }}
-              >
-                <Feather name="menu" size={18} color={density === 'comfortable' ? colors.primary : colors.textSecondary} />
-                <Text style={{
-                  marginTop: 4,
-                  fontSize: fonts.small,
-                  fontFamily: fontFamily.semiBold,
-                  color: density === 'comfortable' ? colors.primary : colors.textSecondary,
-                }}>Confortável</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setDensity('compact')}
-                style={{
-                  flex: 1,
-                  paddingVertical: spacing.sm + 2,
-                  borderRadius: borderRadius.md,
-                  borderWidth: 2,
-                  borderColor: density === 'compact' ? colors.primary : colors.border,
-                  backgroundColor: density === 'compact' ? colors.primary + '10' : colors.surface,
-                  alignItems: 'center',
-                }}
-              >
-                <Feather name="align-justify" size={18} color={density === 'compact' ? colors.primary : colors.textSecondary} />
-                <Text style={{
-                  marginTop: 4,
-                  fontSize: fonts.small,
-                  fontFamily: fontFamily.semiBold,
-                  color: density === 'compact' ? colors.primary : colors.textSecondary,
-                }}>Compacto</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={{ marginTop: spacing.sm, fontSize: fonts.tiny, color: colors.textSecondary, fontFamily: fontFamily.regular }}>
-              Aplica a todas as listas (Insumos, Embalagens, Preparos, Produtos).
-            </Text>
           </View>
         </View>
 
