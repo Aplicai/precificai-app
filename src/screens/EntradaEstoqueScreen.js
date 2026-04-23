@@ -78,13 +78,23 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
         motivo: motivo.trim() || null,
         origemTipo: 'recebimento',
       });
-      Alert.alert('Entrada registrada', `Saldo atualizado e custo médio recalculado.`, [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
-    } catch (e) {
-      Alert.alert('Erro ao registrar', e?.message || 'Tente novamente.');
-    } finally {
+      // Web: Alert.alert com botão+onPress NÃO dispara o callback de forma
+      // confiável → a tela ficava travada sem voltar. Em todas plataformas,
+      // voltamos imediatamente; a EstoqueHub mostrará o saldo atualizado.
       setSalvando(false);
+      if (Platform.OS === 'web') {
+        // window.alert é síncrono no web → garante feedback antes de voltar
+        try { window.alert('Entrada registrada com sucesso. Saldo e custo médio atualizados.'); } catch {}
+      }
+      navigation.goBack();
+    } catch (e) {
+      setSalvando(false);
+      const msg = e?.message || 'Tente novamente.';
+      if (Platform.OS === 'web') {
+        try { window.alert('Erro ao registrar: ' + msg); } catch {}
+      } else {
+        Alert.alert('Erro ao registrar', msg);
+      }
     }
   }
 

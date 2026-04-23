@@ -16,7 +16,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert,
-  RefreshControl, FlatList,
+  RefreshControl, FlatList, Modal, Pressable,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -68,6 +68,8 @@ export default function EstoqueHubScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [erro, setErro] = useState(null);
+  // Modal de ações sobre um item (substitui Alert.alert que quebra no web)
+  const [actionItem, setActionItem] = useState(null);
 
   const carregar = useCallback(async () => {
     setErro(null);
@@ -125,35 +127,52 @@ export default function EstoqueHubScreen({ navigation }) {
   }, [saldos]);
 
   // ActionSheet: ao tocar num item, abre as opções (entrada/ajuste/edit).
+  // Em vez de Alert.alert (que quebra no React Native Web com array de
+  // botões), abre um Modal próprio. Funciona em iOS, Android e Web.
   const onItemPress = useCallback((item) => {
-    const isEmb = item._tipo === 'embalagem';
-    const editScreen = isEmb ? 'EmbalagemForm' : 'MateriaPrimaForm';
-    const opcoes = [
-      {
-        text: 'Dar entrada (atualiza custo)',
-        onPress: () => navigation.navigate('EntradaEstoque', {
-          entidadeTipo: item._tipo,
-          entidadeId: item.id,
-        }),
-      },
-      {
-        text: 'Ajustar saldo',
-        onPress: () => navigation.navigate('AjusteEstoque', {
-          entidadeTipo: item._tipo,
-          entidadeId: item.id,
-        }),
-      },
-      {
-        text: `Editar ${isEmb ? 'embalagem' : 'insumo'}`,
-        onPress: () => navigation.navigate(editScreen, { id: item.id }),
-      },
-      { text: 'Cancelar', style: 'cancel' },
-    ];
-    Alert.alert(item.nome, 'O que deseja fazer?', opcoes);
-  }, [navigation]);
+    setActionItem(item);
+  }, []);
+
+  const closeAction = useCallback(() => setActionItem(null), []);
+
+  const goEntrada = useCallback(() => {
+    if (!actionItem) return;
+    const it = actionItem;
+    setActionItem(null);
+    navigation.navigate('EntradaEstoque', { entidadeTipo: it._tipo, entidadeId: it.id });
+  }, [actionItem, navigation]);
+
+  const goAjuste = useCallback(() => {
+    if (!actionItem) return;
+    const it = actionItem;
+    setActionItem(null);
+    navigation.navigate('AjusteEstoque', { entidadeTipo: it._tipo, entidadeId: it.id });
+  }, [actionItem, navigation]);
+
+  const goEditar = useCallback(() => {
+    if (!actionItem) return;
+    const it = actionItem;
+    const editScreen = it._tipo === 'embalagem' ? 'EmbalagemForm' : 'MateriaPrimaForm';
+    setActionItem(null);
+    navigation.navigate(editScreen, { id: it.id });
+  }, [actionItem, navigation]);
 
   return (
     <View style={styles.container}>
+      {/* Cabeçalho da página — deixa explícito que aqui é "Estoque",
+          mesmo no web onde o header da Sidebar pode ainda mostrar "Mais". */}
+      <View style={styles.pageHeader}>
+        <View style={styles.pageHeaderIcon}>
+          <Feather name="package" size={20} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.pageHeaderTitle}>Estoque</Text>
+          <Text style={styles.pageHeaderSubtitle}>
+            Saldos, entradas e movimentos dos seus insumos e embalagens
+          </Text>
+        </View>
+      </View>
+
       {/* Tabs */}
       <View style={styles.tabBar}>
         {TABS.map((t) => {
@@ -232,6 +251,76 @@ export default function EstoqueHubScreen({ navigation }) {
           tab === 'movimentos' ? 'AjusteEstoque' : 'EntradaEstoque'
         )}
       />
+
+      {/* Modal de ações sobre o item — substituto do Alert.alert */}
+      <Modal
+        visible={!!actionItem}
+        transparent
+        animationType="fade"
+        onRequestClose={closeAction}
+      >
+        <Pressable style={styles.modalOverlay} onPress={closeAction}>
+          <Pressable style={styles.modalSheet} onPress={() => {}}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeader}>
+              <View style={[styles.modalAvatar, {
+                backgroundColor: (actionItem?._tipo === 'embalagem' ? colors.purple : colors.primary) + '18',
+              }]}>
+                <Text style={[styles.modalAvatarText, {
+                  color: actionItem?._tipo === 'embalagem' ? colors.purple : colors.primary,
+                }]}>
+                  {(actionItem?.nome || '?').charAt(0).toUpperCase()}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle} numberOfLines={1}>{actionItem?.nome}</Text>
+                <Text style={styles.modalSubtitle}>
+                  {actionItem?._label} · saldo {Number(actionItem?.quantidade_estoque || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} {actionItem?.unidade_medida || 'un'}
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.modalAction} onPress={goEntrada} activeOpacity={0.65}>
+              <View style={[styles.modalActionIcon, { backgroundColor: colors.success + '18' }]}>
+                <Feather name="arrow-down-circle" size={20} color={colors.success} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalActionTitle}>Dar entrada</Text>
+                <Text style={styles.modalActionDesc}>Recebimento — atualiza saldo e custo médio</Text>
+              </View>
+              <Feather name="chevron-right" size={18} color={colors.disabled} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.modalAction} onPress={goAjuste} activeOpacity={0.65}>
+              <View style={[styles.modalActionIcon, { backgroundColor: colors.warning + '18' }]}>
+                <Feather name="edit-3" size={18} color={colors.warning} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalActionTitle}>Ajustar saldo</Text>
+                <Text style={styles.modalActionDesc}>Inventário, perda ou correção manual</Text>
+              </View>
+              <Feather name="chevron-right" size={18} color={colors.disabled} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.modalAction} onPress={goEditar} activeOpacity={0.65}>
+              <View style={[styles.modalActionIcon, { backgroundColor: colors.primary + '18' }]}>
+                <Feather name="settings" size={18} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalActionTitle}>
+                  Editar {actionItem?._tipo === 'embalagem' ? 'embalagem' : 'insumo'}
+                </Text>
+                <Text style={styles.modalActionDesc}>Nome, unidade, estoque mínimo, etc.</Text>
+              </View>
+              <Feather name="chevron-right" size={18} color={colors.disabled} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.modalCancel} onPress={closeAction} activeOpacity={0.7}>
+              <Text style={styles.modalCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -279,25 +368,63 @@ function SaldoRow({ item, onPress }) {
   const min = Number(item.estoque_minimo) || 0;
   const cm  = Number(item.custo_medio) || 0;
   const valor = qtd * cm;
+  const isEmb = item._tipo === 'embalagem';
+  const accent = isEmb ? colors.purple : colors.primary;
+  const statusColor = item._status === 'zerado' ? colors.error
+                    : item._status === 'baixo'  ? colors.warning
+                    : colors.success;
+  const statusBg = item._status === 'zerado' ? '#FDECEC'
+                 : item._status === 'baixo'  ? '#FFF4E5'
+                 : '#E8F5E9';
+  const inicial = (item.nome || '?').charAt(0).toUpperCase();
   return (
-    <TouchableOpacity style={styles.row} activeOpacity={0.65} onPress={onPress}>
-      <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-          <Text style={styles.rowTitle} numberOfLines={1}>{item.nome}</Text>
-          <View style={[styles.tagTipo, { backgroundColor: item._tipo === 'embalagem' ? colors.purple + '14' : colors.primary + '14' }]}>
-            <Text style={[styles.tagTipoText, { color: item._tipo === 'embalagem' ? colors.purple : colors.primary }]}>
-              {item._label}
-            </Text>
-          </View>
-        </View>
-        <Text style={styles.rowMeta}>
-          {qtd.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} {item.unidade_medida || 'un'}
-          {min > 0 ? ` · mín ${min.toLocaleString('pt-BR', { maximumFractionDigits: 3 })}` : ''}
-          {cm > 0 ? ` · ${formatCurrency(cm)}/${item.unidade_medida || 'un'}` : ''}
-        </Text>
-        {valor > 0 && <Text style={styles.rowValor}>{formatCurrency(valor)} em estoque</Text>}
+    <TouchableOpacity
+      style={[
+        styles.produtoCard,
+        { borderLeftColor: statusColor + '60', backgroundColor: statusBg + '50' },
+      ]}
+      activeOpacity={0.65}
+      onPress={onPress}
+    >
+      {/* Avatar igual aos Produtos */}
+      <View style={[styles.produtoAvatar, { backgroundColor: accent + '18' }]}>
+        <Text style={[styles.produtoAvatarText, { color: accent }]}>{inicial}</Text>
       </View>
-      <StatusChip status={item._status} />
+
+      {/* Info principal */}
+      <View style={styles.produtoInfo}>
+        <Text style={styles.produtoNome} numberOfLines={1}>{item.nome}</Text>
+        <View style={styles.produtoMeta}>
+          <Text style={styles.produtoMetaText}>
+            {qtd.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} {item.unidade_medida || 'un'}
+          </Text>
+          {cm > 0 && (
+            <>
+              <Text style={styles.produtoMetaSep}>•</Text>
+              <Text style={styles.produtoMetaText}>{formatCurrency(cm)}/{item.unidade_medida || 'un'}</Text>
+            </>
+          )}
+          {min > 0 && (
+            <>
+              <Text style={styles.produtoMetaSep}>•</Text>
+              <Text style={styles.produtoMetaText}>mín {min.toLocaleString('pt-BR', { maximumFractionDigits: 3 })}</Text>
+            </>
+          )}
+        </View>
+      </View>
+
+      {/* Valor + status */}
+      <View style={styles.produtoRight}>
+        {valor > 0 && (
+          <Text style={[styles.produtoValor, { color: statusColor }]}>{formatCurrency(valor)}</Text>
+        )}
+        <View style={[styles.statusPill, { backgroundColor: statusBg }]}>
+          <Text style={[styles.statusPillText, { color: statusColor }]}>
+            {item._status === 'zerado' ? 'Zerado' : item._status === 'baixo' ? 'Baixo' : 'OK'}
+          </Text>
+        </View>
+      </View>
+
       <Feather name="chevron-right" size={18} color={colors.disabled} style={{ marginLeft: 4 }} />
     </TouchableOpacity>
   );
@@ -459,6 +586,134 @@ function InventarioTab({ stats, items, refreshing, onRefresh }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  pageHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  pageHeaderIcon: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: colors.primary + '14',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  pageHeaderTitle: {
+    fontSize: fonts.large, color: colors.text,
+    fontFamily: fontFamily.bold, fontWeight: '700',
+  },
+  pageHeaderSubtitle: {
+    fontSize: fonts.tiny, color: colors.textSecondary,
+    fontFamily: fontFamily.regular, marginTop: 2,
+  },
+  // SaldoRow estilizado igual ao ProdutoCard
+  produtoCard: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md, marginBottom: 8,
+    borderLeftWidth: 3,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 3, elevation: 1,
+  },
+  produtoAvatar: {
+    width: 40, height: 40, borderRadius: 20,
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  produtoAvatarText: {
+    fontSize: fonts.medium, fontFamily: fontFamily.bold, fontWeight: '700',
+  },
+  produtoInfo: { flex: 1, minWidth: 0 },
+  produtoNome: {
+    fontSize: fonts.regular, color: colors.text,
+    fontFamily: fontFamily.semiBold, fontWeight: '600',
+    marginBottom: 2,
+  },
+  produtoMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
+  produtoMetaText: {
+    fontSize: fonts.tiny, color: colors.textSecondary,
+    fontFamily: fontFamily.regular,
+  },
+  produtoMetaSep: {
+    fontSize: fonts.tiny, color: colors.disabled,
+    marginHorizontal: 6,
+  },
+  produtoRight: { alignItems: 'flex-end', marginLeft: spacing.sm },
+  produtoValor: {
+    fontSize: fonts.small, fontFamily: fontFamily.bold, fontWeight: '700',
+    marginBottom: 2,
+  },
+  statusPill: {
+    paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10,
+  },
+  statusPillText: {
+    fontSize: 10, fontFamily: fontFamily.semiBold, fontWeight: '600',
+  },
+  // Modal de ações (substitui Alert.alert quebrado no web)
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: borderRadius.xl || 20,
+    borderTopRightRadius: borderRadius.xl || 20,
+    paddingHorizontal: spacing.md, paddingTop: 8, paddingBottom: spacing.lg,
+    maxWidth: 560, width: '100%', alignSelf: 'center',
+  },
+  modalHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: colors.border, alignSelf: 'center',
+    marginBottom: spacing.md,
+  },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+    marginBottom: spacing.sm,
+  },
+  modalAvatar: {
+    width: 44, height: 44, borderRadius: 22,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  modalAvatarText: {
+    fontSize: fonts.medium, fontFamily: fontFamily.bold, fontWeight: '700',
+  },
+  modalTitle: {
+    fontSize: fonts.medium, color: colors.text,
+    fontFamily: fontFamily.bold, fontWeight: '700',
+  },
+  modalSubtitle: {
+    fontSize: fonts.tiny, color: colors.textSecondary,
+    fontFamily: fontFamily.regular, marginTop: 2,
+  },
+  modalAction: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.xs,
+    borderRadius: borderRadius.md,
+  },
+  modalActionIcon: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  modalActionTitle: {
+    fontSize: fonts.regular, color: colors.text,
+    fontFamily: fontFamily.semiBold, fontWeight: '600',
+  },
+  modalActionDesc: {
+    fontSize: fonts.tiny, color: colors.textSecondary,
+    fontFamily: fontFamily.regular, marginTop: 1,
+  },
+  modalCancel: {
+    marginTop: spacing.sm,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.inputBg || colors.background,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontSize: fonts.regular, color: colors.textSecondary,
+    fontFamily: fontFamily.semiBold, fontWeight: '600',
+  },
   tabBar: {
     flexDirection: 'row', backgroundColor: colors.surface,
     borderBottomWidth: 1, borderBottomColor: colors.border,

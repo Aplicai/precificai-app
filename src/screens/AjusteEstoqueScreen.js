@@ -85,13 +85,19 @@ export default function AjusteEstoqueScreen({ navigation }) {
           origemTipo: 'ajuste',
         });
       }
-      Alert.alert('Ajuste registrado', 'Saldo atualizado.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
-    } catch (e) {
-      Alert.alert('Erro ao registrar', e?.message || 'Tente novamente.');
-    } finally {
       setSalvando(false);
+      if (Platform.OS === 'web') {
+        try { window.alert('Ajuste registrado. Saldo atualizado.'); } catch {}
+      }
+      navigation.goBack();
+    } catch (e) {
+      setSalvando(false);
+      const msg = e?.message || 'Tente novamente.';
+      if (Platform.OS === 'web') {
+        try { window.alert('Erro ao registrar: ' + msg); } catch {}
+      } else {
+        Alert.alert('Erro ao registrar', msg);
+      }
     }
   }
 

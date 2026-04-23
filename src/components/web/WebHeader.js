@@ -48,6 +48,10 @@ const ROUTE_TITLES = {
   'KitInicio': 'Kit de Início',
   'Sobre': 'Sobre o App',
   'Suporte': 'Suporte',
+  'EstoqueHub': 'Estoque',
+  'EntradaEstoque': 'Entrada de Estoque',
+  'AjusteEstoque': 'Ajuste de Estoque',
+  'Notificacoes': 'Notificações',
 };
 
 // Routes rendered as transparentModal popups — header should ignore them
