@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Constants from 'expo-constants';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Platform, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -8,6 +8,25 @@ import useListDensity from '../hooks/useListDensity';
 
 // Versão dinâmica via expoConfig (em vez de hardcoded — evita desync após release).
 const APP_VERSION = Constants?.expoConfig?.version || Constants?.manifest?.version || '1.0.0';
+
+// Audit P0 (Fase 2 - Fix #9): mapeia erros técnicos para mensagens amigáveis.
+// NUNCA expor `e.message` cru ao usuário (pode vazar paths, stack, infos internas).
+function mapBackupError(e) {
+  const raw = String(e?.message || '').toLowerCase();
+  if (raw.includes('quota') || raw.includes('storage')) {
+    return 'Espaço insuficiente no dispositivo para salvar o backup.';
+  }
+  if (raw.includes('permission') || raw.includes('denied')) {
+    return 'Permissão negada para salvar o arquivo.';
+  }
+  if (raw.includes('network') || raw.includes('failed to fetch')) {
+    return 'Sem conexão com a internet. Verifique sua rede.';
+  }
+  if (raw.includes('timeout')) {
+    return 'A operação demorou demais. Tente novamente.';
+  }
+  return 'Não foi possível exportar o backup. Tente novamente em instantes.';
+}
 
 const OPCOES = [
   { key: 'perfil', icon: 'user', label: 'Perfil do Negócio', desc: 'Nome, segmento e telefone', screen: 'Perfil', color: colors.primary },
@@ -27,6 +46,14 @@ const BACKUP_TABLES = [
 export default function ConfiguracoesScreen({ navigation }) {
   const [exporting, setExporting] = useState(false);
   const { density, setDensity } = useListDensity();
+
+  // Audit P0 (Fase 2 - Fix #10): race-guard contra setState após unmount.
+  // exportBackup pode rodar 30s+ em base grande; usuário pode trocar de tela.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   // Confirmação prévia antes de gerar backup. Web baixa arquivo no clique do usuário,
   // que pode ter dados sensíveis (custos, faturamento) — evita download acidental.
@@ -73,9 +100,10 @@ export default function ConfiguracoesScreen({ navigation }) {
       }
     } catch (e) {
       if (typeof console !== 'undefined' && console.error) console.error('[ConfiguracoesScreen.exportBackup]', e);
-      Alert.alert('Erro', `Não foi possível exportar o backup.\n\nDetalhe: ${e?.message || 'erro desconhecido'}`);
+      // Audit P0 (Fase 2 - Fix #9): nunca expor e.message cru — usar mapBackupError.
+      if (isMountedRef.current) Alert.alert('Erro', mapBackupError(e));
     } finally {
-      setExporting(false);
+      if (isMountedRef.current) setExporting(false);
     }
   }
 
@@ -127,6 +155,9 @@ export default function ConfiguracoesScreen({ navigation }) {
               styles.densityBtn,
               density === 'comfortable' && styles.densityBtnActive,
             ]}
+            accessibilityRole="radio"
+            accessibilityLabel="Densidade confortável"
+            accessibilityState={{ selected: density === 'comfortable' }}
           >
             <Feather
               name="menu"
@@ -145,6 +176,9 @@ export default function ConfiguracoesScreen({ navigation }) {
               styles.densityBtn,
               density === 'compact' && styles.densityBtnActive,
             ]}
+            accessibilityRole="radio"
+            accessibilityLabel="Densidade compacta"
+            accessibilityState={{ selected: density === 'compact' }}
           >
             <Feather
               name="align-justify"
@@ -180,6 +214,9 @@ export default function ConfiguracoesScreen({ navigation }) {
           activeOpacity={0.7}
           onPress={pedirConfirmacaoExport}
           disabled={exporting}
+          accessibilityRole="button"
+          accessibilityLabel={exporting ? 'Exportando dados' : 'Exportar dados'}
+          accessibilityState={{ disabled: exporting, busy: exporting }}
         >
           {exporting ? (
             <ActivityIndicator size="small" color="#fff" />
@@ -195,6 +232,9 @@ export default function ConfiguracoesScreen({ navigation }) {
           style={styles.backupBtnOutline}
           activeOpacity={0.7}
           onPress={() => Alert.alert('Importar Dados', 'Em breve! Esta funcionalidade está em desenvolvimento.')}
+          accessibilityRole="button"
+          accessibilityLabel="Importar dados (em breve)"
+          accessibilityHint="Funcionalidade em desenvolvimento"
         >
           <Feather name="upload" size={16} color={colors.primary} />
           <Text style={styles.backupBtnOutlineText}>Importar Dados</Text>

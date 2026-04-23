@@ -381,6 +381,9 @@ export default function DeliveryHubScreen({ navigation }) {
                         onValueChange={() => togglePlataforma(plat)}
                         trackColor={{ false: colors.border, true: colors.success + '50' }}
                         thumbColor={plat.ativo ? colors.success : colors.disabled}
+                        accessibilityRole="switch"
+                        accessibilityLabel={`${plat.ativo ? 'Desativar' : 'Ativar'} plataforma ${plat.plataforma}`}
+                        accessibilityState={{ checked: !!plat.ativo }}
                       />
                       <Text style={[styles.platStatus, { color: plat.ativo ? colors.success : colors.disabled }]}>
                         {plat.ativo ? 'Ativa' : 'Inativa'}
@@ -641,10 +644,22 @@ export default function DeliveryHubScreen({ navigation }) {
                           <TextInput
                             style={[styles.platInput, { width: 60, textAlign: 'center', fontSize: 16, fontFamily: fontFamily.bold }]}
                             value={margemDesejada}
-                            onChangeText={(v) => { setMargemDesejada(v.replace(/[^0-9.,]/g, '')); }}
+                            onChangeText={(v) => {
+                              // Sanitiza: só dígitos, vírgula ou ponto
+                              const cleaned = v.replace(/[^0-9.,]/g, '');
+                              // Clamp 0-100: se valor parseável > 100, trava em 100
+                              const parsed = parseFloat(cleaned.replace(',', '.'));
+                              if (Number.isFinite(parsed) && parsed > 100) {
+                                setMargemDesejada('100');
+                              } else {
+                                setMargemDesejada(cleaned);
+                              }
+                            }}
                             onBlur={() => { simularPreco(); }}
                             keyboardType="numeric"
                             selectTextOnFocus
+                            accessibilityLabel="Margem desejada em porcentagem"
+                            accessibilityHint="Valor entre 0 e 100"
                           />
                           <Text style={{ fontSize: 16, fontFamily: fontFamily.bold, color: colors.text }}>%</Text>
                         </View>
@@ -663,7 +678,9 @@ export default function DeliveryHubScreen({ navigation }) {
                           <Text style={styles.suggestedLabel}>Preço mínimo (sem lucro)</Text>
                           <Text style={styles.suggestedSub}>Apenas cobre os custos</Text>
                         </View>
-                        <Text style={[styles.suggestedPrice, { color: colors.error }]}>{formatCurrency(simResult.precoMinimo)}</Text>
+                        <Text style={[styles.suggestedPrice, { color: colors.error }]}>
+                          {Number.isFinite(simResult.precoMinimo) ? formatCurrency(simResult.precoMinimo) : '—'}
+                        </Text>
                       </View>
                     </View>
                   </View>

@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TextInput, TouchableOpacity, Switch, ActivityIndicator, Platform } from 'react-native';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { View, Text, ScrollView, StyleSheet, TextInput, TouchableOpacity, Switch, ActivityIndicator, Platform, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
@@ -50,9 +50,18 @@ export default function SimuladorScreen({ navigation }) {
   const [metaResultado, setMetaResultado] = useState(null);
   const [loadError, setLoadError] = useState(null);
 
+  // Audit P0 (Fase 2 - Fix #7): race-guard contra setState após unmount
+  // (loadData/simular podem terminar depois que usuário trocou de tela).
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
   async function loadData() {
+    if (!isMountedRef.current) return;
     setLoadError(null);
     try {
       setLoading(true);
@@ -91,7 +100,9 @@ export default function SimuladorScreen({ navigation }) {
         const custoIng = ings.reduce((a, ing) => a + calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada, ing.unidade_medida, ing.unidade_medida || 'g'), 0);
         const custoPr = preps.reduce((a, pp) => a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
         const custoEmb = embs.reduce((a, pe) => a + (pe.quantidade_utilizada || 0) * (pe.preco_unitario || 0), 0);
-        const custoUnit = (custoIng + custoPr + custoEmb) / getDivisorRendimento(p);
+        // Audit P0 (Fase 2 - Fix #8): guard contra divisor 0 (rendimento mal cadastrado).
+        const divisor = getDivisorRendimento(p);
+        const custoUnit = divisor > 0 ? (custoIng + custoPr + custoEmb) / divisor : (custoIng + custoPr + custoEmb);
         const margem = p.preco_venda > 0 ? (p.preco_venda - custoUnit) / p.preco_venda : 0;
         return { id: p.id, nome: p.nome, preco_venda: p.preco_venda, custoAtual: custoUnit, margemAtual: margem, ingredientes: ings, preparos: preps, embalagens: embs, rendimento_unidades: p.rendimento_unidades || 1, unidade_rendimento: p.unidade_rendimento, rendimento_total: p.rendimento_total };
       });
@@ -104,8 +115,10 @@ export default function SimuladorScreen({ navigation }) {
         const custoIng = (ingsByProd[p.id] || []).reduce((a, ing) => a + calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada, ing.unidade_medida, ing.unidade_medida || 'g'), 0);
         const custoPr = (prepsByProd[p.id] || []).reduce((a, pp) => a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
         const custoEmb = (embsByProd[p.id] || []).reduce((a, e) => a + (e.preco_unitario || 0) * (e.quantidade_utilizada || 0), 0);
-        const custoUnit = (custoIng + custoPr + custoEmb) / getDivisorRendimento(p);
-        if (p.preco_venda > 0) {
+        // Audit P0 (Fase 2 - Fix #8): mesmo guard do prodData.
+        const divisor = getDivisorRendimento(p);
+        const custoUnit = divisor > 0 ? (custoIng + custoPr + custoEmb) / divisor : (custoIng + custoPr + custoEmb);
+        if (p.preco_venda > 0 && Number.isFinite(custoUnit)) {
           somaCmvPerc += custoUnit / p.preco_venda;
           countCmv++;
         }
@@ -115,9 +128,11 @@ export default function SimuladorScreen({ navigation }) {
       setMetaProdutos(prodsR); // keep only for empty state check
     } catch (e) {
       console.error('[Simulador.loadData]', e);
-      setLoadError(e?.message || 'Não foi possível carregar os dados do simulador.');
+      if (isMountedRef.current) {
+        setLoadError('Não foi possível carregar os dados do simulador. Tente novamente.');
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) setLoading(false);
     }
   }
 
@@ -329,11 +344,31 @@ export default function SimuladorScreen({ navigation }) {
             {(insumoSelecionado ? resultados.filter(r => r.ingredientes.some(ing => ing.mp_id === insumoSelecionado)) : resultados).map(r => {
               const margemColor = r.margemNova >= 0.15 ? colors.success : r.margemNova >= 0.05 ? colors.warning : colors.error;
               const margemRisco = r.margemNova < 0.10;
+              const margemNegativa = r.margemNova < 0;
+              // Audit P0 (Fase 2 - Fix #6): se margem negativa, avisar antes de
+              // navegar — usuário pode estar prestes a "salvar" um preço que
+              // ainda gera prejuízo (precisa ajustar custo OU subir muito o preço).
+              const handlePressProduto = () => {
+                const navigateToProduto = () => navigation.navigate('ProdutoForm', { id: r.id, sugerirNovoPreco: margemRisco });
+                if (margemNegativa) {
+                  const msg = `Margem negativa: ${(r.margemNova * 100).toFixed(1)}%. O preço atual não cobre o custo deste produto. Quer abrir o produto para ajustar?`;
+                  if (Platform.OS === 'web') {
+                    if (typeof window !== 'undefined' && window.confirm(msg)) navigateToProduto();
+                  } else {
+                    Alert.alert('Margem negativa', msg, [
+                      { text: 'Cancelar', style: 'cancel' },
+                      { text: 'Abrir produto', onPress: navigateToProduto },
+                    ]);
+                  }
+                  return;
+                }
+                navigateToProduto();
+              };
               return (
                 <TouchableOpacity
                   key={r.id}
                   style={[styles.produtoRow, margemRisco && { backgroundColor: '#fef2f2' }]}
-                  onPress={() => navigation.navigate('ProdutoForm', { id: r.id, sugerirNovoPreco: margemRisco })}
+                  onPress={handlePressProduto}
                   accessibilityRole="button"
                   accessibilityLabel={`Ajustar preço de ${r.nome}, margem nova ${(r.margemNova * 100).toFixed(0)} por cento`}
                 >
