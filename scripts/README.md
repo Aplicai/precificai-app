@@ -1,5 +1,23 @@
 # Scripts
 
+## `deploy-web.sh`
+Build + deploy do app web pra Vercel produção em um único comando. **Use este sempre** em vez de chamar `vercel deploy` direto.
+
+```bash
+bash scripts/deploy-web.sh
+```
+
+Resolve o problema recorrente "Vercel cache stale": `vercel deploy --prebuilt` usa `.vercel/output/static/` (NÃO `dist/`). Sem sincronizar manualmente, o deploy sobe o bundle ANTIGO. Este script automatiza:
+
+1. `expo export --platform web --clear` (gera dist novo)
+2. Limpa `.vercel/output/static/` dos artefatos antigos
+3. Sincroniza `dist/*` → `.vercel/output/static/`
+4. `vercel deploy --prebuilt --prod --yes`
+5. Aliasa o novo deploy pra `precificaiapp.com` + `app.precificaiapp.com`
+6. Smoke test (curl com browser UA) — confirma que o NOVO bundle está live em ambos os domínios
+
+Falha (exit 1) se sync ou deploy quebrar; warning (exit 2) se smoke test não bater (CDN ainda propagando).
+
 ## `validate-env.js`
 Runs as `prebuild` hook on every `npm run build:web`. Fails the build if `EXPO_PUBLIC_SUPABASE_*` env vars are missing or malformed (e.g. truncated JWT).
 
