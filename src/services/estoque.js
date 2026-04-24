@@ -132,7 +132,7 @@ export function statusEstoque(item) {
  */
 export async function listarSaldosConsolidados(db) {
   const mps = await db.getAllAsync(
-    'SELECT id, nome, unidade_medida, quantidade_estoque, estoque_minimo, custo_medio FROM materias_primas ORDER BY nome'
+    'SELECT id, nome, marca, unidade_medida, quantidade_estoque, estoque_minimo, custo_medio FROM materias_primas ORDER BY nome'
   );
   const embs = await db.getAllAsync(
     'SELECT id, nome, quantidade_estoque, estoque_minimo, custo_medio FROM embalagens ORDER BY nome'

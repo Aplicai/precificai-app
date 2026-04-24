@@ -166,6 +166,11 @@ export default function EstoqueHubScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      {/* Sessão 25: pageShell garante que TODO conteúdo (header, stats,
+          tabs, listas) fique centralizado no web, alinhado com o resto do
+          app (Home/Simulador/Financeiro usam maxWidth + alignSelf:center).
+          Antes a tela ocupava 100% da largura — destoava do padrão. */}
+      <View style={styles.pageShell}>
       {/* Cabeçalho da página — deixa explícito que aqui é "Estoque",
           mesmo no web onde o header da Sidebar pode ainda mostrar "Mais". */}
       <View style={styles.pageHeader}>
@@ -209,15 +214,8 @@ export default function EstoqueHubScreen({ navigation }) {
         </View>
       )}
 
-      {/* Info card hero — explica de cara o propósito do Estoque dentro do app */}
-      {!loading && (
-        <View style={styles.heroInfoCard}>
-          <Feather name="info" size={16} color={colors.primary} />
-          <Text style={styles.heroInfoText}>
-            Acompanhe saldos, registre entradas e ajustes. O app calcula automaticamente o custo médio ponderado a cada movimento.
-          </Text>
-        </View>
-      )}
+      {/* Sessão 25: heroInfoCard removido — redundante com o subtítulo do
+          pageHeader e o infoCard contextual de cada tab. Reduz ruído visual. */}
 
       {/* Stats grid — 4 cards individuais com border-left colorido (status indicator) */}
       {!loading && (
@@ -262,6 +260,7 @@ export default function EstoqueHubScreen({ navigation }) {
           refreshing={refreshing} onRefresh={onRefresh}
         />
       )}
+      </View>{/* /pageShell */}
 
       <FAB
         iconName="plus"
@@ -300,8 +299,8 @@ export default function EstoqueHubScreen({ navigation }) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalTitle} numberOfLines={1}>{actionItem?.nome}</Text>
-                <Text style={styles.modalSubtitle}>
-                  {actionItem?._label} · saldo {Number(actionItem?.quantidade_estoque || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} {actionItem?.unidade_medida || 'un'}
+                <Text style={styles.modalSubtitle} numberOfLines={2}>
+                  {actionItem?._label}{actionItem?.marca ? ` · ${actionItem.marca}` : ''} · saldo {Number(actionItem?.quantidade_estoque || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} {actionItem?.unidade_medida || 'un'}
                 </Text>
               </View>
             </View>
@@ -424,7 +423,14 @@ function SaldoRow({ item, onPress }) {
 
       {/* Info principal */}
       <View style={styles.produtoInfo}>
-        <Text style={styles.produtoNome} numberOfLines={1}>{item.nome}</Text>
+        <View style={styles.nomeRow}>
+          <Text style={styles.produtoNome} numberOfLines={1}>{item.nome}</Text>
+          {item.marca ? (
+            <View style={styles.marcaBadge}>
+              <Text style={styles.marcaBadgeText} numberOfLines={1}>{item.marca}</Text>
+            </View>
+          ) : null}
+        </View>
         <View style={styles.produtoMeta}>
           <Text style={styles.produtoMetaText}>
             {qtd.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} {item.unidade_medida || 'un'}
@@ -616,6 +622,12 @@ function InventarioTab({ stats, items, refreshing, onRefresh }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  // Sessão 25: shell centralizado — mesmo padrão que Home, Simulador,
+  // Financeiro. Sem isso o conteúdo estica até a borda da viewport no desktop
+  // e destoa do resto do app.
+  pageShell: {
+    flex: 1, width: '100%', maxWidth: 1100, alignSelf: 'center',
+  },
   pageHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     padding: spacing.md,
@@ -653,10 +665,26 @@ const styles = StyleSheet.create({
     fontSize: fonts.medium, fontFamily: fontFamily.bold, fontWeight: '700',
   },
   produtoInfo: { flex: 1, minWidth: 0 },
+  nomeRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    marginBottom: 2,
+  },
   produtoNome: {
     fontSize: fonts.regular, color: colors.text,
     fontFamily: fontFamily.semiBold, fontWeight: '600',
-    marginBottom: 2,
+    flexShrink: 1,
+  },
+  marcaBadge: {
+    paddingHorizontal: 6, paddingVertical: 1,
+    borderRadius: 4,
+    backgroundColor: colors.primary + '12',
+    borderWidth: 1, borderColor: colors.primary + '24',
+    flexShrink: 0,
+  },
+  marcaBadgeText: {
+    fontSize: 10, color: colors.primary,
+    fontFamily: fontFamily.semiBold, fontWeight: '600',
+    maxWidth: 120,
   },
   produtoMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
   produtoMetaText: {

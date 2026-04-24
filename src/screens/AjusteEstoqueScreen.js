@@ -26,13 +26,18 @@ function parseNum(s) {
   return Number.isFinite(n) ? n : null;
 }
 
-export default function AjusteEstoqueScreen({ navigation }) {
+export default function AjusteEstoqueScreen({ navigation, route }) {
+  // Sessão 25: pré-seleção via params (clique no card do EstoqueHub deve
+  // abrir o modal já com o insumo escolhido — antes obrigava o usuário a
+  // selecionar de novo).
+  const presetTipo = route?.params?.entidadeTipo;
+  const presetId = route?.params?.entidadeId;
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [insumos, setInsumos] = useState([]);
   const [embalagens, setEmbalagens] = useState([]);
-  const [tipo, setTipo] = useState('materia_prima');
-  const [itemId, setItemId] = useState(null);
+  const [tipo, setTipo] = useState(presetTipo || 'materia_prima');
+  const [itemId, setItemId] = useState(presetId || null);
   const [direcao, setDirecao] = useState('saida'); // 'entrada' | 'saida'
   const [quantidade, setQuantidade] = useState('');
   const [motivo, setMotivo] = useState('');
@@ -42,7 +47,7 @@ export default function AjusteEstoqueScreen({ navigation }) {
     setLoadError(null);
     try {
       const db = await getDatabase();
-      const mps = await db.getAllAsync('SELECT id, nome, unidade_medida, quantidade_estoque, custo_medio FROM materias_primas ORDER BY nome');
+      const mps = await db.getAllAsync('SELECT id, nome, marca, unidade_medida, quantidade_estoque, custo_medio FROM materias_primas ORDER BY nome');
       const embs = await db.getAllAsync('SELECT id, nome, quantidade_estoque, custo_medio FROM embalagens ORDER BY nome');
       setInsumos(mps);
       setEmbalagens(embs);
@@ -58,7 +63,8 @@ export default function AjusteEstoqueScreen({ navigation }) {
 
   const opcoesItens = (tipo === 'materia_prima' ? insumos : embalagens).map((i) => ({
     value: i.id,
-    label: `${i.nome}  (saldo ${Number(i.quantidade_estoque || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 })})`,
+    // Sessão 25: marca incluída para diferenciar SKUs com nomes parecidos
+    label: `${i.nome}${i.marca ? ` — ${i.marca}` : ''}  (saldo ${Number(i.quantidade_estoque || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 })})`,
   }));
   const itemSelecionado = (tipo === 'materia_prima' ? insumos : embalagens).find((i) => i.id === itemId);
   const unidade = tipo === 'embalagem' ? 'un' : (itemSelecionado?.unidade_medida || 'un');

@@ -321,6 +321,10 @@ export default function DeliveryHubScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      {/* Sessão 25: pageShell centraliza TODO conteúdo no web (alinhado com
+          Home/Simulador/Financeiro). Sem isso o conteúdo ficava colado à
+          esquerda e destoava do resto do app. */}
+      <View style={styles.pageShell}>
       {/* Page Header */}
       <View style={styles.pageHeader}>
         <View style={styles.pageHeaderIcon}>
@@ -332,11 +336,8 @@ export default function DeliveryHubScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Hero Info Card */}
-      <View style={styles.heroInfoCard}>
-        <Feather name="info" size={16} color={colors.primary} />
-        <Text style={styles.heroInfoText}>Configure preços, plataformas e combos para entregas. Acompanhe taxas e margens reais por canal.</Text>
-      </View>
+      {/* Sessão 25: heroInfoCard removido — redundante com o subtítulo do
+          pageHeader e o infoCard contextual de cada tab abaixo. */}
 
       {/* Tabs */}
       <View style={styles.tabsRow}>
@@ -362,7 +363,9 @@ export default function DeliveryHubScreen({ navigation }) {
         })}
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 1000, alignSelf: 'flex-start', width: '100%', paddingLeft: spacing.lg }]}>
+      {/* Sessão 25: pageShell já cuida da centralização — ScrollView agora
+          só preocupa com padding/paddingBottom interno. */}
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
 
         {activeTab === 'plataformas' && (
           <>
@@ -895,6 +898,7 @@ export default function DeliveryHubScreen({ navigation }) {
           </>
         )}
       </ScrollView>
+      </View>{/* /pageShell */}
 
       {/* Delete modal */}
       <ConfirmDeleteModal
@@ -909,6 +913,10 @@ export default function DeliveryHubScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  // Sessão 25: shell centralizado — alinha com Home/Simulador/Financeiro.
+  pageShell: {
+    flex: 1, width: '100%', maxWidth: 1100, alignSelf: 'center',
+  },
   content: { padding: spacing.md, paddingBottom: 60 },
 
   // Page Header

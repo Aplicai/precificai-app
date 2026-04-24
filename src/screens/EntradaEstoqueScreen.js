@@ -43,7 +43,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
     setLoadError(null);
     try {
       const db = await getDatabase();
-      const mps = await db.getAllAsync('SELECT id, nome, unidade_medida, custo_medio FROM materias_primas ORDER BY nome');
+      const mps = await db.getAllAsync('SELECT id, nome, marca, unidade_medida, custo_medio FROM materias_primas ORDER BY nome');
       const embs = await db.getAllAsync('SELECT id, nome, custo_medio FROM embalagens ORDER BY nome');
       setInsumos(mps);
       setEmbalagens(embs);
@@ -59,7 +59,9 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
 
   const opcoesItens = (tipo === 'materia_prima' ? insumos : embalagens).map((i) => ({
     value: i.id,
-    label: i.nome,
+    // Sessão 25: marca incluída no label do picker para diferenciar SKUs
+    // (ex.: dois "Açúcar Refinado" de marcas distintas).
+    label: i.marca ? `${i.nome} — ${i.marca}` : i.nome,
   }));
   const itemSelecionado = (tipo === 'materia_prima' ? insumos : embalagens).find((i) => i.id === itemId);
   const unidade = tipo === 'embalagem' ? 'un' : (itemSelecionado?.unidade_medida || 'un');
