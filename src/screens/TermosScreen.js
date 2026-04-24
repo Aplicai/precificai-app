@@ -3,82 +3,89 @@ import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 
-const ULTIMA_ATUALIZACAO = '23 de abril de 2026';
+const ULTIMA_ATUALIZACAO = '24 de abril de 2026';
 
 const SECOES = [
   {
     titulo: '1. Aceitação dos Termos',
     paragrafos: [
       'Ao criar uma conta, acessar ou utilizar o aplicativo PrecificaApp ("Aplicativo"), você declara ter lido, compreendido e concordado integralmente com estes Termos de Uso.',
-      'Caso não concorde com qualquer disposição, você não deve utilizar o Aplicativo.',
+      'Se você não concordar com qualquer disposição destes Termos, não utilize o Aplicativo. O uso continuado após eventuais atualizações representa concordância com a versão vigente.',
     ],
   },
   {
     titulo: '2. Descrição do Serviço',
     paragrafos: [
-      'O PrecificaApp é uma ferramenta de auxílio à precificação de produtos e gestão de custos voltada para pequenos negócios de alimentação.',
-      'O Aplicativo fornece cálculos, sugestões e relatórios com base nos dados informados pelo usuário. Os resultados têm caráter informativo e não substituem a análise de um profissional contábil ou financeiro.',
+      'O PrecificaApp é uma ferramenta de auxílio à precificação de produtos e gestão de custos voltada para pequenos negócios do setor de gastronomia, como lanchonetes, restaurantes, food trucks, confeitarias e estabelecimentos similares.',
+      'O Aplicativo realiza cálculos com base em informações fornecidas pelo próprio usuário (custos de insumos, embalagens, mão de obra, despesas, margens desejadas etc.) e apresenta sugestões de preço, indicadores e relatórios.',
+      'Os resultados têm caráter informativo e auxiliar. Não substituem orientação contábil, financeira ou jurídica especializada.',
     ],
   },
   {
     titulo: '3. Cadastro e Conta',
     paragrafos: [
-      'Para utilizar o Aplicativo é necessário criar uma conta com e-mail e senha válidos. Você é responsável por manter a confidencialidade das suas credenciais e por todas as atividades realizadas em sua conta.',
-      'Você deve fornecer informações verdadeiras, atualizadas e completas no cadastro e ao longo do uso do Aplicativo.',
+      'Para utilizar o Aplicativo é necessário criar uma conta com e-mail válido e senha. Você é responsável por fornecer informações verdadeiras, atualizadas e completas no momento do cadastro.',
+      'A senha é pessoal e intransferível. Você é o único responsável por manter a confidencialidade das suas credenciais e por todas as atividades realizadas em sua conta.',
+      'Em caso de uso não autorizado da sua conta, comunique-nos imediatamente pelos canais de contato indicados nestes Termos.',
     ],
   },
   {
-    titulo: '4. Uso Permitido',
+    titulo: '4. Uso Permitido e Proibido',
     paragrafos: [
-      'Você se compromete a utilizar o Aplicativo apenas para fins lícitos e em conformidade com a legislação vigente.',
-      'É vedado: (i) usar o Aplicativo para qualquer atividade ilegal ou fraudulenta; (ii) tentar acessar áreas restritas, contas de outros usuários ou os sistemas internos do PrecificaApp; (iii) realizar engenharia reversa, descompilar ou copiar partes do Aplicativo; (iv) introduzir vírus ou códigos maliciosos.',
+      'Você se compromete a utilizar o Aplicativo apenas para fins lícitos, em conformidade com a legislação brasileira e com estes Termos.',
+      'É expressamente proibido: (i) utilizar o Aplicativo para qualquer atividade ilegal, fraudulenta ou que viole direitos de terceiros; (ii) tentar acessar áreas restritas, contas de outros usuários ou sistemas internos; (iii) realizar engenharia reversa, descompilar, modificar ou copiar partes do Aplicativo; (iv) coletar dados de outros usuários ou do Aplicativo por meios automatizados (scraping, bots, crawlers); (v) revender, sublicenciar ou redistribuir o Aplicativo ou seu conteúdo; (vi) introduzir vírus, códigos maliciosos ou qualquer mecanismo que possa prejudicar o funcionamento do Aplicativo ou de seus usuários.',
+      'O descumprimento destas regras pode resultar em suspensão ou exclusão da conta, sem prejuízo de outras medidas cabíveis.',
     ],
   },
   {
-    titulo: '5. Privacidade e Dados Pessoais',
+    titulo: '5. Propriedade Intelectual',
     paragrafos: [
-      'O tratamento de dados pessoais é regido pela nossa Política de Privacidade, que faz parte integrante destes Termos.',
-      'Coletamos apenas dados estritamente necessários para o funcionamento do Aplicativo (e-mail, nome, dados do negócio cadastrados pelo usuário) e seguimos a Lei Geral de Proteção de Dados (LGPD - Lei 13.709/2018).',
+      'Todos os direitos relativos ao Aplicativo — incluindo marca, layout, código-fonte, textos, imagens, ícones e demais elementos — pertencem à Aplicais ou a seus licenciantes, sendo protegidos pela legislação de propriedade intelectual.',
+      'Os dados que você cadastra no Aplicativo (insumos, produtos, preços, faturamento, despesas, fichas técnicas) permanecem de sua propriedade. A Aplicais utiliza essas informações exclusivamente para prestar o serviço a você, conforme descrito nestes Termos e na Política de Privacidade.',
     ],
   },
   {
-    titulo: '6. Propriedade Intelectual',
+    titulo: '6. Limitação de Responsabilidade',
     paragrafos: [
-      'Todos os direitos relativos ao Aplicativo, marca, layout, código-fonte, textos e demais elementos pertencem ao PrecificaApp ou a seus licenciantes.',
-      'Os dados que você cadastra (insumos, produtos, preços, faturamento) permanecem de sua propriedade. O PrecificaApp os utiliza apenas para prestar o serviço contratado.',
+      'O Aplicativo fornece cálculos e sugestões a partir dos dados que você informa. As decisões finais de precificação, compra, venda e gestão do seu negócio são exclusivamente suas.',
+      'A Aplicais não se responsabiliza por: (i) decisões comerciais ou financeiras tomadas com base em informações geradas pelo Aplicativo; (ii) prejuízos, lucros cessantes ou danos indiretos decorrentes do uso ou da impossibilidade de uso do Aplicativo; (iii) erros nos cálculos causados por dados incorretos ou incompletos informados pelo usuário; (iv) perdas decorrentes de falhas de conectividade, indisponibilidade temporária do serviço ou de provedores terceiros.',
+      'Recomendamos que você confira os resultados, consulte profissionais especializados quando necessário e mantenha cópias próprias das informações importantes do seu negócio.',
     ],
   },
   {
-    titulo: '7. Limitação de Responsabilidade',
+    titulo: '7. Disponibilidade do Serviço',
     paragrafos: [
-      'O Aplicativo é fornecido "como está", sem garantias de qualquer natureza. Embora nos esforcemos para manter os cálculos e dados corretos, não garantimos ausência de erros, indisponibilidades ou perda de dados.',
-      'O PrecificaApp não se responsabiliza por decisões comerciais tomadas com base em informações geradas pelo Aplicativo, nem por lucros cessantes, danos indiretos ou consequenciais.',
-      'Você é responsável por manter cópias de segurança (backups) dos seus dados sempre que considerar necessário.',
+      'Empenhamo-nos para manter o Aplicativo disponível e funcionando corretamente, mas o serviço é fornecido em regime de melhor esforço (best-effort), sem garantia de disponibilidade contínua, ininterrupta ou livre de erros.',
+      'Podemos realizar manutenções programadas, atualizações ou ajustes que resultem em indisponibilidade temporária. Sempre que possível, comunicaremos com antecedência.',
     ],
   },
   {
     titulo: '8. Modificações dos Termos',
     paragrafos: [
-      'Podemos atualizar estes Termos a qualquer momento. Quando isso acontecer, alteraremos a data de "última atualização" no topo deste documento e, em casos de mudanças relevantes, notificaremos você no Aplicativo.',
-      'O uso continuado do Aplicativo após uma atualização constitui aceite dos novos Termos.',
+      'Podemos atualizar estes Termos a qualquer momento, para refletir mudanças no Aplicativo, em nossa operação ou na legislação aplicável.',
+      'Quando isso acontecer, alteraremos a data de "última atualização" no topo deste documento. Em mudanças relevantes, notificaremos você dentro do próprio Aplicativo.',
+      'O uso continuado do Aplicativo após uma atualização representa aceite dos novos Termos.',
     ],
   },
   {
-    titulo: '9. Encerramento',
+    titulo: '9. Encerramento da Conta',
     paragrafos: [
-      'Você pode encerrar sua conta a qualquer momento. Podemos suspender ou encerrar contas que violem estes Termos, sem aviso prévio quando necessário para proteger o serviço ou outros usuários.',
+      'Você pode encerrar sua conta a qualquer momento, diretamente pelo Aplicativo, em "Configurações > Conta e Segurança", ou solicitando a exclusão pelos canais de contato.',
+      'Podemos suspender ou encerrar contas que violem estes Termos ou que apresentem risco à segurança do serviço ou de outros usuários, sem aviso prévio quando necessário.',
+      'O tratamento dos seus dados após o encerramento da conta segue o disposto na nossa Política de Privacidade.',
     ],
   },
   {
-    titulo: '10. Foro e Lei Aplicável',
+    titulo: '10. Lei Aplicável e Foro',
     paragrafos: [
-      'Estes Termos são regidos pelas leis da República Federativa do Brasil. Fica eleito o foro do domicílio do usuário para dirimir eventuais controvérsias.',
+      'Estes Termos são regidos pelas leis da República Federativa do Brasil.',
+      'Eventuais controvérsias decorrentes destes Termos serão dirimidas no foro do domicílio do usuário, conforme previsto no Código de Defesa do Consumidor.',
     ],
   },
   {
     titulo: '11. Contato',
     paragrafos: [
-      'Em caso de dúvidas, sugestões ou solicitações, entre em contato pelo e-mail: contato@precificaiapp.com.',
+      'Para dúvidas, sugestões ou solicitações relacionadas a estes Termos ou ao uso do Aplicativo, entre em contato pelo e-mail: contato@precificaiapp.com.',
     ],
   },
 ];
@@ -95,7 +102,8 @@ export default function TermosScreen() {
       </View>
 
       <Text style={styles.intro}>
-        Estes Termos regulam o uso do aplicativo PrecificaApp. Leia com atenção antes de continuar.
+        Estes Termos regulam o uso do aplicativo PrecificaApp, oferecido pela Aplicais.
+        Leia com atenção antes de continuar — ao utilizar o Aplicativo, você concorda com tudo o que está descrito a seguir.
       </Text>
 
       {SECOES.map((sec, idx) => (
@@ -108,7 +116,7 @@ export default function TermosScreen() {
       ))}
 
       <Text style={styles.footer}>
-        Documento meramente exemplificativo (placeholder). A versão definitiva deve ser revisada por um profissional do direito.
+        PrecificaApp é um produto Aplicais. Domínio oficial: precificaiapp.com.
       </Text>
     </ScrollView>
   );

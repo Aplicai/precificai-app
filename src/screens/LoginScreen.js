@@ -1,10 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
 import useRateLimit from '../hooks/useRateLimit';
 import { mapAuthError } from '../utils/authErrors';
+import { parseRateLimitSeconds } from '../utils/parseRateLimit';
 
 // Validação simples: nome@dominio.tld (subset de RFC 5322 suficiente para UX antes do backend).
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -18,8 +19,21 @@ export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  // Countdown (segundos) para rate-limit retornado pelo Supabase.
+  // Quando > 0, desabilita o botão e mostra "Aguarde Xs para tentar novamente".
+  const [retryIn, setRetryIn] = useState(0);
   const rateLimit = useRateLimit();
   const passwordRef = useRef(null);
+
+  // Decrementa retryIn a cada segundo até zerar; cleanup garante que o timer
+  // seja descartado ao desmontar OU assim que o countdown termina.
+  useEffect(() => {
+    if (retryIn <= 0) return undefined;
+    const id = setInterval(() => {
+      setRetryIn((s) => (s <= 1 ? 0 : s - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [retryIn]);
 
   // P2 quick-win: limpa erro ao digitar (evita feedback "preso" quando usuário corrige)
   const onChangeEmail = (v) => { if (error) setError(''); setEmail(v); };
@@ -64,15 +78,24 @@ export default function LoginScreen({ navigation }) {
       if (timedOut) return;
       console.error('[LoginScreen.handleLogin]', err);
       rateLimit.recordAttempt();
-      setError(mapAuthError(err, { context: 'signIn' }));
+      // Se o backend devolveu rate-limit explícito, exibe countdown ao invés
+      // do erro genérico — feedback mais preciso que mensagem mapeada.
+      const seconds = parseRateLimitSeconds(err);
+      if (seconds) {
+        setRetryIn(seconds);
+        setError('');
+      } else {
+        setError(mapAuthError(err, { context: 'signIn' }));
+      }
     } finally {
       clearTimeout(timeoutId);
       if (!timedOut) setLoading(false);
     }
   };
 
-  // P1: botão fica desabilitado durante loading OU rate-limit ativo
-  const btnDisabled = loading || !!rateLimit.isLocked;
+  // P1: botão fica desabilitado durante loading, rate-limit local OU countdown
+  // de rate-limit retornado pelo backend (Supabase 429).
+  const btnDisabled = loading || !!rateLimit.isLocked || retryIn > 0;
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -158,6 +181,16 @@ export default function LoginScreen({ navigation }) {
             )}
           </TouchableOpacity>
 
+          {retryIn > 0 ? (
+            <Text
+              style={styles.retryHint}
+              accessibilityLiveRegion="polite"
+              accessibilityRole="text"
+            >
+              Aguarde {retryIn}s para tentar novamente
+            </Text>
+          ) : null}
+
           <View style={styles.registerRow}>
             <Text style={styles.registerText}>Ainda não tem conta? </Text>
             <TouchableOpacity onPress={() => navigation.replace('Register')}>
@@ -211,6 +244,11 @@ const styles = StyleSheet.create({
   // Audit P1: feedback visual de bot\u00e3o desabilitado durante rate-limit/loading
   primaryBtnDisabled: { opacity: 0.5 },
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '600', fontFamily: fontFamily.semiBold },
+  // Texto do countdown durante rate-limit do backend (live region p/ a11y).
+  retryHint: {
+    fontSize: 13, color: colors.textSecondary, fontFamily: fontFamily.medium,
+    textAlign: 'center', marginTop: 12,
+  },
   registerRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
   registerText: { fontSize: 14, color: colors.textSecondary, fontFamily: fontFamily.regular },
   registerLink: { fontSize: 14, color: colors.primary, fontWeight: '600', fontFamily: fontFamily.semiBold },

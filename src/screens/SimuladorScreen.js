@@ -10,6 +10,7 @@ import usePersistedState from '../hooks/usePersistedState';
 import InfoTooltip from '../components/InfoTooltip';
 import EmptyState from '../components/EmptyState';
 import Loader from '../components/Loader';
+import MetaVsRealidadeChart from '../components/MetaVsRealidadeChart';
 
 const TABS = [
   { key: 'ese', label: 'Simulador de Impacto', icon: 'trending-up' },
@@ -50,6 +51,10 @@ export default function SimuladorScreen({ navigation }) {
   const [metaCmvPercent, setMetaCmvPercent] = useState(0);
   const [metaResultado, setMetaResultado] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  // Faturamento real do mês corrente (vendas registradas × preço de venda).
+  // Alimenta o chart "Meta vs Realidade".
+  const [faturamentoRealizado, setFaturamentoRealizado] = useState(0);
+  const [mesAtual, setMesAtual] = useState(''); // 'YYYY-MM' do mês de referência
 
   // Audit P0 (Fase 2 - Fix #7): race-guard contra setState após unmount
   // (loadData/simular podem terminar depois que usuário trocou de tela).
@@ -68,7 +73,7 @@ export default function SimuladorScreen({ navigation }) {
       setLoading(true);
       const db = await getDatabase();
 
-      const [mps, prodsR, fixas, variaveis, allIngs, allPreps, allEmbs] = await Promise.all([
+      const [mps, prodsR, fixas, variaveis, allIngs, allPreps, allEmbs, todasVendas] = await Promise.all([
         db.getAllAsync('SELECT * FROM materias_primas ORDER BY nome'),
         db.getAllAsync('SELECT * FROM produtos WHERE preco_venda > 0'),
         db.getAllAsync('SELECT * FROM despesas_fixas'),
@@ -76,6 +81,9 @@ export default function SimuladorScreen({ navigation }) {
         db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida, mp.nome as mp_nome, mp.id as mp_id FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
         db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida, pr.nome as pr_nome FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
         db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario, em.nome as emb_nome FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
+        // Vendas registradas — alimentam o chart "Meta vs Realidade".
+        // Filtramos por mês em JS (web DB não suporta funções SQL de data).
+        db.getAllAsync('SELECT produto_id, data, quantidade FROM vendas'),
       ]);
 
       setInsumos(mps);
@@ -127,6 +135,21 @@ export default function SimuladorScreen({ navigation }) {
       const cmvMedioPerc = countCmv > 0 ? somaCmvPerc / countCmv : 0;
       setMetaCmvPercent(cmvMedioPerc);
       setMetaProdutos(prodsR); // keep only for empty state check
+
+      // ── Faturamento realizado do mês corrente (chart Meta vs Realidade) ──
+      // `vendas.data` é texto no formato 'YYYY-MM'. Filtramos em JS para
+      // compatibilidade com o backend web (mesmo padrão de VendasScreen).
+      const now = new Date();
+      const mesRef = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const precoPorProduto = {};
+      prodsR.forEach(p => { precoPorProduto[p.id] = safeNum(p.preco_venda); });
+      const realizadoMes = (todasVendas || [])
+        .filter(v => v.data && String(v.data).startsWith(mesRef))
+        .reduce((soma, v) => soma + safeNum(v.quantidade) * (precoPorProduto[v.produto_id] || 0), 0);
+      if (isMountedRef.current) {
+        setFaturamentoRealizado(realizadoMes);
+        setMesAtual(mesRef);
+      }
     } catch (e) {
       console.error('[Simulador.loadData]', e);
       if (isMountedRef.current) {
@@ -518,6 +541,18 @@ export default function SimuladorScreen({ navigation }) {
               </View>
             </View>
           </View>
+        )}
+
+        {/* Chart: Meta vs Realidade (mês corrente) ───────────────────────
+            Só faz sentido depois que o usuário definiu uma meta válida
+            (`metaResultado` calculado e não inviável). Quando não há vendas
+            ou não há meta, o componente exibe seu próprio fallback. */}
+        {metaResultado && !metaResultado.inviavel && (
+          <MetaVsRealidadeChart
+            metaFaturamento={metaResultado.faturamentoMensal}
+            faturamentoRealizado={faturamentoRealizado}
+            mesLabel={mesAtual}
+          />
         )}
 
         {/* Empty state */}

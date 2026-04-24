@@ -7,6 +7,19 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 import EmptyState from '../components/EmptyState';
 import Loader from '../components/Loader';
+import usePersistedState from '../hooks/usePersistedState';
+
+// Paleta de cores para chips de categoria — espelha o padrão de ProdutosListScreen
+// para manter coerência visual entre telas que filtram por categoria.
+const CATEGORY_COLORS = [
+  colors.primary, colors.accent, colors.coral, colors.purple,
+  colors.yellow, colors.success, colors.info, colors.red,
+  colors.primaryLight, colors.accentLight, colors.coralLight, colors.purpleLight,
+];
+
+function getCategoryColor(index) {
+  return CATEGORY_COLORS[index % CATEGORY_COLORS.length];
+}
 
 // Helper: extrai número finito ou 0
 const safeNum = (v) => {
@@ -29,10 +42,15 @@ export default function RelatorioSimplesScreen({ navigation }) {
   const [data, setData] = useState(null);
   const [perfilNome, setPerfilNome] = useState('');
   const [loadError, setLoadError] = useState(null);
+  // Lista bruta de categorias do BD (para renderizar chips)
+  const [categorias, setCategorias] = useState([]);
+  // Filtro persistido entre sessões. 'todas' = sem filtro (default).
+  // Quando filtrado por categoria, guarda o id da categoria como número.
+  const [filtroCategoria, setFiltroCategoria] = usePersistedState('relatorioSimples.filtroCategoria', 'todas');
 
   useFocusEffect(useCallback(() => {
     loadData();
-  }, []));
+  }, [filtroCategoria]));
 
   async function loadData() {
     setLoadError(null);
@@ -51,7 +69,7 @@ export default function RelatorioSimplesScreen({ navigation }) {
         setPerfilNome('Meu Negócio');
       }
 
-      const [fixas, variaveis, fat, configRows, prods, allIngs, allEmbs, allPreps] = await Promise.all([
+      const [fixas, variaveis, fat, configRows, prods, allIngs, allEmbs, allPreps, cats] = await Promise.all([
         db.getAllAsync('SELECT * FROM despesas_fixas'),
         db.getAllAsync('SELECT * FROM despesas_variaveis'),
         db.getAllAsync('SELECT * FROM faturamento_mensal'),
@@ -60,7 +78,9 @@ export default function RelatorioSimplesScreen({ navigation }) {
         db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
         db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
         db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
+        db.getAllAsync('SELECT * FROM categorias_produtos ORDER BY nome'),
       ]);
+      setCategorias(cats || []);
       const lucroDesejado = configRows?.[0]?.lucro_desejado || 0;
 
       const totalFixas = fixas.reduce((a, d) => a + (d.valor || 0), 0);
@@ -79,7 +99,15 @@ export default function RelatorioSimplesScreen({ navigation }) {
       const prepsByProd = {};
       allPreps.forEach(p => { (prepsByProd[p.produto_id] = prepsByProd[p.produto_id] || []).push(p); });
 
-      const produtos = prods.map(p => {
+      // Aplica filtro de categoria persistido. 'todas' mantém o conjunto completo;
+      // qualquer outro valor restringe o agregado (insights, ponto de equilíbrio, etc.)
+      // aos produtos da categoria escolhida — produtos sem categoria são excluídos
+      // quando há filtro ativo, evitando ruído nos números traduzidos.
+      const prodsFiltrados = filtroCategoria === 'todas'
+        ? prods
+        : prods.filter(p => p.categoria_id === filtroCategoria);
+
+      const produtos = prodsFiltrados.map(p => {
         const custoIng = (ingsByProd[p.id] || []).reduce((a, i) => {
           return a + calcCustoIngrediente(i.preco_por_kg || 0, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida);
         }, 0);
@@ -371,14 +399,35 @@ export default function RelatorioSimplesScreen({ navigation }) {
     }
   }
 
+  // Nome da categoria atualmente filtrada — usado no badge "Filtrando: X".
+  const categoriaAtivaNome = filtroCategoria === 'todas'
+    ? null
+    : (categorias.find(c => c.id === filtroCategoria)?.nome || null);
+
   if (!data || data.totalProdutos === 0) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', backgroundColor: colors.background }}>
         <EmptyState
           icon="file-text"
-          title="Nenhum produto cadastrado"
-          description="Cadastre seus produtos para ver o relatório simplificado."
+          title={categoriaAtivaNome
+            ? `Nenhum produto na categoria "${categoriaAtivaNome}"`
+            : 'Nenhum produto cadastrado'}
+          description={categoriaAtivaNome
+            ? 'Limpe o filtro para ver o relatório completo, ou cadastre produtos nessa categoria.'
+            : 'Cadastre seus produtos para ver o relatório simplificado.'}
         />
+        {categoriaAtivaNome && (
+          <TouchableOpacity
+            style={styles.clearFilterBtnStandalone}
+            activeOpacity={0.7}
+            onPress={() => setFiltroCategoria('todas')}
+            accessibilityRole="button"
+            accessibilityLabel="Limpar filtro de categoria"
+          >
+            <Feather name="x" size={14} color={colors.primary} />
+            <Text style={styles.clearFilterBtnText}>Limpar filtro</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   }
@@ -400,6 +449,69 @@ export default function RelatorioSimplesScreen({ navigation }) {
         <Text style={styles.headerTitle}>Explicaí</Text>
         <Text style={styles.headerSub}>Seus números traduzidos em linguagem simples</Text>
       </View>
+
+      {/* Filtro por categoria — chips horizontais. 'Todas' é o estado neutro
+          (sem filtro). Selecionar a categoria já ativa volta para 'Todas'. */}
+      {categorias.length > 0 && (
+        <View
+          accessibilityRole="toolbar"
+          accessibilityLabel="Filtrar relatório por categoria"
+          style={styles.filtroBlock}
+        >
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filtrosList}
+            nestedScrollEnabled
+          >
+            {[{ id: 'todas', nome: 'Todas' }, ...categorias].map((item, index) => {
+              const isActive = filtroCategoria === item.id;
+              const chipColor = item.id === 'todas' ? colors.primary : getCategoryColor(index - 1);
+              return (
+                <TouchableOpacity
+                  key={String(item.id)}
+                  style={[styles.filtroChip, isActive && { backgroundColor: chipColor, borderColor: chipColor }]}
+                  onPress={() => setFiltroCategoria(item.id === filtroCategoria ? 'todas' : item.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isActive }}
+                  accessibilityLabel={item.id === 'todas'
+                    ? 'Mostrar todas as categorias'
+                    : `Filtrar por categoria ${item.nome}`}
+                >
+                  {item.id === 'todas' ? (
+                    <Feather name="list" size={11} color={isActive ? '#fff' : colors.textSecondary} style={{ marginRight: 3 }} />
+                  ) : (
+                    <View style={[styles.chipDot, { backgroundColor: isActive ? '#fff' : chipColor }]} />
+                  )}
+                  <Text style={[styles.filtroTexto, isActive && styles.filtroTextoAtivo]} numberOfLines={1}>
+                    {item.nome}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Indicador de filtro ativo + botão limpar */}
+      {categoriaAtivaNome && (
+        <View style={styles.filtroAtivoBadge} accessibilityRole="status">
+          <Feather name="filter" size={13} color={colors.primary} />
+          <Text style={styles.filtroAtivoText} numberOfLines={1}>
+            Filtrando: <Text style={styles.filtroAtivoNome}>{categoriaAtivaNome}</Text>
+          </Text>
+          <TouchableOpacity
+            onPress={() => setFiltroCategoria('todas')}
+            style={styles.filtroLimparBtn}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Limpar filtro de categoria"
+          >
+            <Feather name="x" size={12} color={colors.primary} />
+            <Text style={styles.filtroLimparText}>Limpar filtro</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Download button */}
       {Platform.OS === 'web' && (
@@ -944,5 +1056,90 @@ const styles = StyleSheet.create({
   errorBannerBtnText: {
     fontSize: fonts.tiny, color: '#fff',
     fontFamily: fontFamily.semiBold, fontWeight: '600',
+  },
+
+  // Filtro por categoria — chips reutilizam o visual de ProdutosListScreen
+  filtroBlock: {
+    marginBottom: spacing.sm,
+  },
+  filtrosList: {
+    paddingHorizontal: 0,
+    gap: 2,
+  },
+  filtroChip: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.inputBg,
+    paddingHorizontal: spacing.sm + 2, paddingVertical: 5,
+    borderRadius: 16, borderWidth: 1, borderColor: colors.border, marginRight: 2,
+  },
+  chipDot: {
+    width: 6, height: 6, borderRadius: 3, marginRight: 4,
+  },
+  filtroTexto: {
+    fontSize: 11, fontWeight: '600', color: colors.text, maxWidth: 90,
+    fontFamily: fontFamily.semiBold,
+  },
+  filtroTextoAtivo: { color: '#fff' },
+
+  // Badge "Filtrando: X" + botão limpar
+  filtroAtivoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '12',
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    marginBottom: spacing.md,
+    gap: 6,
+  },
+  filtroAtivoText: {
+    flex: 1,
+    fontSize: fonts.small,
+    fontFamily: fontFamily.regular,
+    color: colors.text,
+  },
+  filtroAtivoNome: {
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  filtroLimparBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primary + '40',
+  },
+  filtroLimparText: {
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+
+  // Botão limpar filtro standalone (estado vazio)
+  clearFilterBtnStandalone: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    gap: 4,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.primary + '12',
+    borderWidth: 1,
+    borderColor: colors.primary + '40',
+  },
+  clearFilterBtnText: {
+    fontSize: fonts.small,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.primary,
   },
 });

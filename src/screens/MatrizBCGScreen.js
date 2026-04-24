@@ -4,6 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
 import InfoTooltip from '../components/InfoTooltip';
+import BCGQuadranteModal from '../components/BCGQuadranteModal';
 import Loader from '../components/Loader';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
@@ -53,6 +54,20 @@ const CLASSIFICATIONS = {
 
 const CLASSIFICATION_ORDER = ['Estrela', 'Cavalo de Batalha', 'Quebra-Cabeça', 'Abacaxi'];
 
+// Mapeia a chave interna de classificação (PT gastronômico) para a chave aceita
+// pelo BCGQuadranteModal (semântica BCG). Isso desacopla o domínio (nomes
+// afetivos exibidos ao usuário) da pedagogia BCG do modal.
+//   Estrela          → alta margem + alta vendagem      → 'estrela'
+//   Cavalo de Batalha→ baixa margem + alta vendagem     → 'interrogacao'
+//   Quebra-Cabeça    → alta margem + baixa vendagem     → 'vaca'
+//   Abacaxi          → baixa margem + baixa vendagem    → 'abacaxi'
+const CLASSIFICATION_TO_QUADRANTE = {
+  'Estrela': 'estrela',
+  'Cavalo de Batalha': 'interrogacao',
+  'Quebra-Cabeça': 'vaca',
+  'Abacaxi': 'abacaxi',
+};
+
 function getMarginColor(margin) {
   if (margin >= 40) return colors.success;
   if (margin >= 20) return '#D4A017';
@@ -72,6 +87,7 @@ export default function MatrizBCGScreen({ navigation }) {
   const [sortBy, setSortBy] = usePersistedState('bcg.sortBy', 'classificacao');
   const [sortDir, setSortDir] = usePersistedState('bcg.sortDir', 'asc');
   const [searchText, setSearchText] = useState('');
+  const [quadranteModal, setQuadranteModal] = useState(null); // chave do BCGQuadranteModal ou null
   const { isDesktop } = useResponsiveLayout();
   const saveTimer = useRef(null);
 
@@ -615,6 +631,7 @@ export default function MatrizBCGScreen({ navigation }) {
                 <View style={{ flexDirection: 'row', gap: 6, marginBottom: 6 }}>
                   {['Cavalo de Batalha', 'Estrela'].map(key => {
                     const cfg = CLASSIFICATIONS[key];
+                    const quadKey = CLASSIFICATION_TO_QUADRANTE[key];
                     return (
                       <View key={key} style={{ flex: 1, backgroundColor: cfg.bg, borderRadius: borderRadius.md, borderWidth: 1, borderColor: cfg.border + '40', padding: spacing.sm }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
@@ -623,6 +640,15 @@ export default function MatrizBCGScreen({ navigation }) {
                           <View style={{ backgroundColor: cfg.color + '20', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 }}>
                             <Text style={{ fontSize: 11, fontFamily: fontFamily.bold, color: cfg.color }}>{counts[key]}</Text>
                           </View>
+                          <TouchableOpacity
+                            onPress={() => setQuadranteModal(quadKey)}
+                            hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Saiba mais sobre quadrante ${cfg.label}`}
+                            style={{ padding: 2 }}
+                          >
+                            <Feather name="help-circle" size={14} color={cfg.color} />
+                          </TouchableOpacity>
                         </View>
                         <Text style={{ fontSize: 10, fontFamily: fontFamily.regular, color: colors.textSecondary, lineHeight: 14 }}>{cfg.desc}</Text>
                         <Text style={{ fontSize: 9, fontFamily: fontFamily.semiBold, color: cfg.color, marginTop: 4 }}>→ {cfg.acao}</Text>
@@ -634,6 +660,7 @@ export default function MatrizBCGScreen({ navigation }) {
                 <View style={{ flexDirection: 'row', gap: 6 }}>
                   {['Abacaxi', 'Quebra-Cabeça'].map(key => {
                     const cfg = CLASSIFICATIONS[key];
+                    const quadKey = CLASSIFICATION_TO_QUADRANTE[key];
                     return (
                       <View key={key} style={{ flex: 1, backgroundColor: cfg.bg, borderRadius: borderRadius.md, borderWidth: 1, borderColor: cfg.border + '40', padding: spacing.sm }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
@@ -642,6 +669,15 @@ export default function MatrizBCGScreen({ navigation }) {
                           <View style={{ backgroundColor: cfg.color + '20', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 }}>
                             <Text style={{ fontSize: 11, fontFamily: fontFamily.bold, color: cfg.color }}>{counts[key]}</Text>
                           </View>
+                          <TouchableOpacity
+                            onPress={() => setQuadranteModal(quadKey)}
+                            hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Saiba mais sobre quadrante ${cfg.label}`}
+                            style={{ padding: 2 }}
+                          >
+                            <Feather name="help-circle" size={14} color={cfg.color} />
+                          </TouchableOpacity>
                         </View>
                         <Text style={{ fontSize: 10, fontFamily: fontFamily.regular, color: colors.textSecondary, lineHeight: 14 }}>{cfg.desc}</Text>
                         <Text style={{ fontSize: 9, fontFamily: fontFamily.semiBold, color: cfg.color, marginTop: 4 }}>→ {cfg.acao}</Text>
@@ -656,6 +692,12 @@ export default function MatrizBCGScreen({ navigation }) {
         </>
       )}
       <View style={{ height: 40 }} />
+
+      <BCGQuadranteModal
+        visible={quadranteModal !== null}
+        quadrante={quadranteModal}
+        onClose={() => setQuadranteModal(null)}
+      />
     </ScrollView>
   );
 }
