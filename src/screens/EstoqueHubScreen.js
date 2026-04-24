@@ -209,24 +209,36 @@ export default function EstoqueHubScreen({ navigation }) {
         </View>
       )}
 
-      {/* Stats strip — visíveis em todas as abas */}
+      {/* Info card hero — explica de cara o propósito do Estoque dentro do app */}
       {!loading && (
-        <View style={styles.statsStrip}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{stats.ok}</Text>
-            <Text style={styles.statLabel}>OK</Text>
+        <View style={styles.heroInfoCard}>
+          <Feather name="info" size={16} color={colors.primary} />
+          <Text style={styles.heroInfoText}>
+            Acompanhe saldos, registre entradas e ajustes. O app calcula automaticamente o custo médio ponderado a cada movimento.
+          </Text>
+        </View>
+      )}
+
+      {/* Stats grid — 4 cards individuais com border-left colorido (status indicator) */}
+      {!loading && (
+        <View style={styles.statsGrid}>
+          <View style={[styles.statsCard, { borderLeftColor: colors.success }]}>
+            <Text style={[styles.statsCardValue, { color: colors.success }]}>{stats.ok}</Text>
+            <Text style={styles.statsCardLabel}>OK</Text>
           </View>
-          <View style={[styles.statItem, { borderLeftWidth: 1, borderLeftColor: colors.border }]}>
-            <Text style={[styles.statValue, { color: colors.warning }]}>{stats.baixo}</Text>
-            <Text style={styles.statLabel}>Baixo</Text>
+          <View style={[styles.statsCard, { borderLeftColor: colors.warning }]}>
+            <Text style={[styles.statsCardValue, { color: colors.warning }]}>{stats.baixo}</Text>
+            <Text style={styles.statsCardLabel}>Baixo</Text>
           </View>
-          <View style={[styles.statItem, { borderLeftWidth: 1, borderLeftColor: colors.border }]}>
-            <Text style={[styles.statValue, { color: colors.error }]}>{stats.zerado}</Text>
-            <Text style={styles.statLabel}>Zerado</Text>
+          <View style={[styles.statsCard, { borderLeftColor: colors.error }]}>
+            <Text style={[styles.statsCardValue, { color: colors.error }]}>{stats.zerado}</Text>
+            <Text style={styles.statsCardLabel}>Zerado</Text>
           </View>
-          <View style={[styles.statItem, { borderLeftWidth: 1, borderLeftColor: colors.border }]}>
-            <Text style={styles.statValue}>{formatCurrency(stats.valorTotal)}</Text>
-            <Text style={styles.statLabel}>Valor</Text>
+          <View style={[styles.statsCard, { borderLeftColor: colors.primary }]}>
+            <Text style={[styles.statsCardValue, { color: colors.primary }]} numberOfLines={1} adjustsFontSizeToFit>
+              {formatCurrency(stats.valorTotal)}
+            </Text>
+            <Text style={styles.statsCardLabel}>Valor</Text>
           </View>
         </View>
       )}
@@ -605,8 +617,8 @@ function InventarioTab({ stats, items, refreshing, onRefresh }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   pageHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    padding: spacing.md,
     backgroundColor: colors.surface,
     borderBottomWidth: 1, borderBottomColor: colors.border,
   },
@@ -778,6 +790,41 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: fonts.tiny, color: colors.textSecondary,
     fontFamily: fontFamily.regular, marginTop: 2,
+  },
+  // Novo padrão: 4 cards com border-left colorido (alinhado a Simulador/Financeiro)
+  statsGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm,
+    paddingHorizontal: spacing.md, marginTop: spacing.sm, marginBottom: spacing.md,
+  },
+  statsCard: {
+    flex: 1, minWidth: 70, backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.sm,
+    borderLeftWidth: 3,
+    alignItems: 'center',
+    shadowColor: colors.shadow, shadowOpacity: 0.06, shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 }, elevation: 1,
+  },
+  statsCardValue: {
+    fontSize: fonts.large, fontFamily: fontFamily.bold, fontWeight: '700',
+    color: colors.text,
+  },
+  statsCardLabel: {
+    fontSize: fonts.tiny, color: colors.textSecondary,
+    fontFamily: fontFamily.regular, marginTop: 2,
+  },
+  // Hero info card — contexto curto logo após o pageHeader
+  heroInfoCard: {
+    flexDirection: 'row', gap: 10, alignItems: 'flex-start',
+    backgroundColor: colors.primary + '08',
+    borderLeftWidth: 3, borderLeftColor: colors.primary,
+    padding: spacing.md,
+    marginHorizontal: spacing.md, marginTop: spacing.md, marginBottom: 0,
+    borderRadius: borderRadius.md,
+  },
+  heroInfoText: {
+    flex: 1, fontSize: fonts.small, color: colors.text,
+    fontFamily: fontFamily.regular, lineHeight: 18,
   },
   infoCard: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8,

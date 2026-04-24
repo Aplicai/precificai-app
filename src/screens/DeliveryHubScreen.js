@@ -321,30 +321,45 @@ export default function DeliveryHubScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* Tabs */}
-      <View style={styles.tabsContainer}>
-        <View style={styles.tabsRow}>
-          {TABS.map(tab => {
-            const isActive = activeTab === tab.key;
-            return (
-              <TouchableOpacity
-                key={tab.key}
-                style={[styles.tab, isActive && styles.tabActive]}
-                onPress={() => {
-                  setActiveTab(tab.key);
-                  if (tab.key === 'simulador' || tab.key === 'visaogeral') {
-                    loadData();
-                    setSimResult(null);
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <Feather name={tab.icon} size={14} color={isActive ? '#fff' : colors.textSecondary} style={{ marginRight: 6 }} />
-                <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{tab.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
+      {/* Page Header */}
+      <View style={styles.pageHeader}>
+        <View style={styles.pageHeaderIcon}>
+          <Feather name="truck" size={20} color={colors.primary} />
         </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.pageHeaderTitle}>Delivery</Text>
+          <Text style={styles.pageHeaderSubtitle}>Gerencie produtos, plataformas e combos para iFood, Rappi e outros</Text>
+        </View>
+      </View>
+
+      {/* Hero Info Card */}
+      <View style={styles.heroInfoCard}>
+        <Feather name="info" size={16} color={colors.primary} />
+        <Text style={styles.heroInfoText}>Configure preços, plataformas e combos para entregas. Acompanhe taxas e margens reais por canal.</Text>
+      </View>
+
+      {/* Tabs */}
+      <View style={styles.tabsRow}>
+        {TABS.map(tab => {
+          const isActive = activeTab === tab.key;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.tab, isActive && styles.tabActive]}
+              onPress={() => {
+                setActiveTab(tab.key);
+                if (tab.key === 'simulador' || tab.key === 'visaogeral') {
+                  loadData();
+                  setSimResult(null);
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <Feather name={tab.icon} size={14} color={isActive ? colors.primary : colors.textSecondary} />
+              <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{tab.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 1000, alignSelf: 'flex-start', width: '100%', paddingLeft: spacing.lg }]}>
@@ -896,18 +911,44 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, paddingBottom: 60 },
 
-  // Tabs
-  tabsContainer: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
-  tabsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  tab: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 8, paddingHorizontal: 16,
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border,
+  // Page Header
+  pageHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border,
   },
-  tabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  pageHeaderIcon: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: colors.primary + '14',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  pageHeaderTitle: { fontSize: fonts.large, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.text },
+  pageHeaderSubtitle: { fontSize: fonts.tiny, color: colors.textSecondary, fontFamily: fontFamily.regular, marginTop: 2 },
+
+  // Hero info card (above tabs)
+  heroInfoCard: {
+    flexDirection: 'row', gap: 10, alignItems: 'flex-start',
+    backgroundColor: colors.primary + '08',
+    borderLeftWidth: 3, borderLeftColor: colors.primary,
+    padding: spacing.md, marginTop: spacing.sm, marginHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+  },
+  heroInfoText: { flex: 1, fontSize: fonts.small, color: colors.text, fontFamily: fontFamily.regular, lineHeight: 18 },
+
+  // Tabs (underline style)
+  tabsRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+    marginTop: spacing.md, marginBottom: spacing.sm,
+  },
+  tab: {
+    flex: 1, paddingVertical: spacing.md,
+    alignItems: 'center', flexDirection: 'row', gap: 6,
+    borderBottomWidth: 2, borderBottomColor: 'transparent',
+    justifyContent: 'center',
+  },
+  tabActive: { borderBottomColor: colors.primary },
   tabText: { fontSize: 13, fontFamily: fontFamily.semiBold, color: colors.textSecondary },
-  tabTextActive: { color: '#fff' },
+  tabTextActive: { color: colors.primary },
 
   // Info card
   infoCard: {
