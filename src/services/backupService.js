@@ -27,11 +27,20 @@
 
 import { Platform } from 'react-native';
 
-// Carregamento lazy — se deps não instaladas, não quebra o bundle em web.
+// Carregamento lazy — se deps não instaladas, não quebra o bundle.
+// Metro rejeita require() com variável: precisa ser literal. Por isso
+// enumeramos os módulos esperados num switch.
 function tryRequire(modName) {
   try {
-    // eslint-disable-next-line global-require, import/no-dynamic-require
-    return require(modName);
+    switch (modName) {
+      // eslint-disable-next-line global-require
+      case 'expo-file-system': return require('expo-file-system');
+      // eslint-disable-next-line global-require
+      case 'expo-sharing': return require('expo-sharing');
+      // eslint-disable-next-line global-require
+      case 'expo-print': return require('expo-print');
+      default: return null;
+    }
   } catch (_) {
     return null;
   }
