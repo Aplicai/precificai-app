@@ -90,7 +90,7 @@ const MENU_GROUPS = [
       },
       {
         key: 'relatorio',
-        title: 'Relatório Simplificado',
+        title: 'Relatório',
         desc: 'Seus números traduzidos em linguagem simples',
         icon: 'file-text',
         set: 'feather',

@@ -41,7 +41,7 @@ const ROUTE_TITLES = {
   'Perfil': 'Perfil do Negócio',
   'AtualizarPrecos': 'Atualizar Preços',
   'Simulador': 'Simulador',
-  'RelatorioSimples': 'Explica aí',
+  'RelatorioSimples': 'Relatório',
   'Fornecedores': 'Fornecedores',
   'ListaCompras': 'Lista de Compras',
   'ExportPDF': 'Exportar PDF',
@@ -141,6 +141,9 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
     'ComparativoCanais': { tab: 'Mais', screen: 'DeliveryHub' },
     'Termos': { tab: 'Mais', screen: 'Configuracoes' },
     'Privacidade': { tab: 'Mais', screen: 'Configuracoes' },
+    // Estoque sub-screens — Sessão 24: garantir que back button volte para EstoqueHub
+    'EntradaEstoque': { tab: 'Mais', screen: 'EstoqueHub' },
+    'AjusteEstoque': { tab: 'Mais', screen: 'EstoqueHub' },
   };
 
   // Check if current screen has a returnTo param or a known parent

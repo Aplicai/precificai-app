@@ -31,7 +31,7 @@ const FEATURES = [
   { icon: 'users', label: 'Comparador de Fornecedores', desc: 'Encontre economia nos insumos' },
   { icon: 'shopping-cart', label: 'Lista de Compras automática', desc: 'Consolidação de ingredientes por produção' },
   { icon: 'printer', label: 'Exportar Fichas Técnicas em PDF', desc: 'Produtos e preparos para impressão' },
-  { icon: 'book-open', label: 'Relatório Simplificado', desc: 'Explica aí - seus números em linguagem simples' },
+  { icon: 'book-open', label: 'Relatório', desc: 'Seus números em linguagem simples' },
   { icon: 'trending-up', label: 'Histórico de preços com gráfico', desc: 'Acompanhe a evolução dos custos' },
   { icon: 'alert-triangle', label: 'Alerta de erosão de margem', desc: 'Notificação quando margens caem' },
   { icon: 'activity', label: 'Semáforo de saúde por produto', desc: 'Visual rápido da saúde financeira' },

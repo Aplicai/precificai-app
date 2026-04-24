@@ -18,6 +18,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { getDatabase } from '../database/database';
 import { baixarEstoque, registrarEntrada } from '../services/estoque';
 import PickerSelect from '../components/PickerSelect';
+import ModalFormWrapper from '../components/ModalFormWrapper';
 
 function parseNum(s) {
   if (s === null || s === undefined || s === '') return null;
@@ -141,15 +142,18 @@ export default function AjusteEstoqueScreen({ navigation }) {
 
   if (carregando) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
+      <ModalFormWrapper title="Ajuste de Estoque" onClose={() => navigation.goBack()}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      </ModalFormWrapper>
     );
   }
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <ModalFormWrapper title="Ajuste de Estoque" onClose={() => navigation.goBack()}>
+      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.content}>
         {loadError && (
           <View style={styles.errorBanner}>
             <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: 8 }} />
@@ -265,8 +269,9 @@ export default function AjusteEstoqueScreen({ navigation }) {
           Ajustes ficam registrados no histórico com seu motivo. Use para perdas,
           inventário ou correções de saldo.
         </Text>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </ModalFormWrapper>
   );
 }
 

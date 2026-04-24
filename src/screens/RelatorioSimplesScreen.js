@@ -243,6 +243,46 @@ export default function RelatorioSimplesScreen({ navigation }) {
         }
       }
 
+      // --- Histórico de faturamento (até 12 meses, ordem cronológica) ---
+      const historicoFaturamento = [...fat]
+        .sort((a, b) => {
+          const da = `${a.ano}-${String(a.mes).padStart(2, '0')}`;
+          const db2 = `${b.ano}-${String(b.mes).padStart(2, '0')}`;
+          return da.localeCompare(db2);
+        })
+        .slice(-12)
+        .map(f => ({
+          label: `${String(f.mes).padStart(2, '0')}/${String(f.ano).slice(-2)}`,
+          valor: safeNum(f.valor),
+        }));
+
+      // --- Top 5 produtos por lucro absoluto (margemReais) ---
+      const topProdutos = [...produtosComPreco]
+        .filter(p => p.margemReais > 0)
+        .sort((a, b) => b.margemReais - a.margemReais)
+        .slice(0, 5)
+        .map(p => ({
+          nome: p.nome,
+          lucro: p.margemReais,
+          margem: p.margem,
+        }));
+
+      // --- Margem média por categoria (top 5) ---
+      const catsMap = {};
+      (cats || []).forEach(c => { catsMap[c.id] = c.nome; });
+      const margemPorCat = {};
+      produtosComPreco.forEach(p => {
+        if (!p.categoria_id) return;
+        const key = p.categoria_id;
+        if (!margemPorCat[key]) margemPorCat[key] = { nome: catsMap[key] || 'Sem nome', soma: 0, count: 0 };
+        margemPorCat[key].soma += p.margem;
+        margemPorCat[key].count += 1;
+      });
+      const margemPorCategoria = Object.values(margemPorCat)
+        .map(c => ({ nome: c.nome, margem: c.count > 0 ? c.soma / c.count : 0 }))
+        .sort((a, b) => b.margem - a.margem)
+        .slice(0, 5);
+
       setData({
         resumo,
         melhores,
@@ -250,6 +290,9 @@ export default function RelatorioSimplesScreen({ navigation }) {
         pontoEquilibrio,
         deliveryInsight,
         tendencia,
+        historicoFaturamento,
+        topProdutos,
+        margemPorCategoria,
         totalProdutos: produtos.length,
         produtosComPreco: produtosComPreco.length,
       });
@@ -386,7 +429,7 @@ export default function RelatorioSimplesScreen({ navigation }) {
       .footer { text-align: center; color: #888; margin-top: 30px; padding-top: 16px; border-top: 1px solid #e0e0e0; }
       @media print { body { margin: 0; } .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
     </style></head><body>
-    <div class="header"><h1>Precificaí</h1><p>${escapeHtml(perfilNome)} - Relatório Simplificado</p><p>${new Date().toLocaleDateString('pt-BR')}</p></div>
+    <div class="header"><h1>Precificaí</h1><p>${escapeHtml(perfilNome)} - Relatório</p><p>${new Date().toLocaleDateString('pt-BR')}</p></div>
     ${sections.map(s => `<div class="card"><h3>${escapeHtml(s.title)}</h3><p>${escapeHtml(s.text)}</p></div>`).join('')}
     <p class="footer">Gerado por Precificaí - www.precificaiapp.com</p>
     </body></html>`;
@@ -446,7 +489,7 @@ export default function RelatorioSimplesScreen({ navigation }) {
       {/* Header */}
       <View style={styles.header}>
         <Feather name="book-open" size={24} color={colors.primary} />
-        <Text style={styles.headerTitle}>Explicaí</Text>
+        <Text style={styles.headerTitle}>Relatório</Text>
         <Text style={styles.headerSub}>Seus números traduzidos em linguagem simples</Text>
       </View>
 
@@ -791,6 +834,97 @@ export default function RelatorioSimplesScreen({ navigation }) {
         </View>
       )}
 
+      {/* Histórico de Faturamento (gráfico de barras 12m) */}
+      {data.historicoFaturamento && data.historicoFaturamento.length > 0 && (() => {
+        const maxV = Math.max(...data.historicoFaturamento.map(h => h.valor)) || 1;
+        return (
+          <View style={[styles.card]}>
+            <View style={styles.cardHeader}>
+              <View style={[styles.iconCircle, { backgroundColor: colors.primary + '15' }]}>
+                <Feather name="bar-chart-2" size={18} color={colors.primary} />
+              </View>
+              <Text style={styles.cardTitle}>Histórico de Faturamento</Text>
+            </View>
+            <Text style={styles.cardText}>Últimos {data.historicoFaturamento.length} {data.historicoFaturamento.length === 1 ? 'mês' : 'meses'}</Text>
+            <View style={styles.barsRow}>
+              {data.historicoFaturamento.map((h, i) => {
+                const altura = h.valor > 0 ? Math.max(8, (h.valor / maxV) * 120) : 4;
+                return (
+                  <View key={i} style={styles.barCol}>
+                    <View style={styles.barTrack}>
+                      <View style={[styles.barFill, { height: altura, backgroundColor: colors.primary }]} />
+                    </View>
+                    <Text style={styles.barLabel} numberOfLines={1}>{h.label}</Text>
+                  </View>
+                );
+              })}
+            </View>
+            <Text style={styles.chartCaption}>
+              Pico: {formatCurrency(maxV)}
+            </Text>
+          </View>
+        );
+      })()}
+
+      {/* Top 5 Produtos por Lucro */}
+      {data.topProdutos && data.topProdutos.length > 0 && (() => {
+        const maxL = Math.max(...data.topProdutos.map(p => p.lucro)) || 1;
+        return (
+          <View style={[styles.card]}>
+            <View style={styles.cardHeader}>
+              <View style={[styles.iconCircle, { backgroundColor: colors.success + '15' }]}>
+                <Feather name="trending-up" size={18} color={colors.success} />
+              </View>
+              <Text style={styles.cardTitle}>Top {data.topProdutos.length} por Lucro</Text>
+            </View>
+            <View style={{ marginTop: spacing.sm }}>
+              {data.topProdutos.map((p, i) => {
+                const pct = (p.lucro / maxL) * 100;
+                return (
+                  <View key={i} style={styles.hbarRow}>
+                    <Text style={styles.hbarName} numberOfLines={1}>{p.nome}</Text>
+                    <View style={styles.hbarTrack}>
+                      <View style={[styles.hbarFill, { width: `${pct}%`, backgroundColor: colors.success }]} />
+                    </View>
+                    <Text style={styles.hbarValue}>{formatCurrency(p.lucro)}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        );
+      })()}
+
+      {/* Margem média por categoria */}
+      {data.margemPorCategoria && data.margemPorCategoria.length > 0 && (() => {
+        const maxM = Math.max(...data.margemPorCategoria.map(c => Math.abs(c.margem))) || 1;
+        return (
+          <View style={[styles.card]}>
+            <View style={styles.cardHeader}>
+              <View style={[styles.iconCircle, { backgroundColor: colors.accent + '15' }]}>
+                <Feather name="layers" size={18} color={colors.accent} />
+              </View>
+              <Text style={styles.cardTitle}>Margem Média por Categoria</Text>
+            </View>
+            <View style={{ marginTop: spacing.sm }}>
+              {data.margemPorCategoria.map((c, i) => {
+                const pct = (Math.abs(c.margem) / maxM) * 100;
+                const positiva = c.margem >= 0;
+                return (
+                  <View key={i} style={styles.hbarRow}>
+                    <Text style={styles.hbarName} numberOfLines={1}>{c.nome}</Text>
+                    <View style={styles.hbarTrack}>
+                      <View style={[styles.hbarFill, { width: `${pct}%`, backgroundColor: positiva ? colors.accent : colors.error }]} />
+                    </View>
+                    <Text style={styles.hbarValue}>{formatPercent(c.margem)}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        );
+      })()}
+
       <View style={{ height: 40 }} />
     </ScrollView>
   );
@@ -806,6 +940,73 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     width: '100%',
     padding: spacing.md,
+  },
+
+  // Bar chart vertical (histórico)
+  barsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+    paddingHorizontal: 4,
+    height: 160,
+  },
+  barCol: {
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: 2,
+  },
+  barTrack: {
+    width: '100%',
+    height: 130,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  barFill: {
+    width: '70%',
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 4,
+    minHeight: 4,
+  },
+  barLabel: {
+    fontSize: 9,
+    color: colors.textSecondary,
+    fontFamily: fontFamily.regular,
+    marginTop: 4,
+  },
+
+  // Bar chart horizontal (top produtos / categorias)
+  hbarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 4,
+    gap: 6,
+  },
+  hbarName: {
+    width: 90,
+    fontSize: fonts.tiny,
+    color: colors.text,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+  },
+  hbarTrack: {
+    flex: 1,
+    height: 12,
+    backgroundColor: colors.inputBg,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  hbarFill: {
+    height: '100%',
+    borderRadius: 6,
+  },
+  hbarValue: {
+    width: 70,
+    textAlign: 'right',
+    fontSize: fonts.tiny,
+    color: colors.textSecondary,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
   },
 
   // Download button

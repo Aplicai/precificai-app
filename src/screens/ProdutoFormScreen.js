@@ -256,9 +256,17 @@ export default function ProdutoFormScreen({ route, navigation }) {
   }
 
   async function loadProduto() {
-    const db = await getDatabase();
-    const p = await db.getFirstAsync('SELECT * FROM produtos WHERE id = ?', [editId]);
-    if (p) {
+    // BUGFIX (Sessão 24): toda a função embrulhada em try/catch.
+    // Antes, se QUALQUER query falhasse (ex.: JOIN com materia_prima_id órfão,
+    // tabela inexistente em build antigo, dado corrompido) o setLoaded(true) nunca
+    // era chamado e a tela ficava em branco para sempre.
+    try {
+      const db = await getDatabase();
+      const p = await db.getFirstAsync('SELECT * FROM produtos WHERE id = ?', [editId]);
+      if (!p) {
+        setLoaded(true);
+        return;
+      }
       setForm({
         nome: p.nome, categoria_id: p.categoria_id || null,
         rendimento_total: String(p.rendimento_total || ''),
@@ -276,20 +284,36 @@ export default function ProdutoFormScreen({ route, navigation }) {
         temp_ambiente: p.temp_ambiente || '', tempo_ambiente: p.tempo_ambiente || '',
       });
 
-      const ings = await db.getAllAsync(
-        `SELECT pi.*, mp.nome as mp_nome, mp.preco_por_kg, mp.unidade_medida as mp_unidade FROM produto_ingredientes pi
-         JOIN materias_primas mp ON mp.id = pi.materia_prima_id WHERE pi.produto_id = ?`, [editId]);
-      setIngredientes(ings.map(i => ({ materia_prima_id: i.materia_prima_id, mp_nome: i.mp_nome || i.nome, preco_por_kg: i.preco_por_kg, quantidade_utilizada: i.quantidade_utilizada, unidade: i.mp_unidade || i.unidade_medida || 'g' })));
+      // Cada bloco de relacionamento isolado para que falha em um não derrube o resto
+      try {
+        const ings = await db.getAllAsync(
+          `SELECT pi.*, mp.nome as mp_nome, mp.preco_por_kg, mp.unidade_medida as mp_unidade FROM produto_ingredientes pi
+           JOIN materias_primas mp ON mp.id = pi.materia_prima_id WHERE pi.produto_id = ?`, [editId]);
+        setIngredientes((ings || []).map(i => ({ materia_prima_id: i.materia_prima_id, mp_nome: i.mp_nome || i.nome, preco_por_kg: i.preco_por_kg, quantidade_utilizada: i.quantidade_utilizada, unidade: i.mp_unidade || i.unidade_medida || 'g' })));
+      } catch (e) {
+        if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.loadIngredientes]', e);
+        setIngredientes([]);
+      }
 
-      const preps = await db.getAllAsync(
-        `SELECT pp.*, pr.nome as pr_nome, pr.custo_por_kg, pr.unidade_medida as pr_unidade FROM produto_preparos pp
-         JOIN preparos pr ON pr.id = pp.preparo_id WHERE pp.produto_id = ?`, [editId]);
-      setProdutoPreparos(preps.map(p => ({ preparo_id: p.preparo_id, pr_nome: p.pr_nome || p.nome, custo_por_kg: p.custo_por_kg, quantidade_utilizada: p.quantidade_utilizada, unidade: p.pr_unidade || p.unidade_medida || 'g' })));
+      try {
+        const preps = await db.getAllAsync(
+          `SELECT pp.*, pr.nome as pr_nome, pr.custo_por_kg, pr.unidade_medida as pr_unidade FROM produto_preparos pp
+           JOIN preparos pr ON pr.id = pp.preparo_id WHERE pp.produto_id = ?`, [editId]);
+        setProdutoPreparos((preps || []).map(p => ({ preparo_id: p.preparo_id, pr_nome: p.pr_nome || p.nome, custo_por_kg: p.custo_por_kg, quantidade_utilizada: p.quantidade_utilizada, unidade: p.pr_unidade || p.unidade_medida || 'g' })));
+      } catch (e) {
+        if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.loadPreparos]', e);
+        setProdutoPreparos([]);
+      }
 
-      const embs = await db.getAllAsync(
-        `SELECT pe.*, em.nome as em_nome, em.preco_unitario FROM produto_embalagens pe
-         JOIN embalagens em ON em.id = pe.embalagem_id WHERE pe.produto_id = ?`, [editId]);
-      setProdutoEmbalagens(embs.map(e => ({ embalagem_id: e.embalagem_id, em_nome: e.em_nome || e.nome, preco_unitario: e.preco_unitario, quantidade_utilizada: e.quantidade_utilizada })));
+      try {
+        const embs = await db.getAllAsync(
+          `SELECT pe.*, em.nome as em_nome, em.preco_unitario FROM produto_embalagens pe
+           JOIN embalagens em ON em.id = pe.embalagem_id WHERE pe.produto_id = ?`, [editId]);
+        setProdutoEmbalagens((embs || []).map(e => ({ embalagem_id: e.embalagem_id, em_nome: e.em_nome || e.nome, preco_unitario: e.preco_unitario, quantidade_utilizada: e.quantidade_utilizada })));
+      } catch (e) {
+        if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.loadEmbalagens]', e);
+        setProdutoEmbalagens([]);
+      }
 
       // Load price history for product (use offset ID to avoid collision with insumos)
       try {
@@ -303,7 +327,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
       // Marca como carregado após setar o form para evitar auto-save imediato
       setTimeout(() => setLoaded(true), 100);
-    } else {
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.loadProduto]', e);
+      // Garantia absoluta: mesmo em erro, libera a tela para o usuário ver o estado vazio em vez de tela branca
       setLoaded(true);
     }
   }

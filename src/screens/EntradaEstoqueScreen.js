@@ -17,6 +17,7 @@ import { registrarEntrada } from '../services/estoque';
 import { formatCurrency } from '../utils/calculations';
 import PickerSelect from '../components/PickerSelect';
 import EmptyState from '../components/EmptyState';
+import ModalFormWrapper from '../components/ModalFormWrapper';
 
 function parseNum(s) {
   if (s === null || s === undefined || s === '') return null;
@@ -106,19 +107,23 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
 
   if (carregando) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
+      <ModalFormWrapper title="Entrada de Estoque" onClose={() => navigation.goBack()}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      </ModalFormWrapper>
     );
   }
 
   if (insumos.length === 0 && embalagens.length === 0) {
     return (
-      <EmptyState
-        icon="package"
-        title="Nenhum item cadastrado"
-        description="Cadastre insumos ou embalagens primeiro para registrar uma entrada."
-      />
+      <ModalFormWrapper title="Entrada de Estoque" onClose={() => navigation.goBack()}>
+        <EmptyState
+          icon="package"
+          title="Nenhum item cadastrado"
+          description="Cadastre insumos ou embalagens primeiro para registrar uma entrada."
+        />
+      </ModalFormWrapper>
     );
   }
 
@@ -127,8 +132,9 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
   const custoInvalido = custoUnitario !== '' && (custoNum === null || custoNum <= 0);
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <ModalFormWrapper title="Entrada de Estoque" onClose={() => navigation.goBack()}>
+      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.content}>
         {loadError && (
           <View style={styles.errorBanner}>
             <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: 8 }} />
@@ -234,8 +240,9 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
         <Text style={styles.helpText}>
           O sistema atualiza saldo + custo médio ponderado automaticamente. Cada entrada gera um movimento auditável no histórico.
         </Text>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </ModalFormWrapper>
   );
 }
 

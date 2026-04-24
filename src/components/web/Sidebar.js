@@ -25,7 +25,7 @@ const NAV_SECTIONS = [
       { key: 'bcg', label: 'Eng. do Cardápio', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Mais', screen: 'MatrizBCG' },
       { key: 'precos', label: 'Atualizar Preços', icon: 'refresh-cw', iconSet: 'feather', tab: 'Mais', screen: 'AtualizarPrecos' },
       { key: 'simulador', label: 'Simulador', icon: 'zap', iconSet: 'feather', tab: 'Mais', screen: 'Simulador' },
-      { key: 'relatorio', label: 'Relatório Simples', icon: 'file-text', iconSet: 'feather', tab: 'Mais', screen: 'RelatorioSimples' },
+      { key: 'relatorio', label: 'Relatório', icon: 'file-text', iconSet: 'feather', tab: 'Mais', screen: 'RelatorioSimples' },
       { key: 'fornecedores', label: 'Fornecedores', icon: 'users', iconSet: 'feather', tab: 'Mais', screen: 'Fornecedores' },
       { key: 'listacompras', label: 'Lista de Compras', icon: 'shopping-cart', iconSet: 'feather', tab: 'Mais', screen: 'ListaCompras' },
       { key: 'exportpdf', label: 'Exportar PDF', icon: 'printer', iconSet: 'feather', tab: 'Mais', screen: 'ExportPDF' },

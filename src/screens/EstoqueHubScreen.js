@@ -143,14 +143,15 @@ export default function EstoqueHubScreen({ navigation }) {
     if (!actionItem) return;
     const it = actionItem;
     setActionItem(null);
-    navigation.navigate('EntradaEstoque', { entidadeTipo: it._tipo, entidadeId: it.id });
+    // Sessão 24: returnTo garante que back button volte para EstoqueHub
+    navigation.navigate('EntradaEstoque', { entidadeTipo: it._tipo, entidadeId: it.id, returnTo: 'EstoqueHub' });
   }, [actionItem, navigation]);
 
   const goAjuste = useCallback(() => {
     if (!actionItem) return;
     const it = actionItem;
     setActionItem(null);
-    navigation.navigate('AjusteEstoque', { entidadeTipo: it._tipo, entidadeId: it.id });
+    navigation.navigate('AjusteEstoque', { entidadeTipo: it._tipo, entidadeId: it.id, returnTo: 'EstoqueHub' });
   }, [actionItem, navigation]);
 
   const goEditar = useCallback(() => {
@@ -158,7 +159,9 @@ export default function EstoqueHubScreen({ navigation }) {
     const it = actionItem;
     const editScreen = it._tipo === 'embalagem' ? 'EmbalagemForm' : 'MateriaPrimaForm';
     setActionItem(null);
-    navigation.navigate(editScreen, { id: it.id });
+    // Sessão 24: ao editar insumo/embalagem a partir do Estoque, "Salvar e voltar"
+    // deve retornar para EstoqueHub, não para a lista de Insumos/Embalagens
+    navigation.navigate(editScreen, { id: it.id, returnTo: 'EstoqueHub' });
   }, [actionItem, navigation]);
 
   return (

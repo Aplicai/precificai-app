@@ -37,9 +37,41 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   const returnTo = route.params?.returnTo;
   const { isDesktop } = useResponsiveLayout();
 
+  // Mapa estático: returnTo → tab pai (Sessão 24).
+  // MateriaPrimaForm é registrado em 4 stacks distintos (Insumos, Produtos, Preparos)
+  // mas as telas de retorno podem estar em outros stacks (ex.: EstoqueHub está em Mais).
+  // navigation.navigate() local falha silenciosamente se a rota não existe no stack atual,
+  // então atravessamos via parent (Tab navigator).
+  const RETURN_TO_TABS = {
+    'EstoqueHub': 'Mais',
+    'MatrizBCG': 'Mais',
+    'DeliveryHub': 'Mais',
+    'Fornecedores': 'Mais',
+    'AtualizarPrecos': 'Mais',
+  };
+
   function goBackSafe() {
     if (returnTo) {
-      navigation.navigate(returnTo);
+      const parentTab = RETURN_TO_TABS[returnTo];
+      if (parentTab) {
+        // Atravessa tabs via Tab Navigator pai
+        try {
+          const parent = navigation.getParent();
+          if (parent) {
+            parent.navigate(parentTab, { screen: returnTo });
+            return;
+          }
+        } catch (e) {
+          if (typeof console !== 'undefined' && console.error) console.error('[MateriaPrimaForm.goBackSafe.parent]', e);
+        }
+      }
+      // Fallback: navegar direto (pode resolver se rota está no stack atual)
+      try {
+        navigation.navigate(returnTo);
+      } catch (e) {
+        if (typeof console !== 'undefined' && console.error) console.error('[MateriaPrimaForm.goBackSafe.navigate]', e);
+        navigation.goBack();
+      }
     } else {
       navigation.navigate('MateriasPrimas');
     }

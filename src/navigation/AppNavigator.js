@@ -258,7 +258,7 @@ function MaisStack() {
       <Stack.Screen name="Perfil" component={PerfilScreen} options={{ title: 'Meu Perfil' }} />
       <Stack.Screen name="AtualizarPrecos" component={AtualizarPrecosScreen} options={{ title: 'Atualizar Preços' }} />
       <Stack.Screen name="Simulador" component={SimuladorScreen} options={{ title: 'Simulador E se?' }} />
-      <Stack.Screen name="RelatorioSimples" component={RelatorioSimplesScreen} options={{ title: 'Relatório Simplificado' }} />
+      <Stack.Screen name="RelatorioSimples" component={RelatorioSimplesScreen} options={{ title: 'Relatório' }} />
       <Stack.Screen name="Fornecedores" component={FornecedoresScreen} options={{ title: 'Comparar Fornecedores' }} />
       <Stack.Screen name="ListaCompras" component={ListaComprasScreen} options={{ title: 'Lista de Compras' }} />
       <Stack.Screen name="KitInicio" component={KitInicioScreen} options={{ title: 'Kit de Início' }} />
@@ -267,8 +267,8 @@ function MaisStack() {
       <Stack.Screen name="ExportPDF" component={ExportPDFScreen} options={{ title: 'Exportar PDF' }} />
       <Stack.Screen name="Suporte" component={SuporteScreen} options={{ title: 'Suporte' }} />
       <Stack.Screen name="EstoqueHub" component={EstoqueHubScreen} options={{ title: 'Estoque' }} />
-      <Stack.Screen name="EntradaEstoque" component={EntradaEstoqueScreen} options={{ title: 'Entrada de Estoque' }} />
-      <Stack.Screen name="AjusteEstoque" component={AjusteEstoqueScreen} options={{ title: 'Ajuste de Estoque' }} />
+      <Stack.Screen name="EntradaEstoque" component={EntradaEstoqueScreen} options={{ title: 'Entrada de Estoque', presentation: 'transparentModal', headerShown: false }} />
+      <Stack.Screen name="AjusteEstoque" component={AjusteEstoqueScreen} options={{ title: 'Ajuste de Estoque', presentation: 'transparentModal', headerShown: false }} />
       <Stack.Screen name="Notificacoes" component={NotificacoesScreen} options={{ title: 'Notificações' }} />
       <Stack.Screen name="ComparativoCanais" component={ComparativoCanaisScreen} options={{ title: 'Comparativo Canais' }} />
       <Stack.Screen name="Termos" component={TermosScreen} options={{ title: 'Termos de Uso' }} />

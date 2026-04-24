@@ -773,6 +773,48 @@ export default function DeliveryCombosScreen() {
                 placeholder="0,00"
               />
 
+              {/* Resumo de Custos — Sessão 24: REORDENADO para vir ANTES da lista de itens
+                  conforme feedback do usuário. Aparece sempre que houver itens. */}
+              {novoCombo.itens.length > 0 && (
+                <View style={styles.comboResumo}>
+                  <View style={styles.comboResumoHeader}>
+                    <Feather name="dollar-sign" size={14} color={colors.primary} />
+                    <Text style={styles.comboResumoTitle}>Resumo de Custos</Text>
+                  </View>
+                  <View style={styles.comboResumoGrid}>
+                    <View style={styles.comboResumoCell}>
+                      <Text style={styles.comboResumoCellLabel}>CMV Unit.</Text>
+                      <Text style={styles.comboResumoCellValue}>{formatCurrency(custoTotal)}</Text>
+                    </View>
+                    <View style={styles.comboResumoCell}>
+                      <Text style={styles.comboResumoCellLabel}>Sugerido</Text>
+                      <Text style={[styles.comboResumoCellValue, { color: colors.textSecondary }]}>{formatCurrency(precoSugerido)}</Text>
+                    </View>
+                    <View style={styles.comboResumoCell}>
+                      <Text style={styles.comboResumoCellLabel}>Lucro</Text>
+                      <Text style={[styles.comboResumoCellValue, { color: lucroCombo >= 0 ? colors.primary : colors.error }]}>{formatCurrency(lucroCombo)}</Text>
+                    </View>
+                    <View style={styles.comboResumoCell}>
+                      <Text style={styles.comboResumoCellLabel}>Margem</Text>
+                      <Text style={[styles.comboResumoCellValue, {
+                        color: margemModal >= 25 ? colors.success : margemModal >= 15 ? colors.accent : colors.error
+                      }]}>
+                        {precoVendaModal > 0 ? `${margemModal.toFixed(1)}%` : '\u2014'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.comboResumoBreakdown}>
+                    {custoProdutos > 0 && <Text style={styles.comboResumoBreakdownItem}>Produtos {formatCurrency(custoProdutos)}</Text>}
+                    {custoProdutos > 0 && custoInsumos > 0 && <Text style={styles.comboResumoBreakdownSep}>{'\u00B7'}</Text>}
+                    {custoInsumos > 0 && <Text style={styles.comboResumoBreakdownItem}>Insumos {formatCurrency(custoInsumos)}</Text>}
+                    {(custoProdutos > 0 || custoInsumos > 0) && custoPreparosCombo > 0 && <Text style={styles.comboResumoBreakdownSep}>{'\u00B7'}</Text>}
+                    {custoPreparosCombo > 0 && <Text style={styles.comboResumoBreakdownItem}>Preparos {formatCurrency(custoPreparosCombo)}</Text>}
+                    {(custoProdutos > 0 || custoInsumos > 0 || custoPreparosCombo > 0) && custoEmbalagensCombo > 0 && <Text style={styles.comboResumoBreakdownSep}>{'\u00B7'}</Text>}
+                    {custoEmbalagensCombo > 0 && <Text style={styles.comboResumoBreakdownItem}>Emb. {formatCurrency(custoEmbalagensCombo)}</Text>}
+                  </View>
+                </View>
+              )}
+
               <Text style={styles.modalSubtitle}>Itens do combo</Text>
               {novoCombo.itens.length === 0 && (
                 <EmptyState
@@ -813,47 +855,6 @@ export default function DeliveryCombosScreen() {
                   </View>
                 );
               })}
-
-              {/* Resumo de Custos - full cost report */}
-              {novoCombo.itens.length > 0 && (
-                <View style={styles.comboResumo}>
-                  <View style={styles.comboResumoHeader}>
-                    <Feather name="dollar-sign" size={14} color={colors.primary} />
-                    <Text style={styles.comboResumoTitle}>Resumo de Custos</Text>
-                  </View>
-                  <View style={styles.comboResumoGrid}>
-                    <View style={styles.comboResumoCell}>
-                      <Text style={styles.comboResumoCellLabel}>CMV Unit.</Text>
-                      <Text style={styles.comboResumoCellValue}>{formatCurrency(custoTotal)}</Text>
-                    </View>
-                    <View style={styles.comboResumoCell}>
-                      <Text style={styles.comboResumoCellLabel}>Sugerido</Text>
-                      <Text style={[styles.comboResumoCellValue, { color: colors.textSecondary }]}>{formatCurrency(precoSugerido)}</Text>
-                    </View>
-                    <View style={styles.comboResumoCell}>
-                      <Text style={styles.comboResumoCellLabel}>Lucro</Text>
-                      <Text style={[styles.comboResumoCellValue, { color: lucroCombo >= 0 ? colors.primary : colors.error }]}>{formatCurrency(lucroCombo)}</Text>
-                    </View>
-                    <View style={styles.comboResumoCell}>
-                      <Text style={styles.comboResumoCellLabel}>Margem</Text>
-                      <Text style={[styles.comboResumoCellValue, {
-                        color: margemModal >= 25 ? colors.success : margemModal >= 15 ? colors.accent : colors.error
-                      }]}>
-                        {precoVendaModal > 0 ? `${margemModal.toFixed(1)}%` : '\u2014'}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.comboResumoBreakdown}>
-                    {custoProdutos > 0 && <Text style={styles.comboResumoBreakdownItem}>Produtos {formatCurrency(custoProdutos)}</Text>}
-                    {custoProdutos > 0 && custoInsumos > 0 && <Text style={styles.comboResumoBreakdownSep}>{'\u00B7'}</Text>}
-                    {custoInsumos > 0 && <Text style={styles.comboResumoBreakdownItem}>Insumos {formatCurrency(custoInsumos)}</Text>}
-                    {(custoProdutos > 0 || custoInsumos > 0) && custoPreparosCombo > 0 && <Text style={styles.comboResumoBreakdownSep}>{'\u00B7'}</Text>}
-                    {custoPreparosCombo > 0 && <Text style={styles.comboResumoBreakdownItem}>Preparos {formatCurrency(custoPreparosCombo)}</Text>}
-                    {(custoProdutos > 0 || custoInsumos > 0 || custoPreparosCombo > 0) && custoEmbalagensCombo > 0 && <Text style={styles.comboResumoBreakdownSep}>{'\u00B7'}</Text>}
-                    {custoEmbalagensCombo > 0 && <Text style={styles.comboResumoBreakdownItem}>Emb. {formatCurrency(custoEmbalagensCombo)}</Text>}
-                  </View>
-                </View>
-              )}
 
               <Text style={styles.modalSubtitle}>Adicionar itens</Text>
 
