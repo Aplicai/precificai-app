@@ -52,6 +52,9 @@ import EstoqueHubScreen from '../screens/EstoqueHubScreen';
 import EntradaEstoqueScreen from '../screens/EntradaEstoqueScreen';
 import AjusteEstoqueScreen from '../screens/AjusteEstoqueScreen';
 import NotificacoesScreen from '../screens/NotificacoesScreen';
+import ComparativoCanaisScreen from '../screens/ComparativoCanaisScreen';
+import TermosScreen from '../screens/TermosScreen';
+import PrivacidadeScreen from '../screens/PrivacidadeScreen';
 
 
 const Tab = createBottomTabNavigator();
@@ -267,6 +270,9 @@ function MaisStack() {
       <Stack.Screen name="EntradaEstoque" component={EntradaEstoqueScreen} options={{ title: 'Entrada de Estoque' }} />
       <Stack.Screen name="AjusteEstoque" component={AjusteEstoqueScreen} options={{ title: 'Ajuste de Estoque' }} />
       <Stack.Screen name="Notificacoes" component={NotificacoesScreen} options={{ title: 'Notificações' }} />
+      <Stack.Screen name="ComparativoCanais" component={ComparativoCanaisScreen} options={{ title: 'Comparativo Canais' }} />
+      <Stack.Screen name="Termos" component={TermosScreen} options={{ title: 'Termos de Uso' }} />
+      <Stack.Screen name="Privacidade" component={PrivacidadeScreen} options={{ title: 'Política de Privacidade' }} />
     </Stack.Navigator>
   );
 }

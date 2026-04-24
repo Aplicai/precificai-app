@@ -1,12 +1,59 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Modal, Image } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import zxcvbn from 'zxcvbn';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
 import useRateLimit from '../hooks/useRateLimit';
 import { mapAuthError } from '../utils/authErrors';
 
 const MIN_PASSWORD_LENGTH = 6;
+// Score mínimo do zxcvbn (0-4) para permitir cadastro. 2 = "razoável".
+const MIN_PASSWORD_SCORE = 2;
+
+// Mapa de cores e rótulos por nível de força (0=muito fraca → 4=excelente).
+// Usa paleta do theme: error (vermelho) → warning (coral) → success (verde).
+const STRENGTH_LEVELS = [
+  { label: 'Muito fraca', color: colors.error },
+  { label: 'Fraca',       color: colors.error },
+  { label: 'Razoável',    color: colors.warning },
+  { label: 'Boa',         color: colors.primaryMid },
+  { label: 'Excelente',   color: colors.success },
+];
+
+// Traduz os feedbacks padrão do zxcvbn (en) para PT-BR. Cobre os mais comuns;
+// fallback retorna a string original caso a chave não esteja mapeada.
+const FEEDBACK_PT = {
+  'Use a few words, avoid common phrases': 'Use algumas palavras, evite frases comuns',
+  'No need for symbols, digits, or uppercase letters': 'Não é necessário usar símbolos, dígitos ou maiúsculas',
+  'Add another word or two. Uncommon words are better.': 'Adicione mais uma ou duas palavras. Palavras incomuns são melhores.',
+  'Straight rows of keys are easy to guess': 'Sequências do teclado são fáceis de adivinhar',
+  'Short keyboard patterns are easy to guess': 'Padrões curtos do teclado são fáceis de adivinhar',
+  'Use a longer keyboard pattern with more turns': 'Use um padrão de teclado mais longo e variado',
+  'Repeats like "aaa" are easy to guess': 'Repetições como "aaa" são fáceis de adivinhar',
+  'Repeats like "abcabcabc" are only slightly harder to guess than "abc"': 'Repetições como "abcabcabc" são quase tão fáceis quanto "abc"',
+  'Avoid repeated words and characters': 'Evite palavras e caracteres repetidos',
+  'Sequences like abc or 6543 are easy to guess': 'Sequências como abc ou 6543 são fáceis de adivinhar',
+  'Avoid sequences': 'Evite sequências',
+  'Recent years are easy to guess': 'Anos recentes são fáceis de adivinhar',
+  'Avoid recent years': 'Evite anos recentes',
+  'Avoid years that are associated with you': 'Evite anos associados a você',
+  'Dates are often easy to guess': 'Datas são geralmente fáceis de adivinhar',
+  'Avoid dates and years that are associated with you': 'Evite datas e anos associados a você',
+  'This is a top-10 common password': 'Esta é uma das 10 senhas mais comuns',
+  'This is a top-100 common password': 'Esta é uma das 100 senhas mais comuns',
+  'This is a very common password': 'Esta é uma senha muito comum',
+  'This is similar to a commonly used password': 'Esta senha é similar a uma muito comum',
+  'A word by itself is easy to guess': 'Uma palavra isolada é fácil de adivinhar',
+  'Names and surnames by themselves are easy to guess': 'Nomes e sobrenomes isolados são fáceis de adivinhar',
+  'Common names and surnames are easy to guess': 'Nomes e sobrenomes comuns são fáceis de adivinhar',
+  'Capitalization doesn\'t help very much': 'Usar maiúsculas não ajuda muito',
+  'All-uppercase is almost as easy to guess as all-lowercase': 'Tudo em maiúscula é quase tão fácil quanto tudo em minúscula',
+  'Reversed words aren\'t much harder to guess': 'Palavras invertidas não são muito mais difíceis',
+  'Predictable substitutions like \'@\' instead of \'a\' don\'t help very much': 'Substituições previsíveis como "@" no lugar de "a" não ajudam muito',
+  'Add another word or two. Uncommon words are better': 'Adicione mais uma ou duas palavras. Palavras incomuns são melhores',
+};
+const translateFeedback = (msg) => (msg ? (FEEDBACK_PT[msg] || msg) : '');
 
 export default function RegisterScreen({ navigation }) {
   const { signUp } = useAuth();
@@ -24,6 +71,18 @@ export default function RegisterScreen({ navigation }) {
   // P2 quick-win: limpa erro ao digitar (evita feedback "preso" depois de corrigir)
   const onChangeEmail = (v) => { if (error) setError(''); setEmail(v); };
   const onChangePassword = (v) => { if (error) setError(''); setPassword(v); };
+
+  // Avalia força da senha com zxcvbn. useMemo evita reprocessar a cada render
+  // (zxcvbn não é leve — ~400KB de dicionário); só recalcula quando a senha muda.
+  const passwordStrength = useMemo(() => {
+    if (!password) return null;
+    const result = zxcvbn(password);
+    return {
+      score: result.score, // 0..4
+      warning: translateFeedback(result.feedback?.warning),
+      suggestions: (result.feedback?.suggestions || []).map(translateFeedback),
+    };
+  }, [password]);
 
   const handleRegister = async () => {
     const limitMsg = rateLimit.checkLimit();
@@ -50,6 +109,13 @@ export default function RegisterScreen({ navigation }) {
     if (password.length < MIN_PASSWORD_LENGTH) {
       // Audit P1: não expor regra exata (security through ambiguity ajuda contra brute-force)
       setError('Senha muito curta. Use uma senha mais segura para proteger sua conta.');
+      return;
+    }
+    // Bloqueio por força (zxcvbn): exige score mínimo "razoável" (2).
+    // Defesa em profundidade: complementa o limite de comprimento contra senhas
+    // longas porém previsíveis (ex.: "password123", "qwerty12345").
+    if (passwordStrength && passwordStrength.score < MIN_PASSWORD_SCORE) {
+      setError('Senha muito fraca — tente combinar letras, números e símbolos.');
       return;
     }
     setError('');
@@ -156,6 +222,44 @@ export default function RegisterScreen({ navigation }) {
               <Feather name={showPassword ? 'eye-off' : 'eye'} size={20} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
+
+          {/* Indicador de força da senha — só aparece quando há texto digitado */}
+          {passwordStrength ? (
+            <View style={styles.strengthWrap}>
+              <View
+                style={styles.strengthBarTrack}
+                accessibilityRole="progressbar"
+                accessibilityLabel="Força da senha"
+                accessibilityValue={{ min: 0, max: 4, now: passwordStrength.score }}
+              >
+                <View
+                  style={[
+                    styles.strengthBarFill,
+                    {
+                      // Largura proporcional ao score (0=20%, 4=100%) para sempre haver
+                      // pelo menos algum preenchimento visual quando há texto.
+                      width: `${((passwordStrength.score + 1) / 5) * 100}%`,
+                      backgroundColor: STRENGTH_LEVELS[passwordStrength.score].color,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={[styles.strengthLabel, { color: STRENGTH_LEVELS[passwordStrength.score].color }]}>
+                {STRENGTH_LEVELS[passwordStrength.score].label}
+              </Text>
+              {/* Dicas só quando ainda fraca (< Boa). Acima disso, evita poluir UI. */}
+              {passwordStrength.score < 3 && (passwordStrength.warning || passwordStrength.suggestions.length > 0) ? (
+                <View style={styles.strengthFeedback}>
+                  {passwordStrength.warning ? (
+                    <Text style={styles.strengthWarning}>{passwordStrength.warning}</Text>
+                  ) : null}
+                  {passwordStrength.suggestions.map((s, i) => (
+                    <Text key={i} style={styles.strengthSuggestion}>• {s}</Text>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
 
           <TouchableOpacity
             style={[styles.primaryBtn, { marginTop: 20 }, btnDisabled && styles.primaryBtnDisabled]}
@@ -310,6 +414,23 @@ const styles = StyleSheet.create({
     fontSize: 15, fontFamily: fontFamily.regular, color: colors.text,
   },
   eyeBtn: { paddingHorizontal: 12, paddingVertical: 12, justifyContent: 'center', alignItems: 'center' },
+
+  // Indicador de força da senha (zxcvbn)
+  strengthWrap: { marginTop: 8 },
+  strengthBarTrack: {
+    height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden',
+  },
+  strengthBarFill: { height: '100%', borderRadius: 3 },
+  strengthLabel: {
+    fontSize: 12, fontFamily: fontFamily.medium, marginTop: 4,
+  },
+  strengthFeedback: { marginTop: 4 },
+  strengthWarning: {
+    fontSize: 11, color: colors.warning, fontFamily: fontFamily.medium, marginBottom: 2,
+  },
+  strengthSuggestion: {
+    fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.regular, lineHeight: 15,
+  },
 
   // Terms (now as notice text below button)
   termsNotice: {

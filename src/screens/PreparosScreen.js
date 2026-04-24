@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, FlatList, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform, RefreshControl } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -479,23 +479,26 @@ export default function PreparosScreen({ navigation }) {
     );
   }
 
-  // Filtra linhas em janela de undo (P1-11)
-  const visibleSections = sections
+  // Filtra linhas em janela de undo (P1-11) — memoizado para evitar map+filter a cada render.
+  const visibleSections = useMemo(() => sections
     .map((s) => ({ ...s, data: s.data.filter((it) => !undoDelete.hiddenIds.has(it.id)) }))
-    .filter((s) => s.data.length > 0 || filtroCategoria === s.catId);
+    .filter((s) => s.data.length > 0 || filtroCategoria === s.catId),
+    [sections, undoDelete.hiddenIds, filtroCategoria]);
 
-  // P3-B Stats summary
-  const visibleItems = visibleSections.flatMap((s) => s.data);
-  const visCount = visibleItems.length;
-  const avgKg = visCount
-    ? visibleItems.reduce((acc, it) => acc + (Number(it.custo_por_kg) || 0), 0) / visCount
-    : 0;
-  const totalCusto = visibleItems.reduce((acc, it) => acc + (Number(it.custo_total) || 0), 0);
-  const statsList = visCount > 0 ? [
-    { icon: 'layers', label: 'Preparos', value: String(visCount), color: colors.primary },
-    { icon: 'tag', label: 'Médio/kg', value: formatCurrency(avgKg), color: colors.accent || '#FFD37A' },
-    { icon: 'shopping-cart', label: 'Custo total', value: formatCurrency(totalCusto), color: colors.success || '#1a8a4f' },
-  ] : [];
+  // P3-B Stats summary — flatMap + reduces só recomputam quando visibleSections muda.
+  const visibleItems = useMemo(() => visibleSections.flatMap((s) => s.data), [visibleSections]);
+
+  const statsList = useMemo(() => {
+    const visCount = visibleItems.length;
+    if (visCount === 0) return [];
+    const avgKg = visibleItems.reduce((acc, it) => acc + (Number(it.custo_por_kg) || 0), 0) / visCount;
+    const totalCusto = visibleItems.reduce((acc, it) => acc + (Number(it.custo_total) || 0), 0);
+    return [
+      { icon: 'layers', label: 'Preparos', value: String(visCount), color: colors.primary },
+      { icon: 'tag', label: 'Médio/kg', value: formatCurrency(avgKg), color: colors.accent || '#FFD37A' },
+      { icon: 'shopping-cart', label: 'Custo total', value: formatCurrency(totalCusto), color: colors.success || '#1a8a4f' },
+    ];
+  }, [visibleItems]);
 
   return (
     <View style={styles.container}>

@@ -1,12 +1,26 @@
 import React, { useState, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, TextInput, Keyboard, Pressable, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TextInput, Keyboard, Pressable, TouchableOpacity, Image } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import { useAuth } from '../contexts/AuthContext';
+
+// Multi-tenant: cada usuário tem sua chave de avatar (mesmo padrão de
+// usePushPermissions). Sem userId, não persiste nada — evita vazamento entre contas.
+const AVATAR_KEY_PREFIX = 'avatar_uri_';
+const buildAvatarKey = (userId) => `${AVATAR_KEY_PREFIX}${userId}`;
+
+// Aceita apenas formatos comuns de imagem; tamanho máx 2MB (validação best-effort
+// via fileSize do ImagePicker quando disponível — sem expo-file-system no projeto).
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+const ALLOWED_MIME_PREFIX = 'image/';
 
 export default function PerfilScreen({ navigation, route }) {
   const isSetup = route?.params?.setup || route?.name === 'ProfileSetup';
+  const { user } = useAuth();
   const [perfil, setPerfil] = useState({
     nome_negocio: '',
     segmento: '',
@@ -17,6 +31,10 @@ export default function PerfilScreen({ navigation, route }) {
   const [loaded, setLoaded] = useState(false);
   // P1: feedback visível quando o usuário tenta avançar sem nome (acessibilidade).
   const [showNameError, setShowNameError] = useState(false);
+  // Avatar: uri local (file:// ou data:) persistida em AsyncStorage por usuário.
+  const [avatarUri, setAvatarUri] = useState(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState(null);
   const saveTimerRef = useRef(null);
   const perfilRef = useRef(perfil);
   perfilRef.current = perfil;
@@ -24,11 +42,83 @@ export default function PerfilScreen({ navigation, route }) {
   useFocusEffect(
     useCallback(() => {
       loadPerfil();
+      loadAvatar();
       return () => {
         if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       };
-    }, [])
+    }, [user?.id])
   );
+
+  async function loadAvatar() {
+    if (!user?.id) {
+      setAvatarUri(null);
+      return;
+    }
+    try {
+      const uri = await AsyncStorage.getItem(buildAvatarKey(user.id));
+      setAvatarUri(uri || null);
+    } catch (e) {
+      console.error('[Perfil.avatar]', e);
+      setAvatarUri(null);
+    }
+  }
+
+  async function pickAvatar() {
+    if (!user?.id) {
+      setAvatarError('Faça login para personalizar a foto.');
+      return;
+    }
+    setAvatarError(null);
+    setAvatarBusy(true);
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        setAvatarError('Permissão de acesso à galeria negada.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+      if (result.canceled || !result.assets || !result.assets[0]) return;
+
+      const asset = result.assets[0];
+      // Best-effort: nem toda plataforma popula mimeType / fileSize.
+      if (asset.mimeType && !asset.mimeType.startsWith(ALLOWED_MIME_PREFIX)) {
+        setAvatarError('Arquivo selecionado não é uma imagem.');
+        return;
+      }
+      if (typeof asset.fileSize === 'number' && asset.fileSize > MAX_AVATAR_BYTES) {
+        setAvatarError('Imagem maior que 2MB. Escolha outra.');
+        return;
+      }
+
+      await AsyncStorage.setItem(buildAvatarKey(user.id), asset.uri);
+      setAvatarUri(asset.uri);
+    } catch (e) {
+      console.error('[Perfil.avatar]', e);
+      setAvatarError('Não foi possível atualizar a foto. Tente de novo.');
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
+  async function removeAvatar() {
+    if (!user?.id) return;
+    setAvatarError(null);
+    setAvatarBusy(true);
+    try {
+      await AsyncStorage.removeItem(buildAvatarKey(user.id));
+      setAvatarUri(null);
+    } catch (e) {
+      console.error('[Perfil.avatar]', e);
+      setAvatarError('Falha ao remover a foto.');
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
 
   async function loadPerfil() {
     try {
@@ -115,11 +205,52 @@ export default function PerfilScreen({ navigation, route }) {
 
       {/* Avatar */}
       <View style={styles.avatarSection}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{inicial}</Text>
-        </View>
+        {avatarUri ? (
+          <Image
+            source={{ uri: avatarUri }}
+            style={styles.avatarImage}
+            accessibilityLabel={`Foto de perfil de ${perfil.nome_negocio || 'seu negócio'}`}
+          />
+        ) : (
+          <View
+            style={[styles.avatar, styles.avatarInitial]}
+            accessibilityLabel={`Avatar com inicial ${inicial}`}
+          >
+            <Text style={styles.avatarInitialText}>{inicial}</Text>
+          </View>
+        )}
         <Text style={styles.avatarName}>{perfil.nome_negocio || 'Seu Negócio'}</Text>
         {perfil.segmento ? <Text style={styles.avatarSub}>{perfil.segmento}</Text> : null}
+
+        <View style={styles.avatarActions}>
+          <TouchableOpacity
+            style={[styles.avatarBtn, avatarBusy && styles.avatarBtnDisabled]}
+            onPress={pickAvatar}
+            disabled={avatarBusy}
+            accessibilityRole="button"
+            accessibilityLabel="Trocar foto de perfil"
+            activeOpacity={0.8}
+          >
+            <Feather name="camera" size={14} color={colors.primary} style={{ marginRight: 6 }} />
+            <Text style={styles.avatarBtnText}>Trocar foto</Text>
+          </TouchableOpacity>
+          {avatarUri ? (
+            <TouchableOpacity
+              style={[styles.avatarBtn, styles.avatarBtnGhost, avatarBusy && styles.avatarBtnDisabled]}
+              onPress={removeAvatar}
+              disabled={avatarBusy}
+              accessibilityRole="button"
+              accessibilityLabel="Remover foto de perfil"
+              activeOpacity={0.8}
+            >
+              <Feather name="trash-2" size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />
+              <Text style={styles.avatarBtnGhostText}>Remover</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        {avatarError ? (
+          <Text style={styles.avatarErrorText} accessibilityLiveRegion="polite">{avatarError}</Text>
+        ) : null}
       </View>
 
       {/* Form */}
@@ -220,7 +351,40 @@ const styles = StyleSheet.create({
     shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3, shadowRadius: 8, elevation: 6,
   },
+  // Variante "inicial" usa fundo translúcido (alpha 14 hex ≈ 8%) para parecer
+  // chip e não competir visualmente com a foto real quando ela existe.
+  avatarInitial: {
+    backgroundColor: colors.primary + '14',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  avatarInitialText: { fontSize: 32, fontWeight: '800', color: colors.primary, fontFamily: fontFamily.bold },
+  avatarImage: {
+    width: 80, height: 80, borderRadius: 40, marginBottom: spacing.sm,
+    backgroundColor: colors.primary + '14',
+  },
   avatarText: { fontSize: 32, fontWeight: '800', color: '#fff', fontFamily: fontFamily.bold },
+  avatarActions: {
+    flexDirection: 'row', marginTop: spacing.sm, gap: spacing.sm,
+  },
+  avatarBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.primary + '14',
+    borderWidth: 1, borderColor: colors.primary + '33',
+  },
+  avatarBtnGhost: {
+    backgroundColor: 'transparent',
+    borderColor: colors.border,
+  },
+  avatarBtnDisabled: { opacity: 0.5 },
+  avatarBtnText: { color: colors.primary, fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600' },
+  avatarBtnGhostText: { color: colors.textSecondary, fontSize: fonts.small, fontFamily: fontFamily.medium },
+  avatarErrorText: {
+    color: '#dc2626', fontSize: fonts.tiny, marginTop: spacing.xs,
+    textAlign: 'center', maxWidth: 280,
+  },
   avatarName: {
     fontSize: fonts.title, fontWeight: '800', fontFamily: fontFamily.bold,
     color: colors.text, marginBottom: 2,

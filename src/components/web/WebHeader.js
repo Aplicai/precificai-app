@@ -52,6 +52,9 @@ const ROUTE_TITLES = {
   'EntradaEstoque': 'Entrada de Estoque',
   'AjusteEstoque': 'Ajuste de Estoque',
   'Notificacoes': 'Notificações',
+  'ComparativoCanais': 'Comparativo Canais',
+  'Termos': 'Termos de Uso',
+  'Privacidade': 'Política de Privacidade',
 };
 
 // Routes rendered as transparentModal popups — header should ignore them
@@ -135,6 +138,9 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
     'MargemBaixa': { tab: 'Início', screen: 'HomeMain' },
     'Fornecedores': { tab: 'Mais', screen: 'Fornecedores' },
     'Suporte': { tab: 'Mais', screen: 'Suporte' },
+    'ComparativoCanais': { tab: 'Mais', screen: 'DeliveryHub' },
+    'Termos': { tab: 'Mais', screen: 'Configuracoes' },
+    'Privacidade': { tab: 'Mais', screen: 'Configuracoes' },
   };
 
   // Check if current screen has a returnTo param or a known parent

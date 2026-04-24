@@ -112,6 +112,15 @@ const MENU_GROUPS = [
         color: colors.coral,
         screen: 'DeliveryHub',
       },
+      {
+        key: 'comparativo_canais',
+        title: 'Comparativo Canais',
+        desc: 'Compare a margem do balcão vs cada plataforma de delivery',
+        icon: 'bar-chart',
+        set: 'feather',
+        color: colors.accent,
+        screen: 'ComparativoCanais',
+      },
     ],
   },
   {

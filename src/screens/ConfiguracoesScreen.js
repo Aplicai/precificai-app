@@ -33,6 +33,8 @@ const OPCOES = [
   { key: 'conta', icon: 'lock', label: 'Conta e Segurança', desc: 'Alterar e-mail e senha', screen: 'ContaSeguranca', color: colors.blue },
   { key: 'kitinicio', icon: 'gift', label: 'Kit de Início', desc: 'Trocar segmento e insumos pré-cadastrados', screen: 'KitInicio', color: colors.coral },
   { key: 'sobre', icon: 'info', label: 'Sobre o App', desc: 'Versão e informações', screen: 'Sobre', color: colors.accent },
+  { key: 'termos', icon: 'file-text', label: 'Termos de Uso', desc: 'Condições de uso do aplicativo', screen: 'Termos', color: colors.primary },
+  { key: 'privacidade', icon: 'shield', label: 'Política de Privacidade', desc: 'Como tratamos seus dados (LGPD)', screen: 'Privacidade', color: colors.accent },
 ];
 
 const BACKUP_TABLES = [

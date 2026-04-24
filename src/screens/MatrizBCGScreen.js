@@ -75,12 +75,19 @@ export default function MatrizBCGScreen({ navigation }) {
   const { isDesktop } = useResponsiveLayout();
   const saveTimer = useRef(null);
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
-  const monthName = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-  const prevMonthDate = new Date();
-  prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
-  const prevMonthStr = prevMonthDate.toISOString().slice(0, 7);
-  const prevMonthName = prevMonthDate.toLocaleDateString('pt-BR', { month: 'long' });
+  // Date strings memoizados — não mudam durante a sessão e são usados em queries/labels.
+  // Deps vazias: calculados uma única vez (dia mudar no meio de uma sessão é edge case aceitável).
+  const { currentMonth, monthName, prevMonthStr, prevMonthName } = useMemo(() => {
+    const now = new Date();
+    const prev = new Date();
+    prev.setMonth(prev.getMonth() - 1);
+    return {
+      currentMonth: now.toISOString().slice(0, 7),
+      monthName: now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
+      prevMonthStr: prev.toISOString().slice(0, 7),
+      prevMonthName: prev.toLocaleDateString('pt-BR', { month: 'long' }),
+    };
+  }, []);
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
