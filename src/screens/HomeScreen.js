@@ -410,7 +410,8 @@ export default function HomeScreen({ navigation }) {
   const defaults = [
     { label: 'Atualizar Preços', icon: 'refresh-cw', set: 'feather', tab: 'AtualizarPrecos' },
     { label: 'Novo Produto', icon: 'box', set: 'feather', tab: 'ProdutoFormHome' },
-    ...(analiseAvancada ? [{ label: 'Engenharia do Cardápio', icon: 'bar-chart-2', set: 'feather', tab: 'BCG' }] : []),
+    // Sprint 1 Q4 — "Ranking de Produtos" (linguagem clara para usuário leigo).
+    ...(analiseAvancada ? [{ label: 'Ranking de Produtos', icon: 'bar-chart-2', set: 'feather', tab: 'BCG' }] : []),
     ...(usaDelivery ? [{ label: 'Delivery', icon: 'moped-outline', set: 'material', tab: 'Delivery' }] : []),
     { label: 'Lista de Compras', icon: 'shopping-cart', set: 'feather', tab: 'ListaCompras' }, // CORE — Sessão 26
   ];

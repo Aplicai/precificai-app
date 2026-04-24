@@ -15,6 +15,8 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { t } from '../i18n/pt-BR';
+// Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
+import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 import {
   UNIDADES_MEDIDA, formatCurrency, formatPercent, calcMarkup, calcDespesasFixasPercentual,
   converterParaBase, getTipoUnidade, calcCustoIngrediente, calcCustoPreparo,
@@ -638,10 +640,23 @@ export default function ProdutoFormScreen({ route, navigation }) {
     }
   }
 
-  function solicitarExclusao() {
+  async function solicitarExclusao() {
+    if (!editId) return;
+    // Sprint 2 S5 — antes de excluir, mostra ao usuário as dependências (vendas, delivery, etc.).
+    let mensagemExtra = null;
+    try {
+      const db = await getDatabase();
+      const deps = await contarDependencias(db, 'produto', editId);
+      if (deps.total > 0) {
+        mensagemExtra = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'produto' });
+      }
+    } catch (e) {
+      console.error('[ProdutoForm.solicitarExclusao.deps]', e);
+    }
     setConfirmDelete({
       titulo: 'Excluir Produto',
       nome: form.nome,
+      mensagemExtra,
       onConfirm: async () => {
         const db = await getDatabase();
         await db.runAsync('DELETE FROM produto_ingredientes WHERE produto_id = ?', [editId]);
@@ -1177,14 +1192,24 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </View>
 
               {/* Sugestão de preço (M1-23 — local, sem IA) */}
+              {/* Sprint 1 Q13 — disable visualmente quando CMV=0 (antes mostrava Alert ao clicar,
+                  causando frustração; agora o botão fica claramente desativado e explica o porquê). */}
               <TouchableOpacity
-                style={styles.aiSuggestBtn}
+                style={[styles.aiSuggestBtn, custoUnitario <= 0 && { opacity: 0.5 }]}
                 onPress={abrirSugestaoIA}
+                disabled={custoUnitario <= 0}
                 activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: custoUnitario <= 0 }}
+                accessibilityLabel={custoUnitario <= 0
+                  ? 'Sugerir preço (desativado — adicione custos primeiro)'
+                  : 'Sugerir preço com base no CMV e mercado'}
               >
-                <Feather name="zap" size={16} color={colors.primary} />
-                <Text style={styles.aiSuggestText}>Sugerir preço</Text>
-                <Text style={styles.aiSuggestEmoji}>💡</Text>
+                <Feather name="zap" size={16} color={custoUnitario <= 0 ? colors.textSecondary : colors.primary} />
+                <Text style={[styles.aiSuggestText, custoUnitario <= 0 && { color: colors.textSecondary }]}>
+                  {custoUnitario <= 0 ? 'Sugerir preço (adicione custos)' : 'Sugerir preço'}
+                </Text>
+                {custoUnitario > 0 && <Text style={styles.aiSuggestEmoji}>💡</Text>}
               </TouchableOpacity>
 
               <InputField
@@ -1642,6 +1667,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
         isFocused={isFocused}
         titulo={confirmDelete?.titulo}
         nome={confirmDelete?.nome}
+        aviso={confirmDelete?.mensagemExtra}
         onConfirm={confirmDelete?.onConfirm}
         onCancel={() => setConfirmDelete(null)}
       />

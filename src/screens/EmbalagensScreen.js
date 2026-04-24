@@ -23,6 +23,8 @@ import ListStatsStrip from '../components/ListStatsStrip';
 import { exportToCSV, isCsvExportSupported } from '../utils/exportCsv';
 import ItemPreviewModal from '../components/ItemPreviewModal';
 import { formatTimeAgo } from '../utils/timeAgo';
+// Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
+import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 import ViewModeToggle from '../components/ViewModeToggle';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useUndoableDelete from '../hooks/useUndoableDelete';
@@ -198,10 +200,23 @@ export default function EmbalagensScreen({ navigation }) {
     }
   }
 
-  function solicitarExclusao(id, nome) {
+  async function solicitarExclusao(id, nome) {
+    // Sprint 2 S5 — antes de excluir, mostra ao usuário em quantos produtos esta
+    // embalagem aparece. Não bloqueia, mas evita órfãos silenciosos.
+    let mensagemExtra = null;
+    try {
+      const db = await getDatabase();
+      const deps = await contarDependencias(db, 'embalagem', id);
+      if (deps.total > 0) {
+        mensagemExtra = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'embalagem' });
+      }
+    } catch (e) {
+      console.error('[EmbalagensScreen.solicitarExclusao.deps]', e);
+    }
     setConfirmDelete({
       titulo: 'Excluir Embalagem',
       nome,
+      mensagemExtra,
       onConfirm: async () => {
         setConfirmDelete(null);
         await undoDelete.requestDelete({
@@ -217,12 +232,28 @@ export default function EmbalagensScreen({ navigation }) {
     });
   }
 
-  function solicitarExclusaoEmMassa() {
+  async function solicitarExclusaoEmMassa() {
     const ids = Array.from(bulk.selectedIds);
     if (ids.length === 0) return;
+    // Sprint 2 S5 — soma dependências de todos os ids selecionados.
+    let mensagemExtra = null;
+    try {
+      const db = await getDatabase();
+      let totalRefs = 0;
+      for (const id of ids) {
+        const deps = await contarDependencias(db, 'embalagem', id);
+        totalRefs += deps.total;
+      }
+      if (totalRefs > 0) {
+        mensagemExtra = `${totalRefs} referência${totalRefs === 1 ? '' : 's'} ${totalRefs === 1 ? 'será afetada' : 'serão afetadas'} ao excluir essas embalagens (produtos perderão essa embalagem do cálculo de custo).`;
+      }
+    } catch (e) {
+      console.error('[EmbalagensScreen.solicitarExclusaoEmMassa.deps]', e);
+    }
     setConfirmDelete({
       titulo: ids.length === 1 ? 'Excluir Embalagem' : `Excluir ${ids.length} embalagens`,
       nome: ids.length === 1 ? null : `${ids.length} itens selecionados`,
+      mensagemExtra,
       onConfirm: async () => {
         setConfirmDelete(null);
         await undoDelete.requestDelete({
@@ -821,6 +852,7 @@ export default function EmbalagensScreen({ navigation }) {
         isFocused={isFocused}
         titulo={confirmDelete?.titulo}
         nome={confirmDelete?.nome}
+        aviso={confirmDelete?.mensagemExtra}
         onConfirm={confirmDelete?.onConfirm}
         onCancel={() => setConfirmDelete(null)}
       />

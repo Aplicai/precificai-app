@@ -13,6 +13,8 @@ import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { t } from '../i18n/pt-BR';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+// Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
+import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 import {
   UNIDADES_MEDIDA,
   formatCurrency,
@@ -318,11 +320,24 @@ export default function PreparoFormScreen({ route, navigation }) {
     pendingNavAction.current = null;
   }
 
-  function solicitarExclusao() {
+  async function solicitarExclusao() {
     if (!editId) return;
+    // Sprint 2 S5 — antes de excluir, mostra ao usuário em quantos produtos/preparos
+    // este preparo é utilizado (evita órfãos silenciosos no CMV).
+    let mensagemExtra = null;
+    try {
+      const db = await getDatabase();
+      const deps = await contarDependencias(db, 'preparo', editId);
+      if (deps.total > 0) {
+        mensagemExtra = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'preparo' });
+      }
+    } catch (e) {
+      console.error('[PreparoForm.solicitarExclusao.deps]', e);
+    }
     setConfirmDelete({
       titulo: 'Excluir Preparo',
       nome: form.nome || 'este preparo',
+      mensagemExtra,
       onConfirm: async () => {
         const db = await getDatabase();
         await db.runAsync('DELETE FROM preparo_ingredientes WHERE preparo_id = ?', [editId]);
@@ -738,6 +753,7 @@ export default function PreparoFormScreen({ route, navigation }) {
         isFocused={isFocused}
         titulo={confirmDelete?.titulo}
         nome={confirmDelete?.nome}
+        aviso={confirmDelete?.mensagemExtra}
         onConfirm={confirmDelete?.onConfirm}
         onCancel={() => setConfirmDelete(null)}
       />

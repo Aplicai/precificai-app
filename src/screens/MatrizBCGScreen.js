@@ -343,10 +343,11 @@ export default function MatrizBCGScreen({ navigation }) {
       {/* Step 1: Header */}
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Text style={styles.title}>Engenharia do Cardápio</Text>
+          {/* Sprint 1 Q4 — "Ranking de Produtos" no header (linguagem clara). */}
+          <Text style={styles.title}>Ranking de Produtos</Text>
           <InfoTooltip
             title="Como funciona?"
-            text="Classifica cada produto pela margem de contribuição × popularidade (vendas/mês). A mediana divide os produtos em 4 quadrantes."
+            text="Classifica cada produto pela margem de contribuição × popularidade (vendas/mês). A mediana divide os produtos em 4 quadrantes (também conhecido como Engenharia do Cardápio)."
           />
         </View>
         <Text style={styles.subtitle}>Descubra quais produtos vendem mais e dão mais lucro — e quais você deveria parar de vender.</Text>

@@ -28,6 +28,9 @@ import ViewModeToggle from '../components/ViewModeToggle';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useUndoableDelete from '../hooks/useUndoableDelete';
 import useBulkSelection from '../hooks/useBulkSelection';
+// Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
+// Para produtos, o blocker crítico é "vendas registradas" — aviso de soft-delete recomendado.
+import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 import { t } from '../i18n/pt-BR';
 
 // Cores para categorias
@@ -285,10 +288,23 @@ export default function ProdutosListScreen({ navigation }) {
     }
   }
 
-  function solicitarExclusao(id, nome) {
+  async function solicitarExclusao(id, nome) {
+    // Sprint 2 S5 — antes de excluir, mostra ao usuário em quantas vendas/configs delivery
+    // o produto aparece. Com vendas registradas, recomenda-se soft-delete (preserva histórico).
+    let mensagemExtra = null;
+    try {
+      const db = await getDatabase();
+      const deps = await contarDependencias(db, 'produto', id);
+      if (deps.total > 0) {
+        mensagemExtra = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'produto' });
+      }
+    } catch (e) {
+      console.error('[ProdutosListScreen.solicitarExclusao.deps]', e);
+    }
     setConfirmDelete({
       titulo: 'Excluir Produto',
       nome,
+      aviso: mensagemExtra,
       onConfirm: async () => {
         setConfirmDelete(null);
         await undoDelete.requestDelete({
@@ -307,12 +323,31 @@ export default function ProdutosListScreen({ navigation }) {
     });
   }
 
-  function solicitarExclusaoEmMassa() {
+  async function solicitarExclusaoEmMassa() {
     const ids = Array.from(bulk.selectedIds);
     if (ids.length === 0) return;
+    let mensagemExtra = null;
+    try {
+      const db = await getDatabase();
+      let totalRefs = 0;
+      let comVendas = 0;
+      for (const id of ids) {
+        const deps = await contarDependencias(db, 'produto', id);
+        totalRefs += deps.total;
+        if (deps.temBloqueio) comVendas++;
+      }
+      if (totalRefs > 0) {
+        const partes = [`${totalRefs} referência${totalRefs === 1 ? '' : 's'} ${totalRefs === 1 ? 'será afetada' : 'serão afetadas'} ao excluir esses produtos.`];
+        if (comVendas > 0) partes.push(`${comVendas} produto${comVendas === 1 ? '' : 's'} possui${comVendas === 1 ? '' : 'em'} vendas registradas — relatórios históricos perderão referência ao nome.`);
+        mensagemExtra = partes.join('\n\n');
+      }
+    } catch (e) {
+      console.error('[ProdutosListScreen.solicitarExclusaoEmMassa.deps]', e);
+    }
     setConfirmDelete({
       titulo: ids.length === 1 ? 'Excluir Produto' : `Excluir ${ids.length} produtos`,
       nome: ids.length === 1 ? null : `${ids.length} itens selecionados`,
+      aviso: mensagemExtra,
       onConfirm: async () => {
         setConfirmDelete(null);
         await undoDelete.requestDelete({
@@ -1015,6 +1050,7 @@ export default function ProdutosListScreen({ navigation }) {
         isFocused={isFocused}
         titulo={confirmDelete?.titulo}
         nome={confirmDelete?.nome}
+        aviso={confirmDelete?.aviso}
         onConfirm={confirmDelete?.onConfirm}
         onCancel={() => setConfirmDelete(null)}
       />

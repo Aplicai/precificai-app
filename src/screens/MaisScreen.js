@@ -5,28 +5,43 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import useFeatureFlag from '../hooks/useFeatureFlag';
 
 /**
- * Hub "Ferramentas" reorganizado em 5 grupos lógicos (audit P1-09):
- *  1. Operação — ações do dia-a-dia (atualizar preços, comprar, comparar, exportar)
- *  2. Análise — visões estratégicas (engenharia de cardápio, simulador, relatório)
- *  3. Delivery — tudo de delivery em um só lugar
- *  4. Negócio — parâmetros financeiros e de cálculo
- *  5. Conta & Ajuda — configurações e suporte
+ * Hub "Ferramentas" reorganizado (audit S9 — Sprint 4).
  *
- * Antes era uma lista contínua de 11 itens — pesquisa visual difícil. Agora
- * o usuário identifica o tipo da tarefa antes de procurar o item específico.
+ * MUDANÇAS SPRINT 4 S9:
+ *  - Grupo "Ferramentas" (1 item: Exportar PDF) removido → movido para Operação.
+ *  - Grupo "Negócio" (1 item: Financeiro) removido → Financeiro movido para
+ *    Operação (aumenta discoverability; resolve N2/N21 sem precisar adicionar
+ *    tab nativa e ultrapassar o limite de 6 tabs no mobile).
+ *  - 1 cor por grupo (não por item): cada grupo tem `groupColor` que sobrescreve
+ *    a cor individual do item — reduz ruído visual.
+ *
+ * Grupos finais (4):
+ *  1. Operação — dia-a-dia: Financeiro, Atualizar Preços, Lista Compras,
+ *     Fornecedores (flag), Exportar PDF
+ *  2. Análise — visões estratégicas: Ranking de Produtos, Relatório
+ *  3. Delivery — tudo de delivery (escondido até `usa_delivery` = true)
+ *  4. Conta & Ajuda — Notificações, Configurações, Suporte
  */
 const MENU_GROUPS = [
   {
     key: 'operacao',
     title: 'Operação',
+    groupColor: colors.primary,
     items: [
+      {
+        key: 'financeiro',
+        title: 'Financeiro',
+        desc: 'Markup, despesas, faturamento e margem de lucro',
+        icon: 'dollar-sign',
+        set: 'feather',
+        screen: 'FinanceiroMain',
+      },
       {
         key: 'atualizar_precos',
         title: 'Atualizar Preços',
         desc: 'Atualize preços de insumos e produtos rapidamente',
-        icon: 'dollar-sign',
+        icon: 'refresh-cw', // Sprint 4 S9 — alinhado com Sidebar (N22)
         set: 'feather',
-        color: colors.yellow,
         screen: 'AtualizarPrecos',
       },
       {
@@ -35,7 +50,6 @@ const MENU_GROUPS = [
         desc: 'Gere sua lista de compras automática',
         icon: 'shopping-cart',
         set: 'feather',
-        color: colors.success,
         screen: 'ListaCompras',
       },
       {
@@ -44,37 +58,39 @@ const MENU_GROUPS = [
         desc: 'Compare preços e descubra onde economizar',
         icon: 'users',
         set: 'feather',
-        color: colors.purple,
         screen: 'Fornecedores',
-        flag: 'modo_avancado_analise', // Sessão 26 — escondido até user ligar análise avançada
+        flag: 'modo_avancado_analise',
       },
-      // Sessão 26 — Exportar PDF movido para seção 'Ferramentas'
+      {
+        key: 'exportpdf',
+        title: 'Exportar PDF',
+        desc: 'Gere fichas técnicas em PDF para impressão',
+        icon: 'printer',
+        set: 'feather',
+        screen: 'ExportPDF',
+      },
     ],
   },
   {
     key: 'analise',
     title: 'Análise',
+    groupColor: colors.accent,
     items: [
       {
         key: 'bcg',
-        title: 'Engenharia do Cardápio',
+        title: 'Ranking de Produtos',
         desc: 'Veja quais produtos vendem mais e dão mais lucro',
         icon: 'bar-chart-2',
         set: 'feather',
-        color: colors.accent,
         screen: 'MatrizBCG',
-        flag: 'modo_avancado_analise', // Sessão 26 — análise avançada
+        flag: 'modo_avancado_analise',
       },
-      // Sessão 26 — Simulador removido daqui. Agora é um CTA contextual
-      // dentro da Ficha Técnica (ProdutoFormScreen). Continua acessível via rota
-      // direta para não quebrar deep links.
       {
         key: 'relatorio',
         title: 'Relatório',
         desc: 'Seus números traduzidos em linguagem simples',
         icon: 'file-text',
         set: 'feather',
-        color: colors.accent,
         screen: 'RelatorioSimples',
       },
     ],
@@ -82,7 +98,8 @@ const MENU_GROUPS = [
   {
     key: 'delivery_grp',
     title: 'Delivery',
-    flag: 'usa_delivery', // Sessão 26 — grupo inteiro escondido até user dizer que faz delivery
+    groupColor: colors.coral,
+    flag: 'usa_delivery',
     items: [
       {
         key: 'delivery',
@@ -90,7 +107,6 @@ const MENU_GROUPS = [
         desc: 'Plataformas, preços e combos para delivery',
         icon: 'moped-outline',
         set: 'material',
-        color: colors.coral,
         screen: 'DeliveryHub',
         flag: 'usa_delivery',
       },
@@ -100,45 +116,15 @@ const MENU_GROUPS = [
         desc: 'Compare a margem do balcão vs cada plataforma de delivery',
         icon: 'bar-chart',
         set: 'feather',
-        color: colors.accent,
         screen: 'ComparativoCanais',
         flag: 'usa_delivery',
       },
     ],
   },
   {
-    key: 'ferramentas',
-    title: 'Ferramentas',
-    items: [
-      {
-        key: 'exportpdf',
-        title: 'Exportar PDF',
-        desc: 'Gere fichas técnicas em PDF para impressão',
-        icon: 'printer',
-        set: 'feather',
-        color: colors.primary,
-        screen: 'ExportPDF',
-      },
-    ],
-  },
-  {
-    key: 'negocio',
-    title: 'Negócio',
-    items: [
-      {
-        key: 'financeiro',
-        title: 'Financeiro',
-        desc: 'Markup, despesas, faturamento e margem de lucro',
-        icon: 'dollar-sign',
-        set: 'feather',
-        color: colors.success,
-        screen: 'FinanceiroMain',
-      },
-    ],
-  },
-  {
     key: 'conta',
     title: 'Conta & Ajuda',
+    groupColor: colors.purple,
     items: [
       {
         key: 'notificacoes',
@@ -146,7 +132,6 @@ const MENU_GROUPS = [
         desc: 'Estoque baixo, margem crítica e resumo diário',
         icon: 'bell',
         set: 'feather',
-        color: colors.coral,
         screen: 'Notificacoes',
       },
       {
@@ -155,7 +140,6 @@ const MENU_GROUPS = [
         desc: 'Ajustes e preferências do app',
         icon: 'settings',
         set: 'feather',
-        color: colors.textSecondary,
         screen: 'Configuracoes',
       },
       {
@@ -164,7 +148,6 @@ const MENU_GROUPS = [
         desc: 'Perguntas frequentes e contato',
         icon: 'help-circle',
         set: 'feather',
-        color: colors.primary,
         screen: 'Suporte',
       },
     ],
@@ -187,32 +170,38 @@ export default function MaisScreen({ navigation }) {
     .filter((g) => g.items.length > 0);
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {visibleGroups.map((group, gIdx) => (
-        <View key={group.key} style={[styles.group, gIdx > 0 && { marginTop: spacing.lg }]}>
-          <Text style={styles.sectionTitle}>{group.title}</Text>
-          {group.items.map((item) => (
-            <TouchableOpacity
-              key={item.key}
-              style={styles.menuCard}
-              activeOpacity={0.6}
-              onPress={() => navigation.navigate(item.screen)}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: item.color + '12' }]}>
-                {item.set === 'material' ? (
-                  <MaterialCommunityIcons name={item.icon} size={22} color={item.color} />
-                ) : (
-                  <Feather name={item.icon} size={22} color={item.color} />
-                )}
-              </View>
-              <View style={styles.menuBody}>
-                <Text style={styles.menuTitle}>{item.title}</Text>
-                <Text style={styles.menuDesc}>{item.desc}</Text>
-              </View>
-              <Feather name="chevron-right" size={18} color={colors.disabled} />
-            </TouchableOpacity>
-          ))}
-        </View>
-      ))}
+      {visibleGroups.map((group, gIdx) => {
+        // Sprint 4 S9 — 1 cor por grupo. Item.color é fallback legacy.
+        const c = group.groupColor || colors.primary;
+        return (
+          <View key={group.key} style={[styles.group, gIdx > 0 && { marginTop: spacing.lg }]}>
+            <Text style={styles.sectionTitle}>{group.title}</Text>
+            {group.items.map((item) => (
+              <TouchableOpacity
+                key={item.key}
+                style={styles.menuCard}
+                activeOpacity={0.6}
+                onPress={() => navigation.navigate(item.screen)}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.title}. ${item.desc}`}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: c + '12' }]}>
+                  {item.set === 'material' ? (
+                    <MaterialCommunityIcons name={item.icon} size={22} color={c} />
+                  ) : (
+                    <Feather name={item.icon} size={22} color={c} />
+                  )}
+                </View>
+                <View style={styles.menuBody}>
+                  <Text style={styles.menuTitle}>{item.title}</Text>
+                  <Text style={styles.menuDesc}>{item.desc}</Text>
+                </View>
+                <Feather name="chevron-right" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        );
+      })}
 
       <View style={{ height: 40 }} />
     </ScrollView>

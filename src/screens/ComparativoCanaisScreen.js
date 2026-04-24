@@ -17,29 +17,13 @@ import {
   calcCustoPreparo,
 } from '../utils/calculations';
 import usePersistedState from '../hooks/usePersistedState';
+// Sprint 2 S3 — fórmula canônica única em src/utils/deliveryPricing.
+import { calcPrecoBreakEven, calcResultadoDelivery } from '../utils/deliveryPricing';
 
 // Defesa contra NaN/Infinity em precificação. Retorna 0 quando não-finito.
 function parseNum(v) {
   const n = typeof v === 'number' ? v : parseFloat(v);
   return Number.isFinite(n) ? n : 0;
-}
-
-function roundUpTo50(value) {
-  return Math.ceil(value * 2) / 2;
-}
-
-// Calcula preço sugerido para cobrir taxa da plataforma.
-// Retorna null se inviável (taxa >= 100%).
-function calcPrecoDelivery(precoVenda, taxaPlataforma) {
-  const preco = parseNum(precoVenda);
-  const taxa = parseNum(taxaPlataforma);
-  if (preco <= 0) return 0;
-  if (taxa >= 100) return null;
-  const divisor = 1 - taxa / 100;
-  if (divisor <= 0) return null;
-  const result = preco / divisor;
-  if (!Number.isFinite(result)) return null;
-  return roundUpTo50(result);
 }
 
 export default function ComparativoCanaisScreen() {
@@ -217,16 +201,18 @@ export default function ComparativoCanaisScreen() {
       inviavel: precoBalcao <= 0,
     });
 
-    // Cada plataforma ativa
+    // Cada plataforma ativa — Sprint 2 S3: usa cálculo canônico (corrige bug onde
+    // comissao_app era subtraído como R$, mas no schema é %).
     for (const plat of plataformas) {
-      const precoSugerido = calcPrecoDelivery(precoBalcao, plat.taxa_plataforma);
-      const inviavel = precoSugerido === null || precoSugerido <= 0;
-      const preco = inviavel ? 0 : precoSugerido;
-      const taxaValor = preco * (parseNum(plat.taxa_plataforma) / 100);
-      const comissao = parseNum(plat.comissao_app);
-      const desc = preco * (parseNum(plat.desconto_promocao) / 100);
-      const lucro = inviavel ? 0 : preco - custo - taxaValor - comissao - desc;
-      const margem = (!inviavel && preco > 0) ? (lucro / preco) * 100 : 0;
+      const precoSugerido = calcPrecoBreakEven(precoBalcao, plat);
+      const inviavelPreco = precoSugerido === null || precoSugerido <= 0;
+      const preco = inviavelPreco ? 0 : precoSugerido;
+      const r = calcResultadoDelivery({ precoVenda: preco, custoUnit: custo, plat });
+      const inviavel = inviavelPreco || r.inviavel;
+      const taxaValor = r.valorComissao;
+      const desc = r.valorDesconto;
+      const lucro = inviavel ? 0 : r.lucro;
+      const margem = (!inviavel && preco > 0) ? r.margem * 100 : 0;
 
       canais.push({
         key: `plat-${plat.id}`,

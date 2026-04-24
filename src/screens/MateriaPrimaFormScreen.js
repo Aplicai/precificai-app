@@ -23,6 +23,8 @@ import {
   calcCustoIngrediente,
   calcCustoPreparo,
 } from '../utils/calculations';
+// Sprint 2 S5 — checagem de dependências antes de DELETE (evita órfãos em preparo_ingredientes / produto_ingredientes).
+import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 
 const CATEGORY_COLORS = [
   colors.primary, colors.accent, colors.coral, colors.purple,
@@ -373,11 +375,23 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     pendingNavAction.current = null;
   }
 
-  function solicitarExclusao() {
+  async function solicitarExclusao() {
     if (!editId) return;
+    // Sprint 2 S5 — checa dependências antes de mostrar confirmação.
+    let mensagemDeps = null;
+    try {
+      const db = await getDatabase();
+      const deps = await contarDependencias(db, 'materia_prima', editId);
+      if (deps.total > 0) {
+        mensagemDeps = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'insumo' });
+      }
+    } catch (e) {
+      console.warn('[MateriaPrimaFormScreen.solicitarExclusao] erro ao checar dependências:', e?.message);
+    }
     setConfirmDelete({
       titulo: 'Excluir Insumo',
       nome: form.nome || 'este insumo',
+      mensagemExtra: mensagemDeps,
       onConfirm: async () => {
         const db = await getDatabase();
         await db.runAsync('DELETE FROM materias_primas WHERE id = ?', [editId]);
@@ -777,6 +791,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         isFocused={isFocused}
         titulo={confirmDelete?.titulo}
         nome={confirmDelete?.nome}
+        aviso={confirmDelete?.mensagemExtra}
         onConfirm={confirmDelete?.onConfirm}
         onCancel={() => setConfirmDelete(null)}
       />

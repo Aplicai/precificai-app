@@ -6,6 +6,10 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useListDensity from '../hooks/useListDensity';
 import useFeatureFlag from '../hooks/useFeatureFlag';
+// Sprint 5 S15 — camada unificada web+mobile para exportação (substitui código
+// inline que só funcionava no web). No mobile, usa expo-file-system + expo-sharing
+// se instalados; senão mostra instrução de instalação (fail-soft).
+import { exportarBackupJSON } from '../services/backupService';
 
 // Versão dinâmica via expoConfig (em vez de hardcoded — evita desync após release).
 const APP_VERSION = Constants?.expoConfig?.version || Constants?.manifest?.version || '1.0.0';
@@ -126,18 +130,27 @@ export default function ConfiguracoesScreen({ navigation }) {
       }
       backup._meta = { date: new Date().toISOString(), version: APP_VERSION, tabelasFaltantes };
 
-      if (Platform.OS === 'web') {
-        const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `precificai-backup-${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
+      // Sprint 5 S15 — backupService unifica web+mobile. Web: download via Blob.
+      // Mobile: expo-file-system + expo-sharing (share sheet nativo) se instalados.
+      const filename = `precificai-backup-${new Date().toISOString().split('T')[0]}.json`;
+      try {
+        const res = await exportarBackupJSON(backup, { filename });
         const aviso = tabelasFaltantes.length > 0 ? ` (${tabelasFaltantes.length} tabela(s) sem dados)` : '';
-        Alert.alert('Backup exportado', `O arquivo JSON foi baixado com sucesso.${aviso}`);
-      } else {
-        Alert.alert('Backup', 'Exportação disponível apenas na versão web por enquanto.');
+        if (res.method === 'web-download') {
+          Alert.alert('Backup exportado', `O arquivo JSON foi baixado com sucesso.${aviso}`);
+        } else {
+          Alert.alert('Backup exportado', `Compartilhamento aberto.${aviso}`);
+        }
+      } catch (depErr) {
+        if (depErr?.code === 'DEPS_NOT_INSTALLED') {
+          Alert.alert(
+            'Backup no mobile',
+            'Para exportar no celular, o desenvolvedor precisa instalar as bibliotecas "expo-file-system" e "expo-sharing". ' +
+            'Por enquanto, use a versão web em precificaiapp.com.',
+          );
+        } else {
+          throw depErr;
+        }
       }
     } catch (e) {
       if (typeof console !== 'undefined' && console.error) console.error('[ConfiguracoesScreen.exportBackup]', e);

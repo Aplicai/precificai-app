@@ -13,6 +13,8 @@ import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
 import InviabilidadeModal from '../components/InviabilidadeModal';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+// Sprint 2 S3 — fórmula canônica única em src/utils/deliveryPricing.js
+import { calcPrecoBreakEven } from '../utils/deliveryPricing';
 import usePersistedState from '../hooks/usePersistedState';
 
 // Numeric helpers (defesa contra NaN/Infinity em precificação)
@@ -203,18 +205,12 @@ export default function DeliveryPrecosScreen() {
     }
   }
 
-  // Calcula preço sugerido para cobrir taxa da plataforma.
-  // Defesas: precoVenda inválido → 0; taxa ≥ 100% (inviável) → retorna null para sinalizar inviabilidade.
-  function calcDeliveryPrice(precoVenda, taxaPlataforma) {
-    const preco = safeNum(precoVenda);
-    const taxa = safeNum(taxaPlataforma);
-    if (preco <= 0) return 0;
-    if (taxa >= 100) return null; // taxa cobre/excede o preço — inviável
-    const divisor = 1 - taxa / 100;
-    if (divisor <= 0) return null;
-    const result = preco / divisor;
-    if (!Number.isFinite(result)) return null;
-    return roundUpTo50(result);
+  // Sprint 2 S3 — delega para src/utils/deliveryPricing (única fonte de verdade).
+  // Antes esta tela tinha sua própria fórmula divergente de DeliveryHubScreen e ComparativoCanaisScreen,
+  // gerando 3 preços diferentes para o mesmo produto.
+  function calcDeliveryPrice(precoVenda, plat) {
+    if (safeNum(precoVenda) <= 0) return 0;
+    return calcPrecoBreakEven(precoVenda, plat);
   }
 
   function toggleCategory(catId) {
@@ -292,7 +288,7 @@ export default function DeliveryPrecosScreen() {
       if (precoVenda <= 0) continue;
       const custoUn = safeNum(item.custoUnitario);
       for (const plat of plataformas) {
-        const suggested = calcDeliveryPrice(precoVenda, plat.taxa_plataforma);
+        const suggested = calcDeliveryPrice(precoVenda, plat);
         const price = getEffectivePrice(item.id, plat.id, suggested);
         // price pode ser null (inviável). Conta como inviável e pula soma.
         if (price === null || !Number.isFinite(price) || price <= 0) {
@@ -333,7 +329,7 @@ export default function DeliveryPrecosScreen() {
   function renderPlatformRow(item, plat) {
     const custoUn = safeNum(item.custoUnitario);
     const precoVenda = safeNum(item.precoVenda);
-    const precoSugerido = calcDeliveryPrice(precoVenda, plat.taxa_plataforma);
+    const precoSugerido = calcDeliveryPrice(precoVenda, plat);
     const precoDeliveryRaw = getEffectivePrice(item.id, plat.id, precoSugerido);
     const inviavel = precoDeliveryRaw === null || !Number.isFinite(precoDeliveryRaw) || precoDeliveryRaw <= 0;
     const precoDelivery = inviavel ? 0 : precoDeliveryRaw;

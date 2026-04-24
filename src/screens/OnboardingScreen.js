@@ -206,33 +206,47 @@ export default function OnboardingScreen({ navigation }) {
           </Text>
         </View>
 
-        {/* Sessão 26 — Perfil do negócio: pergunta uma única vez se faz delivery.
-            Direciona quais módulos aparecem (liga o flag usa_delivery). */}
+        {/* Sprint 1 Q5 — Onboarding canais: 3 opções explícitas (balcão, delivery, ambos) em vez de
+            binária "faço delivery sim/não". Reduz erro de classificação para quem vende em múltiplos canais. */}
         {!profileAnswered && (
           <View style={styles.profileCard}>
             <View style={styles.profileHeader}>
               <Feather name="briefcase" size={18} color={colors.primary} style={{ marginRight: 6 }} />
-              <Text style={styles.profileTitle}>Como você vende?</Text>
+              <Text style={styles.profileTitle}>Em quais canais você vende?</Text>
             </View>
             <Text style={styles.profileDesc}>
-              Isso ajusta o app ao seu negócio. Você pode mudar depois em Configurações.
+              Isso ajusta as ferramentas que aparecem. Você pode mudar depois em Configurações.
             </Text>
-            <View style={styles.profileBtnRow}>
+            <View style={[styles.profileBtnRow, { flexWrap: 'wrap', gap: 8 }]}>
               <TouchableOpacity
-                style={[styles.profileBtn, styles.profileBtnSecondary]}
+                style={[styles.profileBtn, styles.profileBtnSecondary, { flex: 1, minWidth: 110 }]}
                 onPress={() => answerDeliveryProfile(false)}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Vendo apenas no balcão ou salão"
               >
                 <Feather name="shopping-bag" size={16} color={colors.primary} style={{ marginRight: 6 }} />
                 <Text style={styles.profileBtnTextSecondary}>Só balcão</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.profileBtn, styles.profileBtnPrimary]}
+                style={[styles.profileBtn, styles.profileBtnSecondary, { flex: 1, minWidth: 110 }]}
                 onPress={() => answerDeliveryProfile(true)}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Vendo apenas por delivery"
               >
-                <Feather name="truck" size={16} color="#fff" style={{ marginRight: 6 }} />
-                <Text style={styles.profileBtnTextPrimary}>Faço delivery</Text>
+                <Feather name="truck" size={16} color={colors.primary} style={{ marginRight: 6 }} />
+                <Text style={styles.profileBtnTextSecondary}>Só delivery</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.profileBtn, styles.profileBtnPrimary, { flex: 1, minWidth: 110 }]}
+                onPress={() => answerDeliveryProfile(true)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Vendo no balcão e por delivery"
+              >
+                <Feather name="layers" size={16} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.profileBtnTextPrimary}>Os dois</Text>
               </TouchableOpacity>
             </View>
           </View>

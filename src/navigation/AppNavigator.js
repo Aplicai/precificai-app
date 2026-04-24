@@ -217,7 +217,8 @@ function PreparosStack() {
 function BCGStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="MatrizBCG" component={MatrizBCGScreen} options={{ title: 'Engenharia do Cardápio' }} />
+      {/* Sprint 1 Q4 — display "Ranking de Produtos". */}
+      <Stack.Screen name="MatrizBCG" component={MatrizBCGScreen} options={{ title: 'Ranking de Produtos' }} />
       <Stack.Screen name="BCGProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
     </Stack.Navigator>
   );
@@ -245,9 +246,11 @@ function FinanceiroStack() {
 function MaisStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="MaisMain" component={MaisScreen} options={({ navigation }) => ({ title: 'Mais', ...backToHomeOption(navigation) })} />
+      {/* Sprint 1 Q3 — display "Ferramentas" mas mantém route name "Mais" para preservar AsyncStorage LAST_TAB_KEY e refs cross-tab. */}
+      <Stack.Screen name="MaisMain" component={MaisScreen} options={({ navigation }) => ({ title: 'Ferramentas', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="FinanceiroMain" component={ConfiguracaoScreen} options={{ title: 'Financeiro' }} />
-      <Stack.Screen name="MatrizBCG" component={MatrizBCGScreen} options={{ title: 'Engenharia do Cardápio' }} />
+      {/* Sprint 1 Q4 — display "Ranking de Produtos" (route name MatrizBCG mantido). */}
+      <Stack.Screen name="MatrizBCG" component={MatrizBCGScreen} options={{ title: 'Ranking de Produtos' }} />
       <Stack.Screen name="BCGProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
       <Stack.Screen name="DeliveryHub" component={DeliveryHubScreen} options={{ title: 'Delivery' }} />
       <Stack.Screen name="DeliveryPlataformas" component={DeliveryPlataformasScreen} options={{ title: 'Plataformas' }} />
@@ -348,7 +351,8 @@ function MainTabs({ route }) {
       <Tab.Screen name="Preparos" component={PreparosStack} />
       <Tab.Screen name="Embalagens" component={EmbalagensStack} />
       <Tab.Screen name="Produtos" component={ProdutosStack} />
-      <Tab.Screen name="Mais" component={MaisStack} />
+      {/* Sprint 1 Q3 — tabBarLabel "Ferramentas" sem renomear route name (quebraria persistência). */}
+      <Tab.Screen name="Mais" component={MaisStack} options={{ tabBarLabel: 'Ferramentas' }} />
     </Tab.Navigator>
   );
 

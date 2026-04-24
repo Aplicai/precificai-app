@@ -4,6 +4,9 @@ import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import FAB from '../components/FAB';
+// Sprint 4 F1 — FABMenu expõe "Lançar compra" / "Ajustar saldo" quando
+// modo_avancado_estoque on; antes estavam escondidos dentro dos cards a 15px.
+import FABMenu from '../components/FABMenu';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, getTipoUnidade, normalizeSearch } from '../utils/calculations';
@@ -832,8 +835,35 @@ export default function MateriasPrimasScreen({ navigation }) {
         />
       )}
 
+      {/* Sprint 4 F1 — Quando modo_avancado_estoque on, FAB vira menu com
+          atalhos descobríveis para Lançar Compra e Ajustar Saldo (antes
+          escondidos a 15px dentro de cada card). Quando off, FAB simples. */}
       {!bulk.active && (
-        <FAB onPress={() => navigation.navigate('MateriaPrimaForm', {})} label={isDesktop ? 'Novo Insumo' : undefined} />
+        estoqueOn ? (
+          <FABMenu
+            primary={{
+              label: 'Novo Insumo',
+              icon: 'plus',
+              onPress: () => navigation.navigate('MateriaPrimaForm', {}),
+            }}
+            actions={[
+              {
+                key: 'compra',
+                label: 'Lançar compra',
+                icon: 'shopping-bag',
+                onPress: () => navigation.navigate('EntradaEstoque', { returnTo: { tab: 'Insumos', screen: 'MateriasPrimas' } }),
+              },
+              {
+                key: 'ajuste',
+                label: 'Ajustar saldo',
+                icon: 'sliders',
+                onPress: () => navigation.navigate('AjusteEstoque', { returnTo: { tab: 'Insumos', screen: 'MateriasPrimas' } }),
+              },
+            ]}
+          />
+        ) : (
+          <FAB onPress={() => navigation.navigate('MateriaPrimaForm', {})} label={isDesktop ? 'Novo Insumo' : undefined} />
+        )
       )}
 
       {/* Modal nova categoria */}

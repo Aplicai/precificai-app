@@ -22,7 +22,8 @@ const NAV_SECTIONS = [
     items: [
       { key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign', iconSet: 'feather', tab: 'Mais', screen: 'FinanceiroMain' },
       { key: 'delivery', label: 'Delivery', icon: 'truck', iconSet: 'feather', tab: 'Mais', screen: 'DeliveryHub', flag: 'usa_delivery' },
-      { key: 'bcg', label: 'Eng. do Cardápio', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Mais', screen: 'MatrizBCG', flag: 'modo_avancado_analise' },
+      // Sprint 1 Q4 — "Eng. do Cardápio" → "Ranking de Produtos" (linguagem clara para usuário leigo).
+      { key: 'bcg', label: 'Ranking de Produtos', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Mais', screen: 'MatrizBCG', flag: 'modo_avancado_analise' },
       { key: 'precos', label: 'Atualizar Preços', icon: 'refresh-cw', iconSet: 'feather', tab: 'Mais', screen: 'AtualizarPrecos' },
       // Sessão 26 — Simulador agora é CTA contextual dentro da Ficha Técnica
       { key: 'relatorio', label: 'Relatório', icon: 'file-text', iconSet: 'feather', tab: 'Mais', screen: 'RelatorioSimples' },

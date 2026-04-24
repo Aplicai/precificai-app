@@ -38,7 +38,11 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
   const [embalagens, setEmbalagens] = useState([]);
   const [tipo, setTipo] = useState(presetTipo || 'materia_prima');
   const [itemId, setItemId] = useState(presetId || null);
-  const [direcao, setDirecao] = useState('saida'); // 'entrada' | 'saida'
+  // Sprint 4 F2 — default 'saldo' (modo absoluto). Contagem física é o caso
+  // mais comum: padeiro conta 5kg, digita 5. Antes forçava matemática mental
+  // (sistema 7kg, contou 5kg → digitar -2). Agora delta é calculado p/ ele.
+  const [modo, setModo] = useState('saldo'); // 'saldo' | 'diferenca'
+  const [direcao, setDirecao] = useState('saida'); // só usado em modo='diferenca'
   const [quantidade, setQuantidade] = useState('');
   const [motivo, setMotivo] = useState('');
   const [loadError, setLoadError] = useState(null);
@@ -71,13 +75,30 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
 
   const qtdNum = parseNum(quantidade);
   const motivoOk = motivo.trim().length >= 3;
-  const podeSalvar = itemId && qtdNum && qtdNum > 0 && motivoOk && !salvando;
 
   // Pré-cálculo do saldo resultante (mostra ao usuário antes de confirmar)
   const saldoAtual = Number(itemSelecionado?.quantidade_estoque) || 0;
-  const delta = (qtdNum || 0) * (direcao === 'saida' ? -1 : 1);
-  const saldoNovo = saldoAtual + delta;
-  const saldoNegativo = direcao === 'saida' && qtdNum && saldoNovo < 0;
+
+  // Sprint 4 F2 — calculo unificado entre modos.
+  // modo='saldo'    → qtdNum é o novo saldo absoluto; delta derivado.
+  // modo='diferenca' → qtdNum é a diferença (entrada/saida); saldoNovo derivado.
+  let delta, saldoNovo;
+  if (modo === 'saldo') {
+    saldoNovo = qtdNum != null ? qtdNum : saldoAtual;
+    delta = saldoNovo - saldoAtual;
+  } else {
+    delta = (qtdNum || 0) * (direcao === 'saida' ? -1 : 1);
+    saldoNovo = saldoAtual + delta;
+  }
+  const saldoNegativo = saldoNovo < 0;
+
+  // Regra de habilitar o botão:
+  // - saldo  : precisa ter qtd (saldo final) ≥ 0 e delta ≠ 0.
+  // - diferença: precisa ter qtd > 0.
+  const qtdValidaParaSalvar = modo === 'saldo'
+    ? (qtdNum != null && qtdNum >= 0 && delta !== 0)
+    : (qtdNum != null && qtdNum > 0);
+  const podeSalvar = itemId && qtdValidaParaSalvar && motivoOk && !salvando;
 
   function confirmar(msg, onYes) {
     if (Platform.OS === 'web') {
@@ -95,12 +116,16 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
   function pedirConfirmacao() {
     if (!podeSalvar) return;
     const fmt = (n) => Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
-    const verbo = direcao === 'saida' ? 'reduzir' : 'aumentar';
+    const deltaAbs = Math.abs(delta);
+    const verbo = delta < 0 ? 'reduzir' : 'aumentar';
     const aviso = saldoNegativo
       ? `\n\n⚠ ATENÇÃO: o saldo final ficará NEGATIVO (${fmt(saldoNovo)} ${unidade}). Continuar mesmo assim?`
       : '';
+    const resumo = modo === 'saldo'
+      ? `Vamos ajustar o saldo de "${itemSelecionado?.nome}" para ${fmt(saldoNovo)} ${unidade} (${verbo} ${fmt(deltaAbs)} ${unidade}).`
+      : `Vamos ${verbo} ${fmt(deltaAbs)} ${unidade} de "${itemSelecionado?.nome}".`;
     confirmar(
-      `Vamos ${verbo} ${fmt(qtdNum)} ${unidade} de "${itemSelecionado?.nome}".\n\nSaldo atual: ${fmt(saldoAtual)} ${unidade}\nSaldo novo:  ${fmt(saldoNovo)} ${unidade}${aviso}`,
+      `${resumo}\n\nSaldo atual: ${fmt(saldoAtual)} ${unidade}\nSaldo novo:  ${fmt(saldoNovo)} ${unidade}${aviso}`,
       salvar,
     );
   }
@@ -109,11 +134,15 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
     if (!podeSalvar) return;
     setSalvando(true);
     try {
-      if (direcao === 'saida') {
+      // Sprint 4 F2 — ambos modos acabam em baixar/registrar, mas o delta
+      // é que define a direção. Em modo 'saldo', derivamos direção do sinal.
+      const deltaAbs = Math.abs(delta);
+      const ehSaida = delta < 0;
+      if (ehSaida) {
         await baixarEstoque({
           entidadeTipo: tipo,
           entidadeId: itemId,
-          quantidade: qtdNum,
+          quantidade: deltaAbs,
           motivo: motivo.trim(),
           origemTipo: 'ajuste',
         });
@@ -123,7 +152,7 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
         await registrarEntrada({
           entidadeTipo: tipo,
           entidadeId: itemId,
-          quantidade: qtdNum,
+          quantidade: deltaAbs,
           custoUnitario: custoAtual,
           motivo: `[Ajuste] ${motivo.trim()}`,
           origemTipo: 'ajuste',
@@ -194,32 +223,65 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
           placeholder={`Escolha ${tipo === 'embalagem' ? 'uma embalagem' : 'um insumo'}…`}
         />
 
-        <Text style={styles.label}>Direção do ajuste</Text>
+        {/* Sprint 4 F2 — modo 'saldo' (default) vs 'diferenca'. */}
+        <Text style={styles.label}>Modo do ajuste</Text>
         <View style={styles.toggle}>
           {[
-            { v: 'saida', l: 'Reduzir saldo', icon: 'arrow-down' },
-            { v: 'entrada', l: 'Aumentar saldo', icon: 'arrow-up' },
+            { v: 'saldo', l: 'Saldo final', icon: 'target' },
+            { v: 'diferenca', l: 'Diferença', icon: 'plus-minus' },
           ].map((opt) => (
             <TouchableOpacity
               key={opt.v}
-              style={[styles.toggleOpt, direcao === opt.v && styles.toggleOptActive]}
-              onPress={() => setDirecao(opt.v)}
+              style={[styles.toggleOpt, modo === opt.v && styles.toggleOptActive]}
+              onPress={() => { setModo(opt.v); setQuantidade(''); }}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`Modo ${opt.l}`}
             >
-              <Feather name={opt.icon} size={14} color={direcao === opt.v ? colors.primary : colors.textSecondary} />
-              <Text style={[styles.toggleText, direcao === opt.v && styles.toggleTextActive, { marginLeft: 4 }]}>{opt.l}</Text>
+              <Feather name={opt.icon === 'plus-minus' ? 'repeat' : opt.icon} size={14} color={modo === opt.v ? colors.primary : colors.textSecondary} />
+              <Text style={[styles.toggleText, modo === opt.v && styles.toggleTextActive, { marginLeft: 4 }]}>{opt.l}</Text>
             </TouchableOpacity>
           ))}
         </View>
+        <Text style={styles.hint}>
+          {modo === 'saldo'
+            ? `Digite quanto tem agora. A diferença é calculada automaticamente.${itemSelecionado ? ` Saldo atual: ${Number(saldoAtual).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} ${unidade}.` : ''}`
+            : 'Digite só a diferença (quanto entrou ou saiu).'}
+        </Text>
 
-        <Text style={styles.label}>Quantidade ({unidade})</Text>
+        {modo === 'diferenca' && (
+          <>
+            <Text style={styles.label}>Direção</Text>
+            <View style={styles.toggle}>
+              {[
+                { v: 'saida', l: 'Reduzir', icon: 'arrow-down' },
+                { v: 'entrada', l: 'Aumentar', icon: 'arrow-up' },
+              ].map((opt) => (
+                <TouchableOpacity
+                  key={opt.v}
+                  style={[styles.toggleOpt, direcao === opt.v && styles.toggleOptActive]}
+                  onPress={() => setDirecao(opt.v)}
+                  activeOpacity={0.7}
+                >
+                  <Feather name={opt.icon} size={14} color={direcao === opt.v ? colors.primary : colors.textSecondary} />
+                  <Text style={[styles.toggleText, direcao === opt.v && styles.toggleTextActive, { marginLeft: 4 }]}>{opt.l}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
+
+        <Text style={styles.label}>
+          {modo === 'saldo' ? `Saldo agora (${unidade})` : `Quantidade (${unidade})`}
+        </Text>
         <TextInput
           style={styles.input}
           value={quantidade}
           onChangeText={setQuantidade}
           keyboardType="decimal-pad"
           placeholder="0,00"
-          placeholderTextColor={colors.disabled}
+          placeholderTextColor={colors.placeholder}
+          accessibilityLabel={modo === 'saldo' ? 'Saldo atual em unidades' : 'Quantidade da diferença'}
         />
 
         <Text style={styles.label}>Motivo *</Text>
@@ -228,7 +290,7 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
           value={motivo}
           onChangeText={setMotivo}
           placeholder='Obrigatório. Ex.: "perda no preparo", "inventário 22/04"'
-          placeholderTextColor={colors.disabled}
+          placeholderTextColor={colors.placeholder}
           multiline
           numberOfLines={3}
           maxLength={200}
@@ -237,7 +299,7 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
           <Text style={styles.errText}>Mínimo 3 caracteres.</Text>
         )}
 
-        {qtdNum > 0 && itemSelecionado && (
+        {qtdNum != null && itemSelecionado && delta !== 0 && (
           <View style={[styles.previewCard, saldoNegativo && styles.previewCardWarn]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Feather
@@ -318,6 +380,11 @@ const styles = StyleSheet.create({
   errText: {
     fontSize: fonts.tiny, color: colors.error,
     fontFamily: fontFamily.regular, marginTop: 4,
+  },
+  hint: {
+    fontSize: fonts.tiny, color: colors.textSecondary,
+    fontFamily: fontFamily.regular, marginTop: 6,
+    lineHeight: 16,
   },
   btnPrimary: {
     backgroundColor: colors.primary,

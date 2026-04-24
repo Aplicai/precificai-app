@@ -28,6 +28,8 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useUndoableDelete from '../hooks/useUndoableDelete';
 import useBulkSelection from '../hooks/useBulkSelection';
 import { t } from '../i18n/pt-BR';
+// Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
+import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 
 // Cores para categorias
 const CATEGORY_COLORS = [
@@ -219,10 +221,22 @@ export default function PreparosScreen({ navigation }) {
     }
   }
 
-  function solicitarExclusao(id, nome) {
+  async function solicitarExclusao(id, nome) {
+    // Sprint 2 S5 — antes de excluir, conta produtos/sub-preparos que usam este preparo.
+    let mensagemExtra = null;
+    try {
+      const db = await getDatabase();
+      const deps = await contarDependencias(db, 'preparo', id);
+      if (deps.total > 0) {
+        mensagemExtra = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'preparo' });
+      }
+    } catch (e) {
+      console.error('[PreparosScreen.solicitarExclusao.deps]', e);
+    }
     setConfirmDelete({
       titulo: 'Excluir Preparo',
       nome,
+      aviso: mensagemExtra,
       onConfirm: async () => {
         setConfirmDelete(null);
         await undoDelete.requestDelete({
@@ -238,12 +252,27 @@ export default function PreparosScreen({ navigation }) {
     });
   }
 
-  function solicitarExclusaoEmMassa() {
+  async function solicitarExclusaoEmMassa() {
     const ids = Array.from(bulk.selectedIds);
     if (ids.length === 0) return;
+    let mensagemExtra = null;
+    try {
+      const db = await getDatabase();
+      let totalRefs = 0;
+      for (const id of ids) {
+        const deps = await contarDependencias(db, 'preparo', id);
+        totalRefs += deps.total;
+      }
+      if (totalRefs > 0) {
+        mensagemExtra = `${totalRefs} referência${totalRefs === 1 ? '' : 's'} ${totalRefs === 1 ? 'será afetada' : 'serão afetadas'} (produtos perderão o preparo do CMV).`;
+      }
+    } catch (e) {
+      console.error('[PreparosScreen.solicitarExclusaoEmMassa.deps]', e);
+    }
     setConfirmDelete({
       titulo: ids.length === 1 ? 'Excluir Preparo' : `Excluir ${ids.length} preparos`,
       nome: ids.length === 1 ? null : `${ids.length} itens selecionados`,
+      aviso: mensagemExtra,
       onConfirm: async () => {
         setConfirmDelete(null);
         await undoDelete.requestDelete({
@@ -858,6 +887,7 @@ export default function PreparosScreen({ navigation }) {
         isFocused={isFocused}
         titulo={confirmDelete?.titulo}
         nome={confirmDelete?.nome}
+        aviso={confirmDelete?.aviso}
         onConfirm={confirmDelete?.onConfirm}
         onCancel={() => setConfirmDelete(null)}
       />

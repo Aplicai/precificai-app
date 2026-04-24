@@ -6,6 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { t } from '../i18n/pt-BR';
+// Sprint 1 Q9 — helper para Alert pós-sucesso confiável no web (Alert.alert com onPress não dispara no RN Web).
+import { notifySuccess } from '../utils/notify';
 
 // Mapeia mensagens cruas do Supabase auth para textos amigáveis (sem expor stack/tokens)
 function mapAuthError(rawMsg) {
@@ -40,6 +42,8 @@ export default function ContaSegurancaScreen({ navigation }) {
   const [showConfirmPass, setShowConfirmPass] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  // Sprint 2 S13 — reautenticação obrigatória antes de exclusão definitiva da conta.
+  const [deleteReauthPass, setDeleteReauthPass] = useState('');
   const [deleting, setDeleting] = useState(false);
 
   // Limpa senhas em RAM ao desmontar a tela (security)
@@ -73,10 +77,12 @@ export default function ContaSegurancaScreen({ navigation }) {
     try {
       const { error } = await supabase.auth.updateUser({ email: newEmail.trim() });
       if (error) throw error;
-      Alert.alert(t.alertSuccess, t.auth.emailChanged + ' Confira também a caixa do e-mail atual.');
-      setNewEmail('');
-      setConfirmEmail('');
-      setSection(null);
+      // Sprint 1 Q9 — notifySuccess garante que o reset/section=null rode após o OK no web.
+      notifySuccess(t.alertSuccess, t.auth.emailChanged + ' Confira também a caixa do e-mail atual.', () => {
+        setNewEmail('');
+        setConfirmEmail('');
+        setSection(null);
+      });
     } catch (err) {
       console.error('[ContaSegurancaScreen.handleUpdateEmail]', err);
       Alert.alert(t.alertError, mapAuthError(err?.message));
@@ -112,11 +118,13 @@ export default function ContaSegurancaScreen({ navigation }) {
       }
       const { error } = await supabase.auth.updateUser({ password: newPass });
       if (error) throw error;
-      Alert.alert(t.alertSuccess, t.auth.passwordChanged);
-      setCurrentPass('');
-      setNewPass('');
-      setConfirmPass('');
-      setSection(null);
+      // Sprint 1 Q9 — notifySuccess garante reset dos campos no web.
+      notifySuccess(t.alertSuccess, t.auth.passwordChanged, () => {
+        setCurrentPass('');
+        setNewPass('');
+        setConfirmPass('');
+        setSection(null);
+      });
     } catch (err) {
       console.error('[ContaSegurancaScreen.handleUpdatePassword]', err);
       Alert.alert(t.alertError, mapAuthError(err?.message));
@@ -170,27 +178,65 @@ export default function ContaSegurancaScreen({ navigation }) {
       Alert.alert(t.alertAttention, t.validation.confirmDeleteToken);
       return;
     }
+    // Sprint 2 S13 — reauth obrigatório (requer a senha atual antes de qualquer DELETE).
+    // Defesa contra: sessão sequestrada (token vazado em log/cookie), descuido em
+    // máquina compartilhada, e cumprimento de "session age" recomendado para ações destrutivas.
+    if (!deleteReauthPass || deleteReauthPass.length < 6) {
+      Alert.alert(t.alertAttention, 'Para excluir a conta, digite sua senha atual.');
+      return;
+    }
     setDeleting(true);
     try {
-      const db = await getDatabase();
-      const SAFE_TABLES = Object.freeze(['produto_embalagens', 'produto_preparos', 'produto_ingredientes', 'preparo_ingredientes', 'delivery_combo_itens', 'delivery_produto_itens', 'delivery_combos', 'delivery_produtos', 'delivery_adicionais', 'delivery_config', 'vendas', 'produtos', 'preparos', 'embalagens', 'materias_primas', 'categorias_produtos', 'categorias_preparos', 'categorias_embalagens', 'categorias_insumos', 'faturamento_mensal', 'despesas_variaveis', 'despesas_fixas', 'historico_precos', 'perfil', 'configuracao']);
-      const failedTables = [];
-      for (const table of SAFE_TABLES) {
-        try {
-          await supabase.from(table).delete().eq('user_id', user.id);
-        } catch(e) {
-          console.error('[ContaSegurancaScreen.excluirConta] delete failed for table', table, e);
-          failedTables.push(table);
-        }
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: deleteReauthPass,
+      });
+      if (reauthError) {
+        Alert.alert(t.alertError, 'Senha incorreta. Tente novamente.');
+        setDeleting(false);
+        return;
       }
-      if (failedTables.length > 0) {
-        console.warn('[ContaSegurancaScreen.excluirConta] tables not fully deleted:', failedTables);
+      // Sprint 2 S14 — LGPD-compliant: marca a SOLICITAÇÃO de exclusão (não deleta agora).
+      // O hard-delete real deve rodar em job server-side após 30 dias (TODO: criar Edge Function
+      // `purge-deleted-accounts.ts` em supabase/functions com schedule diário; ler `deletion_requested_at`
+      // de auth.users.user_metadata e DELETE em todas as tabelas FK→user_id quando >= 30 dias).
+      //
+      // Antes (bug): este bloco fazia DELETE imediato em 25 tabelas e MOSTRAVA mensagem
+      // "Seus dados serão retidos por 30 dias" — mentindo para o usuário e violando LGPD
+      // (a retenção é justamente para permitir REVERTER a exclusão dentro do prazo).
+      const deletionRequestedAt = new Date().toISOString();
+      const purgeAfter = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      // Persiste a solicitação no metadata do usuário (fica visível no admin Supabase + no JWT do user).
+      const { error: metaError } = await supabase.auth.updateUser({
+        data: {
+          deletion_requested_at: deletionRequestedAt,
+          purge_scheduled_for: purgeAfter,
+        },
+      });
+      if (metaError) {
+        console.error('[ContaSegurancaScreen.excluirConta] failed to mark deletion in user metadata', metaError);
+        throw new Error('Não foi possível registrar sua solicitação. Tente novamente em instantes.');
       }
+
+      // Best-effort: registra também numa tabela auditável (se existir). Não bloqueia se faltar.
+      try {
+        await supabase.from('account_deletion_requests').insert({
+          user_id: user.id,
+          requested_at: deletionRequestedAt,
+          purge_scheduled_for: purgeAfter,
+          source: Platform.OS,
+        });
+      } catch (auditErr) {
+        console.warn('[ContaSegurancaScreen.excluirConta] tabela account_deletion_requests inexistente — usando só user_metadata');
+      }
+
       await supabase.auth.signOut();
+      const msg = 'Solicitação registrada. Seus dados serão MANTIDOS por 30 dias para permitir reversão (LGPD art. 18). Após esse prazo, todos serão excluídos definitivamente. Para cancelar a exclusão, faça login novamente nesse período e contate o suporte.';
       if (Platform.OS === 'web') {
-        window.alert('Solicitação de exclusão registrada. Seus dados serão retidos por 30 dias (LGPD) e depois excluídos permanentemente. Um e-mail de confirmação será enviado.');
+        window.alert('Exclusão solicitada\n\n' + msg);
       } else {
-        Alert.alert('Exclusão solicitada', 'Seus dados serão retidos por 30 dias conforme a LGPD e depois excluídos permanentemente. Um e-mail de confirmação será enviado.');
+        Alert.alert('Exclusão solicitada', msg);
       }
     } catch(e) {
       console.error('[ContaSegurancaScreen.excluirConta]', e);
@@ -198,6 +244,7 @@ export default function ContaSegurancaScreen({ navigation }) {
     } finally {
       setDeleting(false);
       setShowDeleteModal(false);
+      setDeleteReauthPass('');
     }
   }
 
@@ -394,6 +441,17 @@ export default function ContaSegurancaScreen({ navigation }) {
               placeholderTextColor={colors.disabled}
               accessibilityLabel="Campo de confirmação de exclusão. Digite a palavra EXCLUIR em maiúsculas."
             />
+            {/* Sprint 2 S13 — reautenticação obrigatória antes do DELETE definitivo. */}
+            <TextInput
+              style={styles.deleteModalInput}
+              value={deleteReauthPass}
+              onChangeText={setDeleteReauthPass}
+              placeholder="Sua senha atual"
+              secureTextEntry
+              autoCapitalize="none"
+              placeholderTextColor={colors.disabled}
+              accessibilityLabel="Confirme sua senha atual para autorizar a exclusão"
+            />
             {deleteConfirmText.length > 0 && deleteConfirmText !== 'EXCLUIR' && (
               <Text style={styles.deleteModalHintError} accessibilityLiveRegion="polite">
                 Digite exatamente "EXCLUIR" em letras maiúsculas para liberar o botão.
@@ -402,21 +460,22 @@ export default function ContaSegurancaScreen({ navigation }) {
             <View style={styles.deleteModalBtnRow}>
               <TouchableOpacity
                 style={styles.deleteModalCancelBtn}
-                onPress={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
+                onPress={() => { setShowDeleteModal(false); setDeleteConfirmText(''); setDeleteReauthPass(''); }}
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel="Cancelar exclusão da conta"
               >
                 <Text style={styles.deleteModalCancelBtnText}>Cancelar</Text>
               </TouchableOpacity>
+              {/* Sprint 2 S13 — habilita só com EXCLUIR + senha (≥6) preenchida. */}
               <TouchableOpacity
-                style={[styles.deleteModalDeleteBtn, { opacity: deleteConfirmText === 'EXCLUIR' ? 1 : 0.5 }]}
+                style={[styles.deleteModalDeleteBtn, { opacity: (deleteConfirmText === 'EXCLUIR' && deleteReauthPass.length >= 6) ? 1 : 0.5 }]}
                 onPress={excluirConta}
-                disabled={deleteConfirmText !== 'EXCLUIR' || deleting}
+                disabled={deleteConfirmText !== 'EXCLUIR' || deleteReauthPass.length < 6 || deleting}
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel="Confirmar exclusão definitiva da conta"
-                accessibilityState={{ disabled: deleteConfirmText !== 'EXCLUIR' || deleting, busy: deleting }}
+                accessibilityState={{ disabled: deleteConfirmText !== 'EXCLUIR' || deleteReauthPass.length < 6 || deleting, busy: deleting }}
               >
                 {deleting ? (
                   <ActivityIndicator size="small" color="#fff" />

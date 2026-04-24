@@ -16,6 +16,8 @@ import usePersistedState from '../hooks/usePersistedState';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import SearchBar from '../components/SearchBar';
 import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+// Sprint 2 S3 — fonte única da verdade para precificação delivery (substitui fórmula inline duplicada).
+import { calcResultadoDelivery, sugerirPrecoDelivery } from '../utils/deliveryPricing';
 
 const isWeb = Platform.OS === 'web';
 
@@ -209,45 +211,32 @@ export default function DeliveryHubScreen({ navigation }) {
     const plat = plataformas.find(p => p.id === selectedPlat);
     if (!prod || !plat) return;
 
-    const comissaoPct = (plat.comissao_app || plat.taxa_plataforma || 0) / 100;
-    const taxaEntregaR$ = plat.taxa_entrega || 0;
-    const descontoPct = (plat.desconto_promocao || 0) / 100;
-    const cupomR$ = plat.embalagem_extra || 0;
-
+    // Sprint 2 S3 — delegado à fórmula canônica em src/utils/deliveryPricing.
+    // Mantém os mesmos campos no setSimResult para preservar o render existente.
     const precoBalcao = prod.preco_venda;
     const custoUnit = prod.custoUnit;
     const margemBalcao = precoBalcao > 0 ? (precoBalcao - custoUnit) / precoBalcao : 0;
 
-    // Ordem correta dos descontos no delivery:
-    // 1. Desconto promo (%) - aplicado sobre o preço do produto
-    const precoComDesconto = precoBalcao * (1 - descontoPct);
-    const valorDesconto = precoBalcao * descontoPct;
-    // 2. Cupom (R$) - abatido do valor após desconto
-    const precoAposCupom = precoComDesconto - cupomR$;
-    // 3. Comissão (%) - calculada sobre (preço após cupom + frete)
-    const baseComissao = precoAposCupom + taxaEntregaR$;
-    const valorComissao = baseComissao * comissaoPct;
-    // 4. O restaurante recebe: preço após cupom - comissão - taxa de entrega
-    const receitaLiqDelivery = precoAposCupom - valorComissao - taxaEntregaR$;
-    const lucroDelivery = receitaLiqDelivery - custoUnit;
+    const r = calcResultadoDelivery({ precoVenda: precoBalcao, custoUnit, plat });
+    const comissaoPct = r.comissaoPct;
+    const descontoPct = r.descontoPct;
+    const cupomR$ = r.cupomR$;
+    const taxaEntregaR$ = r.taxaEntregaR$;
+    const valorDesconto = r.valorDesconto;
+    const precoComDesconto = r.precoComDesconto;
+    const precoAposCupom = r.precoAposCupom;
+    const baseComissao = r.baseComissao;
+    const valorComissao = r.valorComissao;
+    const receitaLiqDelivery = r.receitaLiq;
+    const lucroDelivery = r.lucro;
     const margemDelivery = precoBalcao > 0 ? lucroDelivery / precoBalcao : 0;
 
-    // Preço sugerido para atingir a margem desejada
-    // receitaLiq = (P*(1-d) - c)*(1 - com) - f
-    // lucro = receitaLiq - custo = P * margemAlvo
-    // P * ((1-d)*(1-com) - margemAlvo) = c*(1-com) + f + custo
     const margemAlvoRaw = parseFloat(margemDesejada);
     const margemAlvo = (Number.isFinite(margemAlvoRaw) ? margemAlvoRaw : 30) / 100;
-    const numerador = cupomR$ * (1 - comissaoPct) + taxaEntregaR$ + custoUnit;
-    const divisor = (1 - descontoPct) * (1 - comissaoPct) - margemAlvo;
-    // Guarda contra Infinity/NaN: se divisor ≤ 0 (taxas+margem ≥ 100%), preço sugerido é inviável
-    const precoSugerido = (Number.isFinite(divisor) && divisor > 0) ? numerador / divisor : null;
-
-    // Preço mínimo (lucro = 0 => receitaLiq = custo)
+    const sug = sugerirPrecoDelivery({ custoUnit, plat, margemAlvo, arredondar: false });
+    const precoSugerido = sug.precoSugerido;
+    const precoMinimo = sug.precoMinimo;
     const divisorMin = (1 - descontoPct) * (1 - comissaoPct);
-    const precoMinimo = (Number.isFinite(divisorMin) && divisorMin > 0)
-      ? (custoUnit + cupomR$ * (1 - comissaoPct) + taxaEntregaR$) / divisorMin
-      : null;
 
     setSimResult({
       prodNome: isComboSel ? prod.nome + ' (Combo)' : prod.nome,

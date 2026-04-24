@@ -12,6 +12,8 @@ import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { calcPrecoUnitarioEmbalagem, formatCurrency } from '../utils/calculations';
 import { t } from '../i18n/pt-BR';
+// Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
+import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 
 const UNIDADES_EMBALAGEM = [
   { label: 'Unidades', value: 'Unidades' },
@@ -214,11 +216,24 @@ export default function EmbalagemFormScreen({ route, navigation }) {
     pendingNavAction.current = null;
   }
 
-  function solicitarExclusao() {
+  async function solicitarExclusao() {
     if (!editId) return;
+    // Sprint 2 S5 — antes de deletar, descobre se a embalagem está em uso por
+    // algum produto. Se sim, mostra o aviso no modal (sem bloquear, mas avisa).
+    let mensagemExtra = null;
+    try {
+      const db = await getDatabase();
+      const deps = await contarDependencias(db, 'embalagem', editId);
+      if (deps.total > 0) {
+        mensagemExtra = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'embalagem' });
+      }
+    } catch (e) {
+      console.error('[EmbalagemForm.solicitarExclusao.deps]', e);
+    }
     setConfirmDelete({
       titulo: 'Excluir Embalagem',
       nome: form.nome || 'esta embalagem',
+      mensagemExtra,
       onConfirm: async () => {
         const db = await getDatabase();
         await db.runAsync('DELETE FROM embalagens WHERE id = ?', [editId]);
@@ -293,16 +308,21 @@ export default function EmbalagemFormScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Preço Embalagem */}
+        {/* Sprint 1 Q11 — label + helper text esclarecem que o valor é o do PACOTE inteiro,
+            não unitário. Antes só "Preço Embalagem (R$)" → usuário digitava o valor unitário
+            e via custo absurdamente baixo nos produtos. */}
         <InputField
-          label="Preço Embalagem (R$)"
+          label="Preço do pacote (R$)"
           value={form.preco_embalagem}
           onChangeText={(v) => { setForm(p => ({ ...p, preco_embalagem: v })); setErrors(p => ({ ...p, preco_embalagem: undefined })); }}
           keyboardType="decimal-pad"
-          placeholder="Ex: 25,00"
+          placeholder="Ex: 25,00 (valor pago no pacote inteiro)"
           error={errors.preco_embalagem}
           style={styles.fieldCompact}
         />
+        <Text style={{ fontSize: fonts.tiny, color: colors.textSecondary, marginTop: -spacing.sm, marginBottom: spacing.sm, fontFamily: fontFamily.regular }}>
+          Quanto você pagou no pacote completo (não no item unitário). O preço por unidade é calculado abaixo.
+        </Text>
 
         {/* Resultado Calculado */}
         {temDadosCalculo ? (
@@ -540,6 +560,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         isFocused={isFocused}
         titulo={confirmDelete?.titulo}
         nome={confirmDelete?.nome}
+        aviso={confirmDelete?.mensagemExtra}
         onConfirm={confirmDelete?.onConfirm}
         onCancel={() => setConfirmDelete(null)}
       />
