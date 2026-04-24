@@ -28,12 +28,12 @@ curl -s https://app.precificaiapp.com/ | grep -oE 'index-[a-f0-9]+\.js'
 
 Se o bundle hash mudou e o deploy está Ready → terminado.
 
-## Caminho MANUAL — `--prebuilt` cache stale workaround
-**Use apenas quando o auto-deploy serviu bundle stale.**
+## Caminho MANUAL — cache stale workaround
+**Use quando QUALQUER deploy (auto via GitHub OU manual `--prebuilt`) serviu bundle stale.**
 
 ### Sintoma
-`vercel deploy --prebuilt --prod` serve bundle antigo mesmo após `vercel build --prod` ter rodado.
-Bundle hash IDÊNTICO ao deploy anterior, mesmo com source novo.
+- Bundle hash IDÊNTICO ao deploy anterior, apesar de mudanças no source
+- Aplica-se a `vercel deploy --prebuilt --prod` E ao auto-deploy do GitHub (confirmado Sessão 22, 2026-04-24: push de 1370L novas reusou bundle anterior)
 
 ### Causa
 `vercel build` reaproveita Metro/Babel cache em `.vercel/output/static/` quando o output dir já existe.
@@ -100,3 +100,4 @@ Se "Invalid API key" só em produção: verificar truncation da Supabase anon ke
 - Sessão 17 (2026-04-23): gotcha `--prebuilt` cache stale descoberto e workaround consolidado
 - Sessão 20 (2026-04-23): workaround aplicado com sucesso (deploy `mc2b1ofdt`, bundle `cbc3abd...`)
 - Sessão 21 (2026-04-23): caminho feliz validado — push `da0d6b9` disparou auto-deploy `auv9y475k` em ~7 min sem necessidade do workaround manual
+- Sessão 22 (2026-04-24): **gotcha estendido** — auto-deploy GitHub também serviu bundle stale (push `44eccca` com 1370L novas → deploy `i9ltx64c0` reusou bundle `a0de8d61...`). Workaround manual aplicado, deploy `k5ik2sw7j` serviu bundle novo `8e6c45a6...`. Skill atualizada para cobrir ambos os caminhos
