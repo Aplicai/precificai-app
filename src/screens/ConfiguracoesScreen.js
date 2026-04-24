@@ -259,13 +259,19 @@ export default function ConfiguracoesScreen({ navigation }) {
           </View>
         </View>
 
-        <FlagToggleRow
-          icon="package"
-          label="Controle de estoque"
-          desc="Saldos, entradas, ajustes e alertas de estoque baixo nos insumos"
-          value={estoqueOn}
-          onChange={setEstoqueOn}
-        />
+        {/* Sessão 27 — Toggle de "Controle de estoque" oculto a pedido do usuário.
+            UX não fechou (botões pequenos, navegação confusa). Código continua
+            no repo (FABMenu, EntradaEstoque, AjusteEstoque, services/estoque)
+            para reativação futura — basta descomentar este bloco. */}
+        {false && (
+          <FlagToggleRow
+            icon="package"
+            label="Controle de estoque"
+            desc="Saldos, entradas, ajustes e alertas de estoque baixo nos insumos"
+            value={estoqueOn}
+            onChange={setEstoqueOn}
+          />
+        )}
         <FlagToggleRow
           icon="moped-outline"
           materialIcon

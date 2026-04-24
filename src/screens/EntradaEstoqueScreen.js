@@ -28,6 +28,19 @@ function parseNum(s) {
 export default function EntradaEstoqueScreen({ navigation, route }) {
   const presetTipo = route?.params?.entidadeTipo;
   const presetId = route?.params?.entidadeId;
+  const returnTo = route?.params?.returnTo;
+
+  // Sessão 27 — respeita returnTo. Sem ele, goBack() pode levar pra tela errada
+  // (ex: Configurações se foi de lá que o flag foi ligado).
+  function voltar() {
+    if (returnTo?.tab) {
+      try {
+        navigation.navigate(returnTo.tab, returnTo.screen ? { screen: returnTo.screen } : undefined);
+        return;
+      } catch (_) { /* fallback abaixo */ }
+    }
+    navigation.goBack();
+  }
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [insumos, setInsumos] = useState([]);
@@ -94,7 +107,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
         // window.alert é síncrono no web → garante feedback antes de voltar
         try { window.alert('Entrada registrada com sucesso. Saldo e custo médio atualizados.'); } catch {}
       }
-      navigation.goBack();
+      voltar();
     } catch (e) {
       console.error('[EntradaEstoque.salvar]', e);
       setSalvando(false);
@@ -109,7 +122,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
 
   if (carregando) {
     return (
-      <ModalFormWrapper title="Entrada de Estoque" onClose={() => navigation.goBack()}>
+      <ModalFormWrapper title="Entrada de Estoque" onClose={() => voltar()}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={colors.primary} />
         </View>
@@ -119,7 +132,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
 
   if (insumos.length === 0 && embalagens.length === 0) {
     return (
-      <ModalFormWrapper title="Entrada de Estoque" onClose={() => navigation.goBack()}>
+      <ModalFormWrapper title="Entrada de Estoque" onClose={() => voltar()}>
         <EmptyState
           icon="package"
           title="Nenhum item cadastrado"
@@ -134,7 +147,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
   const custoInvalido = custoUnitario !== '' && (custoNum === null || custoNum <= 0);
 
   return (
-    <ModalFormWrapper title="Entrada de Estoque" onClose={() => navigation.goBack()}>
+    <ModalFormWrapper title="Entrada de Estoque" onClose={() => voltar()}>
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content}>
         {loadError && (

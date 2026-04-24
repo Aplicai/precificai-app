@@ -30,6 +30,19 @@ export const FLAG_DEFAULTS = {
   modo_avancado_analise: false,
 };
 
+/**
+ * Sessão 27 — flags travadas em OFF (kill-switch).
+ *
+ * Mesmo que o usuário tenha o valor `true` salvo em AsyncStorage de uma sessão
+ * anterior, leituras retornam `false` e setters não persistem. Isso esconde a
+ * funcionalidade da UI sem deletar código nem migrar storage.
+ *
+ * Para reativar: tirar a chave deste objeto.
+ */
+const _forcedOff = {
+  modo_avancado_estoque: true, // UX da Sessão 27 não fechou; código segue dormente
+};
+
 const _values = { ...FLAG_DEFAULTS };
 const _loaded = new Set();
 const _loadingPromises = {};
@@ -47,6 +60,12 @@ function _notify() {
 }
 
 async function _ensureLoaded(name) {
+  // Sessão 27 — kill-switch: leitura sempre false, ignora storage.
+  if (_forcedOff[name]) {
+    _values[name] = false;
+    _loaded.add(name);
+    return false;
+  }
   if (_loaded.has(name)) return _values[name];
   if (_loadingPromises[name]) return _loadingPromises[name];
   const def = FLAG_DEFAULTS[name] ?? false;
@@ -81,6 +100,12 @@ async function _ensureLoaded(name) {
 export async function setFeatureFlag(name, next) {
   if (!(name in FLAG_DEFAULTS)) {
     if (__DEV__) console.warn('[useFeatureFlag] flag desconhecida:', name);
+    return;
+  }
+  // Sessão 27 — kill-switch: setter no-op, valor permanece false.
+  if (_forcedOff[name]) {
+    _values[name] = false;
+    _notify();
     return;
   }
   const v = !!next;

@@ -32,6 +32,20 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
   // selecionar de novo).
   const presetTipo = route?.params?.entidadeTipo;
   const presetId = route?.params?.entidadeId;
+  const returnTo = route?.params?.returnTo;
+
+  // Sessão 27 — respeita returnTo. Sem ele, goBack() pode levar pra tela errada
+  // (ex: Configurações se foi de lá que o flag foi ligado).
+  function voltar() {
+    if (returnTo?.tab) {
+      try {
+        navigation.navigate(returnTo.tab, returnTo.screen ? { screen: returnTo.screen } : undefined);
+        return;
+      } catch (_) { /* fallback abaixo */ }
+    }
+    navigation.goBack();
+  }
+
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [insumos, setInsumos] = useState([]);
@@ -162,7 +176,7 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
       if (Platform.OS === 'web') {
         try { window.alert('Ajuste registrado. Saldo atualizado.'); } catch {}
       }
-      navigation.goBack();
+      voltar();
     } catch (e) {
       console.error('[AjusteEstoque.salvar]', e);
       setSalvando(false);
@@ -177,7 +191,7 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
 
   if (carregando) {
     return (
-      <ModalFormWrapper title="Ajuste de Estoque" onClose={() => navigation.goBack()}>
+      <ModalFormWrapper title="Ajuste de Estoque" onClose={() => voltar()}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator color={colors.primary} />
         </View>
@@ -186,7 +200,7 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
   }
 
   return (
-    <ModalFormWrapper title="Ajuste de Estoque" onClose={() => navigation.goBack()}>
+    <ModalFormWrapper title="Ajuste de Estoque" onClose={() => voltar()}>
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content}>
         {loadError && (
