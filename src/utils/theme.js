@@ -37,8 +37,27 @@ export const colors = {
   warning: '#e3704d',
   info: '#265bb0',
   disabled: '#B0BEC5',
+  // Sprint 3 S10 — placeholder usava `disabled` (#B0BEC5) que é WCAG AA fail
+  // contra fundo branco (contraste 2.4:1). Novo token tem ratio 5.2:1.
+  // Componentes de input devem usar `colors.placeholder` (não `disabled`)
+  // para texto de placeholder/hint.
+  placeholder: '#6B7D7B',
   inputBg: '#F8FAF9',
   shadow: '#004d47',
+  // Sprint 1 Q1 — token fantasma usado em 5 telas (ConfiguracoesScreen, ContaSegurancaScreen) sem declaração; alias para accent.
+  blue: '#265bb0',
+};
+
+// Sprint 3 S10 — tokens de foco acessível para web.
+// Substitui `outlineStyle: 'none'` que removia foco visível (WCAG 2.4.7 fail).
+// Usar em telas web: `Platform.select({ web: focus.visibleRing })`.
+export const focus = {
+  visibleRing: {
+    outlineStyle: 'solid',
+    outlineWidth: 2,
+    outlineColor: colors.primary,
+    outlineOffset: 2,
+  },
 };
 
 export const spacing = {
@@ -57,6 +76,9 @@ export const fonts = {
   large: 18,
   title: 22,
   header: 28,
+  // Sprint 1 Q1 — tokens fantasma usados em 8 telas mas inexistentes; sem isso fontSize: undefined colapsava hierarquia.
+  body: 15,
+  xlarge: 24,
 };
 
 export const fontFamily = {
