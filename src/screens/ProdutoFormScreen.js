@@ -197,18 +197,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
     };
   }, []);
 
-  // Auto-abrir SuggestPriceModal quando vindo do Simulador / MargemBaixa / etc
-  // com flag `sugerirNovoPreco: true` na navegação.
+  // Auto-abrir SuggestPriceModal — useEffect MOVIDO para depois da declaração de
+  // `custoUnitario` (linha ~366). Antes ficava aqui no topo e quebrava com TDZ
+  // ("Cannot access 'custoUnitario' before initialization") porque o array de
+  // deps avaliava `custoUnitario` durante o render, antes da const ser inicializada.
   const sugerirAutoRef = useRef(false);
-  useEffect(() => {
-    if (sugerirAutoRef.current) return;
-    if (!route.params?.sugerirNovoPreco) return;
-    if (custoUnitario <= 0) return;
-    sugerirAutoRef.current = true;
-    abrirSugestaoIA();
-    // limpa flag pra não reabrir em re-render
-    if (navigation?.setParams) navigation.setParams({ sugerirNovoPreco: undefined });
-  }, [route.params?.sugerirNovoPreco, custoUnitario]);
 
   // F2-J2-02 / CR-2: parseNum retorna null para NaN para que consumidores possam
   // distinguir "vazio/inválido" de "zero explícito". Cada call site deve usar
@@ -366,6 +359,20 @@ export default function ProdutoFormScreen({ route, navigation }) {
   const custoUnitario = tipoVenda !== 'unidade'
     ? custoTotalReceita / (parseNum(form.rendimento_total) || 1)
     : custoTotalReceita / rendUn;
+
+  // Auto-abrir SuggestPriceModal quando vindo do Simulador / MargemBaixa / etc
+  // com flag `sugerirNovoPreco: true` na navegação.
+  // POSICIONADO AQUI propositalmente: depende de `custoUnitario`. Se ficar antes da
+  // declaração de `custoUnitario`, o array de deps quebra com TDZ no first render.
+  useEffect(() => {
+    if (sugerirAutoRef.current) return;
+    if (!route.params?.sugerirNovoPreco) return;
+    if (custoUnitario <= 0) return;
+    sugerirAutoRef.current = true;
+    abrirSugestaoIA();
+    // limpa flag pra não reabrir em re-render
+    if (navigation?.setParams) navigation.setParams({ sugerirNovoPreco: undefined });
+  }, [route.params?.sugerirNovoPreco, custoUnitario]);
 
   const margemProduto = form.margem_lucro_produto.trim() !== ''
     ? parseNum(form.margem_lucro_produto) / 100
