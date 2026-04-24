@@ -32,6 +32,22 @@ description: Deploy do PrecificaApp Web na Vercel com workaround do `--prebuilt`
 
 **Se falhar:** workaround manual da seção "Caminho MANUAL" continua válido como fallback.
 
+### ⚠️ Limitação descoberta na validação (Sessão 23.5)
+
+O `vercel.json` acima **NÃO resolve quando Vercel deduplica o build inteiramente**:
+- `vercel inspect <deploy>` mostrou `Builds: . [0ms]` no auto-deploy do push `a4825c5`
+- Significa que Vercel pulou o build pois detectou árvore Git "equivalente" a deploy anterior, e reusou o output cached
+- Quando isso acontece, o `buildCommand` simplesmente **não roda** — `rm -rf` e `--clear` são irrelevantes
+
+**Próximos passos a investigar (não implementados):**
+1. Configurar projeto Vercel com `IGNORED_BUILD_STEP=false` ou similar via `vercel project pull` + edit + push
+2. Adicionar arquivo `.vercelignore` minimalista para forçar Vercel a "ver" mudanças
+3. Setar env var `VERCEL_FORCE_NO_BUILD_CACHE=1` (não-oficial, verificar se existe)
+4. Configurar **Project Settings → Build & Development Settings → Build Cache** = OFF via dashboard ou API
+5. Adicionar string única ao `index.html` (timestamp ou commit hash) via `expo` build hook para invalidar dedupe
+
+Por ora, o `vercel.json` ajuda quando o build EFETIVAMENTE roda — só não força Vercel a rodar quando ele quer pular.
+
 ## Pré-requisitos
 - CWD = raiz do projeto (`PrecificaApp/`)
 - `npx vercel whoami` funcionando (logado em `aplicais-projects`)
