@@ -10,7 +10,7 @@
  * (fix F3-J3-01). A chave global antiga (`push_perm_asked`) NÃO é migrada;
  * fica órfã e vira no-op natural — sem risco de bloquear novos usuários.
  *
- * Uso típico em VendaDetalheScreen logo após registrar a primeira venda:
+ * Uso típico após eventos de ativação (ex.: primeira venda registrada):
  *   const { askIfNotAsked } = usePushPermissions();
  *   await askIfNotAsked('first_sale');
  */

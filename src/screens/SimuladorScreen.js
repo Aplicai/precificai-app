@@ -138,7 +138,7 @@ export default function SimuladorScreen({ navigation }) {
 
       // ── Faturamento realizado do mês corrente (chart Meta vs Realidade) ──
       // `vendas.data` é texto no formato 'YYYY-MM'. Filtramos em JS para
-      // compatibilidade com o backend web (mesmo padrão de VendasScreen).
+      // compatibilidade com o backend web.
       const now = new Date();
       const mesRef = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
       const precoPorProduto = {};

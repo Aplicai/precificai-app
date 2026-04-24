@@ -38,12 +38,11 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   const { isDesktop } = useResponsiveLayout();
 
   // Mapa estático: returnTo → tab pai (Sessão 24).
-  // MateriaPrimaForm é registrado em 4 stacks distintos (Insumos, Produtos, Preparos)
-  // mas as telas de retorno podem estar em outros stacks (ex.: EstoqueHub está em Mais).
+  // MateriaPrimaForm é registrado em 3 stacks distintos (Insumos, Produtos, Preparos)
+  // mas as telas de retorno podem estar em outros stacks (ex.: MatrizBCG está em Mais).
   // navigation.navigate() local falha silenciosamente se a rota não existe no stack atual,
   // então atravessamos via parent (Tab navigator).
   const RETURN_TO_TABS = {
-    'EstoqueHub': 'Mais',
     'MatrizBCG': 'Mais',
     'DeliveryHub': 'Mais',
     'Fornecedores': 'Mais',

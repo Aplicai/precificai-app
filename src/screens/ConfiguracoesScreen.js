@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Constants from 'expo-constants';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Platform, ActivityIndicator } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Platform, ActivityIndicator, Switch } from 'react-native';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useListDensity from '../hooks/useListDensity';
+import useFeatureFlag from '../hooks/useFeatureFlag';
 
 // Versão dinâmica via expoConfig (em vez de hardcoded — evita desync após release).
 const APP_VERSION = Constants?.expoConfig?.version || Constants?.manifest?.version || '1.0.0';
@@ -45,9 +46,47 @@ const BACKUP_TABLES = [
   'faturamento_mensal', 'delivery_config', 'delivery_combos', 'delivery_combo_itens',
 ];
 
+/**
+ * Linha de toggle de feature flag — usado na seção "Recursos avançados".
+ * Mantém visual coerente com as demais linhas (icon box + label/desc + control à direita).
+ */
+function FlagToggleRow({ icon, materialIcon, label, desc, value, onChange }) {
+  const Icon = materialIcon ? MaterialCommunityIcons : Feather;
+  return (
+    <TouchableOpacity
+      style={styles.flagRow}
+      activeOpacity={0.7}
+      onPress={() => onChange(!value)}
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityState={{ checked: !!value }}
+      accessibilityHint={desc}
+    >
+      <View style={[styles.flagIconBox, { backgroundColor: (value ? colors.primary : colors.textSecondary) + '12' }]}>
+        <Icon name={icon} size={18} color={value ? colors.primary : colors.textSecondary} />
+      </View>
+      <View style={styles.rowBody}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        <Text style={styles.rowDesc}>{desc}</Text>
+      </View>
+      <Switch
+        value={!!value}
+        onValueChange={onChange}
+        trackColor={{ false: colors.border, true: colors.primary }}
+        thumbColor={Platform.OS === 'android' ? (value ? colors.primary : '#f4f3f4') : undefined}
+        ios_backgroundColor={colors.border}
+      />
+    </TouchableOpacity>
+  );
+}
+
 export default function ConfiguracoesScreen({ navigation }) {
   const [exporting, setExporting] = useState(false);
   const { density, setDensity } = useListDensity();
+  // Sessão 26: feature flags do modo avançado.
+  const [estoqueOn, setEstoqueOn] = useFeatureFlag('modo_avancado_estoque');
+  const [analiseOn, setAnaliseOn] = useFeatureFlag('modo_avancado_analise');
+  const [deliveryOn, setDeliveryOn] = useFeatureFlag('usa_delivery');
 
   // Audit P0 (Fase 2 - Fix #10): race-guard contra setState após unmount.
   // exportBackup pode rodar 30s+ em base grande; usuário pode trocar de tela.
@@ -195,6 +234,42 @@ export default function ConfiguracoesScreen({ navigation }) {
         </View>
       </View>
 
+      {/* Recursos avançados — flags que ligam módulos opcionais */}
+      <View style={styles.advancedSection}>
+        <View style={styles.backupHeader}>
+          <View style={[styles.iconBox, { backgroundColor: colors.coral + '12' }]}>
+            <Feather name="sliders" size={18} color={colors.coral} />
+          </View>
+          <View style={styles.rowBody}>
+            <Text style={styles.rowLabel}>Recursos avançados</Text>
+            <Text style={styles.rowDesc}>Ative módulos extras conforme sua operação</Text>
+          </View>
+        </View>
+
+        <FlagToggleRow
+          icon="package"
+          label="Controle de estoque"
+          desc="Saldos, entradas, ajustes e alertas de estoque baixo nos insumos"
+          value={estoqueOn}
+          onChange={setEstoqueOn}
+        />
+        <FlagToggleRow
+          icon="moped-outline"
+          materialIcon
+          label="Trabalha com delivery"
+          desc="Mostra Delivery, Combos e Comparativo de Canais"
+          value={deliveryOn}
+          onChange={setDeliveryOn}
+        />
+        <FlagToggleRow
+          icon="bar-chart-2"
+          label="Análise avançada"
+          desc="Engenharia do Cardápio (BCG) e Comparador de Fornecedores"
+          value={analiseOn}
+          onChange={setAnaliseOn}
+        />
+      </View>
+
       {/* Backup e Restauração */}
       <View style={styles.backupSection}>
         <View style={styles.backupHeader}>
@@ -337,5 +412,24 @@ const styles = StyleSheet.create({
   },
   densityBtnTextActive: {
     color: colors.primary,
+  },
+  // Recursos avançados (Sessão 26)
+  advancedSection: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
+  },
+  flagRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: spacing.sm + 2,
+    borderTopWidth: 1, borderTopColor: colors.border + '60',
+  },
+  flagIconBox: {
+    width: 36, height: 36, borderRadius: borderRadius.md,
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: spacing.md,
   },
 });

@@ -813,6 +813,16 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 ]}
               />
             </View>
+            {/* Sessão 26 — Simulador como ação contextual da Ficha Técnica */}
+            <TouchableOpacity
+              style={styles.simuladorBtn}
+              onPress={() => navigation.getParent()?.navigate('Mais', { screen: 'Simulador' })}
+              activeOpacity={0.7}
+            >
+              <Feather name="zap" size={14} color={colors.coral} style={{ marginRight: 6 }} />
+              <Text style={styles.simuladorBtnText}>Simular impacto de preços</Text>
+              <Feather name="arrow-right" size={14} color={colors.coral} style={{ marginLeft: 4 }} />
+            </TouchableOpacity>
           </View>
         )}
 
@@ -1959,6 +1969,16 @@ const styles = StyleSheet.create({
   costsChartWrap: { marginTop: spacing.sm, paddingHorizontal: 2 },
   costsBreakdownItem: { fontSize: 10, fontFamily: fontFamily.regular, color: colors.textSecondary },
   costsBreakdownSep: { marginHorizontal: 4, color: colors.disabled, fontSize: 10 },
+  // Sessão 26 — CTA para abrir Simulador com contexto
+  simuladorBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginTop: spacing.sm, paddingVertical: 8,
+    backgroundColor: colors.coral + '10', borderRadius: borderRadius.sm,
+    borderWidth: 1, borderColor: colors.coral + '30',
+  },
+  simuladorBtnText: {
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.coral,
+  },
 
   // Edit footer with save+back
   editFooter: {

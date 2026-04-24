@@ -20,26 +20,33 @@ async function openExternal(url, onError) {
   }
 }
 
-const FEATURES = [
+// Sessão 26 — features divididas em Essenciais (sempre visíveis) e
+// Avançadas (escondidas por feature flag até o usuário ativar).
+// Removidos: Simulador (virou CTA contextual na Ficha Técnica) e
+// Meta de Faturamento (tela órfã removida na Fase A1).
+const FEATURES_ESSENCIAIS = [
   { icon: 'file-text', label: 'Cadastro completo', desc: 'Insumos, preparos, embalagens e produtos' },
   { icon: 'dollar-sign', label: 'Cálculo automático de CMV', desc: 'CMV e preço sugerido com markup e margem' },
   { icon: 'sliders', label: 'Configuração financeira completa', desc: 'Margem, custos do mês e por venda, faturamento' },
-  { icon: 'bar-chart-2', label: 'Engenharia do Cardápio', desc: 'Análise de portfólio com vendas mensais' },
-  { icon: 'zap', label: 'Simulador de Impacto', desc: 'Variação de preços e cenários' },
-  { icon: 'target', label: 'Meta de Faturamento', desc: 'Ponto de equilíbrio e metas diárias' },
-  { icon: 'truck', label: 'Precificação para Delivery', desc: 'iFood, Rappi e outras plataformas' },
-  { icon: 'users', label: 'Comparador de Fornecedores', desc: 'Encontre economia nos insumos' },
   { icon: 'shopping-cart', label: 'Lista de Compras automática', desc: 'Consolidação de ingredientes por produção' },
   { icon: 'printer', label: 'Exportar Fichas Técnicas em PDF', desc: 'Produtos e preparos para impressão' },
   { icon: 'book-open', label: 'Relatório', desc: 'Seus números em linguagem simples' },
   { icon: 'trending-up', label: 'Histórico de preços com gráfico', desc: 'Acompanhe a evolução dos custos' },
   { icon: 'alert-triangle', label: 'Alerta de erosão de margem', desc: 'Notificação quando margens caem' },
   { icon: 'activity', label: 'Semáforo de saúde por produto', desc: 'Visual rápido da saúde financeira' },
+  { icon: 'zap', label: 'Simulador de Impacto', desc: 'Disponível direto na Ficha Técnica do produto' },
   { icon: 'copy', label: 'Duplicar receitas e produtos', desc: 'Clone e adapte rapidamente' },
   { icon: 'database', label: 'Backup e restauração de dados', desc: 'Segurança dos seus cadastros' },
   { icon: 'package', label: 'Kit de Início por segmento', desc: 'Modelos prontos para seu tipo de negócio' },
   { icon: 'cpu', label: 'Insights automáticos no Painel', desc: 'Dicas inteligentes baseadas nos seus dados' },
-  { icon: 'layers', label: 'Gestão de combos', desc: 'Monte e precifique combos facilmente' },
+];
+
+const FEATURES_AVANCADAS = [
+  { icon: 'truck', label: 'Precificação para Delivery', desc: 'iFood, Rappi e outras plataformas (ative em Onboarding ou Configurações)' },
+  { icon: 'layers', label: 'Gestão de combos', desc: 'Monte e precifique combos para delivery' },
+  { icon: 'bar-chart-2', label: 'Engenharia do Cardápio', desc: 'Análise de portfólio (ative o modo análise avançada)' },
+  { icon: 'users', label: 'Comparador de Fornecedores', desc: 'Encontre economia nos insumos (modo análise avançada)' },
+  { icon: 'archive', label: 'Controle de Estoque', desc: 'Entradas, ajustes e saldo por insumo (ative o modo estoque avançado)' },
 ];
 
 export default function SobreScreen() {
@@ -83,11 +90,31 @@ export default function SobreScreen() {
         </Text>
       </View>
 
-      {/* Features */}
+      {/* Features essenciais */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Funcionalidades</Text>
-        {FEATURES.map((f, i) => (
-          <View key={i} style={styles.featureRow}>
+        <Text style={styles.cardTitle}>Funcionalidades essenciais</Text>
+        {FEATURES_ESSENCIAIS.map((f, i) => (
+          <View key={`ess-${i}`} style={styles.featureRow}>
+            <View style={styles.featureIcon}>
+              <Feather name={f.icon} size={16} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.featureLabel}>{f.label}</Text>
+              <Text style={styles.featureDesc}>{f.desc}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {/* Features avançadas / opcionais */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Funcionalidades avançadas (opcionais)</Text>
+        <Text style={styles.cardText}>
+          Estas funcionalidades ficam ocultas por padrão para deixar o app mais simples.
+          Ative apenas as que fazem sentido para o seu negócio em Configurações ou no Onboarding.
+        </Text>
+        {FEATURES_AVANCADAS.map((f, i) => (
+          <View key={`adv-${i}`} style={styles.featureRow}>
             <View style={styles.featureIcon}>
               <Feather name={f.icon} size={16} color={colors.primary} />
             </View>

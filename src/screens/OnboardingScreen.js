@@ -5,6 +5,11 @@ import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts, borderRadius, fontFamily } from '../utils/theme';
 import { getSetupStatus } from '../utils/setupStatus';
+import { setFeatureFlag } from '../hooks/useFeatureFlag';
+
+// Sessão 26 — flag persistida em AsyncStorage indicando que o user já respondeu
+// a pergunta "faço delivery?". Uma vez marcada, o card some do Onboarding.
+const PROFILE_ANSWERED_KEY = 'onboarding_business_profile_answered';
 
 // Audit P1: mapeamento centralizado para evitar duplicar regras de navegação.
 const STEP_NAV_MAP = {
@@ -16,6 +21,8 @@ export default function OnboardingScreen({ navigation }) {
   const [status, setStatus] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
+  // Sessão 26 — perfil do negócio (pergunta "faço delivery?")
+  const [profileAnswered, setProfileAnswered] = useState(true); // true = não mostra (default seguro)
   // F1-J1-03: contador de tentativas automáticas em foco quando status chega
   // vazio (ex.: DB ainda hidratando). Limita para evitar loop infinito.
   const retryCountRef = React.useRef(0);
@@ -26,8 +33,28 @@ export default function OnboardingScreen({ navigation }) {
       // Reset retries em cada foco — usuário voltando à tela quer fluxo limpo.
       retryCountRef.current = 0;
       loadStatus();
+      // Sessão 26 — verifica se user já respondeu a pergunta de perfil
+      (async () => {
+        try {
+          const v = await AsyncStorage.getItem(PROFILE_ANSWERED_KEY);
+          setProfileAnswered(v === 'true');
+        } catch {
+          setProfileAnswered(true); // falha segura — não incomoda
+        }
+      })();
     }, [])
   );
+
+  // Sessão 26 — callback de resposta da pergunta de delivery
+  async function answerDeliveryProfile(usaDelivery) {
+    try {
+      await setFeatureFlag('usa_delivery', !!usaDelivery);
+      await AsyncStorage.setItem(PROFILE_ANSWERED_KEY, 'true');
+      setProfileAnswered(true);
+    } catch (e) {
+      console.error('[Onboarding.answerDeliveryProfile]', e);
+    }
+  }
 
   async function loadStatus() {
     try {
@@ -179,6 +206,38 @@ export default function OnboardingScreen({ navigation }) {
           </Text>
         </View>
 
+        {/* Sessão 26 — Perfil do negócio: pergunta uma única vez se faz delivery.
+            Direciona quais módulos aparecem (liga o flag usa_delivery). */}
+        {!profileAnswered && (
+          <View style={styles.profileCard}>
+            <View style={styles.profileHeader}>
+              <Feather name="briefcase" size={18} color={colors.primary} style={{ marginRight: 6 }} />
+              <Text style={styles.profileTitle}>Como você vende?</Text>
+            </View>
+            <Text style={styles.profileDesc}>
+              Isso ajusta o app ao seu negócio. Você pode mudar depois em Configurações.
+            </Text>
+            <View style={styles.profileBtnRow}>
+              <TouchableOpacity
+                style={[styles.profileBtn, styles.profileBtnSecondary]}
+                onPress={() => answerDeliveryProfile(false)}
+                activeOpacity={0.7}
+              >
+                <Feather name="shopping-bag" size={16} color={colors.primary} style={{ marginRight: 6 }} />
+                <Text style={styles.profileBtnTextSecondary}>Só balcão</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.profileBtn, styles.profileBtnPrimary]}
+                onPress={() => answerDeliveryProfile(true)}
+                activeOpacity={0.7}
+              >
+                <Feather name="truck" size={16} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.profileBtnTextPrimary}>Faço delivery</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* Financeiro obrigatório - destaque */}
         {!finStep.done && (
           <View style={styles.finAlert}>
@@ -326,6 +385,29 @@ const styles = StyleSheet.create({
   progressBarBg: { height: 8, backgroundColor: colors.border, borderRadius: 4, overflow: 'hidden', marginBottom: spacing.xs },
   progressBarFill: { height: 8, borderRadius: 4 },
   progressDetail: { fontSize: fonts.tiny, color: colors.textSecondary },
+
+  // Perfil do negócio (Sessão 26)
+  profileCard: {
+    backgroundColor: colors.primary + '08',
+    borderLeftWidth: 3, borderLeftColor: colors.primary,
+    borderRadius: borderRadius.md,
+    padding: spacing.md, marginBottom: spacing.md,
+  },
+  profileHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  profileTitle: { fontSize: fonts.regular, fontWeight: '700', color: colors.text },
+  profileDesc: { fontSize: fonts.tiny, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 16 },
+  profileBtnRow: { flexDirection: 'row', gap: spacing.sm },
+  profileBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: spacing.sm + 2, borderRadius: borderRadius.sm,
+  },
+  profileBtnPrimary: { backgroundColor: colors.primary },
+  profileBtnSecondary: {
+    backgroundColor: colors.surface,
+    borderWidth: 1, borderColor: colors.primary,
+  },
+  profileBtnTextPrimary: { color: '#fff', fontWeight: '700', fontSize: fonts.small },
+  profileBtnTextSecondary: { color: colors.primary, fontWeight: '700', fontSize: fonts.small },
 
   // Financeiro alert
   finAlert: {

@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import useFeatureFlag from '../hooks/useFeatureFlag';
 
 /**
  * Hub "Ferramentas" reorganizado em 5 grupos lógicos (audit P1-09):
@@ -38,15 +39,6 @@ const MENU_GROUPS = [
         screen: 'ListaCompras',
       },
       {
-        key: 'estoque',
-        title: 'Estoque',
-        desc: 'Saldos, entradas, ajustes e movimentos',
-        icon: 'package',
-        set: 'feather',
-        color: colors.primaryMid,
-        screen: 'EstoqueHub',
-      },
-      {
         key: 'fornecedores',
         title: 'Comparar Fornecedores',
         desc: 'Compare preços e descubra onde economizar',
@@ -54,16 +46,9 @@ const MENU_GROUPS = [
         set: 'feather',
         color: colors.purple,
         screen: 'Fornecedores',
+        flag: 'modo_avancado_analise', // Sessão 26 — escondido até user ligar análise avançada
       },
-      {
-        key: 'exportpdf',
-        title: 'Exportar PDF',
-        desc: 'Gere fichas técnicas em PDF para impressão',
-        icon: 'printer',
-        set: 'feather',
-        color: colors.primary,
-        screen: 'ExportPDF',
-      },
+      // Sessão 26 — Exportar PDF movido para seção 'Ferramentas'
     ],
   },
   {
@@ -78,16 +63,11 @@ const MENU_GROUPS = [
         set: 'feather',
         color: colors.accent,
         screen: 'MatrizBCG',
+        flag: 'modo_avancado_analise', // Sessão 26 — análise avançada
       },
-      {
-        key: 'simulador',
-        title: 'Simulador E se?',
-        desc: 'Simule variações de preço e veja o impacto nos custos',
-        icon: 'zap',
-        set: 'feather',
-        color: colors.coral,
-        screen: 'Simulador',
-      },
+      // Sessão 26 — Simulador removido daqui. Agora é um CTA contextual
+      // dentro da Ficha Técnica (ProdutoFormScreen). Continua acessível via rota
+      // direta para não quebrar deep links.
       {
         key: 'relatorio',
         title: 'Relatório',
@@ -102,6 +82,7 @@ const MENU_GROUPS = [
   {
     key: 'delivery_grp',
     title: 'Delivery',
+    flag: 'usa_delivery', // Sessão 26 — grupo inteiro escondido até user dizer que faz delivery
     items: [
       {
         key: 'delivery',
@@ -111,6 +92,7 @@ const MENU_GROUPS = [
         set: 'material',
         color: colors.coral,
         screen: 'DeliveryHub',
+        flag: 'usa_delivery',
       },
       {
         key: 'comparativo_canais',
@@ -120,6 +102,22 @@ const MENU_GROUPS = [
         set: 'feather',
         color: colors.accent,
         screen: 'ComparativoCanais',
+        flag: 'usa_delivery',
+      },
+    ],
+  },
+  {
+    key: 'ferramentas',
+    title: 'Ferramentas',
+    items: [
+      {
+        key: 'exportpdf',
+        title: 'Exportar PDF',
+        desc: 'Gere fichas técnicas em PDF para impressão',
+        icon: 'printer',
+        set: 'feather',
+        color: colors.primary,
+        screen: 'ExportPDF',
       },
     ],
   },
@@ -174,9 +172,22 @@ const MENU_GROUPS = [
 ];
 
 export default function MaisScreen({ navigation }) {
+  // Sessão 26 — feature flags ocultam grupos/itens não-essenciais até user habilitar
+  const [usaDelivery] = useFeatureFlag('usa_delivery');
+  const [analiseAvancada] = useFeatureFlag('modo_avancado_analise');
+  const flagOn = (name) => {
+    if (!name) return true;
+    if (name === 'usa_delivery') return !!usaDelivery;
+    if (name === 'modo_avancado_analise') return !!analiseAvancada;
+    return true;
+  };
+  const visibleGroups = MENU_GROUPS
+    .filter((g) => flagOn(g.flag))
+    .map((g) => ({ ...g, items: g.items.filter((it) => flagOn(it.flag)) }))
+    .filter((g) => g.items.length > 0);
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {MENU_GROUPS.map((group, gIdx) => (
+      {visibleGroups.map((group, gIdx) => (
         <View key={group.key} style={[styles.group, gIdx > 0 && { marginTop: spacing.lg }]}>
           <Text style={styles.sectionTitle}>{group.title}</Text>
           {group.items.map((item) => (

@@ -88,7 +88,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
       });
       // Web: Alert.alert com botão+onPress NÃO dispara o callback de forma
       // confiável → a tela ficava travada sem voltar. Em todas plataformas,
-      // voltamos imediatamente; a EstoqueHub mostrará o saldo atualizado.
+      // voltamos imediatamente; a tela de Insumos mostrará o saldo atualizado.
       setSalvando(false);
       if (Platform.OS === 'web') {
         // window.alert é síncrono no web → garante feedback antes de voltar

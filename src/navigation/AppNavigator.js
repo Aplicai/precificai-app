@@ -48,7 +48,6 @@ import PerfilScreen from '../screens/PerfilScreen';
 import MargemBaixaScreen from '../screens/MargemBaixaScreen';
 import ExportPDFScreen from '../screens/ExportPDFScreen';
 import SuporteScreen from '../screens/SuporteScreen';
-import EstoqueHubScreen from '../screens/EstoqueHubScreen';
 import EntradaEstoqueScreen from '../screens/EntradaEstoqueScreen';
 import AjusteEstoqueScreen from '../screens/AjusteEstoqueScreen';
 import NotificacoesScreen from '../screens/NotificacoesScreen';
@@ -266,7 +265,6 @@ function MaisStack() {
       <Stack.Screen name="ContaSeguranca" component={ContaSegurancaScreen} options={{ title: 'Conta e Segurança' }} />
       <Stack.Screen name="ExportPDF" component={ExportPDFScreen} options={{ title: 'Exportar PDF' }} />
       <Stack.Screen name="Suporte" component={SuporteScreen} options={{ title: 'Suporte' }} />
-      <Stack.Screen name="EstoqueHub" component={EstoqueHubScreen} options={{ title: 'Estoque' }} />
       <Stack.Screen name="EntradaEstoque" component={EntradaEstoqueScreen} options={{ title: 'Entrada de Estoque', presentation: 'transparentModal', headerShown: false }} />
       <Stack.Screen name="AjusteEstoque" component={AjusteEstoqueScreen} options={{ title: 'Ajuste de Estoque', presentation: 'transparentModal', headerShown: false }} />
       <Stack.Screen name="Notificacoes" component={NotificacoesScreen} options={{ title: 'Notificações' }} />

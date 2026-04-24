@@ -9,11 +9,11 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { getSetupStatus } from '../utils/setupStatus';
-import { contarAlertasEstoque } from '../services/estoque';
 import InfoTooltip from '../components/InfoTooltip';
 import Loader from '../components/Loader';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { useAuth } from '../contexts/AuthContext';
+import useFeatureFlag from '../hooks/useFeatureFlag';
 
 const GAP = spacing.sm;
 
@@ -66,6 +66,9 @@ export default function HomeScreen({ navigation }) {
   const [loadError, setLoadError] = useState(null);
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
+  // Sessão 26 — flags escondem etapas/CTAs de Delivery e BCG até user habilitar
+  const [usaDelivery] = useFeatureFlag('usa_delivery');
+  const [analiseAvancada] = useFeatureFlag('modo_avancado_analise');
 
   // Hidrata metas persistidas (P1: antes o "Aplicar" do CMV era no-op).
   useEffect(() => {
@@ -136,7 +139,8 @@ export default function HomeScreen({ navigation }) {
         { key: 'embalagens', label: 'Embalagens', icon: 'package', desc: 'Cadastre embalagens', done: embsR.length > 0, tab: 'Embalagens', count: embsR.length },
         { key: 'preparos', label: 'Preparos', icon: 'layers', desc: 'Cadastre receitas base', done: prepsR.length > 0, tab: 'Preparos', count: prepsR.length },
         { key: 'produtos', label: 'Produtos', icon: 'box', desc: 'Monte fichas técnicas', done: prodsR.length > 0, tab: 'Produtos', count: prodsR.length },
-        { key: 'delivery', label: 'Delivery', icon: 'truck', desc: 'Configure delivery', done: deliveryOk, tab: 'Delivery', count: delProdsR.length + combosR.length },
+        // Sessão 26 — etapa de Delivery só aparece se user marcou que faz delivery
+        ...(usaDelivery ? [{ key: 'delivery', label: 'Delivery', icon: 'truck', desc: 'Configure delivery', done: deliveryOk, tab: 'Delivery', count: delProdsR.length + combosR.length }] : []),
       ];
       const setupConcluidas = setupEtapas.filter(e => e.done).length;
       const setup = {
@@ -243,28 +247,12 @@ export default function HomeScreen({ navigation }) {
         });
       }
       if (!status.completo) pendencias.push({ tipo: 'error', texto: 'Configure o Financeiro para cálculos precisos', descricao: 'Preencha margem, faturamento e custos', acao: 'Financeiro' });
-      // M1-Estoque: alerta de estoque baixo/zerado
-      try {
-        const alertasEst = await contarAlertasEstoque(db);
-        if (alertasEst.zerado > 0) {
-          pendencias.push({
-            tipo: 'error',
-            texto: `${alertasEst.zerado} item(ns) zerado(s) em estoque`,
-            descricao: 'Você definiu estoque mínimo, mas o saldo está em zero. Faça uma entrada para reabastecer.',
-            acao: 'EstoqueHub',
-          });
-        }
-        if (alertasEst.baixo > 0) {
-          pendencias.push({
-            tipo: 'warning',
-            texto: `${alertasEst.baixo} item(ns) com estoque baixo`,
-            descricao: 'Saldo abaixo do mínimo configurado. Reponha antes de faltar.',
-            acao: 'EstoqueHub',
-          });
-        }
-      } catch {}
+      // M1-Estoque: alerta de estoque baixo/zerado.
+      // Reintroduzido condicionalmente na Fase B3 (atrás de flag.modo_avancado_estoque).
+      // Quando a flag estiver ativa, os alertas levarão à tab Insumos com saldo expandido.
       if (produtosSemPreco.length > 0) pendencias.push({ tipo: 'warning', texto: `${produtosSemPreco.length} produto(s) sem preço de venda`, descricao: 'Defina os preços para calcular margens', acao: 'Produtos' });
-      if (impactoDelivery === 0 && totalProdutos > 0) pendencias.push({ tipo: 'info', texto: 'Delivery ainda não configurado', descricao: 'Configure plataformas e preços de delivery', acao: 'Delivery' });
+      // Sessão 26 — pendência de delivery só faz sentido se user marcou que faz delivery
+      if (usaDelivery && impactoDelivery === 0 && totalProdutos > 0) pendencias.push({ tipo: 'info', texto: 'Delivery ainda não configurado', descricao: 'Configure plataformas e preços de delivery', acao: 'Delivery' });
       // Add top 5 products with worst margin
       const top5 = uniqueProds.slice(0, 5);
       top5.forEach(p => {
@@ -355,8 +343,8 @@ export default function HomeScreen({ navigation }) {
     if (tab === 'MargemBaixa') { navigation.navigate('MargemBaixa'); return; }
     if (tab === 'ProdutoFormHome') { navigation.navigate('ProdutoFormHome'); return; }
     if (tab === 'Onboarding') { navigation.getParent()?.navigate('Onboarding'); return; }
-    const ferramentasScreens = ['Financeiro', 'BCG', 'Delivery', 'AtualizarPrecos', 'EstoqueHub'];
-    const screenMap = { 'Financeiro': 'FinanceiroMain', 'BCG': 'MatrizBCG', 'Delivery': 'DeliveryHub', 'AtualizarPrecos': 'AtualizarPrecos', 'EstoqueHub': 'EstoqueHub' };
+    const ferramentasScreens = ['Financeiro', 'BCG', 'Delivery', 'AtualizarPrecos', 'ListaCompras'];
+    const screenMap = { 'Financeiro': 'FinanceiroMain', 'BCG': 'MatrizBCG', 'Delivery': 'DeliveryHub', 'AtualizarPrecos': 'AtualizarPrecos', 'ListaCompras': 'ListaCompras' };
     if (ferramentasScreens.includes(tab)) {
       navigation.getParent()?.navigate('Mais', { screen: screenMap[tab] });
       return;
@@ -413,18 +401,18 @@ export default function HomeScreen({ navigation }) {
   if (d.totalEmbalagens === 0 && acoes.length < 4) acoes.push({ label: 'Cadastrar Embalagem', icon: 'package', set: 'feather', tab: 'Embalagens' });
   if (d.totalPreparos === 0 && acoes.length < 4) acoes.push({ label: 'Novo Preparo', icon: 'pot-steam-outline', set: 'material', tab: 'Preparos' });
   if (d.totalProdutos === 0 && acoes.length < 4) acoes.push({ label: 'Novo Produto', icon: 'box', set: 'feather', tab: 'ProdutoFormHome' });
-  if (d.impactoDelivery === 0 && d.totalProdutos > 0 && acoes.length < 4) acoes.push({ label: 'Configurar Delivery', icon: 'moped-outline', set: 'material', tab: 'Delivery' });
+  if (usaDelivery && d.impactoDelivery === 0 && d.totalProdutos > 0 && acoes.length < 4) acoes.push({ label: 'Configurar Delivery', icon: 'moped-outline', set: 'material', tab: 'Delivery' });
   // Defaults proativos. Ordem reflete frequência de uso:
   // 1) Atualizar preços (alta) → 2) Novo produto (média) →
-  // 3) Estoque (alta, alimenta custo médio que vira preço sugerido — só aparece
-  //    quando já há insumos cadastrados, senão é fluxo morto) →
-  // 4) Engenharia do cardápio (análise) → 5) Delivery (contextual).
+  // 3) Engenharia do cardápio (análise, atrás da flag) → 4) Delivery (atrás da flag).
+  // Estoque foi removido daqui — vira ação inline na lista de Insumos quando
+  // flag.modo_avancado_estoque estiver ativa (Fase B3).
   const defaults = [
     { label: 'Atualizar Preços', icon: 'refresh-cw', set: 'feather', tab: 'AtualizarPrecos' },
     { label: 'Novo Produto', icon: 'box', set: 'feather', tab: 'ProdutoFormHome' },
-    ...(d.totalInsumos > 0 ? [{ label: 'Estoque', icon: 'package', set: 'feather', tab: 'EstoqueHub' }] : []),
-    { label: 'Engenharia do Cardápio', icon: 'bar-chart-2', set: 'feather', tab: 'BCG' },
-    { label: 'Delivery', icon: 'moped-outline', set: 'material', tab: 'Delivery' },
+    ...(analiseAvancada ? [{ label: 'Engenharia do Cardápio', icon: 'bar-chart-2', set: 'feather', tab: 'BCG' }] : []),
+    ...(usaDelivery ? [{ label: 'Delivery', icon: 'moped-outline', set: 'material', tab: 'Delivery' }] : []),
+    { label: 'Lista de Compras', icon: 'shopping-cart', set: 'feather', tab: 'ListaCompras' }, // CORE — Sessão 26
   ];
   for (const def of defaults) {
     if (acoes.length >= 4) break;

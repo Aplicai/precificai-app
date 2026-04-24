@@ -128,7 +128,7 @@ export function statusEstoque(item) {
 
 /**
  * Lista todos os itens com status de estoque (saldos consolidados).
- * Usado pela EstoqueHubScreen.
+ * Usado pela tela de Insumos quando flag.modo_avancado_estoque está ativa.
  */
 export async function listarSaldosConsolidados(db) {
   const mps = await db.getAllAsync(

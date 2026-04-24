@@ -27,7 +27,7 @@ function parseNum(s) {
 }
 
 export default function AjusteEstoqueScreen({ navigation, route }) {
-  // Sessão 25: pré-seleção via params (clique no card do EstoqueHub deve
+  // Sessão 25: pré-seleção via params (clique no card de Insumo deve
   // abrir o modal já com o insumo escolhido — antes obrigava o usuário a
   // selecionar de novo).
   const presetTipo = route?.params?.entidadeTipo;

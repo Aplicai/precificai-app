@@ -3,6 +3,7 @@ import { View, Text, ScrollView, StyleSheet, Image, Platform } from 'react-nativ
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigationState, CommonActions, StackActions } from '@react-navigation/native';
 import { colors, spacing, fontFamily, webLayout } from '../../utils/theme';
+import useFeatureFlag from '../../hooks/useFeatureFlag';
 
 // Ordem segue o fluxo de composição (audit P1-08):
 // Insumos → Preparos (combina insumos) → Embalagens (wrapper) → Produtos (final).
@@ -14,19 +15,18 @@ const NAV_SECTIONS = [
       { key: 'preparos', label: 'Preparos', icon: 'pot-steam-outline', iconSet: 'material', tab: 'Preparos', screen: 'Preparos' },
       { key: 'embalagens', label: 'Embalagens', icon: 'package', iconSet: 'feather', tab: 'Embalagens', screen: 'Embalagens' },
       { key: 'produtos', label: 'Produtos', icon: 'tag', iconSet: 'feather', tab: 'Produtos', screen: 'ProdutosList' },
-      { key: 'combos', label: 'Combos', icon: 'layers', iconSet: 'feather', tab: 'Produtos', screen: 'CombosScreen' },
+      { key: 'combos', label: 'Combos', icon: 'layers', iconSet: 'feather', tab: 'Produtos', screen: 'CombosScreen', flag: 'usa_delivery' },
     ],
   },
   {
     items: [
-      { key: 'estoque', label: 'Estoque', icon: 'package', iconSet: 'feather', tab: 'Mais', screen: 'EstoqueHub' },
       { key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign', iconSet: 'feather', tab: 'Mais', screen: 'FinanceiroMain' },
-      { key: 'delivery', label: 'Delivery', icon: 'truck', iconSet: 'feather', tab: 'Mais', screen: 'DeliveryHub' },
-      { key: 'bcg', label: 'Eng. do Cardápio', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Mais', screen: 'MatrizBCG' },
+      { key: 'delivery', label: 'Delivery', icon: 'truck', iconSet: 'feather', tab: 'Mais', screen: 'DeliveryHub', flag: 'usa_delivery' },
+      { key: 'bcg', label: 'Eng. do Cardápio', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Mais', screen: 'MatrizBCG', flag: 'modo_avancado_analise' },
       { key: 'precos', label: 'Atualizar Preços', icon: 'refresh-cw', iconSet: 'feather', tab: 'Mais', screen: 'AtualizarPrecos' },
-      { key: 'simulador', label: 'Simulador', icon: 'zap', iconSet: 'feather', tab: 'Mais', screen: 'Simulador' },
+      // Sessão 26 — Simulador agora é CTA contextual dentro da Ficha Técnica
       { key: 'relatorio', label: 'Relatório', icon: 'file-text', iconSet: 'feather', tab: 'Mais', screen: 'RelatorioSimples' },
-      { key: 'fornecedores', label: 'Fornecedores', icon: 'users', iconSet: 'feather', tab: 'Mais', screen: 'Fornecedores' },
+      { key: 'fornecedores', label: 'Fornecedores', icon: 'users', iconSet: 'feather', tab: 'Mais', screen: 'Fornecedores', flag: 'modo_avancado_analise' },
       { key: 'listacompras', label: 'Lista de Compras', icon: 'shopping-cart', iconSet: 'feather', tab: 'Mais', screen: 'ListaCompras' },
       { key: 'exportpdf', label: 'Exportar PDF', icon: 'printer', iconSet: 'feather', tab: 'Mais', screen: 'ExportPDF' },
     ],
@@ -68,7 +68,8 @@ function getActiveKey(navState) {
     const stackState = tabRoute.state;
     const stackRoute = stackState?.routes?.[stackState.index];
     const screenName = stackRoute?.name;
-    if (screenName === 'EstoqueHub' || screenName === 'EntradaEstoque' || screenName === 'AjusteEstoque') return 'estoque';
+    // Entrada/Ajuste de estoque vivem agora dentro do contexto de Insumos (modo avançado).
+    if (screenName === 'EntradaEstoque' || screenName === 'AjusteEstoque') return 'insumos';
     if (screenName === 'FinanceiroMain') return 'financeiro';
     if (screenName === 'DeliveryHub' || screenName?.startsWith('Delivery')) return 'delivery';
     if (screenName === 'MatrizBCG' || screenName === 'BCGProdutoForm') return 'bcg';
@@ -131,6 +132,18 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
   const navState = useNavigationState(s => s);
   const tabState = navState?.routes?.[navState.index]?.state;
   const activeKey = getActiveKey(tabState);
+  // Sessão 26 — feature flags filtram itens da sidebar para esconder Delivery/BCG/Fornecedores
+  const [usaDelivery] = useFeatureFlag('usa_delivery');
+  const [analiseAvancada] = useFeatureFlag('modo_avancado_analise');
+  const flagOn = (name) => {
+    if (!name) return true;
+    if (name === 'usa_delivery') return !!usaDelivery;
+    if (name === 'modo_avancado_analise') return !!analiseAvancada;
+    return true;
+  };
+  const filteredSections = NAV_SECTIONS
+    .map((sec) => ({ ...sec, items: sec.items.filter((it) => flagOn(it.flag)) }))
+    .filter((sec) => sec.items.length > 0);
 
   const handlePress = (item) => {
     if (item.screen) {
@@ -181,7 +194,7 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
 
       {/* Nav items - use div on web for visible scrollbar */}
       <ScrollView style={[styles.nav, Platform.OS === 'web' && { overflowY: 'auto' }]} showsVerticalScrollIndicator={true}>
-        {NAV_SECTIONS.map((section, sIdx) => (
+        {filteredSections.map((section, sIdx) => (
           <View key={sIdx}>
             {sIdx > 0 && <View style={styles.divider} />}
             {section.items.map((item) => {

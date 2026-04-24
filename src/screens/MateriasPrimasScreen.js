@@ -18,6 +18,8 @@ import InfoToast from '../components/InfoToast';
 import HighlightedText from '../components/HighlightedText';
 import usePersistedState from '../hooks/usePersistedState';
 import useListDensity from '../hooks/useListDensity';
+import useFeatureFlag from '../hooks/useFeatureFlag';
+import { statusEstoque } from '../services/estoque';
 import BulkPriceAdjustModal from '../components/BulkPriceAdjustModal';
 import ListStatsStrip from '../components/ListStatsStrip';
 import { exportToCSV, isCsvExportSupported } from '../utils/exportCsv';
@@ -129,6 +131,8 @@ export default function MateriasPrimasScreen({ navigation }) {
   const isGrid = isDesktop || viewMode === 'grid';
   // Densidade global (P3-G)
   const { rowOverride, nameOverride, avatarSize } = useListDensity();
+  // Sessão 26 — Estoque absorvido em Insumos atrás do flag (default OFF)
+  const [estoqueOn] = useFeatureFlag('modo_avancado_estoque');
   // Seleção múltipla (P1-21)
   const bulk = useBulkSelection();
   // Mover em massa (P2-B)
@@ -755,6 +759,19 @@ export default function MateriasPrimasScreen({ navigation }) {
                   {item.marca ? (
                     <HighlightedText text={item.marca} query={busca} style={styles.rowMarca} numberOfLines={1} />
                   ) : null}
+                  {estoqueOn ? (() => {
+                    const st = statusEstoque(item);
+                    const stColor = st === 'zerado' ? (colors.red || '#E74C3C') : st === 'baixo' ? (colors.coral || '#F39C12') : (colors.success || '#27AE60');
+                    const q = Number(item.quantidade_estoque) || 0;
+                    return (
+                      <View style={styles.estoqueLine}>
+                        <View style={[styles.estoqueDot, { backgroundColor: stColor }]} />
+                        <Text style={[styles.estoqueText, { color: stColor }]} numberOfLines={1}>
+                          {q.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} {String(item.unidade_medida || '').trim() || ''}
+                        </Text>
+                      </View>
+                    );
+                  })() : null}
                 </View>
 
                 {/* Preço + unidade */}
@@ -764,6 +781,28 @@ export default function MateriasPrimasScreen({ navigation }) {
                     <Text style={[styles.unidadeText, { color: unidadeInfo.color }]}>{unidadeInfo.label}</Text>
                   </View>
                 </View>
+
+                {/* Estoque: Entrada/Ajuste (atrás do flag, oculto em modo bulk) */}
+                {estoqueOn && !bulk.active && (
+                  <>
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate('EntradaEstoque', { entidadeTipo: 'materia_prima', entidadeId: item.id, returnTo: { tab: 'Insumos', screen: 'MateriasPrimas' } })}
+                      style={styles.estoqueBtn}
+                      hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                      accessibilityLabel="Dar entrada"
+                    >
+                      <Feather name="plus-circle" size={15} color={colors.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => navigation.navigate('AjusteEstoque', { entidadeTipo: 'materia_prima', entidadeId: item.id, returnTo: { tab: 'Insumos', screen: 'MateriasPrimas' } })}
+                      style={styles.estoqueBtn}
+                      hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+                      accessibilityLabel="Ajustar saldo"
+                    >
+                      <Feather name="sliders" size={14} color={colors.accent} />
+                    </TouchableOpacity>
+                  </>
+                )}
 
                 {/* Duplicar (oculto em modo bulk) */}
                 {!bulk.active && (
@@ -1114,6 +1153,20 @@ const styles = StyleSheet.create({
   // Excluir
   deleteBtn: {
     padding: 8,
+  },
+
+  // Estoque (Sessão 26 — atrás do flag modo_avancado_estoque)
+  estoqueLine: {
+    flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 4,
+  },
+  estoqueDot: {
+    width: 6, height: 6, borderRadius: 3,
+  },
+  estoqueText: {
+    fontSize: 10, fontFamily: fontFamily.semiBold, fontWeight: '600',
+  },
+  estoqueBtn: {
+    paddingHorizontal: 4, paddingVertical: 6,
   },
 
   // Desktop grid
