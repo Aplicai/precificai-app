@@ -40,7 +40,7 @@ const SECOES = [
   {
     titulo: '5. Propriedade Intelectual',
     paragrafos: [
-      'Todos os direitos relativos ao Aplicativo — incluindo marca, layout, código-fonte, textos, imagens, ícones e demais elementos — pertencem à Aplicais ou a seus licenciantes, sendo protegidos pela legislação de propriedade intelectual.',
+      'Todos os direitos relativos ao Aplicativo — incluindo marca, layout, código-fonte, textos, imagens, ícones e demais elementos — pertencem à Aplicais (razão social: [A definir antes de publicação], CNPJ: [A definir antes de publicação], com sede em [Endereço a definir]) ou a seus licenciantes, sendo protegidos pela legislação de propriedade intelectual.',
       'Os dados que você cadastra no Aplicativo (insumos, produtos, preços, faturamento, despesas, fichas técnicas) permanecem de sua propriedade. A Aplicais utiliza essas informações exclusivamente para prestar o serviço a você, conforme descrito nestes Termos e na Política de Privacidade.',
     ],
   },
@@ -90,9 +90,25 @@ const SECOES = [
   },
 ];
 
+function DevPlaceholderBanner() {
+  if (!__DEV__) return null;
+  return (
+    <View
+      style={styles.devBanner}
+      accessibilityRole="alert"
+      accessibilityLabel="Aviso de desenvolvimento: dados empresariais da Aplicais ainda não preenchidos"
+    >
+      <Text style={styles.devBannerText}>
+        [ATENÇÃO DEV]: Razão social, CNPJ e endereço da Aplicais ainda não preenchidos. Atualize antes de publicar em App Store/Google Play.
+      </Text>
+    </View>
+  );
+}
+
 export default function TermosScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <DevPlaceholderBanner />
       <View style={styles.header}>
         <View style={styles.iconCircle}>
           <Feather name="file-text" size={22} color={colors.primary} />
@@ -193,5 +209,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.md,
     paddingHorizontal: spacing.md,
+  },
+  devBanner: {
+    backgroundColor: '#FFF3CD',
+    borderWidth: 1,
+    borderColor: '#FFC107',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  devBannerText: {
+    fontSize: fonts.small,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: '#856404',
+    lineHeight: 18,
   },
 });

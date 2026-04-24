@@ -9,7 +9,7 @@ const SECOES = [
   {
     titulo: '1. Quem Somos',
     paragrafos: [
-      'O PrecificaApp é um produto da Aplicais, que atua como controladora dos dados pessoais coletados por meio do Aplicativo, nos termos da Lei Geral de Proteção de Dados (LGPD — Lei 13.709/2018).',
+      'O PrecificaApp é um produto da Aplicais (razão social: [A definir antes de publicação], CNPJ: [A definir antes de publicação], com sede em [Endereço a definir]), que atua como controladora dos dados pessoais coletados por meio do Aplicativo, nos termos da Lei Geral de Proteção de Dados (LGPD — Lei 13.709/2018).',
       'Esta Política descreve, de forma clara e objetiva, quais dados coletamos, como utilizamos, com quem compartilhamos, por quanto tempo guardamos e quais são os seus direitos como titular dos dados.',
     ],
   },
@@ -118,9 +118,25 @@ const SECOES = [
   },
 ];
 
+function DevPlaceholderBanner() {
+  if (!__DEV__) return null;
+  return (
+    <View
+      style={styles.devBanner}
+      accessibilityRole="alert"
+      accessibilityLabel="Aviso de desenvolvimento: dados empresariais da Aplicais ainda não preenchidos"
+    >
+      <Text style={styles.devBannerText}>
+        [ATENÇÃO DEV]: Razão social, CNPJ e endereço da Aplicais ainda não preenchidos. Atualize antes de publicar em App Store/Google Play.
+      </Text>
+    </View>
+  );
+}
+
 export default function PrivacidadeScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <DevPlaceholderBanner />
       <View style={styles.header}>
         <View style={styles.iconCircle}>
           <Feather name="shield" size={22} color={colors.accent} />
@@ -220,5 +236,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.md,
     paddingHorizontal: spacing.md,
+  },
+  devBanner: {
+    backgroundColor: '#FFF3CD',
+    borderWidth: 1,
+    borderColor: '#FFC107',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  devBannerText: {
+    fontSize: fonts.small,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: '#856404',
+    lineHeight: 18,
   },
 });

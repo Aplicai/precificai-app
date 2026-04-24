@@ -11,6 +11,27 @@ description: Deploy do PrecificaApp Web na Vercel com workaround do `--prebuilt`
 - `vercel deploy --prebuilt` está servindo bundle antigo apesar do source ter mudado (gotcha do cache stale)
 - Mudou env var `EXPO_PUBLIC_*` na Vercel e precisa rebuildar pra refletir
 
+## Solução estrutural (Sessão 23.5, 2026-04-24)
+
+`vercel.json` na raiz do projeto define `buildCommand` que **força limpeza de cache antes de cada build**:
+
+```json
+{
+  "buildCommand": "rm -rf dist node_modules/.cache .expo && npx expo export --platform web --clear",
+  "outputDirectory": "dist",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
+```
+
+**Como cobre o gotcha cache stale:**
+- `rm -rf dist node_modules/.cache .expo` → invalida Vercel runner cache + Metro transformer cache + Expo CLI state
+- `npx expo export --platform web --clear` → flag `--clear` oficial do Expo CLI; força fresh transform
+- Vale tanto para auto-deploy GitHub (Vercel lê `vercel.json` automaticamente) quanto para `vercel build` local
+
+**Sinal de sucesso:** próximo push em master gera deploy com bundle hash NOVO sem precisar do workaround manual abaixo.
+
+**Se falhar:** workaround manual da seção "Caminho MANUAL" continua válido como fallback.
+
 ## Pré-requisitos
 - CWD = raiz do projeto (`PrecificaApp/`)
 - `npx vercel whoami` funcionando (logado em `aplicais-projects`)
