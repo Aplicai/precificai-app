@@ -989,7 +989,8 @@ export default function HomeScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, paddingBottom: 40, maxWidth: 960, alignSelf: 'center', width: '100%' },
+  // Sessão 28 — paddingBottom 40→100 garante último card visível acima do BottomTab
+  content: { padding: spacing.md, paddingBottom: 100, maxWidth: 960, alignSelf: 'center', width: '100%' },
 
   // Greeting
   greetingRow: { marginBottom: spacing.md },

@@ -211,7 +211,8 @@ export default function MaisScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: {
-    padding: spacing.md, paddingBottom: 40,
+    // Sessão 28 — paddingBottom 40→100 (BottomTab clearance mobile)
+    padding: spacing.md, paddingBottom: 100,
     maxWidth: 720, alignSelf: 'center', width: '100%',
   },
   group: {},

@@ -2,12 +2,23 @@ import React from 'react';
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
 
+/**
+ * Sessão 28 — InputField agora aceita props extra para web mobile:
+ * - inputMode: hint para teclado virtual no web (`numeric`, `decimal`, `email`, etc.)
+ * - autoFocus: foco automático ao montar (ex.: 1º campo de modal)
+ * - onSubmitEditing / returnKeyType / blurOnSubmit: navegação por "next/done"
+ * - autoCapitalize / autoCorrect / autoComplete: defaults sensatos para mobile
+ * - secureTextEntry: senhas
+ * - maxLength: limita digitação
+ * Tudo é passthrough — quem não usa, não paga.
+ */
 export default function InputField({
   label,
   value,
   onChangeText,
   placeholder,
   keyboardType = 'default',
+  inputMode,
   prefix,
   suffix,
   editable = true,
@@ -18,6 +29,18 @@ export default function InputField({
   rightLabel,
   error,
   errorText,
+  autoFocus,
+  autoCapitalize,
+  autoCorrect,
+  autoComplete,
+  secureTextEntry,
+  maxLength,
+  onSubmitEditing,
+  returnKeyType,
+  blurOnSubmit,
+  onBlur,
+  onFocus,
+  testID,
 }) {
   return (
     <View style={[styles.container, style]}>
@@ -43,9 +66,22 @@ export default function InputField({
           placeholder={placeholder}
           placeholderTextColor={colors.disabled}
           keyboardType={keyboardType}
+          inputMode={inputMode}
           editable={editable}
           multiline={multiline}
           numberOfLines={numberOfLines}
+          autoFocus={autoFocus}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={autoCorrect}
+          autoComplete={autoComplete}
+          secureTextEntry={secureTextEntry}
+          maxLength={maxLength}
+          onSubmitEditing={onSubmitEditing}
+          returnKeyType={returnKeyType}
+          blurOnSubmit={blurOnSubmit}
+          onBlur={onBlur}
+          onFocus={onFocus}
+          testID={testID}
         />
         {suffix && <Text style={styles.suffix}>{suffix}</Text>}
       </View>
@@ -76,11 +112,13 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     minWidth: 0,
+    minHeight: 44, // Sessão 28 — WCAG touch target 44pt mínimo
     backgroundColor: colors.inputBg,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: borderRadius.sm,
-    padding: spacing.sm + 2,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: spacing.sm, // mantém vertical mais compacto, minHeight garante 44pt
     fontSize: fonts.regular,
     color: colors.text,
   },

@@ -201,7 +201,7 @@ export default function SobreScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, maxWidth: 720, alignSelf: 'center', width: '100%', paddingBottom: 40 },
+  content: { padding: spacing.md, maxWidth: 720, alignSelf: 'center', width: '100%', paddingBottom: 100 },
   errorBanner: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 8,
     backgroundColor: '#fef2f2', padding: spacing.md,

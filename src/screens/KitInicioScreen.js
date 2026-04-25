@@ -366,7 +366,7 @@ export default function KitInicioScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, maxWidth: 960, alignSelf: 'center', width: '100%', paddingBottom: 40 },
+  content: { padding: spacing.md, maxWidth: 960, alignSelf: 'center', width: '100%', paddingBottom: 100 },
   backBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingVertical: spacing.sm, paddingHorizontal: 2,

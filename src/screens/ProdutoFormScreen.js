@@ -1711,7 +1711,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, paddingBottom: 40 },
+  content: { padding: spacing.md, paddingBottom: 100 },
   vendaChip: {
     paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20,
     backgroundColor: colors.background, borderWidth: 1.5, borderColor: colors.border,

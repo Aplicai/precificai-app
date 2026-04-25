@@ -426,7 +426,7 @@ export default function ComparativoCanaisScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, paddingBottom: 40 },
+  content: { padding: spacing.md, paddingBottom: 100 },
 
   noResults: {
     textAlign: 'center',

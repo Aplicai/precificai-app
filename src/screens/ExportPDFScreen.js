@@ -1325,7 +1325,7 @@ const styles = StyleSheet.create({
   errorBannerText: { color: '#dc2626', fontSize: fonts.small, flex: 1, fontFamily: fontFamily.regular },
   content: {
     padding: spacing.md,
-    paddingBottom: 40,
+    paddingBottom: 100,
     maxWidth: 1200,
     width: '100%',
     alignSelf: 'center',

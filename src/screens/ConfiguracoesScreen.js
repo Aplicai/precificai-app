@@ -345,7 +345,8 @@ export default function ConfiguracoesScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, paddingBottom: 40, maxWidth: 600, width: '100%', alignSelf: 'center' },
+  // Sessão 28 — paddingBottom 40→100 para não ficar atrás do BottomTab (66pt)
+  content: { padding: spacing.md, paddingBottom: 100, maxWidth: 600, width: '100%', alignSelf: 'center' },
   subtitle: { fontSize: fonts.small, color: colors.textSecondary, marginBottom: spacing.md, textAlign: 'center' },
   row: {
     flexDirection: 'row', alignItems: 'center',

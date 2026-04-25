@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, FlatList, StyleSheet, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, FlatList, StyleSheet, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
 
@@ -38,6 +38,10 @@ export default function PickerSelect({ label, value, options, onValueChange, pla
         <Text style={styles.arrow}>▼</Text>
       </TouchableOpacity>
       <Modal visible={visible} transparent animationType="fade">
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
         <TouchableOpacity style={styles.overlay} onPress={closeModal} activeOpacity={1}>
           <TouchableOpacity activeOpacity={1} style={styles.modal} onPress={() => {}}>
             <Text style={styles.modalTitle}>{label || 'Selecione'}</Text>
@@ -76,6 +80,7 @@ export default function PickerSelect({ label, value, options, onValueChange, pla
             )}
           </TouchableOpacity>
         </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -88,6 +93,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border,
     borderRadius: borderRadius.sm, padding: spacing.sm + 2,
+    minHeight: 44, // Sessão 28 — WCAG touch target
   },
   selectorText: { fontSize: fonts.regular, color: colors.text },
   placeholder: { color: colors.disabled },
@@ -100,7 +106,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.sm, padding: spacing.sm, fontSize: fonts.regular,
     marginBottom: spacing.sm, color: colors.text,
   },
-  option: { padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  option: { padding: spacing.md, minHeight: 44, justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: colors.border },
   optionSelected: { backgroundColor: colors.primaryLight + '20' },
   optionText: { fontSize: fonts.regular, color: colors.text },
   optionTextSelected: { color: colors.primary, fontWeight: '600' },

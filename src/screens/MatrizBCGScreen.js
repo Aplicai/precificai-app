@@ -705,7 +705,7 @@ export default function MatrizBCGScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, paddingBottom: 40 },
+  content: { padding: spacing.md, paddingBottom: 100 },
 
   // Header
   header: {
@@ -873,13 +873,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
   },
   tableHeaderText: {
-    fontSize: 11, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    // Sessão 28 — 11→12 para legibilidade mobile (WCAG)
+    fontSize: 12, fontFamily: fontFamily.semiBold, fontWeight: '600',
     color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.3,
   },
 
   // Table row
   tableRowContainer: {
-    paddingVertical: 12, paddingHorizontal: 4,
+    paddingVertical: 14, paddingHorizontal: 4, // Sessão 28 — 12→14 (touch target ~48pt)
+    minHeight: 48,
   },
   tableRow: {
     flexDirection: 'row', alignItems: 'center',
@@ -889,8 +891,9 @@ const styles = StyleSheet.create({
   noResultsRow: { paddingVertical: 24, alignItems: 'center' },
   noResultsText: { fontSize: fonts.small, fontFamily: fontFamily.regular, color: colors.disabled },
 
-  prodName: { fontSize: 13, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text },
-  prodPrice: { fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 2 },
+  // Sessão 28 — bump fontSize para mobile readability
+  prodName: { fontSize: 14, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text },
+  prodPrice: { fontSize: 12, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 2 },
 
   marginBadge: {
     borderRadius: borderRadius.sm, paddingHorizontal: 8, paddingVertical: 3,

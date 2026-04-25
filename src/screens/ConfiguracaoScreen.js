@@ -1106,7 +1106,7 @@ export default function ConfiguracaoScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, width: '100%' },
-  content: { padding: spacing.md, width: '100%', paddingBottom: 40, maxWidth: 960, alignSelf: 'center' },
+  content: { padding: spacing.md, width: '100%', paddingBottom: 100, maxWidth: 960, alignSelf: 'center' },
 
   // Page header
   pageHeader: {

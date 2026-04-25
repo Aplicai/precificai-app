@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
-    height: 40,
+    height: 44, // Sessão 28 — WCAG touch target 44pt
   },
   containerModal: {
     marginHorizontal: 0,
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
     fontSize: fonts.small,
     color: colors.text,
     paddingVertical: 0,
-    height: 38,
+    height: 42, // Sessão 28 — alinhar com container 44pt
     outlineStyle: 'none',
   },
   clearBtn: {

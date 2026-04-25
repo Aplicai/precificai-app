@@ -583,7 +583,7 @@ export default function ListaComprasScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, maxWidth: 1200, width: '100%', paddingBottom: 40, alignSelf: 'center' },
+  content: { padding: spacing.md, maxWidth: 1200, width: '100%', paddingBottom: 100, alignSelf: 'center' },
 
   // Audit P0: banner de erro (loadError + gerarError)
   errorBanner: {

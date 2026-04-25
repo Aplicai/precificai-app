@@ -416,7 +416,7 @@ export default function DeliveryPlataformasScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, paddingBottom: 40 },
+  content: { padding: spacing.md, paddingBottom: 100 },
 
   // Audit P0: error banners
   errorBanner: {

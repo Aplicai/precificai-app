@@ -295,7 +295,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.md,
-    paddingBottom: 40,
+    paddingBottom: 100,
     maxWidth: 900,
     alignSelf: 'center',
     width: '100%',

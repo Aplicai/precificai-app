@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Pressable } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Pressable, KeyboardAvoidingView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -18,19 +18,31 @@ export default function ModalFormWrapper({ children, title, onClose }) {
   const { isDesktop } = useResponsiveLayout();
 
   if (!isDesktop) {
-    // Mobile: full-screen with custom header
+    // Mobile: full-screen with custom header.
+    // Sessão 28 — backBtn aumentou para 44x44 (WCAG); KeyboardAvoidingView envolve
+    // conteúdo no iOS para o footer não ficar atrás do teclado.
     return (
       <View style={styles.mobileWrapper}>
         <View style={styles.mobileHeader}>
-          <TouchableOpacity onPress={onClose} style={styles.backBtn} activeOpacity={0.7}>
+          <TouchableOpacity
+            onPress={onClose}
+            style={styles.backBtn}
+            activeOpacity={0.7}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            accessibilityRole="button"
+            accessibilityLabel="Voltar"
+          >
             <Feather name="arrow-left" size={22} color={colors.textLight} />
           </TouchableOpacity>
           <Text style={styles.mobileTitle} numberOfLines={1}>{title}</Text>
-          <View style={{ width: 40 }} />
+          <View style={{ width: 44 }} />
         </View>
-        <View style={{ flex: 1 }}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           {children}
-        </View>
+        </KeyboardAvoidingView>
       </View>
     );
   }
@@ -75,9 +87,9 @@ const styles = StyleSheet.create({
     }),
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44, // Sessão 28 — WCAG 44pt min
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },

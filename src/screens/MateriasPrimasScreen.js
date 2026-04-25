@@ -586,7 +586,7 @@ export default function MateriasPrimasScreen({ navigation }) {
 
       {/* Lista agrupada */}
       {isGrid ? (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }}>
           <View style={styles.desktopContentWrap}>
             <View style={styles.desktopContentInner}>
               {loading ? (

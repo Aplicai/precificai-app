@@ -493,7 +493,7 @@ export default function ContaSegurancaScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, paddingBottom: 40, maxWidth: 600, alignSelf: 'center', width: '100%' },
+  content: { padding: spacing.md, paddingBottom: 100, maxWidth: 600, alignSelf: 'center', width: '100%' },
   infoCard: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.surface, borderRadius: borderRadius.md,

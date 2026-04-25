@@ -609,7 +609,7 @@ export default function PreparosScreen({ navigation }) {
 
       {/* Content */}
       {isGrid ? (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }}>
           <View style={styles.desktopContentWrap}>
             <View style={styles.desktopContentInner}>
               {visibleSections.length === 0 ? (
