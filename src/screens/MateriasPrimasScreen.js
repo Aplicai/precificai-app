@@ -666,12 +666,14 @@ export default function MateriasPrimasScreen({ navigation }) {
           stickySectionHeadersEnabled={true}
           ListHeaderComponent={statsList.length > 0 ? <ListStatsStrip stats={statsList} /> : null}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.primary}
-              colors={[colors.primary]}
-            />
+            Platform.OS !== 'web' ? (
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.primary}
+                colors={[colors.primary]}
+              />
+            ) : undefined
           }
           ListEmptyComponent={
             loading ? (
@@ -1157,7 +1159,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   rowMarca: {
-    fontSize: 11, fontFamily: fontFamily.regular,
+    fontSize: 12, fontFamily: fontFamily.regular,
     color: colors.textSecondary, marginTop: 1,
   },
 
@@ -1173,7 +1175,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5, paddingVertical: 1, borderRadius: 6, marginTop: 2,
   },
   unidadeText: {
-    fontSize: 9, fontFamily: fontFamily.bold, fontWeight: '700',
+    fontSize: 11, fontFamily: fontFamily.bold, fontWeight: '700',
   },
 
   // Duplicar
@@ -1193,7 +1195,7 @@ const styles = StyleSheet.create({
     width: 6, height: 6, borderRadius: 3,
   },
   estoqueText: {
-    fontSize: 10, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    fontSize: 11, fontFamily: fontFamily.semiBold, fontWeight: '600',
   },
   estoqueBtn: {
     paddingHorizontal: 4, paddingVertical: 6,

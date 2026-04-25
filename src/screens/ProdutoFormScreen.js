@@ -741,10 +741,10 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 </View>
 
                 {tipoVenda === 'unidade' ? (
-                  <View style={styles.tempoRow}>
-                    <View style={{ flex: 1, marginRight: spacing.sm }}>
+                  <View style={[styles.tempoRow, !isDesktop && { flexDirection: 'column' }]}>
+                    <View style={{ flex: 1, marginRight: isDesktop ? spacing.sm : 0 }}>
                       <InputField
-                        label="Quantas unidades a receita rende?"
+                        label="Unidades por receita"
                         value={form.rendimento_unidades}
                         onChangeText={(v) => setForm(p => ({ ...p, rendimento_unidades: v }))}
                         keyboardType="numeric"
@@ -764,8 +764,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     </View>
                   </View>
                 ) : (
-                  <View style={styles.tempoRow}>
-                    <View style={{ flex: 1, marginRight: spacing.sm }}>
+                  <View style={[styles.tempoRow, !isDesktop && { flexDirection: 'column' }]}>
+                    <View style={{ flex: 1, marginRight: isDesktop ? spacing.sm : 0 }}>
                       <InputField
                         label={`Rendimento total (${tipoVenda === 'kg' ? 'kg' : 'L'})`}
                         value={form.rendimento_total}
@@ -1277,8 +1277,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
                   </View>
                 </Pressable>
                 {form[`conserv_${opt.key}`] && (
-                  <View style={styles.conservFields}>
-                    <View style={{ flex: 1, marginRight: spacing.sm }}>
+                  <View style={[styles.conservFields, !isDesktop && { flexDirection: 'column' }]}>
+                    <View style={{ flex: 1, marginRight: isDesktop ? spacing.sm : 0, marginBottom: isDesktop ? 0 : spacing.sm }}>
                       <InputField
                         style={{ marginBottom: 0 }}
                         label="Temperatura"
@@ -1731,15 +1731,15 @@ const styles = StyleSheet.create({
     paddingVertical: 4, paddingHorizontal: spacing.xs,
     backgroundColor: colors.primary, borderRadius: borderRadius.sm, marginBottom: 1,
   },
-  tableHeaderText: { fontSize: 9, fontWeight: '700', color: colors.textLight, textTransform: 'uppercase' },
+  tableHeaderText: { fontSize: 11, fontWeight: '700', color: colors.textLight, textTransform: 'uppercase' },
   tableRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 5, paddingHorizontal: spacing.xs,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
   },
   tableRowEven: { backgroundColor: colors.inputBg },
-  tableCell: { fontSize: 11, color: colors.text },
-  tableCellCusto: { fontSize: 11, fontWeight: '600', color: colors.primary },
+  tableCell: { fontSize: 12, color: colors.text },
+  tableCellCusto: { fontSize: 12, fontWeight: '600', color: colors.primary },
   tableFooter: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.xs,
@@ -1996,12 +1996,12 @@ const styles = StyleSheet.create({
   costsTitle: { fontSize: fonts.body, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.text, flex: 1 },
   costsGrid: { flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm },
   costsItem: { flex: 1, alignItems: 'center', backgroundColor: colors.inputBg, borderRadius: borderRadius.sm, paddingVertical: 6 },
-  costsItemLabel: { fontSize: 9, fontFamily: fontFamily.medium, color: colors.textSecondary, marginBottom: 2 },
+  costsItemLabel: { fontSize: 11, fontFamily: fontFamily.medium, color: colors.textSecondary, marginBottom: 2 },
   costsItemValue: { fontSize: fonts.small, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.text },
   costsBreakdown: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' },
   costsChartWrap: { marginTop: spacing.sm, paddingHorizontal: 2 },
-  costsBreakdownItem: { fontSize: 10, fontFamily: fontFamily.regular, color: colors.textSecondary },
-  costsBreakdownSep: { marginHorizontal: 4, color: colors.disabled, fontSize: 10 },
+  costsBreakdownItem: { fontSize: 12, fontFamily: fontFamily.regular, color: colors.textSecondary },
+  costsBreakdownSep: { marginHorizontal: 4, color: colors.disabled, fontSize: 12 },
   // Sessão 26 — CTA para abrir Simulador com contexto
   simuladorBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -2081,6 +2081,6 @@ const styles = StyleSheet.create({
   historicoBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, minHeight: 100, paddingBottom: 4, backgroundColor: colors.background, borderRadius: borderRadius.sm, padding: spacing.sm },
   historicoBarWrapper: { alignItems: 'center', flex: 1, maxWidth: 64 },
   historicoBar: { width: '70%', maxWidth: 28, borderRadius: 4, minHeight: 8 },
-  historicoBarPrice: { fontSize: 10, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text, marginBottom: 4, textAlign: 'center' },
-  historicoBarDate: { fontSize: 9, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 3 },
+  historicoBarPrice: { fontSize: 11, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text, marginBottom: 4, textAlign: 'center' },
+  historicoBarDate: { fontSize: 10, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 3 },
 });

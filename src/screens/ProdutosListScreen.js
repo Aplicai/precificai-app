@@ -800,12 +800,14 @@ export default function ProdutosListScreen({ navigation }) {
           stickySectionHeadersEnabled={true}
           ListHeaderComponent={statsList.length > 0 ? <ListStatsStrip stats={statsList} /> : null}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.primary}
-              colors={[colors.primary]}
-            />
+            Platform.OS !== 'web' ? (
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={handleRefresh}
+                tintColor={colors.primary}
+                colors={[colors.primary]}
+              />
+            ) : undefined
           }
           ListEmptyComponent={
             loading ? (
@@ -1231,8 +1233,8 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   itemMeta: { flexDirection: 'row', alignItems: 'center', marginTop: 1 },
-  itemMetaText: { fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary },
-  itemMetaSep: { fontSize: 11, color: colors.disabled, marginHorizontal: 4 },
+  itemMetaText: { fontSize: 12, fontFamily: fontFamily.regular, color: colors.textSecondary },
+  itemMetaSep: { fontSize: 12, color: colors.disabled, marginHorizontal: 4 },
 
   // Lucro
   rowRight: {

@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, FlatList, StyleSheet, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, FlatList, StyleSheet, TextInput, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
 
 export default function PickerSelect({ label, value, options, onValueChange, placeholder, style, displayValue, onCreateNew, createLabel }) {
   const [visible, setVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
+  // Sessão UX — em telas estreitas (<= 480pt) o modal vira bottom-sheet full-width
+  // para aproveitar melhor a área e ficar mais perto do dedo.
+  const { width } = useWindowDimensions();
+  const isMobile = width <= 480;
   // Bug fix (P0-04): Antes, quando `value` estava setado mas as `options` ainda não
   // tinham carregado (timing/async) ou quando havia mismatch de tipo (string vs number),
   // o componente caía no fallback "Selecione..." mesmo com valor preenchido — o que
@@ -37,13 +41,13 @@ export default function PickerSelect({ label, value, options, onValueChange, pla
         <Text style={[styles.selectorText, !isFilled && styles.placeholder]}>{selectedLabel}</Text>
         <Text style={styles.arrow}>▼</Text>
       </TouchableOpacity>
-      <Modal visible={visible} transparent animationType="fade">
+      <Modal visible={visible} transparent animationType={isMobile ? 'slide' : 'fade'}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-        <TouchableOpacity style={styles.overlay} onPress={closeModal} activeOpacity={1}>
-          <TouchableOpacity activeOpacity={1} style={styles.modal} onPress={() => {}}>
+        <TouchableOpacity style={[styles.overlay, isMobile && styles.overlayMobile]} onPress={closeModal} activeOpacity={1}>
+          <TouchableOpacity activeOpacity={1} style={[styles.modal, isMobile && styles.modalMobile]} onPress={() => {}}>
             <Text style={styles.modalTitle}>{label || 'Selecione'}</Text>
             {options.length > 6 && (
               <TextInput
@@ -99,7 +103,18 @@ const styles = StyleSheet.create({
   placeholder: { color: colors.disabled },
   arrow: { fontSize: 12, color: colors.textSecondary },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: spacing.xl },
+  overlayMobile: { padding: 0, justifyContent: 'flex-end', alignItems: 'stretch' },
   modal: { backgroundColor: colors.surface, borderRadius: borderRadius.md, maxHeight: '60%', padding: spacing.md, width: '100%', maxWidth: 400 },
+  modalMobile: {
+    width: '100%',
+    maxWidth: '100%',
+    maxHeight: '85%',
+    borderTopLeftRadius: borderRadius.lg,
+    borderTopRightRadius: borderRadius.lg,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    padding: spacing.md,
+  },
   modalTitle: { fontSize: fonts.large, fontWeight: '700', color: colors.primary, marginBottom: spacing.md, textAlign: 'center' },
   searchInput: {
     backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border,

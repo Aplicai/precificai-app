@@ -193,8 +193,8 @@ export default function MaisScreen({ navigation }) {
                   )}
                 </View>
                 <View style={styles.menuBody}>
-                  <Text style={styles.menuTitle}>{item.title}</Text>
-                  <Text style={styles.menuDesc}>{item.desc}</Text>
+                  <Text style={styles.menuTitle} numberOfLines={1}>{item.title}</Text>
+                  <Text style={styles.menuDesc} numberOfLines={2}>{item.desc}</Text>
                 </View>
                 <Feather name="chevron-right" size={18} color={colors.textSecondary} />
               </TouchableOpacity>

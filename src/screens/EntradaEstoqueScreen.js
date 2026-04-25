@@ -203,7 +203,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
           placeholderTextColor={colors.disabled}
         />
         {qtdInvalida && (
-          <Text style={styles.fieldError}>Informe uma quantidade maior que zero.</Text>
+          <Text numberOfLines={2} style={styles.fieldError}>Informe uma quantidade maior que zero.</Text>
         )}
 
         <Text style={styles.label}>Custo unitário (R$ / {unidade})</Text>
@@ -216,7 +216,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
           placeholderTextColor={colors.disabled}
         />
         {custoInvalido && (
-          <Text style={styles.fieldError}>Custo deve ser maior que zero. Para zerar custo use Ajuste de estoque.</Text>
+          <Text numberOfLines={2} style={styles.fieldError}>Custo deve ser maior que zero. Para zerar custo use Ajuste de estoque.</Text>
         )}
 
         {valorTotal > 0 && (
@@ -231,7 +231,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
           style={styles.input}
           value={motivo}
           onChangeText={setMotivo}
-          placeholder='Ex.: "NF 1234", "Compra no atacado"'
+          placeholder='Ex: "NF 1234"'
           placeholderTextColor={colors.disabled}
           maxLength={200}
         />
@@ -266,11 +266,12 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   content: { padding: spacing.md, paddingBottom: 60 },
   label: {
-    fontSize: fonts.small, color: colors.text,
-    fontFamily: fontFamily.semiBold, fontWeight: '600',
-    marginBottom: spacing.xs, marginTop: spacing.md,
+    fontSize: 13, color: colors.textSecondary,
+    fontFamily: fontFamily.semiBold, fontWeight: '500',
+    marginBottom: 6, marginTop: 14,
   },
   input: {
+    minHeight: 44, // Sessão Forms-Mobile — WCAG touch target 44pt mínimo
     backgroundColor: colors.surface, borderRadius: borderRadius.md,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2,
     fontSize: fonts.regular, color: colors.text,
@@ -335,11 +336,11 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.regular,
     marginTop: spacing.md, lineHeight: 16, textAlign: 'center',
   },
-  inputError: { borderColor: colors.error },
+  inputError: { borderColor: colors.error, borderWidth: 1.5 },
   fieldError: {
-    fontSize: fonts.tiny, color: colors.error,
+    fontSize: 12, color: colors.error,
     fontFamily: fontFamily.regular,
-    marginTop: 4,
+    marginTop: 4, flexShrink: 1,
   },
   errorBanner: {
     flexDirection: 'row', alignItems: 'center',

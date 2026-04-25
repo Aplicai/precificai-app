@@ -77,7 +77,8 @@ const screenOptions = ({ navigation }) => {
   return {
   headerStyle: { backgroundColor: colors.primary },
   headerTintColor: colors.textLight,
-  headerTitleStyle: { fontWeight: '600', fontFamily: fontFamily.bold },
+  // Sessão UX — title 17/600 com fonte semiBold para hierarquia mobile consistente.
+  headerTitleStyle: { fontSize: 17, fontWeight: '600', fontFamily: fontFamily.semiBold || fontFamily.bold },
   headerBackButtonDisplayMode: 'minimal',
   headerBlurEffect: undefined,
   gestureEnabled: true,
@@ -85,9 +86,16 @@ const screenOptions = ({ navigation }) => {
   fullScreenGestureEnabled: true,
   headerBackTitleVisible: false,
   headerBackVisible: false,
+  // Sessão UX — back button 44x44 (WCAG) com hitSlop adicional.
   headerLeft: canGoBackInStack ? () => (
-    <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginLeft: 8, padding: 6 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-      <Feather name="chevron-left" size={20} color="#fff" />
+    <TouchableOpacity
+      onPress={() => navigation.goBack()}
+      style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: 0 }}
+      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+      accessibilityRole="button"
+      accessibilityLabel="Voltar"
+    >
+      <Feather name="chevron-left" size={22} color="#fff" />
     </TouchableOpacity>
   ) : undefined,
   headerRight: () => (
@@ -184,10 +192,12 @@ function backToHomeOption(navigation) {
           const parent = navigation.getParent();
           if (parent) parent.navigate('Início');
         }}
-        style={{ marginLeft: 8, padding: 6 }}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: 0 }}
+        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+        accessibilityRole="button"
+        accessibilityLabel="Voltar para o início"
       >
-        <Feather name="chevron-left" size={20} color="#fff" />
+        <Feather name="chevron-left" size={22} color="#fff" />
       </TouchableOpacity>
     ),
   };
@@ -362,11 +372,12 @@ function MainTabs({ route }) {
       <Tab.Screen name="Início" component={HomeStack} />
       <Tab.Screen name="Insumos" component={InsumosStack} />
       <Tab.Screen name="Preparos" component={PreparosStack} />
-      <Tab.Screen name="Embalagens" component={EmbalagensStack} />
+      {/* Sessão UX — "Embalagens" tem 10 chars e trunca em telas estreitas; encurta para "Embal." em mobile. */}
+      <Tab.Screen name="Embalagens" component={EmbalagensStack} options={{ tabBarLabel: !isDesktop ? 'Embal.' : 'Embalagens' }} />
       <Tab.Screen name="Produtos" component={ProdutosStack} />
       {/* Sprint 1 Q3 — tabBarLabel "Ferramentas" sem renomear route name (quebraria persistência). */}
-      {/* Sessão 28 — Em telas estreitas (≤360pt) volta para "Mais" para evitar truncamento de "Ferramentas". */}
-      <Tab.Screen name="Mais" component={MaisStack} options={{ tabBarLabel: isNarrow ? 'Mais' : 'Ferramentas' }} />
+      {/* Sessão 28 — Em mobile volta para "Mais" para evitar truncamento de "Ferramentas". */}
+      <Tab.Screen name="Mais" component={MaisStack} options={{ tabBarLabel: !isDesktop ? 'Mais' : 'Ferramentas' }} />
     </Tab.Navigator>
   );
 

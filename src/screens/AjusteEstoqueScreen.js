@@ -257,7 +257,7 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
             </TouchableOpacity>
           ))}
         </View>
-        <Text style={styles.hint}>
+        <Text numberOfLines={2} style={styles.hint}>
           {modo === 'saldo'
             ? `Digite quanto tem agora. A diferença é calculada automaticamente.${itemSelecionado ? ` Saldo atual: ${Number(saldoAtual).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} ${unidade}.` : ''}`
             : 'Digite só a diferença (quanto entrou ou saiu).'}
@@ -303,7 +303,7 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
           style={[styles.input, { minHeight: 60, textAlignVertical: 'top' }]}
           value={motivo}
           onChangeText={setMotivo}
-          placeholder='Obrigatório. Ex.: "perda no preparo", "inventário 22/04"'
+          placeholder='Ex: "perda no preparo"'
           placeholderTextColor={colors.placeholder}
           multiline
           numberOfLines={3}
@@ -362,11 +362,12 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   content: { padding: spacing.md, paddingBottom: 60 },
   label: {
-    fontSize: fonts.small, color: colors.text,
-    fontFamily: fontFamily.semiBold, fontWeight: '600',
-    marginBottom: spacing.xs, marginTop: spacing.md,
+    fontSize: 13, color: colors.textSecondary,
+    fontFamily: fontFamily.semiBold, fontWeight: '500',
+    marginBottom: 6, marginTop: 14,
   },
   input: {
+    minHeight: 44, // Sessão Forms-Mobile — WCAG touch target 44pt mínimo
     backgroundColor: colors.surface, borderRadius: borderRadius.md,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2,
     fontSize: fonts.regular, color: colors.text,
@@ -392,13 +393,13 @@ const styles = StyleSheet.create({
   },
   toggleTextActive: { color: colors.primary },
   errText: {
-    fontSize: fonts.tiny, color: colors.error,
-    fontFamily: fontFamily.regular, marginTop: 4,
+    fontSize: 12, color: colors.error,
+    fontFamily: fontFamily.regular, marginTop: 4, flexShrink: 1,
   },
   hint: {
-    fontSize: fonts.tiny, color: colors.textSecondary,
+    fontSize: 12, color: colors.textSecondary,
     fontFamily: fontFamily.regular, marginTop: 6,
-    lineHeight: 16,
+    lineHeight: 16, flexShrink: 1,
   },
   btnPrimary: {
     backgroundColor: colors.primary,

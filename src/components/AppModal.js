@@ -54,6 +54,7 @@ import {
   Platform,
   StyleSheet,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
@@ -78,15 +79,32 @@ export default function AppModal({
   testID,
 }) {
   const maxWidth = SIZE_MAP[size] || SIZE_MAP.md;
+  // Sessão UX — em telas estreitas (<= 480pt) modal vira bottom-sheet full-width
+  // sem maxWidth e com radius só no topo. Telas <=360pt sem radius.
+  const { width } = useWindowDimensions();
+  const isMobile = width <= 480;
+  const isTinyScreen = width <= 360;
 
   function handleBackdropPress() {
     if (dismissOnBackdrop && typeof onClose === 'function') onClose();
   }
 
+  const mobileContentStyle = isMobile && {
+    width: '100%',
+    maxWidth: '100%',
+    maxHeight: '90%',
+    borderTopLeftRadius: isTinyScreen ? 0 : borderRadius.lg,
+    borderTopRightRadius: isTinyScreen ? 0 : borderRadius.lg,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderRadius: 0,
+    alignSelf: 'stretch',
+  };
+
   const innerContent = (
     <TouchableWithoutFeedback onPress={() => {}}>
       <View
-        style={[styles.content, { maxWidth }, contentStyle]}
+        style={[styles.content, { maxWidth }, mobileContentStyle, contentStyle]}
         accessible
         accessibilityRole="dialog"
         accessibilityViewIsModal
@@ -119,15 +137,15 @@ export default function AppModal({
     <Modal
       visible={visible}
       transparent={transparent}
-      animationType={animationType}
+      animationType={isMobile ? 'slide' : animationType}
       onRequestClose={onClose}
     >
       <TouchableWithoutFeedback onPress={handleBackdropPress}>
-        <View style={styles.overlay}>
+        <View style={[styles.overlay, isMobile && styles.overlayMobile]}>
           {keyboardAvoiding ? (
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              style={styles.flexCenter}
+              style={[styles.flexCenter, isMobile && styles.flexBottom]}
             >
               {innerContent}
             </KeyboardAvoidingView>
@@ -190,10 +208,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing.sm,
   },
+  overlayMobile: {
+    padding: 0,
+    justifyContent: 'flex-end',
+    alignItems: 'stretch',
+  },
   flexCenter: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    width: '100%',
+  },
+  flexBottom: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'stretch',
     width: '100%',
   },
   content: {
@@ -218,9 +247,9 @@ const styles = StyleSheet.create({
   },
   headerImplicitTitle: {
     flex: 1,
-    fontSize: fonts.large,
-    fontFamily: fontFamily.bold,
-    fontWeight: '700',
+    fontSize: 17,
+    fontFamily: fontFamily.semiBold || fontFamily.bold,
+    fontWeight: '600',
     color: colors.text,
   },
   header: {

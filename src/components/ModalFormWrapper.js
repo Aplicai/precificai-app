@@ -80,9 +80,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: colors.primary,
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm + 2,
+    paddingVertical: 6,
+    height: 56,
     ...Platform.select({
-      ios: { paddingTop: 50 },
+      ios: { paddingTop: 50, height: 96 },
       default: {},
     }),
   },
@@ -97,9 +98,9 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     color: colors.textLight,
-    fontSize: fonts.large,
-    fontFamily: fontFamily.bold,
-    fontWeight: '700',
+    fontSize: 17,
+    fontFamily: fontFamily.semiBold || fontFamily.bold,
+    fontWeight: '600',
   },
 
   // Desktop overlay

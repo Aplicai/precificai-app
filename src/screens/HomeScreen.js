@@ -1031,7 +1031,7 @@ const styles = StyleSheet.create({
     minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center',
     borderWidth: 1.5, borderColor: colors.primary,
   },
-  bellBadgeText: { fontSize: 9, fontWeight: '700', color: '#fff' },
+  bellBadgeText: { fontSize: 10, fontWeight: '700', color: '#fff' },
 
   // Setup banner
   setupBanner: {
@@ -1115,7 +1115,8 @@ const styles = StyleSheet.create({
   kpiCard: {
     width: '48.5%', minWidth: 150,
     backgroundColor: colors.surface, borderRadius: borderRadius.lg,
-    padding: spacing.md + 4,
+    padding: spacing.md,
+    minHeight: 96,
     shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 1,
   },
   kpiCardDesktop: {
@@ -1162,8 +1163,8 @@ const styles = StyleSheet.create({
 
   // Analysis locked
   analysisLocked: {
-    backgroundColor: colors.surface, borderRadius: borderRadius.lg, padding: spacing.lg,
-    alignItems: 'center', marginBottom: spacing.lg,
+    backgroundColor: colors.surface, borderRadius: borderRadius.lg, padding: spacing.md,
+    alignItems: 'center', marginBottom: spacing.md,
     shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 1,
   },
   lockedIconCircle: {

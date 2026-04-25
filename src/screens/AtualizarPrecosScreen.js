@@ -839,7 +839,7 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
-    padding: spacing.lg,
+    padding: spacing.md,
     width: '100%',
     maxWidth: 340,
     shadowColor: '#000',
@@ -850,7 +850,7 @@ const styles = StyleSheet.create({
   },
   modalContentDesktop: {
     maxWidth: 400,
-    padding: spacing.xl,
+    padding: spacing.lg,
   },
   modalTitle: {
     fontSize: fonts.large,

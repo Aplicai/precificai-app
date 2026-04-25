@@ -317,7 +317,7 @@ function Slide({ slide, width }) {
         )}
       </View>
 
-      <Text style={slideStyles.title}>{slide.title}</Text>
+      <Text style={[slideStyles.title, width < 768 && { fontSize: 22, lineHeight: 28 }]} numberOfLines={2}>{slide.title}</Text>
       <Text style={[slideStyles.subtitle, { color: slide.accent }]}>{slide.subtitle}</Text>
       <Text style={slideStyles.body}>{slide.body}</Text>
 

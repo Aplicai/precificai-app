@@ -37,7 +37,12 @@ function getCategoryColor(index) {
 export default function MateriaPrimaFormScreen({ route, navigation }) {
   const editId = route.params?.id;
   const returnTo = route.params?.returnTo;
-  const { isDesktop } = useResponsiveLayout();
+  const { isDesktop, isMobile } = useResponsiveLayout();
+  // Sessão Forms-Mobile — agrupamentos 2/3-col viram coluna no mobile p/ não
+  // espremer os inputs e respeitar o padrão de 1-campo-por-linha.
+  const rowStyle = isMobile
+    ? { flexDirection: 'column', gap: 0 }
+    : styles.row;
 
   // Mapa estático: returnTo → tab pai (Sessão 24).
   // MateriaPrimaForm é registrado em 3 stacks distintos (Insumos, Produtos, Preparos)
@@ -419,7 +424,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         />
 
         {/* Marca + Categoria */}
-        <View style={styles.row}>
+        <View style={rowStyle}>
           <View style={{ flex: 1 }}>
             <InputField
               label="Marca (opcional)"
@@ -449,8 +454,8 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         </View>
 
         {/* Unidade + Qtd. Bruta + Qtd. Líquida */}
-        <View style={styles.row}>
-          <View style={{ flex: 0.7 }}>
+        <View style={rowStyle}>
+          <View style={{ flex: isMobile ? 1 : 0.7 }}>
             <PickerSelect
               label="Unidade"
               value={form.unidade_medida}

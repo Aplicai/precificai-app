@@ -98,7 +98,7 @@ export default function ForgotPasswordScreen({ navigation }) {
               {error ? (
                 <View style={styles.errorBox}>
                   <Feather name="alert-circle" size={14} color="#dc2626" style={{ marginRight: 6 }} />
-                  <Text style={styles.errorText}>{error}</Text>
+                  <Text numberOfLines={2} style={styles.errorText}>{error}</Text>
                 </View>
               ) : null}
 
@@ -155,8 +155,9 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#fff', borderRadius: borderRadius.xl, padding: spacing.lg, paddingTop: 24 },
   cardTitle: { fontSize: 22, fontWeight: '700', fontFamily: fontFamily.bold, color: colors.text, textAlign: 'center', marginBottom: 8 },
   desc: { fontSize: 14, color: colors.textSecondary, textAlign: 'center', lineHeight: 20, marginBottom: 16, fontFamily: fontFamily.regular },
-  label: { fontSize: 13, fontFamily: fontFamily.medium, color: colors.textSecondary, marginBottom: 6, marginTop: 12 },
+  label: { fontSize: 13, fontFamily: fontFamily.medium, color: colors.textSecondary, marginBottom: 6, marginTop: 14 },
   input: {
+    minHeight: 44, // Sessão Forms-Mobile — WCAG touch target 44pt mínimo
     backgroundColor: colors.inputBg, borderRadius: borderRadius.sm, paddingHorizontal: 14, paddingVertical: 12,
     fontSize: 15, fontFamily: fontFamily.regular, color: colors.text, borderWidth: 1, borderColor: colors.border,
   },
@@ -176,7 +177,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3, borderLeftColor: '#dc2626',
     marginBottom: 8,
   },
-  errorText: { color: '#dc2626', fontSize: 13, fontFamily: fontFamily.regular, flex: 1 },
+  errorText: { color: '#dc2626', fontSize: 12, fontFamily: fontFamily.regular, flex: 1, flexShrink: 1 },
   successIconCircle: {
     width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary + '10',
     alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 12,

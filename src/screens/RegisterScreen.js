@@ -459,15 +459,15 @@ const styles = StyleSheet.create({
   },
   strengthFeedback: { marginTop: 4 },
   strengthWarning: {
-    fontSize: 11, color: colors.warning, fontFamily: fontFamily.medium, marginBottom: 2,
+    fontSize: 12, color: colors.warning, fontFamily: fontFamily.medium, marginBottom: 2,
   },
   strengthSuggestion: {
-    fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.regular, lineHeight: 15,
+    fontSize: 12, color: colors.textSecondary, fontFamily: fontFamily.regular, lineHeight: 16,
   },
 
   // Terms (now as notice text below button)
   termsNotice: {
-    fontSize: 11, color: colors.disabled, textAlign: 'center',
+    fontSize: 12, color: colors.disabled, textAlign: 'center',
     marginTop: 12, lineHeight: 16, fontFamily: fontFamily.regular,
   },
   termsLink: { color: colors.primaryMid, textDecorationLine: 'underline' },
@@ -478,7 +478,7 @@ const styles = StyleSheet.create({
     marginTop: 16, gap: 16, flexWrap: 'wrap',
   },
   trustItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  trustText: { fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.regular },
+  trustText: { fontSize: 12, color: colors.textSecondary, fontFamily: fontFamily.regular },
 
   // Buttons
   primaryBtn: {

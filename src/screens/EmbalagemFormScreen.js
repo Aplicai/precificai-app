@@ -24,7 +24,12 @@ const UNIDADES_EMBALAGEM = [
 export default function EmbalagemFormScreen({ route, navigation }) {
   const editId = route.params?.id;
   const isFocused = useIsFocused();
-  const { isDesktop } = useResponsiveLayout();
+  const { isDesktop, isMobile } = useResponsiveLayout();
+  // Sessão Forms-Mobile — agrupamentos 2-col viram coluna no mobile p/ não
+  // espremer os inputs e respeitar o padrão de 1-campo-por-linha.
+  const rowStyle = isMobile
+    ? { flexDirection: 'column', gap: 0 }
+    : { flexDirection: 'row', gap: spacing.sm };
   const [form, setForm] = useState({
     nome: '', marca: '', categoria_id: null,
     quantidade: '', unidade_medida: 'Unidades', preco_embalagem: '',
@@ -259,7 +264,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         />
 
         {/* Marca + Categoria */}
-        <View style={styles.row}>
+        <View style={rowStyle}>
           <View style={{ flex: 1 }}>
             <InputField
               label="Marca (opcional)"
@@ -285,8 +290,8 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         </View>
 
         {/* Unidade + Quantidade */}
-        <View style={styles.row}>
-          <View style={{ flex: 0.7 }}>
+        <View style={rowStyle}>
+          <View style={{ flex: isMobile ? 1 : 0.7 }}>
             <PickerSelect
               label="Unidade"
               value={form.unidade_medida}
@@ -316,12 +321,22 @@ export default function EmbalagemFormScreen({ route, navigation }) {
           value={form.preco_embalagem}
           onChangeText={(v) => { setForm(p => ({ ...p, preco_embalagem: v })); setErrors(p => ({ ...p, preco_embalagem: undefined })); }}
           keyboardType="decimal-pad"
-          placeholder="Ex: 25,00 (valor pago no pacote inteiro)"
+          placeholder="Ex: 25,00"
           error={errors.preco_embalagem}
           style={styles.fieldCompact}
         />
-        <Text style={{ fontSize: fonts.tiny, color: colors.textSecondary, marginTop: -spacing.sm, marginBottom: spacing.sm, fontFamily: fontFamily.regular }}>
-          Quanto você pagou no pacote completo (não no item unitário). O preço por unidade é calculado abaixo.
+        <Text
+          numberOfLines={2}
+          style={{
+            fontSize: 12,
+            color: colors.textSecondary,
+            marginTop: -spacing.xs,
+            marginBottom: spacing.sm,
+            fontFamily: fontFamily.regular,
+            lineHeight: 16,
+          }}
+        >
+          Valor pago no pacote inteiro. O preço por unidade é calculado abaixo.
         </Text>
 
         {/* Resultado Calculado */}
@@ -611,7 +626,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary + '10',
   },
   resultChipLabel: {
-    fontSize: 10, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    fontSize: 11, fontFamily: fontFamily.semiBold, fontWeight: '600',
     color: colors.textSecondary, textTransform: 'uppercase',
     letterSpacing: 0.3, marginBottom: 2,
   },
@@ -783,7 +798,7 @@ const styles = StyleSheet.create({
   historicoBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, minHeight: 100, paddingBottom: 4, backgroundColor: colors.background, borderRadius: borderRadius.sm, padding: spacing.sm },
   historicoBarWrapper: { alignItems: 'center', flex: 1, maxWidth: 64 },
   historicoBar: { width: '70%', maxWidth: 28, borderRadius: 4, minHeight: 8 },
-  historicoBarPrice: { fontSize: 10, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text, marginBottom: 4, textAlign: 'center' },
-  historicoBarDate: { fontSize: 9, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 3 },
+  historicoBarPrice: { fontSize: 11, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text, marginBottom: 4, textAlign: 'center' },
+  historicoBarDate: { fontSize: 10, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 3 },
   historicoDeleteBtn: { width: 16, height: 16, borderRadius: 8, backgroundColor: colors.error + '12', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
 });

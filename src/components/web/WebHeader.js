@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigationState } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
@@ -104,6 +104,10 @@ function getPageTitle(navState) {
 export default function WebHeader({ navigation, notifCount, onNotifPress }) {
   const { user, signOut } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
+  // Sessão UX — em viewports desktop estreitos (<1280) apertar padding e altura
+  // para preservar área útil. WebHeader só monta em width >= 1024 (useResponsiveLayout).
+  const { width } = useWindowDimensions();
+  const isCompact = width < 1280;
 
   const navState = useNavigationState(s => s);
   const tabState = navState?.routes?.[navState.index]?.state;
@@ -181,17 +185,22 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
   const initials = user?.email ? user.email.substring(0, 2).toUpperCase() : 'US';
 
   return (
-    <View style={styles.container}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+    <View style={[styles.container, { paddingHorizontal: isCompact ? spacing.md : 24 }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
         {(canGoBack || parentScreen || returnTo) && Platform.OS === 'web' && (
           <div
             onClick={handleGoBack}
-            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 4 }}
+            role="button"
+            aria-label="Voltar"
+            style={{
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 44, height: 44, borderRadius: 22,
+            }}
           >
             <Feather name="arrow-left" size={20} color="#fff" />
           </div>
         )}
-        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.title} numberOfLines={1}>{title}</Text>
       </View>
 
       <View style={styles.actions}>
@@ -271,21 +280,23 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   title: {
-    fontSize: 18,
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '600',
     fontFamily: fontFamily.semiBold,
     color: '#fff',
   },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
     position: 'relative',
     zIndex: 9999,
   },
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.15)',

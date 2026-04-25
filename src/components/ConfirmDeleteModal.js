@@ -1,13 +1,17 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, useWindowDimensions } from 'react-native';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
 
 export default function ConfirmDeleteModal({ visible, isFocused = true, titulo, nome, onConfirm, onCancel, confirmLabel = 'Excluir', aviso = null }) {
   const shouldShow = visible && isFocused;
+  // Sessão UX — em mobile (<= 480pt) os botões ficam stacked com a ação destrutiva
+  // em destaque acima e Cancelar como link abaixo. Em desktop continuam side-by-side.
+  const { width } = useWindowDimensions();
+  const isMobile = width <= 480;
   return (
     <Modal visible={shouldShow} transparent animationType="fade">
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onCancel}>
-        <TouchableOpacity activeOpacity={1} style={styles.content} onPress={() => {}}>
+        <TouchableOpacity activeOpacity={1} style={[styles.content, isMobile && styles.contentMobile]} onPress={() => {}}>
           <Text style={styles.title}>{titulo || 'Confirmar Exclusão'}</Text>
           {nome ? (
             <Text style={styles.message}>
@@ -22,14 +26,25 @@ export default function ConfirmDeleteModal({ visible, isFocused = true, titulo, 
           ) : (
             <Text style={styles.aviso}>Esta ação não pode ser desfeita.</Text>
           )}
-          <View style={styles.actions}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onCancel}>
-              <Text style={styles.cancelText}>Cancelar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.confirmBtn} onPress={onConfirm}>
-              <Text style={styles.confirmText}>{confirmLabel}</Text>
-            </TouchableOpacity>
-          </View>
+          {isMobile ? (
+            <View style={styles.actionsStacked}>
+              <TouchableOpacity style={styles.confirmBtnFull} onPress={onConfirm} accessibilityRole="button" accessibilityLabel={confirmLabel}>
+                <Text style={styles.confirmText}>{confirmLabel}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.cancelLink} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Cancelar">
+                <Text style={styles.cancelLinkText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.actions}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Cancelar">
+                <Text style={styles.cancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmBtn} onPress={onConfirm} accessibilityRole="button" accessibilityLabel={confirmLabel}>
+                <Text style={styles.confirmText}>{confirmLabel}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </TouchableOpacity>
       </TouchableOpacity>
     </Modal>
@@ -49,8 +64,13 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     padding: spacing.lg,
     width: '100%',
-    maxWidth: 380,
+    maxWidth: 400,
     alignItems: 'center',
+  },
+  contentMobile: {
+    width: '90%',
+    maxWidth: '90%',
+    padding: spacing.md,
   },
   title: {
     fontSize: fonts.large,
@@ -119,5 +139,32 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: fonts.regular,
+  },
+  actionsStacked: {
+    width: '100%',
+    flexDirection: 'column',
+    gap: spacing.xs,
+  },
+  confirmBtnFull: {
+    width: '100%',
+    paddingVertical: spacing.sm + 4,
+    minHeight: 48,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.error,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelLink: {
+    width: '100%',
+    paddingVertical: spacing.sm + 2,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelLinkText: {
+    color: colors.textSecondary,
+    fontWeight: '600',
+    fontSize: fonts.regular,
+    textDecorationLine: 'underline',
   },
 });

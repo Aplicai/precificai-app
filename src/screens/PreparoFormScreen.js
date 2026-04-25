@@ -31,7 +31,12 @@ const CATEGORY_COLORS = [
 export default function PreparoFormScreen({ route, navigation }) {
   const editId = route.params?.id;
   const isFocused = useIsFocused();
-  const { isDesktop } = useResponsiveLayout();
+  const { isDesktop, isMobile } = useResponsiveLayout();
+  // Sessão Forms-Mobile — agrupamentos 2-col viram coluna no mobile p/ não
+  // espremer os inputs e respeitar o padrão de 1-campo-por-linha.
+  const rowStyle = isMobile
+    ? { flexDirection: 'column', gap: 0 }
+    : { flexDirection: 'row', gap: spacing.sm };
   const [form, setForm] = useState({ nome: '', rendimento_total: '', unidade_medida: 'g', categoria_id: null, modo_preparo: '', observacoes: '', validade_dias: '', temp_congelado: '', tempo_congelado: '', temp_refrigerado: '', tempo_refrigerado: '', temp_ambiente: '', tempo_ambiente: '' });
   const [showInfoAdicional, setShowInfoAdicional] = useState(false); // collapsed by default for compactness
   const [ingredientes, setIngredientes] = useState([]);
@@ -377,7 +382,7 @@ export default function PreparoFormScreen({ route, navigation }) {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.row}>
+          <View style={rowStyle}>
             <View style={{ flex: 1 }}>
               <InputField
                 label="Rendimento total"
@@ -530,7 +535,7 @@ export default function PreparoFormScreen({ route, navigation }) {
               numberOfLines={3}
               style={{ minHeight: 60, textAlignVertical: 'top' }}
             />
-            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <View style={isMobile ? { flexDirection: 'column' } : { flexDirection: 'row', gap: spacing.sm }}>
               <View style={{ flex: 1 }}>
                 <InputField
                   label="Validade (dias)"
@@ -540,7 +545,7 @@ export default function PreparoFormScreen({ route, navigation }) {
                   placeholder="Ex: 7"
                 />
               </View>
-              <View style={{ flex: 2 }} />
+              {!isMobile && <View style={{ flex: 2 }} />}
             </View>
 
             <Text style={{ fontSize: 13, fontFamily: fontFamily.semiBold, color: colors.text, marginTop: spacing.sm, marginBottom: 4 }}>Conservação</Text>
