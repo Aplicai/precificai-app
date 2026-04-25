@@ -420,7 +420,9 @@ const styles = StyleSheet.create({
   },
   errorBannerText: { color: '#dc2626', fontSize: fonts.small, flex: 1, fontFamily: fontFamily.regular },
   toast: {
-    position: 'absolute', bottom: 20, alignSelf: 'center',
+    // Sessão 28 — Audit mobile-web: bottom: 20 ficava encoberto pelo BottomTab (66pt).
+    // 90 garante visibilidade em iOS (88), Android (66) e web mobile (66).
+    position: 'absolute', bottom: 90, alignSelf: 'center',
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.primary, borderRadius: 20,
     paddingHorizontal: 16, paddingVertical: 8,

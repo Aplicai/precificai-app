@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 /**
  * BulkActionBar — barra flutuante de ações em massa (audit P1-21).
@@ -27,6 +28,7 @@ export default function BulkActionBar({
   onCancel,
   actions = [],
 }) {
+  const { isMobile } = useResponsiveLayout();
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(40)).current;
 
@@ -51,7 +53,7 @@ export default function BulkActionBar({
   return (
     <Animated.View
       pointerEvents={visible ? 'auto' : 'none'}
-      style={[styles.wrap, { opacity, transform: [{ translateY }] }]}
+      style={[styles.wrap, { bottom: isMobile ? 84 : 16, opacity, transform: [{ translateY }] }]}
     >
       <View style={styles.bar}>
         {/* Contagem + Cancelar */}
@@ -98,7 +100,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: Platform.OS === 'web' ? 16 : 84, // acima da tab-bar no mobile
+    // Sessão 28 — `bottom` agora calculado inline via useResponsiveLayout (web mobile também tem BottomTab).
     paddingHorizontal: spacing.md,
     alignItems: 'center',
     zIndex: 950,

@@ -285,7 +285,11 @@ const VALID_TABS = ['Início', 'Insumos', 'Preparos', 'Embalagens', 'Produtos', 
 function MainTabs({ route }) {
   const savedTab = route.params?.initialTab;
   const [finPendente, setFinPendente] = useState(false);
-  const { isDesktop } = useResponsiveLayout();
+  const { isDesktop, width } = useResponsiveLayout();
+  // Sessão 28 — em telas estreitas (≤360pt) "Ferramentas" e "Embalagens" truncavam.
+  // Encolher fonte e padding mantém label legível sem clip.
+  const isNarrow = !isDesktop && width <= 360;
+  const tabFontSize = isNarrow ? 9 : 10;
 
   const checkFinanceiro = useCallback(() => {
     getFinanceiroStatus().then(s => setFinPendente(!s.completo)).catch(() => {});
@@ -313,7 +317,9 @@ function MainTabs({ route }) {
             default: { shadowColor: colors.shadow, shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 8 },
           }),
         },
-        tabBarLabelStyle: { fontSize: 10, fontWeight: '600', fontFamily: fontFamily.semiBold, marginTop: 2 },
+        tabBarLabelStyle: { fontSize: tabFontSize, fontWeight: '600', fontFamily: fontFamily.semiBold, marginTop: 2 },
+        tabBarItemStyle: { paddingHorizontal: isNarrow ? 0 : 2 },
+        tabBarAllowFontScaling: false,
       })}
       screenListeners={({ navigation, route }) => ({
         state: (e) => {
@@ -352,7 +358,8 @@ function MainTabs({ route }) {
       <Tab.Screen name="Embalagens" component={EmbalagensStack} />
       <Tab.Screen name="Produtos" component={ProdutosStack} />
       {/* Sprint 1 Q3 — tabBarLabel "Ferramentas" sem renomear route name (quebraria persistência). */}
-      <Tab.Screen name="Mais" component={MaisStack} options={{ tabBarLabel: 'Ferramentas' }} />
+      {/* Sessão 28 — Em telas estreitas (≤360pt) volta para "Mais" para evitar truncamento de "Ferramentas". */}
+      <Tab.Screen name="Mais" component={MaisStack} options={{ tabBarLabel: isNarrow ? 'Mais' : 'Ferramentas' }} />
     </Tab.Navigator>
   );
 
