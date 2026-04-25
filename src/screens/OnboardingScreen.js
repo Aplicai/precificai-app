@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, fonts, borderRadius, fontFamily } from '../utils/theme';
 import { getSetupStatus } from '../utils/setupStatus';
 import { setFeatureFlag } from '../hooks/useFeatureFlag';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 // Sessão 26 — flag persistida em AsyncStorage indicando que o user já respondeu
 // a pergunta "faço delivery?". Uma vez marcada, o card some do Onboarding.
@@ -18,6 +19,9 @@ const STEP_NAV_MAP = {
 };
 
 export default function OnboardingScreen({ navigation }) {
+  const { width } = useResponsiveLayout();
+  // Stacks profile buttons vertically em telas estreitas (≤360pt) para evitar overflow.
+  const stackProfileBtns = width <= 360;
   const [status, setStatus] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
@@ -217,9 +221,22 @@ export default function OnboardingScreen({ navigation }) {
             <Text style={styles.profileDesc}>
               Isso ajusta as ferramentas que aparecem. Você pode mudar depois em Configurações.
             </Text>
-            <View style={[styles.profileBtnRow, { flexWrap: 'wrap', gap: 8 }]}>
+            <View
+              style={[
+                styles.profileBtnRow,
+                {
+                  flexDirection: stackProfileBtns ? 'column' : 'row',
+                  flexWrap: 'wrap',
+                  gap: stackProfileBtns ? 10 : 8,
+                },
+              ]}
+            >
               <TouchableOpacity
-                style={[styles.profileBtn, styles.profileBtnSecondary, { flex: 1, minWidth: 110 }]}
+                style={[
+                  styles.profileBtn,
+                  styles.profileBtnSecondary,
+                  stackProfileBtns ? { width: '100%', minHeight: 48 } : { flex: 1, minWidth: 110 },
+                ]}
                 onPress={() => answerDeliveryProfile(false)}
                 activeOpacity={0.7}
                 accessibilityRole="button"
@@ -229,7 +246,11 @@ export default function OnboardingScreen({ navigation }) {
                 <Text style={styles.profileBtnTextSecondary}>Só balcão</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.profileBtn, styles.profileBtnSecondary, { flex: 1, minWidth: 110 }]}
+                style={[
+                  styles.profileBtn,
+                  styles.profileBtnSecondary,
+                  stackProfileBtns ? { width: '100%', minHeight: 48 } : { flex: 1, minWidth: 110 },
+                ]}
                 onPress={() => answerDeliveryProfile(true)}
                 activeOpacity={0.7}
                 accessibilityRole="button"
@@ -239,7 +260,11 @@ export default function OnboardingScreen({ navigation }) {
                 <Text style={styles.profileBtnTextSecondary}>Só delivery</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.profileBtn, styles.profileBtnPrimary, { flex: 1, minWidth: 110 }]}
+                style={[
+                  styles.profileBtn,
+                  styles.profileBtnPrimary,
+                  stackProfileBtns ? { width: '100%', minHeight: 48 } : { flex: 1, minWidth: 110 },
+                ]}
                 onPress={() => answerDeliveryProfile(true)}
                 activeOpacity={0.7}
                 accessibilityRole="button"

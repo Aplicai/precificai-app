@@ -46,7 +46,7 @@ export default function LandingScreen({ navigation }) {
             activeOpacity={0.8}
           >
             <Text style={styles.registerBtnText}>Começar Grátis</Text>
-            <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
+            <Feather name="arrow-right" size={18} color={colors.primary} style={{ marginLeft: 8 }} />
           </TouchableOpacity>
           <Text style={styles.freeText}>Grátis para até 5 produtos</Text>
 
@@ -134,21 +134,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   registerBtn: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.5)',
+    backgroundColor: '#fff',
     borderRadius: borderRadius.md,
-    paddingVertical: 16,
+    paddingVertical: 14,
+    minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
   },
   registerBtnText: {
-    color: '#fff',
+    color: colors.primary,
     fontSize: 16,
-    fontWeight: '700',
-    fontFamily: fontFamily.bold,
+    fontWeight: '600',
+    fontFamily: fontFamily.semiBold,
   },
   freeText: {
     color: 'rgba(255,255,255,0.5)',

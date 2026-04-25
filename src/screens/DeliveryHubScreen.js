@@ -46,7 +46,7 @@ const KNOWN_PLATFORMS = [
 ];
 
 export default function DeliveryHubScreen({ navigation }) {
-  const { isDesktop } = useResponsiveLayout();
+  const { isDesktop, isMobile } = useResponsiveLayout();
   const [activeTab, setActiveTab] = useState('plataformas');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -839,13 +839,15 @@ export default function DeliveryHubScreen({ navigation }) {
                     </TouchableOpacity>
 
                     {isExpanded && <>
-                    {/* Table header */}
-                    <View style={styles.overviewTableHeader}>
-                      <Text style={[styles.overviewTh, { flex: 2 }]}>Produto</Text>
-                      <Text style={[styles.overviewTh, { flex: 1, textAlign: 'center' }]}>Balcão</Text>
-                      <Text style={[styles.overviewTh, { flex: 1, textAlign: 'center' }]}>Sugerido</Text>
-                      <Text style={[styles.overviewTh, { flex: 1, textAlign: 'center' }]}>Margem</Text>
-                    </View>
+                    {/* Sessão 28+ — Table header só em desktop; mobile usa cards */}
+                    {!isMobile && (
+                      <View style={styles.overviewTableHeader}>
+                        <Text style={[styles.overviewTh, { flex: 2 }]}>Produto</Text>
+                        <Text style={[styles.overviewTh, { flex: 1, textAlign: 'center' }]}>Balcão</Text>
+                        <Text style={[styles.overviewTh, { flex: 1, textAlign: 'center' }]}>Sugerido</Text>
+                        <Text style={[styles.overviewTh, { flex: 1, textAlign: 'center' }]}>Margem</Text>
+                      </View>
+                    )}
 
                     {[...produtos.map(p => ({ ...p, _key: 'prod_' + p.id, _label: p.nome })),
                       ...combos.map(c => ({ ...c, _key: 'combo_' + c.id, _label: c.nome + ' (Combo)' })),
@@ -863,6 +865,40 @@ export default function DeliveryHubScreen({ navigation }) {
                       const divisor = (1 - descPct) * (1 - comissao) - margemAlvoVG;
                       const precoSug = divisor > 0 ? numSug / divisor : 0;
 
+                      const margemColor = margemDel < 0.05 ? colors.error : margemDel < 0.15 ? colors.warning : colors.success;
+
+                      // Sessão 28+ — mobile-web: card empilhado em vez de linha de tabela
+                      if (isMobile) {
+                        return (
+                          <View
+                            key={prod._key}
+                            style={[styles.overviewCardMobile, { borderLeftColor: margemColor }]}
+                            accessibilityLabel={`${prod._label}, balcão ${formatCurrency(prod.preco_venda)}, sugerido ${precoSug > 0 ? formatCurrency(precoSug) : 'indisponível'}, margem ${(margemDel * 100).toFixed(1)}%`}
+                          >
+                            <View style={styles.overviewCardHeader}>
+                              {prod.isCombo && <Feather name="layers" size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />}
+                              <Text style={styles.overviewCardTitle} numberOfLines={2}>{prod._label}</Text>
+                            </View>
+                            <View style={styles.overviewCardRow}>
+                              <Text style={styles.overviewCardLabel}>Balcão:</Text>
+                              <Text style={styles.overviewCardValue}>{formatCurrency(prod.preco_venda)}</Text>
+                            </View>
+                            <View style={styles.overviewCardRow}>
+                              <Text style={styles.overviewCardLabel}>Sugerido:</Text>
+                              <Text style={[styles.overviewCardValue, { color: colors.primary }]}>
+                                {precoSug > 0 ? formatCurrency(precoSug) : '—'}
+                              </Text>
+                            </View>
+                            <View style={styles.overviewCardRow}>
+                              <Text style={styles.overviewCardLabel}>Margem:</Text>
+                              <Text style={[styles.overviewCardValue, { color: margemColor }]}>
+                                {(margemDel * 100).toFixed(1)}%
+                              </Text>
+                            </View>
+                          </View>
+                        );
+                      }
+
                       return (
                         <View key={prod._key} style={[styles.overviewRow, idx % 2 === 0 && { backgroundColor: colors.inputBg }]}>
                           <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -873,7 +909,7 @@ export default function DeliveryHubScreen({ navigation }) {
                           <Text style={[styles.overviewTd, { flex: 1, textAlign: 'center', color: colors.primary, fontFamily: fontFamily.semiBold }]}>
                             {precoSug > 0 ? formatCurrency(precoSug) : '—'}
                           </Text>
-                          <Text style={[styles.overviewTd, { flex: 1, textAlign: 'center', color: margemDel < 0.05 ? colors.error : margemDel < 0.15 ? colors.warning : colors.success, fontFamily: fontFamily.semiBold }]}>
+                          <Text style={[styles.overviewTd, { flex: 1, textAlign: 'center', color: margemColor, fontFamily: fontFamily.semiBold }]}>
                             {(margemDel * 100).toFixed(1)}%
                           </Text>
                         </View>
@@ -1089,4 +1125,50 @@ const styles = StyleSheet.create({
   overviewTh: { fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.textSecondary, textTransform: 'uppercase' },
   overviewRow: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: spacing.md },
   overviewTd: { fontSize: 13, fontFamily: fontFamily.regular, color: colors.text },
+
+  // ── Sessão 28+ — mobile-web cards (substitui overviewRow apertada em < 1024px) ──
+  overviewCardMobile: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginHorizontal: spacing.md,
+    marginVertical: spacing.xs,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    borderRightColor: colors.border,
+    borderBottomColor: colors.border,
+    minHeight: 44,
+  },
+  overviewCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  overviewCardTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  overviewCardRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+    minHeight: 24,
+  },
+  overviewCardLabel: {
+    fontSize: 13,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+  },
+  overviewCardValue: {
+    fontSize: 14,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.text,
+  },
 });

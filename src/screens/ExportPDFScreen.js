@@ -26,8 +26,68 @@ function isMobileWeb() {
   return /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
 
+// Detecta Safari em iOS (incluindo iPadOS 13+ que se reporta como Mac).
+// Necessário porque Safari iOS NÃO dispara `iframe.contentWindow.print()`
+// nem permite `window.print()` em popups confiavelmente. A única estratégia
+// que funciona em iOS Safari é abrir o conteúdo numa nova aba (inline) ou
+// gerar um Blob e disparar download via <a download>, deixando o usuário
+// usar o menu nativo "Compartilhar / Imprimir".
+function isIOSSafari() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua) ||
+    // iPadOS 13+ se reporta como MacIntel + touch
+    (ua.includes('Mac') && typeof document !== 'undefined' && 'ontouchend' in document);
+  const isSafari = /^((?!chrome|android|crios|fxios|edgios).)*safari/i.test(ua);
+  return isIOS && isSafari;
+}
+
+/**
+ * Fallback universal para Safari iOS / quando expo-print ou window.print falham.
+ * Gera um Blob HTML, dispara download via <a download> e também abre numa nova
+ * aba (window.open) — no iOS Safari isso permite ao usuário renderizar o
+ * conteúdo inline e usar o menu nativo "Compartilhar > Imprimir / Salvar PDF".
+ *
+ * Por que Blob + anchor? Porque expo-print não funciona em web e
+ * `iframe.contentWindow.print()` é silenciosamente ignorado em Safari iOS.
+ */
+function downloadBlobFallback(htmlContent, filename) {
+  const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+
+  // 1) Download tradicional (funciona em Android, desktop e a maioria dos navs).
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || `ficha-${Date.now()}.html`;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  // 2) Em iOS Safari `download` é frequentemente ignorado — abrimos
+  //    a mesma URL em nova aba para que o usuário consiga visualizar
+  //    e use o menu de compartilhamento nativo (Imprimir / Salvar em PDF).
+  if (isIOSSafari()) {
+    try { window.open(url, '_blank'); } catch (_) {}
+    try {
+      window.alert('PDF gerado — use o menu Compartilhar do navegador para Imprimir ou Salvar em PDF.');
+    } catch (_) {}
+  } else {
+    try {
+      window.alert('PDF gerado — verifique sua pasta Downloads.');
+    } catch (_) {}
+  }
+
+  // Revogar a URL após um tempo para liberar memória, mas dar prazo
+  // suficiente para o navegador concluir o download/abertura.
+  setTimeout(() => {
+    try { URL.revokeObjectURL(url); } catch (_) {}
+  }, 10000);
+}
+
 export default function ExportPDFScreen({ navigation }) {
-  const { isDesktop } = useResponsiveLayout();
+  const { isDesktop, isMobile } = useResponsiveLayout();
+  const bottomOffset = isMobile ? 86 : 16; // BottomTab clearance on mobile
   const [activeTab, setActiveTab] = useState('produtos');
   const [produtos, setProdutos] = useState([]);
   const [preparos, setPreparos] = useState([]);
@@ -433,7 +493,8 @@ export default function ExportPDFScreen({ navigation }) {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
       {/* Audit P0: banners de erro */}
       {loadError ? (
         <TouchableOpacity
@@ -587,42 +648,47 @@ export default function ExportPDFScreen({ navigation }) {
         </TouchableOpacity>
       )}
 
-      {/* Export button */}
-      <TouchableOpacity
-        style={[styles.exportBtn, selectedCount === 0 && styles.exportBtnDisabled]}
-        onPress={handleExport}
-        activeOpacity={0.7}
-        disabled={selectedCount === 0 || exporting}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: selectedCount === 0 || exporting, busy: exporting }}
-        accessibilityLabel={
-          exporting
-            ? 'Gerando PDF, aguarde'
-            : selectedCount === 0
-              ? 'Selecione ao menos um item para exportar'
-              : `Exportar PDF com ${selectedCount} ${activeTab === 'produtos' ? (selectedCount === 1 ? 'produto' : 'produtos') : (selectedCount === 1 ? 'preparo' : 'preparos')}`
-        }
-      >
-        {exporting ? (
-          <>
-            <ActivityIndicator size="small" color="#fff" />
-            {/* Audit P1: contexto durante o export longo (era só spinner) */}
-            <Text style={[styles.exportBtnText, { marginLeft: 8 }]}>
-              Gerando PDF...
-            </Text>
-          </>
-        ) : (
-          <>
-            <Feather name="printer" size={18} color="#fff" />
-            <Text style={styles.exportBtnText}>
-              Exportar PDF ({selectedCount} {activeTab === 'produtos' ? (selectedCount === 1 ? 'produto' : 'produtos') : (selectedCount === 1 ? 'preparo' : 'preparos')})
-            </Text>
-          </>
-        )}
-      </TouchableOpacity>
-
       <View style={{ height: 40 }} />
-    </ScrollView>
+      </ScrollView>
+
+      {/* Sticky bottom CTA — Exportar PDF */}
+      <View style={[styles.stickyFooter, { bottom: bottomOffset }]} pointerEvents="box-none">
+        <TouchableOpacity
+          style={[styles.exportBtn, selectedCount === 0 && styles.exportBtnDisabled]}
+          onPress={handleExport}
+          activeOpacity={0.7}
+          disabled={selectedCount === 0 || exporting}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: selectedCount === 0 || exporting, busy: exporting }}
+          accessibilityLabel={
+            exporting
+              ? 'Gerando PDF, aguarde'
+              : selectedCount === 0
+                ? 'Selecione ao menos um item para exportar'
+                : `Exportar PDF com ${selectedCount} ${activeTab === 'produtos' ? (selectedCount === 1 ? 'produto' : 'produtos') : (selectedCount === 1 ? 'preparo' : 'preparos')}`
+          }
+        >
+          {exporting ? (
+            <>
+              <ActivityIndicator size="small" color="#fff" />
+              {/* Audit P1: contexto durante o export longo (era só spinner) */}
+              <Text style={[styles.exportBtnText, { marginLeft: 8 }]}>
+                Gerando PDF...
+              </Text>
+            </>
+          ) : (
+            <>
+              <Feather name="printer" size={18} color="#fff" />
+              <Text style={styles.exportBtnText}>
+                {selectedCount === 0
+                  ? 'Exportar PDF'
+                  : `Exportar PDF (${selectedCount} ${activeTab === 'produtos' ? (selectedCount === 1 ? 'produto' : 'produtos') : (selectedCount === 1 ? 'preparo' : 'preparos')})`}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -1235,74 +1301,131 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
 }
 
 function exportarPDF(htmlContent, preOpenedWindow) {
+  // Native (iOS/Android via Expo) usa expo-print em outro caminho — preservado.
+  // Aqui tratamos APENAS Platform.OS === 'web'.
   if (Platform.OS !== 'web') return;
 
-  // Se já temos uma janela pré-aberta (aberta antes do await), usar ela
-  if (preOpenedWindow && !preOpenedWindow.closed) {
-    preOpenedWindow.document.write(htmlContent);
-    preOpenedWindow.document.close();
-    setTimeout(() => {
-      try { preOpenedWindow.print(); } catch(e) {}
-    }, 600);
+  const filename = `ficha-${Date.now()}.html`;
+
+  // -------------------------------------------------------------------------
+  // Safari iOS: NEM `iframe.contentWindow.print()` NEM `window.print()` em
+  // popup funcionam de forma confiável. Vamos direto para o fallback Blob +
+  // anchor download + window.open — única estratégia que permite ao usuário
+  // gerar o PDF via menu nativo de compartilhamento.
+  // -------------------------------------------------------------------------
+  if (isIOSSafari()) {
+    try {
+      downloadBlobFallback(htmlContent, filename);
+      // Se uma janela foi pré-aberta antes do await, fechar — não vamos usar.
+      if (preOpenedWindow && !preOpenedWindow.closed) {
+        try { preOpenedWindow.close(); } catch (_) {}
+      }
+    } catch (e) {
+      try { window.alert('Falha ao gerar PDF: ' + (e?.message || e)); } catch (_) {}
+    }
     return;
   }
 
-  if (isMobileWeb()) {
-    // Mobile: usar iframe fullscreen como overlay para não sair da página
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;';
+  try {
+    // Se já temos uma janela pré-aberta (aberta antes do await), usar ela
+    if (preOpenedWindow && !preOpenedWindow.closed) {
+      preOpenedWindow.document.write(htmlContent);
+      preOpenedWindow.document.close();
+      setTimeout(() => {
+        try { preOpenedWindow.print(); } catch(e) {}
+      }, 600);
+      return;
+    }
 
-    // Barra de ações no topo
-    const toolbar = document.createElement('div');
-    toolbar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#004d47;';
+    if (isMobileWeb()) {
+      // Mobile (Android Chrome etc.): usar iframe fullscreen como overlay
+      // para não sair da página. Em Safari iOS já caímos no branch acima.
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;';
 
-    const printBtn = document.createElement('button');
-    printBtn.textContent = 'Imprimir / Salvar PDF';
-    printBtn.style.cssText = 'background:#fff;color:#004d47;border:none;padding:8px 18px;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;';
-    printBtn.onclick = () => {
-      try { iframe.contentWindow.print(); } catch(e) {}
-    };
+      // Barra de ações no topo
+      const toolbar = document.createElement('div');
+      toolbar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#004d47;';
 
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = 'Fechar';
-    closeBtn.style.cssText = 'background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.4);padding:8px 18px;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;';
-    closeBtn.onclick = () => document.body.removeChild(overlay);
+      const printBtn = document.createElement('button');
+      printBtn.textContent = 'Imprimir / Salvar PDF';
+      printBtn.style.cssText = 'background:#fff;color:#004d47;border:none;padding:8px 18px;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;';
+      printBtn.onclick = () => {
+        // Try/catch + fallback: se print() falhar (ex.: WebView estranho),
+        // dispara o download Blob.
+        try {
+          iframe.contentWindow.print();
+        } catch (e) {
+          downloadBlobFallback(htmlContent, filename);
+        }
+      };
 
-    toolbar.appendChild(printBtn);
-    toolbar.appendChild(closeBtn);
-    overlay.appendChild(toolbar);
+      // Botão extra: download direto do HTML (atalho explícito ao fallback).
+      const dlBtn = document.createElement('button');
+      dlBtn.textContent = 'Baixar';
+      dlBtn.style.cssText = 'background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.4);padding:8px 14px;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;margin-left:8px;';
+      dlBtn.onclick = () => downloadBlobFallback(htmlContent, filename);
 
-    const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'flex:1;width:100%;border:none;background:#fff;border-radius:0;';
-    overlay.appendChild(iframe);
-    document.body.appendChild(overlay);
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = 'Fechar';
+      closeBtn.style.cssText = 'background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.4);padding:8px 18px;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;margin-left:8px;';
+      closeBtn.onclick = () => document.body.removeChild(overlay);
 
-    const doc = iframe.contentDocument || iframe.contentWindow.document;
-    doc.open();
-    doc.write(htmlContent);
-    doc.close();
-  } else {
-    // Desktop: abrir nova aba
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(htmlContent);
-      win.document.close();
-      setTimeout(() => win.print(), 500);
-    } else {
-      // Fallback: iframe oculto para impressão
+      const actions = document.createElement('div');
+      actions.style.cssText = 'display:flex;align-items:center;';
+      actions.appendChild(printBtn);
+      actions.appendChild(dlBtn);
+      actions.appendChild(closeBtn);
+      toolbar.appendChild(document.createElement('div'));
+      toolbar.appendChild(actions);
+
       const iframe = document.createElement('iframe');
-      iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:none;';
-      document.body.appendChild(iframe);
+      iframe.style.cssText = 'flex:1;width:100%;border:none;background:#fff;border-radius:0;';
+      overlay.appendChild(toolbar);
+      overlay.appendChild(iframe);
+      document.body.appendChild(overlay);
+
       const doc = iframe.contentDocument || iframe.contentWindow.document;
       doc.open();
       doc.write(htmlContent);
       doc.close();
-      setTimeout(() => {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-        setTimeout(() => document.body.removeChild(iframe), 1000);
-      }, 500);
+    } else {
+      // Desktop: abrir nova aba
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.write(htmlContent);
+        win.document.close();
+        setTimeout(() => win.print(), 500);
+      } else {
+        // Popup bloqueado — tenta iframe oculto. Se ainda assim falhar
+        // (try/catch abaixo), cai no Blob download.
+        try {
+          const iframe = document.createElement('iframe');
+          iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:none;';
+          document.body.appendChild(iframe);
+          const doc = iframe.contentDocument || iframe.contentWindow.document;
+          doc.open();
+          doc.write(htmlContent);
+          doc.close();
+          setTimeout(() => {
+            try {
+              iframe.contentWindow.focus();
+              iframe.contentWindow.print();
+            } catch (e) {
+              downloadBlobFallback(htmlContent, filename);
+            }
+            setTimeout(() => {
+              try { document.body.removeChild(iframe); } catch (_) {}
+            }, 1000);
+          }, 500);
+        } catch (e) {
+          downloadBlobFallback(htmlContent, filename);
+        }
+      }
     }
+  } catch (e) {
+    // Qualquer falha não prevista no caminho web → fallback universal.
+    downloadBlobFallback(htmlContent, filename);
   }
 }
 
@@ -1325,10 +1448,18 @@ const styles = StyleSheet.create({
   errorBannerText: { color: '#dc2626', fontSize: fonts.small, flex: 1, fontFamily: fontFamily.regular },
   content: {
     padding: spacing.md,
-    paddingBottom: 100,
+    paddingBottom: 180,
     maxWidth: 1200,
     width: '100%',
     alignSelf: 'center',
+  },
+  stickyFooter: {
+    position: 'absolute', left: 0, right: 0,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1, borderTopColor: colors.border,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05, shadowRadius: 4, elevation: 4,
   },
   loadingContainer: {
     flex: 1,
@@ -1475,7 +1606,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     paddingVertical: 14,
     paddingHorizontal: spacing.lg,
-    marginTop: spacing.md,
+    minHeight: 48,
     gap: 8,
   },
   exportBtnDisabled: {

@@ -31,7 +31,8 @@ function escapeHtml(str) {
 }
 
 export default function ListaComprasScreen({ navigation }) {
-  const { isDesktop } = useResponsiveLayout();
+  const { isDesktop, isMobile } = useResponsiveLayout();
+  const bottomOffset = isMobile ? 86 : 16; // BottomTab clearance on mobile
   const [produtos, setProdutos] = useState([]);
   const [quantidades, setQuantidades] = useState({});
   const [lista, setLista] = useState(null);
@@ -490,25 +491,6 @@ export default function ListaComprasScreen({ navigation }) {
           )}
         </View>
 
-        {/* Generate button */}
-        <TouchableOpacity
-          style={[styles.gerarBtn, !temProdutosSelecionados && styles.gerarBtnDisabled]}
-          onPress={gerarLista}
-          disabled={!temProdutosSelecionados || gerando}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !temProdutosSelecionados || gerando, busy: gerando }}
-          accessibilityLabel={gerando ? 'Gerando lista de compras' : 'Gerar lista de compras'}
-        >
-          {gerando ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <>
-              <Feather name="list" size={16} color="#fff" />
-              <Text style={styles.gerarBtnText}>Gerar Lista</Text>
-            </>
-          )}
-        </TouchableOpacity>
-
         {/* Results */}
         {lista && (
           <View style={styles.resultCard}>
@@ -577,13 +559,42 @@ export default function ListaComprasScreen({ navigation }) {
           </View>
         )}
       </ScrollView>
+
+      {/* Sticky bottom CTA — Gerar Lista */}
+      <View style={[styles.stickyFooter, { bottom: bottomOffset }]} pointerEvents="box-none">
+        <TouchableOpacity
+          style={[styles.gerarBtn, (!temProdutosSelecionados || gerando) && styles.gerarBtnDisabled]}
+          onPress={gerarLista}
+          disabled={!temProdutosSelecionados || gerando}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: !temProdutosSelecionados || gerando, busy: gerando }}
+          accessibilityLabel={gerando ? 'Gerando lista de compras' : 'Gerar lista de compras'}
+        >
+          {gerando ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <>
+              <Feather name="list" size={16} color="#fff" />
+              <Text style={styles.gerarBtnText}>Gerar Lista</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, maxWidth: 1200, width: '100%', paddingBottom: 100, alignSelf: 'center' },
+  content: { padding: spacing.md, maxWidth: 1200, width: '100%', paddingBottom: 180, alignSelf: 'center' },
+  stickyFooter: {
+    position: 'absolute', left: 0, right: 0,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1, borderTopColor: colors.border,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05, shadowRadius: 4, elevation: 4,
+  },
 
   // Audit P0: banner de erro (loadError + gerarError)
   errorBanner: {
@@ -640,7 +651,7 @@ const styles = StyleSheet.create({
   gerarBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: colors.primary, borderRadius: borderRadius.md,
-    paddingVertical: 14, marginBottom: spacing.md,
+    paddingVertical: 14, minHeight: 48,
   },
   gerarBtnDisabled: { opacity: 0.5 },
   gerarBtnText: { fontSize: fonts.regular, fontFamily: fontFamily.bold, color: '#fff' },

@@ -116,10 +116,17 @@ function TabIcon({ label, focused, badge }) {
 
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+      {/* Polish — indicador ativo reforçado: barra superior colorida + halo circular */}
       {focused && (
         <View style={{
-          position: 'absolute', top: -3, width: 26, height: 26, borderRadius: 13,
-          backgroundColor: colors.primary + '08',
+          position: 'absolute', top: -10, width: 24, height: 3,
+          borderRadius: 2, backgroundColor: colors.primary,
+        }} />
+      )}
+      {focused && (
+        <View style={{
+          position: 'absolute', top: -3, width: 30, height: 30, borderRadius: 15,
+          backgroundColor: colors.primary + '1A',
         }} />
       )}
       {iconDef.set === 'material' ? (

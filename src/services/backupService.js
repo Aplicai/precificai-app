@@ -115,14 +115,66 @@ export async function exportarPDF({ html, filename, title }) {
   const fname = filename || `precificai-${nowSuffix()}.pdf`;
 
   if (Platform.OS === 'web') {
-    // Abre janela e dispara window.print — comportamento existente.
+    // -----------------------------------------------------------------------
+    // Detecção de Safari iOS — `window.print()` em popup é silenciosamente
+    // ignorado, e expo-print não está disponível em web. Fallback: gera Blob,
+    // dispara <a download> e abre em nova aba para o usuário usar o menu
+    // nativo "Compartilhar > Imprimir / Salvar PDF".
+    // -----------------------------------------------------------------------
+    const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+    const isIOS = /iPad|iPhone|iPod/.test(ua) ||
+      (ua.includes('Mac') && typeof document !== 'undefined' && 'ontouchend' in document);
+    const isSafari = /^((?!chrome|android|crios|fxios|edgios).)*safari/i.test(ua);
+    const isIOSSafari = isIOS && isSafari;
+
+    const fullHtml = `<!doctype html><html><head><meta charset="utf-8"><title>${title || 'PrecificaApp'}</title></head><body>${html}</body></html>`;
+
+    if (isIOSSafari) {
+      // Safari iOS fallback — Blob + anchor download + window.open inline.
+      const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      try {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = (fname || `ficha-${Date.now()}.html`).replace(/\.pdf$/i, '.html');
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        // Abrir inline também — em iOS Safari isso permite usar o menu
+        // nativo de compartilhamento para "Imprimir" / "Salvar em PDF".
+        try { window.open(url, '_blank'); } catch (_) {}
+        try {
+          window.alert('PDF gerado — use o menu Compartilhar do navegador para Imprimir ou Salvar em PDF.');
+        } catch (_) {}
+      } finally {
+        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 10000);
+      }
+      return { ok: true, method: 'web-print' };
+    }
+
+    // Demais navegadores: abre janela e dispara window.print (comportamento
+    // existente). Se o popup for bloqueado, cai no fallback Blob também.
     const win = window.open('', '_blank');
     if (!win) {
-      const err = new Error('Popup bloqueado. Permita popups para imprimir.');
-      err.code = 'POPUP_BLOCKED';
-      throw err;
+      // Popup bloqueado — fallback Blob download em vez de quebrar.
+      const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      try {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = (fname || `ficha-${Date.now()}.html`).replace(/\.pdf$/i, '.html');
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        try { window.alert('PDF gerado — verifique sua pasta Downloads.'); } catch (_) {}
+      } finally {
+        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 10000);
+      }
+      return { ok: true, method: 'web-print' };
     }
-    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title || 'PrecificaApp'}</title></head><body>${html}</body></html>`);
+    win.document.write(fullHtml);
     win.document.close();
     setTimeout(() => {
       try { win.print(); } catch (_) {}

@@ -8,6 +8,7 @@ import { supabase } from '../config/supabase';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { SEGMENTOS, INSUMOS_POR_SEGMENTO, CATEGORIAS_POR_SEGMENTO } from '../data/templates';
 import { calcPrecoBase, calcFatorCorrecao } from '../utils/calculations';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 // F1-J1-01: prefixo da chave de step do WelcomeTour. Mantido em sync com
 // `WelcomeTourScreen.js` — chegando aqui o tour é considerado encerrado, então
@@ -38,6 +39,8 @@ const SEGMENT_ICONS = {
 
 export default function KitInicioScreen({ navigation, route }) {
   const isSetup = route?.params?.setup === true;
+  const { isMobile } = useResponsiveLayout();
+  const bottomOffset = isMobile ? 86 : 16; // BottomTab clearance on mobile
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -340,12 +343,24 @@ export default function KitInicioScreen({ navigation, route }) {
           </View>
         )}
 
-        {/* Botão aplicar */}
-        {selected && (
+      </ScrollView>
+
+      {/* Sticky bottom CTA */}
+      {selected && (
+        <View style={[styles.stickyFooter, { bottom: bottomOffset }]} pointerEvents="box-none">
           <TouchableOpacity
             style={[styles.aplicarBtn, loading && { opacity: 0.6 }]}
             onPress={aplicarKit}
             disabled={loading}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: loading, busy: loading }}
+            accessibilityLabel={
+              loading
+                ? 'Aplicando kit, aguarde'
+                : selected === 'outro'
+                  ? 'Começar do zero'
+                  : `Aplicar Kit ${segmentoInfo?.label || ''}`.trim()
+            }
           >
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
@@ -358,15 +373,23 @@ export default function KitInicioScreen({ navigation, route }) {
               </>
             )}
           </TouchableOpacity>
-        )}
-      </ScrollView>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, maxWidth: 960, alignSelf: 'center', width: '100%', paddingBottom: 100 },
+  content: { padding: spacing.md, maxWidth: 960, alignSelf: 'center', width: '100%', paddingBottom: 180 },
+  stickyFooter: {
+    position: 'absolute', left: 0, right: 0,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1, borderTopColor: colors.border,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05, shadowRadius: 4, elevation: 4,
+  },
   backBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingVertical: spacing.sm, paddingHorizontal: 2,
@@ -431,7 +454,7 @@ const styles = StyleSheet.create({
   aplicarBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
     backgroundColor: colors.primary, borderRadius: borderRadius.md,
-    paddingVertical: 14, marginTop: spacing.sm,
+    paddingVertical: 14, minHeight: 48,
   },
   aplicarBtnText: { fontSize: fonts.regular, fontFamily: fontFamily.bold, color: '#fff' },
 });

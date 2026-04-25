@@ -17,6 +17,7 @@ import {
   calcCustoPreparo,
 } from '../utils/calculations';
 import usePersistedState from '../hooks/usePersistedState';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 // Sprint 2 S3 — fórmula canônica única em src/utils/deliveryPricing.
 import { calcPrecoBreakEven, calcResultadoDelivery } from '../utils/deliveryPricing';
 
@@ -33,6 +34,7 @@ export default function ComparativoCanaisScreen() {
   const [expandedItems, setExpandedItems] = useState({});
   const [loadError, setLoadError] = useState(null);
   const isLoadingRef = useRef(false);
+  const { isMobile } = useResponsiveLayout();
 
   useFocusEffect(
     useCallback(() => {
@@ -359,21 +361,76 @@ export default function ComparativoCanaisScreen() {
                           </View>
                         )}
 
-                        <View
-                          style={styles.canalRowHeader}
-                          accessibilityRole="header"
-                        >
-                          <Text style={[styles.canalCol, styles.headerCol, { flex: 1.4 }]}>Canal</Text>
-                          <Text style={[styles.canalCol, styles.headerCol]}>Preço</Text>
-                          <Text style={[styles.canalCol, styles.headerCol]}>Lucro</Text>
-                          <Text style={[styles.canalCol, styles.headerCol]}>Margem</Text>
-                        </View>
+                        {!isMobile && (
+                          <View
+                            style={styles.canalRowHeader}
+                            accessibilityRole="header"
+                          >
+                            <Text style={[styles.canalCol, styles.headerCol, { flex: 1.4 }]}>Canal</Text>
+                            <Text style={[styles.canalCol, styles.headerCol]}>Preço</Text>
+                            <Text style={[styles.canalCol, styles.headerCol]}>Lucro</Text>
+                            <Text style={[styles.canalCol, styles.headerCol]}>Margem</Text>
+                          </View>
+                        )}
 
                         {canais.map((c, idx) => {
                           const isMelhor = idx === melhorIdx && melhorIdx !== piorIdx;
                           const isPior = idx === piorIdx && melhorIdx !== piorIdx;
                           const negativo = !c.inviavel && c.lucro < 0;
                           const lucroColor = c.inviavel ? colors.disabled : (negativo ? colors.error : colors.success);
+
+                          // Sessão 28+ — em mobile-web, cada canal vira card empilhado
+                          if (isMobile) {
+                            const cardBorder = isMelhor ? colors.success : isPior ? colors.error : colors.border;
+                            return (
+                              <View
+                                key={c.key}
+                                style={[styles.canalCard, { borderLeftColor: cardBorder }]}
+                                accessibilityLabel={`${c.nome}, preço ${c.inviavel ? 'indisponível' : formatCurrency(c.preco)}, lucro ${c.inviavel ? 'indisponível' : formatCurrency(c.lucro)}, margem ${c.inviavel ? 'indisponível' : c.margem.toFixed(1) + '%'}`}
+                              >
+                                <View style={styles.canalCardHeader}>
+                                  <Feather name={c.icon} size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />
+                                  <Text style={styles.canalCardTitle} numberOfLines={1}>{c.nome}</Text>
+                                  {isMelhor && (
+                                    <View
+                                      style={[styles.badge, { backgroundColor: colors.success + '18' }]}
+                                      accessibilityLabel={`Melhor margem: ${c.nome}`}
+                                    >
+                                      <Feather name="trending-up" size={10} color={colors.success} />
+                                      <Text style={[styles.badgeText, { color: colors.success, fontSize: 10 }]}>melhor</Text>
+                                    </View>
+                                  )}
+                                  {isPior && (
+                                    <View
+                                      style={[styles.badge, { backgroundColor: colors.error + '18' }]}
+                                      accessibilityLabel={`Pior margem: ${c.nome}`}
+                                    >
+                                      <Feather name="trending-down" size={10} color={colors.error} />
+                                      <Text style={[styles.badgeText, { color: colors.error, fontSize: 10 }]}>pior</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                <View style={styles.canalCardRow}>
+                                  <Text style={styles.canalCardLabel}>Preço:</Text>
+                                  <Text style={styles.canalCardValue}>
+                                    {c.inviavel ? '—' : formatCurrency(c.preco)}
+                                  </Text>
+                                </View>
+                                <View style={styles.canalCardRow}>
+                                  <Text style={styles.canalCardLabel}>Lucro:</Text>
+                                  <Text style={[styles.canalCardValue, { color: lucroColor }]}>
+                                    {c.inviavel ? '—' : formatCurrency(c.lucro)}
+                                  </Text>
+                                </View>
+                                <View style={styles.canalCardRow}>
+                                  <Text style={styles.canalCardLabel}>Margem:</Text>
+                                  <Text style={[styles.canalCardValue, { color: lucroColor }]}>
+                                    {c.inviavel ? '—' : `${c.margem.toFixed(1)}%`}
+                                  </Text>
+                                </View>
+                              </View>
+                            );
+                          }
 
                           return (
                             <View key={c.key} style={styles.canalRow}>
@@ -589,5 +646,46 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     color: '#ffffff',
     fontWeight: '700',
+  },
+
+  // ── Sessão 28+ — mobile-web cards (substitui canalRow apertada em < 1024px) ──
+  canalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    padding: spacing.sm + 2,
+    marginBottom: spacing.xs,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.border,
+    minHeight: 44,
+  },
+  canalCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  canalCardTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  canalCardRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+    minHeight: 24,
+  },
+  canalCardLabel: {
+    fontSize: 13,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+  },
+  canalCardValue: {
+    fontSize: 14,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.text,
   },
 });

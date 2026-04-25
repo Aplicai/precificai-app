@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Pressable, Alert, Modal, TextInput, Platform } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Pressable, Alert, Modal, TextInput, Platform, KeyboardAvoidingView } from 'react-native';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import InputField from '../components/InputField';
@@ -696,7 +696,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
   const temCustos = custoTotalReceita > 0;
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 960, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled">
         <View style={isDesktop ? styles.desktopRow : undefined}>
         <View style={isDesktop ? styles.desktopLeftCol : undefined}>
@@ -1705,7 +1705,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
         onRetry={abrirSugestaoIA}
         onApply={aplicarPrecoIA}
       />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

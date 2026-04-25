@@ -45,7 +45,10 @@ function getGreeting() {
 }
 
 export default function HomeScreen({ navigation }) {
-  const { isDesktop } = useResponsiveLayout();
+  const { isDesktop, width } = useResponsiveLayout();
+  // Sessão polish — KPIs estouravam em 320pt por causa de minWidth: 150.
+  // ≤360pt: 1 coluna (100%); demais mobile: 2 colunas (48%); desktop usa kpiCardDesktop.
+  const kpiCardWidth = width <= 360 ? '100%' : '48%';
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [d, setD] = useState({
@@ -714,7 +717,7 @@ export default function HomeScreen({ navigation }) {
           const Wrapper = k.onPress ? TouchableOpacity : View;
           const wrapperProps = k.onPress ? { activeOpacity: 0.7, onPress: k.onPress } : {};
           return (
-            <Wrapper key={k.label} style={[styles.kpiCard, isDesktop && styles.kpiCardDesktop]} {...wrapperProps}>
+            <Wrapper key={k.label} style={[styles.kpiCard, !isDesktop && { width: kpiCardWidth, minWidth: undefined }, isDesktop && styles.kpiCardDesktop]} {...wrapperProps}>
               <View style={styles.kpiHeader}>
                 <View style={[styles.kpiIconCircle, { backgroundColor: k.color + '15' }]}>
                   <Feather name={k.icon} size={14} color={k.color} />

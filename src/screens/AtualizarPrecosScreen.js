@@ -619,8 +619,11 @@ const styles = StyleSheet.create({
   },
   row: {
     backgroundColor: colors.surface,
-    paddingVertical: 11,
+    paddingVertical: 12,
     paddingHorizontal: spacing.md,
+    // Sessão 28+ — garante touch target ≥ 44pt em mobile-web
+    minHeight: 44,
+    justifyContent: 'center',
   },
   rowDesktop: {
     paddingVertical: 12,

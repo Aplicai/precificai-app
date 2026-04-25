@@ -185,7 +185,7 @@ export default function MaisScreen({ navigation }) {
                 accessibilityRole="button"
                 accessibilityLabel={`${item.title}. ${item.desc}`}
               >
-                <View style={[styles.iconCircle, { backgroundColor: c + '12' }]}>
+                <View style={[styles.iconCircle, { backgroundColor: c + '12', borderWidth: 1, borderColor: c + '30' }]}>
                   {item.set === 'material' ? (
                     <MaterialCommunityIcons name={item.icon} size={22} color={c} />
                   ) : (

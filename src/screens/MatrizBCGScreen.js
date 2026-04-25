@@ -88,7 +88,7 @@ export default function MatrizBCGScreen({ navigation }) {
   const [sortDir, setSortDir] = usePersistedState('bcg.sortDir', 'asc');
   const [searchText, setSearchText] = useState('');
   const [quadranteModal, setQuadranteModal] = useState(null); // chave do BCGQuadranteModal ou null
-  const { isDesktop } = useResponsiveLayout();
+  const { isDesktop, isMobile } = useResponsiveLayout();
   const saveTimer = useRef(null);
 
   // Date strings memoizados — não mudam durante a sessão e são usados em queries/labels.
@@ -519,30 +519,128 @@ export default function MatrizBCGScreen({ navigation }) {
               )}
             </View>
 
-            {/* Table header */}
-            <View style={styles.tableHeaderRow}>
-              <TouchableOpacity style={[styles.tableHeaderCell, { flex: 2 }]} onPress={() => handleSort('nome')} activeOpacity={0.7}>
-                <Text style={styles.tableHeaderText}>Produto</Text>
-                {renderSortIcon('nome')}
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.tableHeaderCell, { flex: 1, justifyContent: 'center' }]} onPress={() => handleSort('margem')} activeOpacity={0.7}>
-                <Text style={styles.tableHeaderText}>Margem</Text>
-                {renderSortIcon('margem')}
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.tableHeaderCell, { flex: 1, justifyContent: 'center' }]} onPress={() => handleSort('vendas')} activeOpacity={0.7}>
-                <Text style={styles.tableHeaderText}>Vendas</Text>
-                {renderSortIcon('vendas')}
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.tableHeaderCell, { flex: 1.3, justifyContent: 'center' }]} onPress={() => handleSort('classificacao')} activeOpacity={0.7}>
-                <Text style={styles.tableHeaderText}>Classe</Text>
-                {renderSortIcon('classificacao')}
-              </TouchableOpacity>
-            </View>
+            {/* Sort selector — mobile vê dropdown-style; desktop usa table header */}
+            {isMobile ? (
+              <View style={styles.mobileSortRow}>
+                <Text style={styles.mobileSortLabel}>Ordenar:</Text>
+                {[
+                  { key: 'classificacao', label: 'Classe' },
+                  { key: 'margem', label: 'Margem' },
+                  { key: 'vendas', label: 'Vendas' },
+                  { key: 'nome', label: 'Nome' },
+                ].map(opt => {
+                  const active = sortBy === opt.key;
+                  return (
+                    <TouchableOpacity
+                      key={opt.key}
+                      style={[styles.mobileSortChip, active && styles.mobileSortChipActive]}
+                      onPress={() => handleSort(opt.key)}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Ordenar por ${opt.label}${active ? ` (${sortDir === 'asc' ? 'crescente' : 'decrescente'})` : ''}`}
+                    >
+                      <Text style={[styles.mobileSortChipText, active && styles.mobileSortChipTextActive]}>
+                        {opt.label}
+                      </Text>
+                      {active && (
+                        <Feather
+                          name={sortDir === 'asc' ? 'chevron-up' : 'chevron-down'}
+                          size={12}
+                          color="#fff"
+                          style={{ marginLeft: 2 }}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.tableHeaderRow}>
+                <TouchableOpacity style={[styles.tableHeaderCell, { flex: 2 }]} onPress={() => handleSort('nome')} activeOpacity={0.7}>
+                  <Text style={styles.tableHeaderText}>Produto</Text>
+                  {renderSortIcon('nome')}
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.tableHeaderCell, { flex: 1, justifyContent: 'center' }]} onPress={() => handleSort('margem')} activeOpacity={0.7}>
+                  <Text style={styles.tableHeaderText}>Margem</Text>
+                  {renderSortIcon('margem')}
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.tableHeaderCell, { flex: 1, justifyContent: 'center' }]} onPress={() => handleSort('vendas')} activeOpacity={0.7}>
+                  <Text style={styles.tableHeaderText}>Vendas</Text>
+                  {renderSortIcon('vendas')}
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.tableHeaderCell, { flex: 1.3, justifyContent: 'center' }]} onPress={() => handleSort('classificacao')} activeOpacity={0.7}>
+                  <Text style={styles.tableHeaderText}>Classe</Text>
+                  {renderSortIcon('classificacao')}
+                </TouchableOpacity>
+              </View>
+            )}
 
-            {/* Table rows */}
+            {/* Rows / Cards */}
             {sortedProducts.length === 0 ? (
               <View style={styles.noResultsRow}>
                 <Text style={styles.noResultsText}>Nenhum produto encontrado</Text>
+              </View>
+            ) : isMobile ? (
+              /* Sessão 28+ — mobile-web: cada produto vira card empilhado em vez de linha de tabela apertada */
+              <View style={styles.cardList}>
+                {sortedProducts.map((p) => {
+                  const cfg = CLASSIFICATIONS[p.classificacao] || CLASSIFICATIONS['Abacaxi'];
+                  const marginColor = getMarginColor(p.margemPerc);
+                  return (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={[styles.card, { borderLeftColor: cfg.border }]}
+                      activeOpacity={0.7}
+                      onPress={() => navigateToProduto(p)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${p.nome}, ${cfg.label}, margem ${p.margemPerc.toFixed(0)}%, ${p.qtdVendida} vendas no mês`}
+                    >
+                      <View style={styles.cardHeader}>
+                        <Text style={styles.cardTitle} numberOfLines={2}>{p.nome}</Text>
+                        {p.isCombo && (
+                          <View style={{ backgroundColor: colors.accent + '20', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 6 }}>
+                            <Text style={{ fontSize: 10, fontFamily: fontFamily.semiBold, color: colors.accent }}>KIT</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <View style={styles.cardBadgeRow}>
+                        <View
+                          style={[styles.classBadge, { backgroundColor: cfg.bg, borderColor: cfg.border }]}
+                          accessibilityLabel={`Classificação: ${cfg.label}`}
+                        >
+                          <Feather name={cfg.icon} size={12} color={cfg.color} />
+                          <Text style={[styles.classBadgeText, { color: cfg.color, fontSize: 12 }]} numberOfLines={1}>
+                            {cfg.label}
+                          </Text>
+                        </View>
+                        <View style={[styles.marginBadge, { backgroundColor: marginColor + '18' }]}>
+                          <Text style={[styles.marginText, { color: marginColor, fontSize: 14 }]}>
+                            {p.margemPerc.toFixed(0)}% margem
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.cardRow}>
+                        <Text style={styles.cardLabel}>Preço:</Text>
+                        <Text style={styles.cardValue}>{formatCurrency(p.precoVenda)}</Text>
+                      </View>
+                      <View style={styles.cardRow}>
+                        <Text style={styles.cardLabel}>Vendas no mês:</Text>
+                        <Text style={styles.cardValue}>{p.qtdVendida} un</Text>
+                      </View>
+                      <View style={styles.cardRow}>
+                        <Text style={styles.cardLabel}>Ação sugerida:</Text>
+                        <Text style={[styles.cardValue, { color: cfg.color }]}>{cfg.acao}</Text>
+                      </View>
+
+                      <View style={[styles.explicacaoRow, { borderLeftColor: cfg.border, marginTop: 8 }]}>
+                        <Feather name="info" size={12} color={cfg.color} />
+                        <Text style={[styles.explicacaoText, { color: cfg.color, fontSize: 12 }]}>{getExplicacaoItem(p)}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             ) : (
               sortedProducts.map((p, idx) => {
@@ -968,6 +1066,99 @@ const styles = StyleSheet.create({
   },
   errorBannerBtnText: {
     fontSize: 11, fontFamily: fontFamily.semiBold, color: '#fff',
+  },
+
+  // ── Sessão 28+ — mobile-web cards (substitui tabela apertada em < 1024px) ──
+  cardList: {
+    marginTop: spacing.sm,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 1,
+    minHeight: 44,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  cardTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  cardBadgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: spacing.sm,
+    alignItems: 'center',
+  },
+  cardRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+    minHeight: 24,
+  },
+  cardLabel: {
+    fontSize: 13,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+  },
+  cardValue: {
+    fontSize: 14,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  mobileSortRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  mobileSortLabel: {
+    fontSize: 12,
+    fontFamily: fontFamily.semiBold,
+    color: colors.textSecondary,
+    marginRight: 4,
+  },
+  mobileSortChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minHeight: 36,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.inputBg || colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  mobileSortChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  mobileSortChipText: {
+    fontSize: 12,
+    fontFamily: fontFamily.semiBold,
+    color: colors.text,
+  },
+  mobileSortChipTextActive: {
+    color: '#fff',
   },
 
 });

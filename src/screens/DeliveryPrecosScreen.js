@@ -16,6 +16,7 @@ import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngredi
 // Sprint 2 S3 — fórmula canônica única em src/utils/deliveryPricing.js
 import { calcPrecoBreakEven } from '../utils/deliveryPricing';
 import usePersistedState from '../hooks/usePersistedState';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 // Numeric helpers (defesa contra NaN/Infinity em precificação)
 function safeNum(v) {
@@ -57,6 +58,7 @@ export default function DeliveryPrecosScreen() {
   const [loadError, setLoadError] = useState(null);
   const [inviabilidadeInfo, setInviabilidadeInfo] = useState(null);
   const isLoadingRef = useRef(false);
+  const { isMobile } = useResponsiveLayout();
 
   useFocusEffect(
     useCallback(() => {
@@ -389,43 +391,88 @@ export default function DeliveryPrecosScreen() {
           </TouchableOpacity>
         )}
 
-        <View style={styles.priceRow}>
-          <View style={styles.priceCol}>
-            <Text style={styles.priceLabel}>Sugerido</Text>
-            <Text style={styles.priceValue}>
-              {precoSugerido === null ? '—' : formatCurrency(precoSugerido)}
-            </Text>
-          </View>
-          <View style={[styles.priceCol, { flex: 1.2 }]}>
-            <Text style={styles.priceLabel}>Preço Delivery</Text>
-            <InputField
-              value={
-                customPrices[customKey] !== undefined
-                  ? String(customPrices[customKey])
-                  : (precoSugerido !== null && Number.isFinite(precoSugerido))
-                    ? String(precoSugerido.toFixed(2).replace('.', ','))
-                    : ''
-              }
-              onChangeText={(val) => handleCustomPrice(item.id, plat.id, val)}
-              keyboardType="numeric"
-              placeholder="0,00"
-              style={styles.deliveryInput}
-              inputStyle={styles.deliveryInputField}
-              accessibilityLabel={`Preço delivery em ${plat.plataforma} para ${item.nome}`}
-            />
-          </View>
-          <View style={[styles.priceCol, { alignItems: 'flex-end' }]}>
-            <Text style={styles.priceLabel}>Lucro</Text>
-            <Text style={[styles.lucroValue, { color: isPositive ? colors.success : colors.error }]}>
-              {inviavel ? '—' : formatCurrency(lucro)}
-            </Text>
-            <View style={[styles.margemChip, { backgroundColor: isPositive ? colors.success + '14' : colors.error + '14' }]}>
-              <Text style={[styles.margemChipText, { color: isPositive ? colors.success : colors.error }]}>
-                {inviavel ? '—' : `${margem.toFixed(1)}%`}
+        {isMobile ? (
+          /* Sessão 28+ — mobile-web: layout empilhado para Sugerido / Input / Lucro+Margem */
+          <View style={styles.priceStackMobile}>
+            <View style={styles.priceStackRow}>
+              <Text style={styles.priceStackLabel}>Sugerido:</Text>
+              <Text style={styles.priceStackValue}>
+                {precoSugerido === null ? '—' : formatCurrency(precoSugerido)}
               </Text>
             </View>
+            <View style={styles.priceStackRow}>
+              <Text style={styles.priceStackLabel}>Preço Delivery:</Text>
+              <View style={{ flex: 1, marginLeft: 12, maxWidth: 140 }}>
+                <InputField
+                  value={
+                    customPrices[customKey] !== undefined
+                      ? String(customPrices[customKey])
+                      : (precoSugerido !== null && Number.isFinite(precoSugerido))
+                        ? String(precoSugerido.toFixed(2).replace('.', ','))
+                        : ''
+                  }
+                  onChangeText={(val) => handleCustomPrice(item.id, plat.id, val)}
+                  keyboardType="numeric"
+                  placeholder="0,00"
+                  style={styles.deliveryInput}
+                  inputStyle={styles.deliveryInputField}
+                  accessibilityLabel={`Preço delivery em ${plat.plataforma} para ${item.nome}`}
+                />
+              </View>
+            </View>
+            <View style={styles.priceStackRow}>
+              <Text style={styles.priceStackLabel}>Lucro:</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={[styles.priceStackValue, { color: isPositive ? colors.success : colors.error }]}>
+                  {inviavel ? '—' : formatCurrency(lucro)}
+                </Text>
+                <View style={[styles.margemChip, { backgroundColor: isPositive ? colors.success + '14' : colors.error + '14' }]}>
+                  <Text style={[styles.margemChipText, { color: isPositive ? colors.success : colors.error }]}>
+                    {inviavel ? '—' : `${margem.toFixed(1)}%`}
+                  </Text>
+                </View>
+              </View>
+            </View>
           </View>
-        </View>
+        ) : (
+          <View style={styles.priceRow}>
+            <View style={styles.priceCol}>
+              <Text style={styles.priceLabel}>Sugerido</Text>
+              <Text style={styles.priceValue}>
+                {precoSugerido === null ? '—' : formatCurrency(precoSugerido)}
+              </Text>
+            </View>
+            <View style={[styles.priceCol, { flex: 1.2 }]}>
+              <Text style={styles.priceLabel}>Preço Delivery</Text>
+              <InputField
+                value={
+                  customPrices[customKey] !== undefined
+                    ? String(customPrices[customKey])
+                    : (precoSugerido !== null && Number.isFinite(precoSugerido))
+                      ? String(precoSugerido.toFixed(2).replace('.', ','))
+                      : ''
+                }
+                onChangeText={(val) => handleCustomPrice(item.id, plat.id, val)}
+                keyboardType="numeric"
+                placeholder="0,00"
+                style={styles.deliveryInput}
+                inputStyle={styles.deliveryInputField}
+                accessibilityLabel={`Preço delivery em ${plat.plataforma} para ${item.nome}`}
+              />
+            </View>
+            <View style={[styles.priceCol, { alignItems: 'flex-end' }]}>
+              <Text style={styles.priceLabel}>Lucro</Text>
+              <Text style={[styles.lucroValue, { color: isPositive ? colors.success : colors.error }]}>
+                {inviavel ? '—' : formatCurrency(lucro)}
+              </Text>
+              <View style={[styles.margemChip, { backgroundColor: isPositive ? colors.success + '14' : colors.error + '14' }]}>
+                <Text style={[styles.margemChipText, { color: isPositive ? colors.success : colors.error }]}>
+                  {inviavel ? '—' : `${margem.toFixed(1)}%`}
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
 
         <View style={styles.breakdownRow}>
           <View style={styles.breakdownChip}>
@@ -1120,5 +1167,28 @@ const styles = StyleSheet.create({
     fontSize: fonts.tiny,
     fontFamily: fontFamily.semiBold,
     color: '#991b1b',
+  },
+
+  // ── Sessão 28+ — mobile-web stacked layout (substitui priceRow apertada em < 1024px) ──
+  priceStackMobile: {
+    marginVertical: spacing.xs,
+  },
+  priceStackRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+    minHeight: 36,
+  },
+  priceStackLabel: {
+    fontSize: 13,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+  },
+  priceStackValue: {
+    fontSize: 14,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.text,
   },
 });
