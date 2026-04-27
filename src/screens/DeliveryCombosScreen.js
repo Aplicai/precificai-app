@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { View, Text, FlatList, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert, Platform } from 'react-native';
+import { View, Text, FlatList, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert, Platform, TextInput } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
@@ -73,6 +74,8 @@ export default function DeliveryCombosScreen() {
   const [novoCombo, setNovoCombo] = useState({ nome: '', preco_venda: '', itens: [] });
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
   const [buscaItem, setBuscaItem] = useState('');
+  // Sessão 28.8 — filtro por tipo no modal de adicionar item
+  const [filtroTipoItem, setFiltroTipoItem] = useState(null);
 
   // Auto-save state (edit mode)
   const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved'
@@ -554,51 +557,73 @@ export default function DeliveryCombosScreen() {
   function renderComboCard({ item: combo, index }) {
     const precoV = safeNum(combo.preco_venda);
     const custoC = safeNum(combo.custo);
+    const lucro = precoV - custoC;
     const margem = precoV > 0 ? ((precoV - custoC) / precoV) * 100 : 0;
     const margemColor = margem >= 25 ? colors.success : margem >= 15 ? colors.accent : colors.error;
     const comboColor = getComboColor(index);
-    const inicial = (combo.nome || '?').charAt(0).toUpperCase();
-    const itemCount = combo.itens ? combo.itens.length : 0;
+    const itens = combo.itens || [];
+    const itemCount = itens.length;
+    // Sessão 28.8 — breakdown por tipo pra subtitle informativo
+    const counts = { produto: 0, preparo: 0, materia_prima: 0, embalagem: 0 };
+    itens.forEach(it => { if (counts[it.tipo] !== undefined) counts[it.tipo]++; });
+    const subtitleParts = [];
+    if (counts.produto) subtitleParts.push(`${counts.produto} ${counts.produto === 1 ? 'produto' : 'produtos'}`);
+    if (counts.preparo) subtitleParts.push(`${counts.preparo} ${counts.preparo === 1 ? 'preparo' : 'preparos'}`);
+    if (counts.materia_prima) subtitleParts.push(`${counts.materia_prima} ${counts.materia_prima === 1 ? 'insumo' : 'insumos'}`);
+    if (counts.embalagem) subtitleParts.push(`${counts.embalagem} ${counts.embalagem === 1 ? 'embalagem' : 'embalagens'}`);
+    const subtitle = subtitleParts.length > 0 ? subtitleParts.join(' · ') : 'Combo vazio';
 
     return (
       <TouchableOpacity
-        style={styles.row}
+        style={styles.comboCardV2}
         onPress={() => abrirEditarCombo(combo)}
         activeOpacity={0.6}
+        accessibilityRole="button"
+        accessibilityLabel={`Editar combo ${combo.nome}`}
       >
-        {/* Avatar */}
-        <View style={[styles.avatar, { backgroundColor: comboColor + '18' }]}>
-          <Text style={[styles.avatarText, { color: comboColor }]}>{inicial}</Text>
+        {/* Header: ícone + nome + delete */}
+        <View style={styles.comboCardV2Header}>
+          <View style={[styles.comboCardV2Icon, { backgroundColor: comboColor + '18', borderColor: comboColor + '40' }]}>
+            <Feather name="layers" size={16} color={comboColor} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.comboCardV2Nome} numberOfLines={1}>{combo.nome || '(sem nome)'}</Text>
+            <Text style={styles.comboCardV2Subtitle} numberOfLines={1}>{subtitle}</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => removerCombo(combo.id, combo.nome)}
+            style={styles.comboCardV2DeleteBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Remover combo ${combo.nome}`}
+          >
+            <Feather name="trash-2" size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
         </View>
 
-        {/* Info */}
-        <View style={styles.rowInfo}>
-          <Text style={styles.rowNome} numberOfLines={2}>{combo.nome}</Text>
-          <Text style={styles.rowSubtitle} numberOfLines={1}>
-            {itemCount} {itemCount === 1 ? 'item' : 'itens'}
-          </Text>
-        </View>
-
-        {/* Price + margin badge */}
-        <View style={styles.rowRight}>
-          <Text style={styles.rowPreco}>{formatCurrency(combo.preco_venda)}</Text>
-          <View style={[styles.margemBadge, { backgroundColor: margemColor + '12' }]}>
-            <Text style={[styles.margemBadgeText, { color: margemColor }]}>
-              {margem.toFixed(1)}%
-            </Text>
+        {/* Métricas em grid 2x2 */}
+        <View style={styles.comboCardV2Metrics}>
+          <View style={styles.comboCardV2Metric}>
+            <Text style={styles.comboCardV2MetricLabel}>CMV</Text>
+            <Text style={styles.comboCardV2MetricValue}>{formatCurrency(custoC)}</Text>
+          </View>
+          <View style={styles.comboCardV2Metric}>
+            <Text style={styles.comboCardV2MetricLabel}>Preço</Text>
+            <Text style={[styles.comboCardV2MetricValue, { fontWeight: '700' }]}>{formatCurrency(precoV)}</Text>
+          </View>
+          <View style={styles.comboCardV2Metric}>
+            <Text style={styles.comboCardV2MetricLabel}>Lucro/un</Text>
+            <Text style={[styles.comboCardV2MetricValue, { color: lucro >= 0 ? colors.success : colors.error }]}>{formatCurrency(lucro)}</Text>
+          </View>
+          <View style={styles.comboCardV2Metric}>
+            <Text style={styles.comboCardV2MetricLabel}>Margem</Text>
+            <View style={[styles.comboCardV2Badge, { backgroundColor: margemColor + '15' }]}>
+              <Text style={[styles.comboCardV2BadgeText, { color: margemColor }]}>
+                {precoV > 0 ? `${margem.toFixed(1)}%` : '—'}
+              </Text>
+            </View>
           </View>
         </View>
-
-        {/* Delete */}
-        <TouchableOpacity
-          onPress={() => removerCombo(combo.id, combo.nome)}
-          style={styles.deleteBtn}
-          hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-          accessibilityRole="button"
-          accessibilityLabel={`Remover combo ${combo.nome}`}
-        >
-          <Feather name="trash-2" size={13} color={colors.disabled} />
-        </TouchableOpacity>
       </TouchableOpacity>
     );
   }
@@ -606,42 +631,67 @@ export default function DeliveryCombosScreen() {
   function renderDesktopGridCard({ item: combo, index }) {
     const precoV = safeNum(combo.preco_venda);
     const custoC = safeNum(combo.custo);
+    const lucro = precoV - custoC;
     const margem = precoV > 0 ? ((precoV - custoC) / precoV) * 100 : 0;
     const margemColor = margem >= 25 ? colors.success : margem >= 15 ? colors.accent : colors.error;
     const comboColor = getComboColor(index);
-    const inicial = (combo.nome || '?').charAt(0).toUpperCase();
-    const itemCount = combo.itens ? combo.itens.length : 0;
+    const itens = combo.itens || [];
+    const itemCount = itens.length;
+    const counts = { produto: 0, preparo: 0, materia_prima: 0, embalagem: 0 };
+    itens.forEach(it => { if (counts[it.tipo] !== undefined) counts[it.tipo]++; });
+    const subtitleParts = [];
+    if (counts.produto) subtitleParts.push(`${counts.produto} produto${counts.produto > 1 ? 's' : ''}`);
+    if (counts.preparo) subtitleParts.push(`${counts.preparo} preparo${counts.preparo > 1 ? 's' : ''}`);
+    if (counts.materia_prima) subtitleParts.push(`${counts.materia_prima} insumo${counts.materia_prima > 1 ? 's' : ''}`);
+    if (counts.embalagem) subtitleParts.push(`${counts.embalagem} ${counts.embalagem > 1 ? 'embalagens' : 'embalagem'}`);
+    const subtitle = subtitleParts.length > 0 ? subtitleParts.join(' · ') : 'Combo vazio';
 
     return (
       <TouchableOpacity
-        style={styles.gridCard}
+        style={styles.comboCardV2}
         onPress={() => abrirEditarCombo(combo)}
         activeOpacity={0.6}
+        accessibilityRole="button"
+        accessibilityLabel={`Editar combo ${combo.nome}`}
       >
-        <View style={styles.gridCardTop}>
-          <View style={[styles.gridAvatar, { backgroundColor: comboColor + '18' }]}>
-            <Text style={[styles.gridAvatarText, { color: comboColor }]}>{inicial}</Text>
+        <View style={styles.comboCardV2Header}>
+          <View style={[styles.comboCardV2Icon, { backgroundColor: comboColor + '18', borderColor: comboColor + '40' }]}>
+            <Feather name="layers" size={16} color={comboColor} />
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-            <TouchableOpacity
-              onPress={() => removerCombo(combo.id, combo.nome)}
-              style={styles.gridDeleteBtn}
-              hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel={`Remover combo ${combo.nome}`}
-            >
-              <Feather name="trash-2" size={12} color={colors.disabled} />
-            </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.comboCardV2Nome} numberOfLines={1}>{combo.nome || '(sem nome)'}</Text>
+            <Text style={styles.comboCardV2Subtitle} numberOfLines={1}>{subtitle}</Text>
           </View>
+          <TouchableOpacity
+            onPress={() => removerCombo(combo.id, combo.nome)}
+            style={styles.comboCardV2DeleteBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Remover combo ${combo.nome}`}
+          >
+            <Feather name="trash-2" size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
         </View>
-        <Text style={styles.gridNome} numberOfLines={2}>{combo.nome}</Text>
-        <Text style={styles.gridSubtitle}>{itemCount} {itemCount === 1 ? 'item' : 'itens'}</Text>
-        <View style={styles.gridBottom}>
-          <Text style={styles.gridPreco}>{formatCurrency(combo.preco_venda)}</Text>
-          <View style={[styles.margemBadge, { backgroundColor: margemColor + '12' }]}>
-            <Text style={[styles.margemBadgeText, { color: margemColor }]}>
-              {margem.toFixed(1)}%
-            </Text>
+        <View style={styles.comboCardV2Metrics}>
+          <View style={styles.comboCardV2Metric}>
+            <Text style={styles.comboCardV2MetricLabel}>CMV</Text>
+            <Text style={styles.comboCardV2MetricValue}>{formatCurrency(custoC)}</Text>
+          </View>
+          <View style={styles.comboCardV2Metric}>
+            <Text style={styles.comboCardV2MetricLabel}>Preço</Text>
+            <Text style={[styles.comboCardV2MetricValue, { fontWeight: '700' }]}>{formatCurrency(precoV)}</Text>
+          </View>
+          <View style={styles.comboCardV2Metric}>
+            <Text style={styles.comboCardV2MetricLabel}>Lucro/un</Text>
+            <Text style={[styles.comboCardV2MetricValue, { color: lucro >= 0 ? colors.success : colors.error }]}>{formatCurrency(lucro)}</Text>
+          </View>
+          <View style={styles.comboCardV2Metric}>
+            <Text style={styles.comboCardV2MetricLabel}>Margem</Text>
+            <View style={[styles.comboCardV2Badge, { backgroundColor: margemColor + '15' }]}>
+              <Text style={[styles.comboCardV2BadgeText, { color: margemColor }]}>
+                {precoV > 0 ? `${margem.toFixed(1)}%` : '—'}
+              </Text>
+            </View>
           </View>
         </View>
       </TouchableOpacity>
@@ -826,32 +876,63 @@ export default function DeliveryCombosScreen() {
               )}
               {novoCombo.itens.map((item, index) => {
                 const badgeInfo = getTipoBadgeInfo(item.tipo);
-                const itemInicial = (item.nome || '?').charAt(0).toUpperCase();
-                const itemColor = getComboColor(index);
+                const custoUnit = safeNum(item.custoUnit);
+                const qtd = safeNum(item.quantidade) || 1;
+                const totalItem = custoUnit * qtd;
                 return (
-                  <View key={index} style={styles.modalItem}>
-                    <View style={[styles.modalItemAvatar, { backgroundColor: itemColor + '18' }]}>
-                      <Text style={[styles.modalItemAvatarText, { color: itemColor }]}>{itemInicial}</Text>
+                  <View key={index} style={styles.modalItemV2}>
+                    {/* Linha 1 — badge tipo + nome + lixeira */}
+                    <View style={styles.modalItemV2Header}>
+                      <View style={[styles.tipoBadgeV2, { backgroundColor: badgeInfo.color + '15' }]}>
+                        <Text style={[styles.tipoBadgeV2Text, { color: badgeInfo.color }]}>{badgeInfo.label}</Text>
+                      </View>
+                      <Text style={styles.modalItemV2Name} numberOfLines={1}>{item.nome}</Text>
+                      <TouchableOpacity
+                        onPress={() => removerItemDoCombo(index)}
+                        style={styles.modalItemV2DeleteBtn}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remover ${item.nome}`}
+                      >
+                        <Feather name="trash-2" size={15} color={colors.textSecondary} />
+                      </TouchableOpacity>
                     </View>
-                    <Text style={styles.modalItemName}>{item.nome}</Text>
-                    <View style={[styles.tipoBadge, { backgroundColor: badgeInfo.color + '12' }]}>
-                      <Text style={[styles.tipoBadgeText, { color: badgeInfo.color }]}>{badgeInfo.label}</Text>
+                    {/* Linha 2 — stepper + custo */}
+                    <View style={styles.modalItemV2Footer}>
+                      <View style={styles.stepperV2}>
+                        <TouchableOpacity
+                          style={styles.stepperV2Btn}
+                          onPress={() => alterarQuantidadeItem(index, String(Math.max(1, qtd - 1)))}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Diminuir quantidade"
+                        >
+                          <Feather name="minus" size={14} color={colors.text} />
+                        </TouchableOpacity>
+                        <TextInput
+                          value={String(item.quantidade)}
+                          onChangeText={(val) => alterarQuantidadeItem(index, val)}
+                          keyboardType="numeric"
+                          style={styles.stepperV2Input}
+                          accessibilityLabel="Quantidade"
+                        />
+                        <TouchableOpacity
+                          style={styles.stepperV2Btn}
+                          onPress={() => alterarQuantidadeItem(index, String(qtd + 1))}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Aumentar quantidade"
+                        >
+                          <Feather name="plus" size={14} color={colors.text} />
+                        </TouchableOpacity>
+                      </View>
+                      <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                        <Text style={styles.modalItemV2CustoTotal}>{formatCurrency(totalItem)}</Text>
+                        {qtd > 1 && (
+                          <Text style={styles.modalItemV2CustoUnit}>{formatCurrency(custoUnit)} × {qtd}</Text>
+                        )}
+                      </View>
                     </View>
-                    <Text style={styles.modalItemCusto}>{formatCurrency((item.custoUnit || 0) * item.quantidade)}</Text>
-                    <InputField
-                      value={String(item.quantidade)}
-                      onChangeText={(val) => alterarQuantidadeItem(index, val)}
-                      keyboardType="numeric"
-                      style={{ width: 55, marginBottom: 0 }}
-                      inputStyle={{ textAlign: 'center', padding: 4, fontSize: fonts.tiny }}
-                    />
-                    <TouchableOpacity
-                      onPress={() => removerItemDoCombo(index)}
-                      style={styles.deleteBtn}
-                      hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-                    >
-                      <Feather name="trash-2" size={13} color={colors.disabled} />
-                    </TouchableOpacity>
                   </View>
                 );
               })}
@@ -861,74 +942,111 @@ export default function DeliveryCombosScreen() {
               <SearchBar
                 value={buscaItem}
                 onChangeText={setBuscaItem}
-                placeholder="Buscar produto, insumo, embalagem ou preparo..."
+                placeholder="Buscar..."
                 inset="modal"
               />
 
+              {/* Sessão 28.8 — chips de filtro por tipo (touch targets WCAG 36pt) */}
+              <View style={styles.tipoFilterRow}>
+                {[
+                  { key: 'todos', label: 'Tudo', icon: 'grid' },
+                  { key: 'produto', label: 'Produtos', icon: 'tag' },
+                  { key: 'preparo', label: 'Preparos', icon: 'pot-steam-outline', material: true },
+                  { key: 'materia_prima', label: 'Insumos', icon: 'shopping-bag' },
+                  { key: 'embalagem', label: 'Embalagens', icon: 'package' },
+                ].map(opt => {
+                  const isActive = (filtroTipoItem || 'todos') === opt.key;
+                  return (
+                    <TouchableOpacity
+                      key={opt.key}
+                      style={[styles.tipoFilterChip, isActive && styles.tipoFilterChipActive]}
+                      onPress={() => setFiltroTipoItem(opt.key === 'todos' ? null : opt.key)}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isActive }}
+                      accessibilityLabel={opt.label}
+                    >
+                      {opt.material ? (
+                        <MaterialCommunityIcons name={opt.icon} size={12} color={isActive ? '#fff' : colors.textSecondary} style={{ marginRight: 4 }} />
+                      ) : (
+                        <Feather name={opt.icon} size={12} color={isActive ? '#fff' : colors.textSecondary} style={{ marginRight: 4 }} />
+                      )}
+                      <Text style={[styles.tipoFilterChipText, isActive && styles.tipoFilterChipTextActive]}>{opt.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
               {(() => {
                 const termo = buscaItem.trim().toLowerCase();
-                const filteredProdutos = allProdutos.filter(p => !termo || p.nome.toLowerCase().includes(termo));
-                const filteredMaterias = allMaterias.filter(m => !termo || m.nome.toLowerCase().includes(termo));
-                const filteredEmbalagens = allEmbalagens.filter(e => !termo || e.nome.toLowerCase().includes(termo));
-                const filteredPreparos = allPreparos.filter(p => !termo || p.nome.toLowerCase().includes(termo));
+                const tipoOn = (t) => !filtroTipoItem || filtroTipoItem === t;
+                const filteredProdutos = tipoOn('produto') ? allProdutos.filter(p => !termo || p.nome.toLowerCase().includes(termo)) : [];
+                const filteredMaterias = tipoOn('materia_prima') ? allMaterias.filter(m => !termo || m.nome.toLowerCase().includes(termo)) : [];
+                const filteredEmbalagens = tipoOn('embalagem') ? allEmbalagens.filter(e => !termo || e.nome.toLowerCase().includes(termo)) : [];
+                const filteredPreparos = tipoOn('preparo') ? allPreparos.filter(p => !termo || p.nome.toLowerCase().includes(termo)) : [];
+
+                const renderRow = (item, key, tipo, custoFn) => {
+                  const badgeInfo = getTipoBadgeInfo(tipo);
+                  const custo = custoFn ? custoFn(item) : 0;
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={styles.modalAddItemV2}
+                      onPress={() => adicionarItemAoCombo(tipo, item)}
+                      activeOpacity={0.65}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Adicionar ${item.nome}`}
+                    >
+                      <View style={[styles.modalAddItemV2Badge, { backgroundColor: badgeInfo.color + '15' }]}>
+                        <Text style={[styles.modalAddItemV2BadgeText, { color: badgeInfo.color }]}>{badgeInfo.label}</Text>
+                      </View>
+                      <Text style={styles.modalAddItemV2Name} numberOfLines={1}>{item.nome}</Text>
+                      {custo > 0 && (
+                        <Text style={styles.modalAddItemV2Custo}>{formatCurrency(custo)}</Text>
+                      )}
+                      <View style={styles.modalAddItemV2PlusBtn}>
+                        <Feather name="plus" size={14} color={colors.primary} />
+                      </View>
+                    </TouchableOpacity>
+                  );
+                };
+
+                const total = filteredProdutos.length + filteredMaterias.length + filteredEmbalagens.length + filteredPreparos.length;
+
+                if (total === 0) {
+                  return (
+                    <Text style={styles.modalEmptyResults}>
+                      {termo ? `Nenhum resultado para "${buscaItem}"` : 'Nenhum item disponível para adicionar'}
+                    </Text>
+                  );
+                }
+
                 return (
                   <>
                     {filteredProdutos.length > 0 && (
-                      <>
-                        <Text style={styles.modalCatLabel}>Produtos</Text>
-                        <View style={styles.modalItemList}>
-                          {filteredProdutos.map(p => (
-                            <TouchableOpacity key={`prod-${p.id}`} style={styles.modalAddItem} onPress={() => adicionarItemAoCombo('produto', p)}>
-                              <Feather name="plus" size={10} color={colors.primary} style={{ marginRight: 3 }} />
-                              <Text style={styles.modalAddItemText}>{p.nome}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </>
+                      <View style={styles.modalCatBlock}>
+                        <Text style={styles.modalCatLabel}>Produtos · {filteredProdutos.length}</Text>
+                        {filteredProdutos.map(p => renderRow(p, `prod-${p.id}`, 'produto', (x) => safeNum(x.preco_venda)))}
+                      </View>
                     )}
-
-                    {filteredMaterias.length > 0 && (
-                      <>
-                        <Text style={styles.modalCatLabel}>Insumos</Text>
-                        <View style={styles.modalItemList}>
-                          {filteredMaterias.map(m => (
-                            <TouchableOpacity key={`mp-${m.id}`} style={styles.modalAddItem} onPress={() => adicionarItemAoCombo('materia_prima', m)}>
-                              <Feather name="plus" size={10} color={colors.primary} style={{ marginRight: 3 }} />
-                              <Text style={styles.modalAddItemText}>{m.nome}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </>
-                    )}
-
-                    {filteredEmbalagens.length > 0 && (
-                      <>
-                        <Text style={styles.modalCatLabel}>Embalagens</Text>
-                        <View style={styles.modalItemList}>
-                          {filteredEmbalagens.map(e => (
-                            <TouchableOpacity key={`emb-${e.id}`} style={styles.modalAddItem} onPress={() => adicionarItemAoCombo('embalagem', e)}>
-                              <Feather name="plus" size={10} color={colors.primary} style={{ marginRight: 3 }} />
-                              <Text style={styles.modalAddItemText}>{e.nome}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </>
-                    )}
-
                     {filteredPreparos.length > 0 && (
-                      <>
-                        <Text style={styles.modalCatLabel}>Preparos</Text>
-                        <View style={styles.modalItemList}>
-                          {filteredPreparos.map(pr => (
-                            <TouchableOpacity key={`prep-${pr.id}`} style={styles.modalAddItem} onPress={() => adicionarItemAoCombo('preparo', pr)}>
-                              <Feather name="plus" size={10} color={colors.primary} style={{ marginRight: 3 }} />
-                              <Text style={styles.modalAddItemText}>{pr.nome}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </>
+                      <View style={styles.modalCatBlock}>
+                        <Text style={styles.modalCatLabel}>Preparos · {filteredPreparos.length}</Text>
+                        {filteredPreparos.map(pr => renderRow(pr, `prep-${pr.id}`, 'preparo', (x) => safeNum(x.custo_total)))}
+                      </View>
                     )}
-
+                    {filteredMaterias.length > 0 && (
+                      <View style={styles.modalCatBlock}>
+                        <Text style={styles.modalCatLabel}>Insumos · {filteredMaterias.length}</Text>
+                        {filteredMaterias.map(m => renderRow(m, `mp-${m.id}`, 'materia_prima', (x) => safeNum(x.preco_por_kg)))}
+                      </View>
+                    )}
+                    {filteredEmbalagens.length > 0 && (
+                      <View style={styles.modalCatBlock}>
+                        <Text style={styles.modalCatLabel}>Embalagens · {filteredEmbalagens.length}</Text>
+                        {filteredEmbalagens.map(e => renderRow(e, `emb-${e.id}`, 'embalagem', (x) => safeNum(x.preco_unitario)))}
+                      </View>
+                    )}
                   </>
                 );
               })()}
@@ -1047,6 +1165,266 @@ const styles = StyleSheet.create({
   list: { padding: spacing.md, paddingBottom: 80 },
 
   // Combo row (MateriasPrimas pattern)
+  // Sessão 28.8 — Cards de combo V2 (informativos com 4 métricas)
+  comboCardV2: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  comboCardV2Header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  comboCardV2Icon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  comboCardV2Nome: {
+    fontSize: fonts.regular,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  comboCardV2Subtitle: {
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+    lineHeight: 14,
+  },
+  comboCardV2DeleteBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  comboCardV2Metrics: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  comboCardV2Metric: {
+    flex: 1,
+    minWidth: '22%',
+    paddingVertical: 2,
+  },
+  comboCardV2MetricLabel: {
+    fontSize: 10,
+    fontFamily: fontFamily.medium,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  comboCardV2MetricValue: {
+    fontSize: 13,
+    fontFamily: fontFamily.semiBold,
+    color: colors.text,
+  },
+  comboCardV2Badge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  comboCardV2BadgeText: {
+    fontSize: 11,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+  },
+  // Item dentro do modal (item do combo) V2 — stepper, melhor hierarquia
+  modalItemV2: {
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.sm,
+    padding: spacing.sm + 2,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalItemV2Header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  modalItemV2Name: {
+    flex: 1,
+    fontSize: fonts.small,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  modalItemV2DeleteBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalItemV2Footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalItemV2CustoTotal: {
+    fontSize: fonts.small,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  modalItemV2CustoUnit: {
+    fontSize: 11,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+  },
+  // Stepper [- N +]
+  stepperV2: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  stepperV2Btn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperV2Input: {
+    width: 44,
+    height: 32,
+    textAlign: 'center',
+    fontSize: fonts.small,
+    fontFamily: fontFamily.semiBold,
+    color: colors.text,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 0,
+  },
+  // Badge de tipo V2 (mais visível)
+  tipoBadgeV2: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  tipoBadgeV2Text: {
+    fontSize: 10,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  // Filtro tipo (chips) no modal
+  tipoFilterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 6,
+    marginBottom: spacing.sm,
+  },
+  tipoFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minHeight: 30,
+  },
+  tipoFilterChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  tipoFilterChipText: {
+    fontSize: 11,
+    fontFamily: fontFamily.medium,
+    color: colors.textSecondary,
+  },
+  tipoFilterChipTextActive: {
+    color: '#fff',
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+  },
+  // Categoria block (Produtos / Preparos / etc)
+  modalCatBlock: {
+    marginTop: spacing.sm,
+  },
+  // Linha de adicionar item V2 (touch target adequado, badge tipo, custo)
+  modalAddItemV2: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.sm,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minHeight: 44,
+  },
+  modalAddItemV2Badge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  modalAddItemV2BadgeText: {
+    fontSize: 9,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  modalAddItemV2Name: {
+    flex: 1,
+    fontSize: fonts.small,
+    fontFamily: fontFamily.regular,
+    color: colors.text,
+  },
+  modalAddItemV2Custo: {
+    fontSize: 11,
+    fontFamily: fontFamily.medium,
+    color: colors.textSecondary,
+  },
+  modalAddItemV2PlusBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalEmptyResults: {
+    fontSize: fonts.small,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: spacing.md,
+    fontStyle: 'italic',
+  },
   row: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.surface,
