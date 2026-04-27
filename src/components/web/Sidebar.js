@@ -4,6 +4,8 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigationState, CommonActions, StackActions } from '@react-navigation/native';
 import { colors, spacing, fontFamily, webLayout } from '../../utils/theme';
 import useFeatureFlag from '../../hooks/useFeatureFlag';
+// Sessão 28.8 — alinha altura do logoArea com WebHeader.container (mesmo token)
+import useListDensity from '../../hooks/useListDensity';
 
 // Ordem segue o fluxo de composição (audit P1-08):
 // Insumos → Preparos (combina insumos) → Embalagens (wrapper) → Produtos (final).
@@ -133,6 +135,9 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
   const navState = useNavigationState(s => s);
   const tabState = navState?.routes?.[navState.index]?.state;
   const activeKey = getActiveKey(tabState);
+  // Sessão 28.8 — Header da Sidebar deve ter MESMA altura do WebHeader.container
+  // (que usa headerHeight do useListDensity: 52 compact / 64 comfortable).
+  const { headerHeight } = useListDensity();
   // Sessão 26 — feature flags filtram itens da sidebar para esconder Delivery/BCG/Fornecedores
   const [usaDelivery] = useFeatureFlag('usa_delivery');
   const [analiseAvancada] = useFeatureFlag('modo_avancado_analise');
@@ -177,7 +182,7 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
   return (
     <View style={[styles.container, { width: sidebarWidth }]}>
       {/* Logo */}
-      <View style={styles.logoArea}>
+      <View style={[styles.logoArea, { height: headerHeight }]}>
         {collapsed ? (
           <Image
             source={require('../../../assets/images/logo-icon-green.png')}
