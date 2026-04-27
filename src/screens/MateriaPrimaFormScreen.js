@@ -27,7 +27,7 @@ import {
 // Sprint 2 S5 — checagem de dependências antes de DELETE (evita órfãos em preparo_ingredientes / produto_ingredientes).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 // Sessão 28.8 — sugestão automática via dicionário pré-cadastrado (zero IA, zero custo)
-import { matchInsumo } from '../data/dicionario';
+import { matchInsumo, normalize as normalizeStr } from '../data/dicionario';
 
 const CATEGORY_COLORS = [
   colors.primary, colors.accent, colors.coral, colors.purple,
@@ -462,15 +462,37 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             <View style={styles.sugestaoBtns}>
               <TouchableOpacity
                 style={[styles.sugestaoBtn, styles.sugestaoBtnPrimario]}
-                onPress={() => {
-                  // Aplica nome canônico, unidade e qtd típica.
-                  // Categoria não é aplicada automaticamente (id local não bate com nome do dicionário).
+                onPress={async () => {
+                  // Resolve categoria_id: busca categoria local pelo nome
+                  // do dicionário; se não achar, cria automaticamente.
+                  let categoria_id = form.categoria_id;
+                  try {
+                    if (sugestao.categoria) {
+                      const normCat = normalizeStr(sugestao.categoria);
+                      const existente = categorias.find(c => normalizeStr(c.nome) === normCat);
+                      if (existente) {
+                        categoria_id = existente.id;
+                      } else {
+                        // Cria nova categoria automaticamente (zero friction)
+                        const db = await getDatabase();
+                        const result = await db.runAsync(
+                          'INSERT INTO categorias_insumos (nome, icone) VALUES (?, ?)',
+                          [sugestao.categoria, sugestao.icone || 'tag']
+                        );
+                        categoria_id = result.lastInsertRowId;
+                        await loadCategorias();
+                      }
+                    }
+                  } catch (e) {
+                    console.warn('[Sugestao.usar] falha ao resolver categoria:', e);
+                  }
                   setForm(p => ({
                     ...p,
                     nome: sugestao.nome_canonico,
                     unidade_medida: sugestao.unidade_padrao || p.unidade_medida,
                     quantidade_bruta: sugestao.qtd_tipica_compra ? String(sugestao.qtd_tipica_compra) : p.quantidade_bruta,
                     quantidade_liquida: sugestao.qtd_tipica_compra ? String(sugestao.qtd_tipica_compra) : p.quantidade_liquida,
+                    categoria_id: categoria_id || p.categoria_id,
                   }));
                   setSugestao(null);
                   setSugestaoDispensada(true);
