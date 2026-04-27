@@ -648,7 +648,7 @@ export default function DeliveryCombosScreen() {
 
     return (
       <TouchableOpacity
-        style={styles.comboCardV2}
+        style={[styles.comboCardV2, styles.comboCardV2Desktop]}
         onPress={() => abrirEditarCombo(combo)}
         activeOpacity={0.6}
         accessibilityRole="button"
@@ -698,11 +698,33 @@ export default function DeliveryCombosScreen() {
     );
   }
 
+  // Sessão 28.8 — totais para o header (KPIs rápidos)
+  const totalCombos = combos.length;
+  const totalLucroPotencial = combos.reduce((acc, c) => {
+    const lp = safeNum(c.preco_venda) - safeNum(c.custo);
+    return acc + (lp > 0 ? lp : 0);
+  }, 0);
+
   return (
     <View style={styles.container}>
-      {/* Search header */}
-      <View style={[styles.headerBar, isDesktop && { maxWidth: 1200, alignSelf: 'center', width: '100%' }]}>
-        <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar..." />
+      {/* Sessão 28.8 — Header refinado: título + KPIs + search */}
+      <View style={[styles.screenHeader, isDesktop && { maxWidth: 1200, alignSelf: 'center', width: '100%' }]}>
+        <View style={styles.screenHeaderTop}>
+          <View style={styles.screenHeaderIconCircle}>
+            <Feather name="layers" size={isDesktop ? 22 : 18} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.screenHeaderTitle}>Combos / Kits</Text>
+            <Text style={styles.screenHeaderSubtitle} numberOfLines={1}>
+              {totalCombos === 0
+                ? 'Pacotes de produtos vendidos juntos'
+                : `${totalCombos} ${totalCombos === 1 ? 'combo cadastrado' : 'combos cadastrados'}${totalLucroPotencial > 0 ? ` · ${formatCurrency(totalLucroPotencial)} de lucro potencial/un` : ''}`}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.screenHeaderSearch}>
+          <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar combo..." />
+        </View>
       </View>
 
       {/* Audit P0: error banners */}
@@ -801,11 +823,26 @@ export default function DeliveryCombosScreen() {
         >
           <TouchableOpacity activeOpacity={1} style={styles.modalContent} onPress={() => {}}>
             <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Sessão 28.8 — Modal header com ícone, título e X claro */}
               <View style={styles.modalHeader}>
-                <Feather name="package" size={18} color={colors.primary} />
-                <Text style={styles.modalTitle}>{isEditing ? 'Editar Combo' : 'Criar Combo'}</Text>
-                {/* Auto-save status indicator for edit mode (audit P1-17) */}
-                {isEditing && <SaveStatus status={saveStatus} />}
+                <View style={styles.modalHeaderIcon}>
+                  <Feather name="layers" size={18} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.modalTitle} numberOfLines={1}>
+                    {isEditing ? (novoCombo.nome || 'Editar combo') : 'Novo combo'}
+                  </Text>
+                  {isEditing && <SaveStatus status={saveStatus} variant="badge" />}
+                </View>
+                <TouchableOpacity
+                  style={styles.modalHeaderCloseBtn}
+                  onPress={handleCloseModal}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Fechar"
+                >
+                  <Feather name="x" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
               </View>
 
               <InputField
@@ -1051,32 +1088,44 @@ export default function DeliveryCombosScreen() {
                 );
               })()}
 
-              {/* Modal actions: show Salvar only for NEW combos; edit mode uses auto-save */}
+              {/* Sessão 28.8 — Footer sticky-like com hierarquia clara */}
               {isEditing ? (
                 <View style={styles.editModalFooter}>
-                  <View style={styles.autoSaveBar}>
-                    <SaveStatus status={saveStatus} variant="badge" />
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm }}>
-                    {novoCombo.nome.trim() !== '' && (
-                      <TouchableOpacity
-                        style={styles.duplicarBtn}
-                        onPress={async () => {
-                          await duplicarCombo(editingCombo);
-                          setShowComboModal(false);
-                          setEditingCombo(null);
-                          setNovoCombo({ nome: '', preco_venda: '', itens: [] });
-                          setLoaded(false);
-                        }}
-                      >
-                        <Feather name="copy" size={13} color={colors.primary} style={{ marginRight: 5 }} />
-                        <Text style={styles.duplicarBtnText}>Duplicar</Text>
-                      </TouchableOpacity>
-                    )}
-                    <TouchableOpacity style={styles.modalCloseBtnFull} onPress={handleCloseModal}>
+                  {novoCombo.nome.trim() !== '' && (
+                    <TouchableOpacity
+                      style={styles.duplicarBtn}
+                      onPress={async () => {
+                        await duplicarCombo(editingCombo);
+                        setShowComboModal(false);
+                        setEditingCombo(null);
+                        setNovoCombo({ nome: '', preco_venda: '', itens: [] });
+                        setLoaded(false);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Duplicar combo"
+                    >
+                      <Feather name="copy" size={14} color={colors.textSecondary} />
+                      <Text style={styles.duplicarBtnText}>Duplicar combo</Text>
+                    </TouchableOpacity>
+                  )}
+                  <View style={styles.editModalFooterRow}>
+                    <TouchableOpacity
+                      style={styles.modalCloseBtnFull}
+                      onPress={handleCloseModal}
+                      accessibilityRole="button"
+                      accessibilityLabel="Fechar sem salvar"
+                    >
                       <Text style={styles.modalCloseText}>Fechar</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.saveBackBtn} onPress={async () => { try { await autoSaveImmediate(); } catch(e) { console.error('[DeliveryCombosScreen.saveBackBtn]', e); } handleCloseModal(); }}>
+                    <TouchableOpacity
+                      style={styles.saveBackBtn}
+                      onPress={async () => {
+                        try { await autoSaveImmediate(); } catch(e) { console.error('[DeliveryCombosScreen.saveBackBtn]', e); }
+                        handleCloseModal();
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Salvar e voltar"
+                    >
                       <Feather name="check" size={16} color="#fff" />
                       <Text style={styles.saveBackBtnText}>Salvar e voltar</Text>
                     </TouchableOpacity>
@@ -1084,12 +1133,22 @@ export default function DeliveryCombosScreen() {
                 </View>
               ) : (
                 <View style={styles.modalActions}>
-                  <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setShowComboModal(false); setEditingCombo(null); }}>
+                  <TouchableOpacity
+                    style={styles.modalCancelBtn}
+                    onPress={() => { setShowComboModal(false); setEditingCombo(null); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancelar"
+                  >
                     <Text style={styles.modalCancelText}>Cancelar</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.modalSaveBtn} onPress={salvarNovo}>
-                    <Feather name="check" size={14} color="#fff" style={{ marginRight: 4 }} />
-                    <Text style={styles.modalSaveText}>Salvar</Text>
+                  <TouchableOpacity
+                    style={styles.modalSaveBtn}
+                    onPress={salvarNovo}
+                    accessibilityRole="button"
+                    accessibilityLabel="Salvar combo"
+                  >
+                    <Feather name="check" size={14} color="#fff" />
+                    <Text style={styles.modalSaveText}>Salvar combo</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -1152,13 +1211,51 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
   },
 
-  // Header
+  // Header (legacy)
   headerBar: {
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     paddingTop: spacing.xs,
     paddingBottom: spacing.xs,
+  },
+  // Sessão 28.8 — Header refinado da tela
+  screenHeader: {
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  screenHeaderTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  screenHeaderIconCircle: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: colors.primary + '12',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.primary + '30',
+  },
+  screenHeaderTitle: {
+    fontSize: fonts.medium,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.text,
+    lineHeight: 20,
+  },
+  screenHeaderSubtitle: {
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+    lineHeight: 14,
+    marginTop: 1,
+  },
+  screenHeaderSearch: {
+    paddingHorizontal: 4,
   },
 
   // List
@@ -1179,6 +1276,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04,
     shadowRadius: 2,
     elevation: 1,
+  },
+  // Override aplicado inline no desktop pelo renderDesktopGridCard
+  comboCardV2Desktop: {
+    minWidth: 280,
+    flexBasis: 320,
+    flexGrow: 1,
+    flexShrink: 1,
+    marginHorizontal: 0,
+    marginBottom: 0,
   },
   comboCardV2Header: {
     flexDirection: 'row',
@@ -1478,26 +1584,52 @@ const styles = StyleSheet.create({
     padding: 8,
   },
 
-  // Modal
+  // Sessão 28.8 — Modal refinado: full-screen mobile, centrado desktop
   modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center', alignItems: 'center', padding: spacing.md,
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center', alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: '#fff', borderRadius: borderRadius.md,
-    padding: spacing.lg, width: '100%', maxHeight: '85%', maxWidth: 500,
+    backgroundColor: '#fff',
+    width: '100%',
+    maxHeight: '90%',
+    maxWidth: 720,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    paddingBottom: 0,
+    overflow: 'hidden',
   },
   modalHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: spacing.xs, marginBottom: spacing.md, flexWrap: 'wrap',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.md,
+    marginBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalHeaderIcon: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: colors.primary + '15',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  modalHeaderCloseBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.background,
   },
   modalTitle: {
-    fontSize: fonts.large, fontFamily: fontFamily.bold, fontWeight: '700',
+    fontSize: fonts.medium, fontFamily: fontFamily.bold, fontWeight: '700',
     color: colors.text,
   },
   modalSubtitle: {
     fontSize: fonts.small, fontWeight: '700', fontFamily: fontFamily.bold,
-    color: colors.text, marginTop: spacing.sm, marginBottom: spacing.xs,
+    color: colors.text,
+    marginTop: spacing.md, marginBottom: spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   emptyItemsText: {
     textAlign: 'center', color: colors.textSecondary, fontSize: fonts.regular,
@@ -1579,39 +1711,56 @@ const styles = StyleSheet.create({
   // Modal actions
   modalActions: {
     flexDirection: 'row', justifyContent: 'space-between',
-    marginTop: spacing.lg, gap: spacing.sm,
+    marginTop: spacing.md, gap: spacing.sm,
+    paddingTop: spacing.md, paddingHorizontal: spacing.xs, paddingBottom: spacing.md,
+    borderTopWidth: 1, borderTopColor: colors.border,
+    backgroundColor: colors.surface,
   },
   modalCancelBtn: {
-    flex: 1, padding: spacing.sm + 2, borderRadius: borderRadius.sm,
+    flex: 1, paddingVertical: spacing.sm + 4, paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.sm,
     borderWidth: 1, borderColor: colors.border, alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 44,
   },
   modalCancelText: {
     color: colors.textSecondary, fontFamily: fontFamily.semiBold,
-    fontWeight: '600', fontSize: fonts.regular,
+    fontWeight: '600', fontSize: fonts.small,
   },
   modalSaveBtn: {
-    flex: 1, padding: spacing.sm + 2, borderRadius: borderRadius.sm,
-    backgroundColor: colors.primary, flexDirection: 'row',
+    flex: 2, paddingVertical: spacing.sm + 4, paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.primary, flexDirection: 'row', gap: 6,
     alignItems: 'center', justifyContent: 'center',
+    minHeight: 44,
   },
   modalSaveText: {
     color: colors.textLight, fontFamily: fontFamily.bold,
-    fontWeight: '700', fontSize: fonts.regular,
+    fontWeight: '700', fontSize: fonts.small,
   },
   modalCloseBtnFull: {
-    flex: 1, padding: spacing.sm + 2, borderRadius: borderRadius.sm,
+    flex: 1, paddingVertical: spacing.sm + 4, paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.sm,
     borderWidth: 1, borderColor: colors.border, alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 44,
   },
   modalCloseText: {
     color: colors.textSecondary, fontFamily: fontFamily.semiBold,
-    fontWeight: '600', fontSize: fonts.regular,
+    fontWeight: '600', fontSize: fonts.small,
   },
 
-  // Edit modal footer (padrão da plataforma)
+  // Sessão 28.8 — Edit modal footer com hierarquia clara
   editModalFooter: {
-    marginTop: spacing.lg, alignItems: 'center',
+    paddingTop: spacing.md, paddingHorizontal: spacing.xs, paddingBottom: spacing.md,
+    borderTopWidth: 1, borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+    gap: spacing.sm,
+  },
+  editModalFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   autoSaveBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -1622,16 +1771,18 @@ const styles = StyleSheet.create({
   },
   duplicarBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#fff', borderWidth: 1, borderColor: colors.primary + '30',
-    borderRadius: borderRadius.sm, paddingVertical: 8, paddingHorizontal: 14,
+    backgroundColor: '#fff', borderWidth: 1, borderColor: colors.border,
+    borderRadius: borderRadius.sm, paddingVertical: spacing.sm + 4, paddingHorizontal: spacing.md,
+    minHeight: 44, flex: 1, gap: 4,
   },
   duplicarBtnText: {
-    fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.primary,
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.textSecondary,
   },
   saveBackBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: colors.primary, paddingVertical: 8, paddingHorizontal: 16,
-    borderRadius: borderRadius.md,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: colors.primary, paddingVertical: spacing.sm + 4, paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.sm,
+    minHeight: 44, flex: 2,
   },
   saveBackBtnText: {
     fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: '#fff',
@@ -1682,11 +1833,13 @@ const styles = StyleSheet.create({
   },
 
   // Desktop grid
+  // Sessão 28.8 — grid responsivo desktop (2-3 cards por linha)
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 12,
     justifyContent: 'flex-start',
+    paddingHorizontal: spacing.md,
   },
   gridCard: {
     backgroundColor: colors.surface,
