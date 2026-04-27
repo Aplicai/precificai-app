@@ -1,0 +1,332 @@
+[
+  {
+    "id": "prep_brigadeiro_tradicional",
+    "nome_canonico": "Brigadeiro Tradicional (Recheio)",
+    "tokens": ["brigadeiro","tradicional","recheio"],
+    "categoria": "Recheios Doces",
+    "rendimento_total": 800,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 25,
+    "ingredientes": [
+      { "nome": "Leite Condensado", "quantidade": 395, "unidade": "g" },
+      { "nome": "Chocolate em Pó", "quantidade": 60, "unidade": "g" },
+      { "nome": "Manteiga sem Sal", "quantidade": 20, "unidade": "g" }
+    ],
+    "modo_preparo": "Misture tudo em panela em fogo baixo, mexendo até desgrudar do fundo. Resfrie antes de modelar.",
+    "nichos": ["confeitaria","padaria"]
+  },
+  {
+    "id": "prep_beijinho",
+    "nome_canonico": "Beijinho (Recheio)",
+    "tokens": ["beijinho","branquinho","recheio"],
+    "categoria": "Recheios Doces",
+    "rendimento_total": 700,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 25,
+    "ingredientes": [
+      { "nome": "Leite Condensado", "quantidade": 395, "unidade": "g" },
+      { "nome": "Coco Ralado", "quantidade": 100, "unidade": "g" },
+      { "nome": "Manteiga sem Sal", "quantidade": 20, "unidade": "g" }
+    ],
+    "modo_preparo": "Misture em panela em fogo baixo até desgrudar. Resfrie antes de modelar.",
+    "nichos": ["confeitaria"]
+  },
+  {
+    "id": "prep_doce_leite",
+    "nome_canonico": "Doce de Leite Caseiro",
+    "tokens": ["doce","leite","caseiro"],
+    "categoria": "Recheios Doces",
+    "rendimento_total": 600,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 60,
+    "ingredientes": [
+      { "nome": "Leite Integral", "quantidade": 1000, "unidade": "ml" },
+      { "nome": "Açúcar Refinado", "quantidade": 250, "unidade": "g" }
+    ],
+    "modo_preparo": "Reduzir leite + açúcar em fogo baixo até dar ponto, ~1 hora.",
+    "nichos": ["confeitaria","padaria"]
+  },
+  {
+    "id": "prep_ganache_meio_amargo",
+    "nome_canonico": "Ganache de Chocolate Meio Amargo",
+    "tokens": ["ganache","meio","amargo","chocolate"],
+    "categoria": "Recheios Doces",
+    "rendimento_total": 500,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 15,
+    "ingredientes": [
+      { "nome": "Chocolate Barra Meio Amargo", "quantidade": 250, "unidade": "g" },
+      { "nome": "Creme de Leite UHT", "quantidade": 250, "unidade": "g" }
+    ],
+    "modo_preparo": "Aqueça creme, derrame sobre chocolate picado, mexa até liso. Resfrie 4h antes de usar.",
+    "nichos": ["confeitaria"]
+  },
+  {
+    "id": "prep_chantilly",
+    "nome_canonico": "Chantilly",
+    "tokens": ["chantilly"],
+    "categoria": "Coberturas",
+    "rendimento_total": 800,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 10,
+    "ingredientes": [
+      { "nome": "Creme de Leite Fresco", "quantidade": 500, "unidade": "ml" },
+      { "nome": "Açúcar de Confeiteiro", "quantidade": 80, "unidade": "g" },
+      { "nome": "Essência de Baunilha", "quantidade": 5, "unidade": "ml" }
+    ],
+    "modo_preparo": "Bater creme gelado com açúcar e baunilha em batedeira até ponto firme.",
+    "nichos": ["confeitaria","cafeteria"]
+  },
+  {
+    "id": "prep_massa_pao_doce",
+    "nome_canonico": "Massa de Pão Doce Base",
+    "tokens": ["massa","pao","doce","base"],
+    "categoria": "Massas Doces",
+    "rendimento_total": 1500,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 180,
+    "ingredientes": [
+      { "nome": "Farinha de Trigo Tipo 1", "quantidade": 1000, "unidade": "g" },
+      { "nome": "Açúcar Refinado", "quantidade": 200, "unidade": "g" },
+      { "nome": "Manteiga sem Sal", "quantidade": 100, "unidade": "g" },
+      { "nome": "Ovo de Galinha", "quantidade": 3, "unidade": "un" },
+      { "nome": "Leite Integral", "quantidade": 300, "unidade": "ml" },
+      { "nome": "Fermento Biológico Seco", "quantidade": 10, "unidade": "g" },
+      { "nome": "Sal Refinado", "quantidade": 5, "unidade": "g" }
+    ],
+    "modo_preparo": "Misture, sove 10 min, descanse 1h, modele, descanse 30 min, asse 180°C 25-30 min.",
+    "nichos": ["padaria","confeitaria"]
+  },
+  {
+    "id": "prep_massa_pizza",
+    "nome_canonico": "Massa de Pizza (4 unidades médias)",
+    "tokens": ["massa","pizza","tradicional"],
+    "categoria": "Massas Salgadas",
+    "rendimento_total": 1200,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 90,
+    "ingredientes": [
+      { "nome": "Farinha de Trigo Tipo 1", "quantidade": 700, "unidade": "g" },
+      { "nome": "Água", "quantidade": 400, "unidade": "ml" },
+      { "nome": "Fermento Biológico Seco", "quantidade": 5, "unidade": "g" },
+      { "nome": "Sal Refinado", "quantidade": 15, "unidade": "g" },
+      { "nome": "Azeite de Oliva", "quantidade": 30, "unidade": "ml" }
+    ],
+    "modo_preparo": "Misture, sove 10 min, descanse 1h, divida em 4, abra e cubra. Asse forno alto 8-10 min.",
+    "nichos": ["pizzaria"]
+  },
+  {
+    "id": "prep_molho_tomate_pizza",
+    "nome_canonico": "Molho de Tomate para Pizza",
+    "tokens": ["molho","tomate","pizza"],
+    "categoria": "Molhos",
+    "rendimento_total": 800,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 30,
+    "ingredientes": [
+      { "nome": "Tomate Pelado em Lata", "quantidade": 800, "unidade": "g" },
+      { "nome": "Alho", "quantidade": 10, "unidade": "g" },
+      { "nome": "Azeite de Oliva", "quantidade": 30, "unidade": "ml" },
+      { "nome": "Sal Refinado", "quantidade": 5, "unidade": "g" },
+      { "nome": "Manjericão", "quantidade": 5, "unidade": "g" }
+    ],
+    "modo_preparo": "Doure alho no azeite, junte tomate amassado, cozinhe 20 min, finalize com manjericão.",
+    "nichos": ["pizzaria","restaurante"]
+  },
+  {
+    "id": "prep_massa_bolo_chocolate",
+    "nome_canonico": "Massa de Bolo de Chocolate",
+    "tokens": ["massa","bolo","chocolate"],
+    "categoria": "Massas Doces",
+    "rendimento_total": 1200,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 60,
+    "ingredientes": [
+      { "nome": "Farinha de Trigo Tipo 1", "quantidade": 360, "unidade": "g" },
+      { "nome": "Açúcar Refinado", "quantidade": 360, "unidade": "g" },
+      { "nome": "Chocolate em Pó", "quantidade": 90, "unidade": "g" },
+      { "nome": "Ovo de Galinha", "quantidade": 4, "unidade": "un" },
+      { "nome": "Óleo de Soja", "quantidade": 180, "unidade": "ml" },
+      { "nome": "Leite Integral", "quantidade": 300, "unidade": "ml" },
+      { "nome": "Fermento Químico em Pó", "quantidade": 15, "unidade": "g" }
+    ],
+    "modo_preparo": "Bata tudo, asse 180°C por 35-40 min em forma untada.",
+    "nichos": ["confeitaria","padaria"]
+  },
+  {
+    "id": "prep_massa_bolo_cenoura",
+    "nome_canonico": "Massa de Bolo de Cenoura",
+    "tokens": ["massa","bolo","cenoura"],
+    "categoria": "Massas Doces",
+    "rendimento_total": 1100,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 60,
+    "ingredientes": [
+      { "nome": "Cenoura", "quantidade": 300, "unidade": "g" },
+      { "nome": "Açúcar Refinado", "quantidade": 360, "unidade": "g" },
+      { "nome": "Óleo de Soja", "quantidade": 180, "unidade": "ml" },
+      { "nome": "Ovo de Galinha", "quantidade": 4, "unidade": "un" },
+      { "nome": "Farinha de Trigo Tipo 1", "quantidade": 360, "unidade": "g" },
+      { "nome": "Fermento Químico em Pó", "quantidade": 15, "unidade": "g" }
+    ],
+    "modo_preparo": "Bata cenoura+ovo+óleo, junte secos, asse 180°C 35-40 min.",
+    "nichos": ["confeitaria","padaria"]
+  },
+  {
+    "id": "prep_massa_coxinha",
+    "nome_canonico": "Massa de Coxinha",
+    "tokens": ["massa","coxinha"],
+    "categoria": "Massas Salgadas",
+    "rendimento_total": 1500,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 60,
+    "ingredientes": [
+      { "nome": "Farinha de Trigo Tipo 1", "quantidade": 750, "unidade": "g" },
+      { "nome": "Caldo de Galinha em Pó", "quantidade": 30, "unidade": "g" },
+      { "nome": "Manteiga com Sal", "quantidade": 50, "unidade": "g" },
+      { "nome": "Leite Integral", "quantidade": 750, "unidade": "ml" }
+    ],
+    "modo_preparo": "Ferva leite+caldo+manteiga, jogue farinha, mexa até desgrudar.",
+    "nichos": ["lanchonete","padaria"]
+  },
+  {
+    "id": "prep_arroz_branco",
+    "nome_canonico": "Arroz Branco Soltinho",
+    "tokens": ["arroz","branco","soltinho"],
+    "categoria": "Acompanhamentos",
+    "rendimento_total": 800,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 25,
+    "ingredientes": [
+      { "nome": "Arroz Branco", "quantidade": 300, "unidade": "g" },
+      { "nome": "Alho", "quantidade": 10, "unidade": "g" },
+      { "nome": "Cebola", "quantidade": 50, "unidade": "g" },
+      { "nome": "Óleo de Soja", "quantidade": 15, "unidade": "ml" },
+      { "nome": "Sal Refinado", "quantidade": 5, "unidade": "g" },
+      { "nome": "Água", "quantidade": 600, "unidade": "ml" }
+    ],
+    "modo_preparo": "Refogue cebola+alho, junte arroz, adicione água quente, cozinhe 18 min.",
+    "nichos": ["restaurante"]
+  },
+  {
+    "id": "prep_feijao_carioca",
+    "nome_canonico": "Feijão Carioca Cozido",
+    "tokens": ["feijao","carioca","cozido"],
+    "categoria": "Acompanhamentos",
+    "rendimento_total": 1500,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 60,
+    "ingredientes": [
+      { "nome": "Feijão Carioca", "quantidade": 500, "unidade": "g" },
+      { "nome": "Cebola", "quantidade": 100, "unidade": "g" },
+      { "nome": "Alho", "quantidade": 15, "unidade": "g" },
+      { "nome": "Bacon", "quantidade": 100, "unidade": "g" },
+      { "nome": "Sal Refinado", "quantidade": 10, "unidade": "g" },
+      { "nome": "Óleo de Soja", "quantidade": 30, "unidade": "ml" }
+    ],
+    "modo_preparo": "Pressão 30 min, refogar tempero+bacon, adicionar feijão e caldo.",
+    "nichos": ["restaurante"]
+  },
+  {
+    "id": "prep_hamburguer_bovino",
+    "nome_canonico": "Hambúrguer Bovino Artesanal (10un de 150g)",
+    "tokens": ["hamburguer","bovino","artesanal"],
+    "categoria": "Carnes Preparadas",
+    "rendimento_total": 1500,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 30,
+    "ingredientes": [
+      { "nome": "Carne Moída Bovina", "quantidade": 1500, "unidade": "g" },
+      { "nome": "Sal Refinado", "quantidade": 15, "unidade": "g" },
+      { "nome": "Pimenta-do-Reino Preta", "quantidade": 3, "unidade": "g" }
+    ],
+    "modo_preparo": "Tempere e modele em discos de 150g. Grelhar 3 min cada lado.",
+    "nichos": ["lanchonete","hamburgueria"]
+  },
+  {
+    "id": "prep_molho_branco",
+    "nome_canonico": "Molho Branco (Bechamel)",
+    "tokens": ["molho","branco","bechamel"],
+    "categoria": "Molhos",
+    "rendimento_total": 1000,
+    "rendimento_unidade": "ml",
+    "tempo_minutos": 20,
+    "ingredientes": [
+      { "nome": "Leite Integral", "quantidade": 800, "unidade": "ml" },
+      { "nome": "Manteiga sem Sal", "quantidade": 50, "unidade": "g" },
+      { "nome": "Farinha de Trigo Tipo 1", "quantidade": 50, "unidade": "g" },
+      { "nome": "Noz-Moscada", "quantidade": 1, "unidade": "g" },
+      { "nome": "Sal Refinado", "quantidade": 5, "unidade": "g" }
+    ],
+    "modo_preparo": "Derreta manteiga, junte farinha (roux), adicione leite quente, mexa até engrossar.",
+    "nichos": ["restaurante","cantina"]
+  },
+  {
+    "id": "prep_creme_confeiteiro",
+    "nome_canonico": "Creme de Confeiteiro (Pâtissière)",
+    "tokens": ["creme","confeiteiro","patissiere"],
+    "categoria": "Recheios Doces",
+    "rendimento_total": 700,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 20,
+    "ingredientes": [
+      { "nome": "Leite Integral", "quantidade": 500, "unidade": "ml" },
+      { "nome": "Açúcar Refinado", "quantidade": 100, "unidade": "g" },
+      { "nome": "Gema de Ovo Pasteurizada", "quantidade": 80, "unidade": "ml" },
+      { "nome": "Amido de Milho", "quantidade": 40, "unidade": "g" },
+      { "nome": "Essência de Baunilha", "quantidade": 5, "unidade": "ml" }
+    ],
+    "modo_preparo": "Aqueça leite, misture gemas+açúcar+amido, cozinhe até engrossar.",
+    "nichos": ["confeitaria","padaria"]
+  },
+  {
+    "id": "prep_acai_batido",
+    "nome_canonico": "Açaí Batido (1L)",
+    "tokens": ["acai","batido"],
+    "categoria": "Sobremesas",
+    "rendimento_total": 1000,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 5,
+    "ingredientes": [
+      { "nome": "Açaí Polpa", "quantidade": 1000, "unidade": "g" },
+      { "nome": "Açúcar Refinado", "quantidade": 80, "unidade": "g" },
+      { "nome": "Banana Prata", "quantidade": 100, "unidade": "g" }
+    ],
+    "modo_preparo": "Bata polpa+açúcar+banana até cremoso. Sirva imediatamente.",
+    "nichos": ["sorveteria","lanchonete"]
+  },
+  {
+    "id": "prep_molho_pizza_branco",
+    "nome_canonico": "Molho Branco para Pizza",
+    "tokens": ["molho","branco","pizza"],
+    "categoria": "Molhos",
+    "rendimento_total": 600,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 15,
+    "ingredientes": [
+      { "nome": "Creme de Leite UHT", "quantidade": 400, "unidade": "g" },
+      { "nome": "Requeijão Cremoso", "quantidade": 200, "unidade": "g" },
+      { "nome": "Sal Refinado", "quantidade": 3, "unidade": "g" }
+    ],
+    "modo_preparo": "Misture frio. Espalhe na massa antes do recheio.",
+    "nichos": ["pizzaria"]
+  },
+  {
+    "id": "prep_purê_batata",
+    "nome_canonico": "Purê de Batata",
+    "tokens": ["pure","batata"],
+    "categoria": "Acompanhamentos",
+    "rendimento_total": 1000,
+    "rendimento_unidade": "g",
+    "tempo_minutos": 30,
+    "ingredientes": [
+      { "nome": "Batata Inglesa", "quantidade": 1000, "unidade": "g" },
+      { "nome": "Manteiga sem Sal", "quantidade": 50, "unidade": "g" },
+      { "nome": "Leite Integral", "quantidade": 200, "unidade": "ml" },
+      { "nome": "Sal Refinado", "quantidade": 8, "unidade": "g" },
+      { "nome": "Noz-Moscada", "quantidade": 1, "unidade": "g" }
+    ],
+    "modo_preparo": "Cozinhe batata, escorra, amasse, junte manteiga+leite quente, tempere.",
+    "nichos": ["restaurante","churrascaria"]
+  }
+]

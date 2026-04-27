@@ -26,6 +26,8 @@ import {
 } from '../utils/calculations';
 // Sprint 2 S5 — checagem de dependências antes de DELETE (evita órfãos em preparo_ingredientes / produto_ingredientes).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
+// Sessão 28.8 — sugestão automática via dicionário pré-cadastrado (zero IA, zero custo)
+import { matchInsumo } from '../data/dicionario';
 
 const CATEGORY_COLORS = [
   colors.primary, colors.accent, colors.coral, colors.purple,
@@ -98,6 +100,9 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   const [novaCatIcone, setNovaCatIcone] = useState('tag');
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [errors, setErrors] = useState({});
+  // Sessão 28.8 — sugestão do dicionário pré-cadastrado (zero IA)
+  const [sugestao, setSugestao] = useState(null);
+  const [sugestaoDispensada, setSugestaoDispensada] = useState(false);
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
   const [historicoPrecos, setHistoricoPrecos] = useState([]);
   const pendingNavAction = useRef(null);
@@ -419,11 +424,74 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         <InputField
           label="Nome do insumo"
           value={form.nome}
-          onChangeText={(v) => { setForm(p => ({ ...p, nome: v })); setErrors(p => ({ ...p, nome: undefined })); }}
+          onChangeText={(v) => {
+            setForm(p => ({ ...p, nome: v }));
+            setErrors(p => ({ ...p, nome: undefined }));
+            // Sessão 28.8 — sugere via dicionário se nome ≥4 chars e user
+            // ainda não preencheu unidade/categoria manualmente.
+            if (sugestaoDispensada) return;
+            if ((v || '').trim().length < 4) { setSugestao(null); return; }
+            // Não sugere se já tem categoria/unidade customizada (evita pisar dados do user)
+            const semDadosManuais = !form.categoria_id && (form.unidade_medida === 'g' || !form.unidade_medida);
+            if (!semDadosManuais) return;
+            try {
+              const m = matchInsumo(v);
+              setSugestao(m);
+            } catch (_) { /* defensive */ }
+          }}
           placeholder="Ex: Farinha de trigo"
           error={errors.nome}
           style={styles.fieldCompact}
         />
+
+        {/* Sessão 28.8 — Banner de sugestão do dicionário */}
+        {sugestao && !sugestaoDispensada && (
+          <View style={styles.sugestaoBanner} accessibilityLiveRegion="polite">
+            <View style={styles.sugestaoHeader}>
+              <Feather name="zap" size={14} color={colors.primary} />
+              <Text style={styles.sugestaoTitulo}>Sugestão automática</Text>
+            </View>
+            <Text style={styles.sugestaoTexto}>
+              <Text style={{ fontFamily: fontFamily.semiBold, color: colors.text }}>{sugestao.nome_canonico}</Text>
+              {' · '}
+              {sugestao.categoria}
+              {' · '}
+              {sugestao.unidade_padrao}
+              {sugestao.qtd_tipica_compra ? `, ${sugestao.qtd_tipica_compra}${sugestao.unidade_padrao} típico` : ''}
+            </Text>
+            <View style={styles.sugestaoBtns}>
+              <TouchableOpacity
+                style={[styles.sugestaoBtn, styles.sugestaoBtnPrimario]}
+                onPress={() => {
+                  // Aplica nome canônico, unidade e qtd típica.
+                  // Categoria não é aplicada automaticamente (id local não bate com nome do dicionário).
+                  setForm(p => ({
+                    ...p,
+                    nome: sugestao.nome_canonico,
+                    unidade_medida: sugestao.unidade_padrao || p.unidade_medida,
+                    quantidade_bruta: sugestao.qtd_tipica_compra ? String(sugestao.qtd_tipica_compra) : p.quantidade_bruta,
+                    quantidade_liquida: sugestao.qtd_tipica_compra ? String(sugestao.qtd_tipica_compra) : p.quantidade_liquida,
+                  }));
+                  setSugestao(null);
+                  setSugestaoDispensada(true);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Usar sugestão"
+              >
+                <Feather name="check" size={12} color="#fff" />
+                <Text style={styles.sugestaoBtnPrimarioText}>Usar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.sugestaoBtn}
+                onPress={() => { setSugestao(null); setSugestaoDispensada(true); }}
+                accessibilityRole="button"
+                accessibilityLabel="Dispensar sugestão"
+              >
+                <Text style={styles.sugestaoBtnText}>Dispensar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* Marca + Categoria */}
         <View style={rowStyle}>
@@ -837,6 +905,64 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: spacing.sm },
   catDot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
   fieldCompact: { marginBottom: spacing.sm },
+  // Sessão 28.8 — banner de sugestão do dicionário (zero IA)
+  sugestaoBanner: {
+    backgroundColor: colors.primary + '0D',
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
+    borderRadius: borderRadius.sm,
+    padding: spacing.sm + 2,
+    marginBottom: spacing.sm,
+    marginTop: -spacing.xs,
+  },
+  sugestaoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  sugestaoTitulo: {
+    fontSize: 11,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '700',
+    color: colors.primary,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
+  sugestaoTexto: {
+    fontSize: 12,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+    lineHeight: 16,
+    marginBottom: spacing.sm,
+  },
+  sugestaoBtns: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  sugestaoBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: borderRadius.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 32,
+  },
+  sugestaoBtnPrimario: {
+    backgroundColor: colors.primary,
+  },
+  sugestaoBtnPrimarioText: {
+    fontSize: 12,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  sugestaoBtnText: {
+    fontSize: 12,
+    fontFamily: fontFamily.medium,
+    color: colors.textSecondary,
+  },
 
   // Resultado calculado (compacto)
   resultBar: {
