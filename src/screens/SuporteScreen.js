@@ -102,11 +102,36 @@ export default function SuporteScreen({ navigation }) {
   const [expandedFaq, setExpandedFaq] = useState(null);
   const [searchText, setSearchText] = usePersistedState('suporte.busca', '');
   const [linkError, setLinkError] = useState(null);
+  // Sessão 28.7 — Caixa de sugestões: texto livre que abre mailto
+  // pré-preenchido com a sugestão no corpo. Sem backend; usa o cliente
+  // de email do dispositivo.
+  const [suggestion, setSuggestion] = useState('');
+  const [suggestionSent, setSuggestionSent] = useState(false);
 
   const handleLink = (url) => openExternal(url, (msg) => {
     setLinkError(msg);
     setTimeout(() => setLinkError(null), 4000);
   });
+
+  const enviarSugestao = () => {
+    const text = suggestion.trim();
+    if (!text) {
+      setLinkError('Escreva sua sugestão antes de enviar.');
+      setTimeout(() => setLinkError(null), 3000);
+      return;
+    }
+    const subject = encodeURIComponent('Sugestão do app Precificaí');
+    const body = encodeURIComponent(text + '\n\n---\nEnviado pelo app Precificaí');
+    const url = `mailto:suporte@precificaiapp.com?subject=${subject}&body=${body}`;
+    openExternal(url, (msg) => {
+      setLinkError(msg);
+      setTimeout(() => setLinkError(null), 4000);
+    });
+    // Mostra feedback visual e limpa o campo após abrir o cliente de email.
+    setSuggestionSent(true);
+    setSuggestion('');
+    setTimeout(() => setSuggestionSent(false), 4000);
+  };
 
   const toggleFaq = (index) => {
     setExpandedFaq(expandedFaq === index ? null : index);
@@ -264,6 +289,53 @@ export default function SuporteScreen({ navigation }) {
           </View>
           <Feather name="external-link" size={16} color={colors.textSecondary} />
         </TouchableOpacity>
+
+        <View style={styles.faqDivider} />
+
+        {/* Sessão 28.7 — Caixa de sugestões: texto livre → mailto pré-preenchido */}
+        <View style={styles.suggestionBox}>
+          <View style={styles.suggestionHeader}>
+            <Feather name="message-square" size={16} color={colors.primary} />
+            <Text style={styles.suggestionTitle}>Tem uma sugestão?</Text>
+          </View>
+          <Text style={styles.suggestionDesc}>
+            Escreva abaixo e enviaremos direto para nossa equipe.
+          </Text>
+          <TextInput
+            style={[styles.suggestionInput, Platform.OS === 'web' && { outlineStyle: 'none' }]}
+            placeholder="O que podemos melhorar?"
+            placeholderTextColor={colors.disabled}
+            value={suggestion}
+            onChangeText={setSuggestion}
+            multiline
+            numberOfLines={4}
+            textAlignVertical="top"
+            maxLength={1000}
+            accessibilityLabel="Caixa de sugestão"
+          />
+          <View style={styles.suggestionFooter}>
+            <Text style={styles.suggestionCounter}>{suggestion.length}/1000</Text>
+            <TouchableOpacity
+              style={[styles.suggestionBtn, !suggestion.trim() && styles.suggestionBtnDisabled]}
+              activeOpacity={0.7}
+              onPress={enviarSugestao}
+              disabled={!suggestion.trim()}
+              accessibilityRole="button"
+              accessibilityLabel="Enviar sugestão por email"
+            >
+              <Feather name="send" size={14} color="#fff" />
+              <Text style={styles.suggestionBtnText}>Enviar</Text>
+            </TouchableOpacity>
+          </View>
+          {suggestionSent && (
+            <View style={styles.suggestionSuccess} accessibilityLiveRegion="polite">
+              <Feather name="check-circle" size={14} color={colors.success || colors.primary} />
+              <Text style={styles.suggestionSuccessText}>
+                Cliente de email aberto. Confirme o envio por lá!
+              </Text>
+            </View>
+          )}
+        </View>
 
         <View style={styles.faqDivider} />
 
@@ -470,6 +542,88 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.medium,
     color: colors.success || colors.primary,
     marginLeft: spacing.sm,
+  },
+  // Sessão 28.7 — caixa de sugestões
+  suggestionBox: {
+    paddingVertical: spacing.md,
+  },
+  suggestionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  suggestionTitle: {
+    fontSize: fonts.regular,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  suggestionDesc: {
+    fontSize: fonts.small,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+    lineHeight: 18,
+  },
+  suggestionInput: {
+    backgroundColor: colors.inputBg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: fonts.small,
+    fontFamily: fontFamily.regular,
+    color: colors.text,
+    minHeight: 80,
+    maxHeight: 200,
+  },
+  suggestionFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  suggestionCounter: {
+    fontSize: 11,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+  },
+  suggestionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: borderRadius.sm,
+    minHeight: 40,
+  },
+  suggestionBtnDisabled: {
+    opacity: 0.5,
+  },
+  suggestionBtnText: {
+    color: '#fff',
+    fontSize: fonts.small,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+  },
+  suggestionSuccess: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: (colors.success || colors.primary) + '12',
+    borderRadius: borderRadius.sm,
+  },
+  suggestionSuccessText: {
+    fontSize: 12,
+    fontFamily: fontFamily.medium,
+    color: colors.success || colors.primary,
+    flex: 1,
   },
   contactCard: {
     backgroundColor: colors.surface,
