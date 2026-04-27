@@ -131,7 +131,9 @@ export default function MateriasPrimasScreen({ navigation }) {
   // Ordenação (P1-22)
   const [sortBy, setSortBy] = usePersistedState('insumos.sortBy', 'nome_asc');
   const [viewMode, setViewMode] = usePersistedState('insumos.viewMode', 'list');
-  const isGrid = isDesktop || viewMode === 'grid';
+  // Bug fix: no mobile o grid renderiza apenas chips com preço (sem nome), o que não faz sentido.
+  // Força layout de lista no mobile; toggle só aparece em desktop (onde grid é o default).
+  const isGrid = isDesktop;
   // Densidade global (P3-G)
   const { rowOverride, nameOverride, avatarSize } = useListDensity();
   // Sessão 26 — Estoque absorvido em Insumos atrás do flag (default OFF)
@@ -536,7 +538,7 @@ export default function MateriasPrimasScreen({ navigation }) {
         </ScrollView>
         <View style={styles.searchSortRow}>
           <View style={{ flex: 1 }}>
-            <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar por nome ou marca..." />
+            <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar..." />
           </View>
           <View style={styles.sortMenuWrap}>
             <SortMenu
@@ -553,11 +555,7 @@ export default function MateriasPrimasScreen({ navigation }) {
               ]}
             />
           </View>
-          {!isDesktop && (
-            <View style={{ marginLeft: 6 }}>
-              <ViewModeToggle value={viewMode} onChange={setViewMode} />
-            </View>
-          )}
+          {/* Bug fix: toggle de grid escondido no mobile — grid mobile mostrava só chips de preço. */}
         </View>
       </View>
 

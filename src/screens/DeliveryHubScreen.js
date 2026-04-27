@@ -520,7 +520,7 @@ export default function DeliveryHubScreen({ navigation }) {
               <>
                 {/* Select product */}
                 <Text style={styles.simLabel}>Selecione o produto</Text>
-                <SearchBar value={buscaProd} onChangeText={(text) => { setBuscaProd(text); if (!text.trim()) { /* keep selected */ } }} placeholder="Buscar produto ou combo..." />
+                <SearchBar value={buscaProd} onChangeText={(text) => { setBuscaProd(text); if (!text.trim()) { /* keep selected */ } }} placeholder="Buscar..." />
                 {selectedProd && !buscaProd.trim() ? (
                   <TouchableOpacity
                     style={[styles.chip, styles.chipActive, { alignSelf: 'flex-start', marginBottom: spacing.sm }]}

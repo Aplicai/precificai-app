@@ -360,7 +360,7 @@ export default function ListaComprasScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: isMobile ? 200 : 100 }]}>
         {/* Audit P0: banner de erro de carregamento (era silent) */}
         {loadError ? (
           <TouchableOpacity
@@ -586,7 +586,7 @@ export default function ListaComprasScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, maxWidth: 1200, width: '100%', paddingBottom: 180, alignSelf: 'center' },
+  content: { padding: spacing.md, maxWidth: 1200, width: '100%', paddingBottom: 220, alignSelf: 'center' },
   stickyFooter: {
     position: 'absolute', left: 0, right: 0,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,

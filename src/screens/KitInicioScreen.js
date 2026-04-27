@@ -381,7 +381,7 @@ export default function KitInicioScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: spacing.md, maxWidth: 960, alignSelf: 'center', width: '100%', paddingBottom: 180 },
+  content: { padding: spacing.md, maxWidth: 960, alignSelf: 'center', width: '100%', paddingBottom: 220 },
   stickyFooter: {
     position: 'absolute', left: 0, right: 0,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,

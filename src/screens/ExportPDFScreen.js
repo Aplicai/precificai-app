@@ -494,7 +494,7 @@ export default function ExportPDFScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: isMobile ? 200 : 100 }]}>
       {/* Audit P0: banners de erro */}
       {loadError ? (
         <TouchableOpacity
@@ -1448,7 +1448,7 @@ const styles = StyleSheet.create({
   errorBannerText: { color: '#dc2626', fontSize: fonts.small, flex: 1, fontFamily: fontFamily.regular },
   content: {
     padding: spacing.md,
-    paddingBottom: 180,
+    paddingBottom: 220,
     maxWidth: 1200,
     width: '100%',
     alignSelf: 'center',

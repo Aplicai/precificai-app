@@ -652,7 +652,7 @@ export default function DeliveryCombosScreen() {
     <View style={styles.container}>
       {/* Search header */}
       <View style={[styles.headerBar, isDesktop && { maxWidth: 1200, alignSelf: 'center', width: '100%' }]}>
-        <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar combo..." />
+        <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar..." />
       </View>
 
       {/* Audit P0: error banners */}

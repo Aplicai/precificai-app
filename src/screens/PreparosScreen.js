@@ -79,7 +79,8 @@ export default function PreparosScreen({ navigation }) {
   const undoDelete = useUndoableDelete();
   const [sortBy, setSortBy] = usePersistedState('preparos.sortBy', 'nome_asc');
   const [viewMode, setViewMode] = usePersistedState('preparos.viewMode', 'list');
-  const isGrid = isDesktop || viewMode === 'grid';
+  // Bug fix: no mobile o grid renderiza apenas chips com preço (sem nome). Força lista no mobile.
+  const isGrid = isDesktop;
   const { rowOverride, nameOverride, avatarSize } = useListDensity();
   const bulk = useBulkSelection();
   // Mapa de cores por categoria ID
@@ -575,7 +576,7 @@ export default function PreparosScreen({ navigation }) {
         </ScrollView>
         <View style={styles.searchSortRow}>
           <View style={{ flex: 1 }}>
-            <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar preparo..." />
+            <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar..." />
           </View>
           <View style={styles.sortMenuWrap}>
             <SortMenu
@@ -590,11 +591,7 @@ export default function PreparosScreen({ navigation }) {
               ]}
             />
           </View>
-          {!isDesktop && (
-            <View style={{ marginLeft: 6 }}>
-              <ViewModeToggle value={viewMode} onChange={setViewMode} />
-            </View>
-          )}
+          {/* Bug fix: toggle de grid escondido no mobile — grid mobile mostrava só chips de preço. */}
         </View>
       </View>
 

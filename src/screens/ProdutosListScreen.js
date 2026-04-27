@@ -81,7 +81,8 @@ export default function ProdutosListScreen({ navigation }) {
   const undoDelete = useUndoableDelete();
   const [sortBy, setSortBy] = usePersistedState('produtos.sortBy', 'nome_asc');
   const [viewMode, setViewMode] = usePersistedState('produtos.viewMode', 'list');
-  const isGrid = isDesktop || viewMode === 'grid';
+  // Bug fix: no mobile o grid renderiza apenas chips com preço (sem nome). Força lista no mobile.
+  const isGrid = isDesktop;
   const { rowOverride, nameOverride, avatarSize } = useListDensity();
   const bulk = useBulkSelection();
   const [totalProdutos, setTotalProdutos] = useState(0);
@@ -694,7 +695,7 @@ export default function ProdutosListScreen({ navigation }) {
         </ScrollView>
         <View style={styles.searchSortRow}>
           <View style={{ flex: 1 }}>
-            <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar produto..." />
+            <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar..." />
           </View>
           <View style={styles.sortMenuWrap}>
             <SortMenu
@@ -714,11 +715,7 @@ export default function ProdutosListScreen({ navigation }) {
               ]}
             />
           </View>
-          {!isDesktop && (
-            <View style={{ marginLeft: 6 }}>
-              <ViewModeToggle value={viewMode} onChange={setViewMode} />
-            </View>
-          )}
+          {/* Bug fix: toggle de grid escondido no mobile — grid mobile mostrava só chips de preço. */}
         </View>
         {/* Legenda do semáforo de lucro */}
         {(() => {

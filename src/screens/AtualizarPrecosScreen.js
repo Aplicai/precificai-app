@@ -309,7 +309,7 @@ export default function AtualizarPrecosScreen() {
 
           {/* Search */}
           <View style={isDesktop ? styles.searchWrapDesktop : styles.searchWrapMobile}>
-            <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar por nome..." />
+            <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar..." />
           </View>
         </View>
       </View>

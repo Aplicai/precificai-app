@@ -218,7 +218,7 @@ export default function FornecedoresScreen({ navigation }) {
             );
           })}
         </ScrollView>
-        <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar insumo ou marca..." />
+        <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar..." />
       </View>
 
       {/* Audit P0: banner de erro de carregamento (era silent) */}
