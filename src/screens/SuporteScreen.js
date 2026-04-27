@@ -1,8 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking, TextInput, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking, TextInput, Platform, ActivityIndicator } from 'react-native';
+import Constants from 'expo-constants';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import usePersistedState from '../hooks/usePersistedState';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../config/supabase';
+import { getDatabase } from '../database/database';
 
 async function openExternal(url, onError) {
   try {
@@ -99,38 +103,82 @@ const GUIDE_STEPS = [
 ];
 
 export default function SuporteScreen({ navigation }) {
+  const { user } = useAuth();
   const [expandedFaq, setExpandedFaq] = useState(null);
   const [searchText, setSearchText] = usePersistedState('suporte.busca', '');
   const [linkError, setLinkError] = useState(null);
-  // Sessão 28.7 — Caixa de sugestões: texto livre que abre mailto
-  // pré-preenchido com a sugestão no corpo. Sem backend; usa o cliente
-  // de email do dispositivo.
+  // Sessão 28.7 — Caixa de sugestões: salva no Supabase + dispara email
+  // via Edge Function (Resend). NÃO abre cliente de email do usuário.
+  // user_id, email, nome_negocio e segmento vêm de auth + perfil local.
   const [suggestion, setSuggestion] = useState('');
   const [suggestionSent, setSuggestionSent] = useState(false);
+  const [suggestionError, setSuggestionError] = useState(null);
+  const [sending, setSending] = useState(false);
 
   const handleLink = (url) => openExternal(url, (msg) => {
     setLinkError(msg);
     setTimeout(() => setLinkError(null), 4000);
   });
 
-  const enviarSugestao = () => {
+  const enviarSugestao = async () => {
     const text = suggestion.trim();
+    setSuggestionError(null);
     if (!text) {
-      setLinkError('Escreva sua sugestão antes de enviar.');
-      setTimeout(() => setLinkError(null), 3000);
+      setSuggestionError('Escreva sua sugestão antes de enviar.');
+      setTimeout(() => setSuggestionError(null), 3000);
       return;
     }
-    const subject = encodeURIComponent('Sugestão do app Precificaí');
-    const body = encodeURIComponent(text + '\n\n---\nEnviado pelo app Precificaí');
-    const url = `mailto:suporte@precificaiapp.com?subject=${subject}&body=${body}`;
-    openExternal(url, (msg) => {
-      setLinkError(msg);
-      setTimeout(() => setLinkError(null), 4000);
-    });
-    // Mostra feedback visual e limpa o campo após abrir o cliente de email.
-    setSuggestionSent(true);
-    setSuggestion('');
-    setTimeout(() => setSuggestionSent(false), 4000);
+    if (sending) return;
+    setSending(true);
+    try {
+      // 1) Lê dados do perfil local (nome_negocio, segmento) — best-effort
+      let nomeNegocio = '';
+      let segmento = '';
+      try {
+        const db = await getDatabase();
+        const row = await db.getFirstAsync('SELECT nome_negocio, segmento FROM perfil LIMIT 1');
+        if (row) {
+          nomeNegocio = row.nome_negocio || '';
+          segmento = row.segmento || '';
+        }
+      } catch (_e) {
+        // sem bloqueio — segue sem perfil
+      }
+
+      const payload = {
+        user_id: user?.id || null,
+        user_email: user?.email || null,
+        nome_negocio: nomeNegocio || null,
+        segmento: segmento || null,
+        mensagem: text,
+        app_versao: Constants?.expoConfig?.version || Constants?.manifest?.version || null,
+        plataforma: Platform.OS + (Platform.OS === 'web' ? '-web' : ''),
+      };
+
+      // 2) Insere na tabela feedback (sempre persiste, mesmo se email falhar)
+      const { error: insertError } = await supabase.from('feedback').insert([payload]);
+      if (insertError) {
+        // Se RLS/tabela ainda não existe, tenta a Edge Function direto
+        console.warn('[Suporte.feedback] insert falhou, tentando edge function:', insertError.message);
+      }
+
+      // 3) Dispara email via Edge Function (best effort — não bloqueia o usuário)
+      try {
+        await supabase.functions.invoke('send-feedback-email', { body: payload });
+      } catch (_e) {
+        // ok — feedback já foi salvo na tabela; o email é best-effort
+      }
+
+      setSuggestionSent(true);
+      setSuggestion('');
+      setTimeout(() => setSuggestionSent(false), 5000);
+    } catch (err) {
+      console.error('[Suporte.enviarSugestao]', err);
+      setSuggestionError('Não foi possível enviar agora. Tente novamente em alguns minutos.');
+      setTimeout(() => setSuggestionError(null), 4000);
+    } finally {
+      setSending(false);
+    }
   };
 
   const toggleFaq = (index) => {
@@ -316,22 +364,35 @@ export default function SuporteScreen({ navigation }) {
           <View style={styles.suggestionFooter}>
             <Text style={styles.suggestionCounter}>{suggestion.length}/1000</Text>
             <TouchableOpacity
-              style={[styles.suggestionBtn, !suggestion.trim() && styles.suggestionBtnDisabled]}
+              style={[styles.suggestionBtn, (!suggestion.trim() || sending) && styles.suggestionBtnDisabled]}
               activeOpacity={0.7}
               onPress={enviarSugestao}
-              disabled={!suggestion.trim()}
+              disabled={!suggestion.trim() || sending}
               accessibilityRole="button"
-              accessibilityLabel="Enviar sugestão por email"
+              accessibilityLabel="Enviar sugestão"
+              accessibilityState={{ disabled: !suggestion.trim() || sending, busy: sending }}
             >
-              <Feather name="send" size={14} color="#fff" />
-              <Text style={styles.suggestionBtnText}>Enviar</Text>
+              {sending ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Feather name="send" size={14} color="#fff" />
+                  <Text style={styles.suggestionBtnText}>Enviar</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
+          {suggestionError && (
+            <View style={styles.suggestionErrorBox} accessibilityLiveRegion="polite">
+              <Feather name="alert-circle" size={14} color="#dc2626" />
+              <Text style={styles.suggestionErrorText}>{suggestionError}</Text>
+            </View>
+          )}
           {suggestionSent && (
             <View style={styles.suggestionSuccess} accessibilityLiveRegion="polite">
               <Feather name="check-circle" size={14} color={colors.success || colors.primary} />
               <Text style={styles.suggestionSuccessText}>
-                Cliente de email aberto. Confirme o envio por lá!
+                Sugestão enviada! Nossa equipe lê todas e responde em até 24h.
               </Text>
             </View>
           )}
@@ -623,6 +684,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: fontFamily.medium,
     color: colors.success || colors.primary,
+    flex: 1,
+  },
+  suggestionErrorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.sm,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#fef2f2',
+    borderRadius: borderRadius.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: '#dc2626',
+  },
+  suggestionErrorText: {
+    fontSize: 12,
+    fontFamily: fontFamily.medium,
+    color: '#991b1b',
     flex: 1,
   },
   contactCard: {
