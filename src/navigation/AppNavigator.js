@@ -17,8 +17,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
-// Sessão 28.8 — Landing retomada como primeira tela do fluxo não-autenticado
-import LandingScreen from '../screens/LandingScreen';
+// Sessão 28.8 — LandingScreen NÃO é importada porque a landing fica em
+// projeto Vercel separado (`precificai-site` em precificaiapp.com).
+// Este app vive em app.precificaiapp.com e abre direto em Login/Register.
 import HomeScreen from '../screens/HomeScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import ConfiguracaoScreen from '../screens/ConfiguracaoScreen';
@@ -403,11 +404,11 @@ const AuthStack = createNativeStackNavigator();
 
 function AuthNavigator() {
   return (
-    <AuthStack.Navigator initialRouteName="Landing" screenOptions={{ headerShown: false }}>
-      {/* Sessão 28.8 — Landing volta como primeira tela */}
-      <AuthStack.Screen name="Landing" component={LandingScreen} />
-      <AuthStack.Screen name="Register" component={RegisterScreen} />
+    <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+      {/* Sessão 28.8 — Landing institucional vive em projeto Vercel separado
+          (`precificai-site` em precificaiapp.com). O app abre direto em Login. */}
       <AuthStack.Screen name="Login" component={LoginScreen} />
+      <AuthStack.Screen name="Register" component={RegisterScreen} />
       <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
     </AuthStack.Navigator>
   );

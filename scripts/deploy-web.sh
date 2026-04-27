@@ -63,22 +63,22 @@ fi
 DEPLOY_HOST=$(echo "$DEPLOY_URL" | sed 's|https://||')
 echo "    deploy: $DEPLOY_URL"
 
-echo "==> [5/6] Alias pros domínios de prod"
-npx vercel alias set "$DEPLOY_HOST" precificaiapp.com
+echo "==> [5/6] Alias pro domínio do app (apex precificaiapp.com fica c/ projeto precificai-site)"
+# IMPORTANTE Sessão 28.8 — apex precificaiapp.com pertence ao projeto Vercel
+# 'precificai-site' (landing institucional). Este script NÃO pode aliasar
+# o apex senão "come" a landing. Só aliasa app.precificaiapp.com.
 npx vercel alias set "$DEPLOY_HOST" app.precificaiapp.com
 
 echo "==> [6/6] Smoke test (curl com browser UA)"
 UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 sleep 5  # leve para CDN propagar
-PROD_BUNDLE=$(curl -s -A "$UA" "https://precificaiapp.com/?v=$(date +%s%N)" | grep -oE 'index-[a-f0-9]+\.js' | head -1)
 APP_BUNDLE=$(curl -s -A "$UA" "https://app.precificaiapp.com/?v=$(date +%s%N)" | grep -oE 'index-[a-f0-9]+\.js' | head -1)
-echo "    precificaiapp.com:     $PROD_BUNDLE"
 echo "    app.precificaiapp.com: $APP_BUNDLE"
 echo "    esperado:              $NEW_BUNDLE"
 
-if [ "$PROD_BUNDLE" = "$NEW_BUNDLE" ] && [ "$APP_BUNDLE" = "$NEW_BUNDLE" ]; then
+if [ "$APP_BUNDLE" = "$NEW_BUNDLE" ]; then
   echo ""
-  echo "✅ Deploy completo. Bundle $NEW_BUNDLE servido em ambos os domínios."
+  echo "✅ Deploy completo. Bundle $NEW_BUNDLE servido em app.precificaiapp.com."
 else
   echo ""
   echo "⚠️  Deploy feito MAS smoke test não bate (CDN talvez ainda propagando)."
