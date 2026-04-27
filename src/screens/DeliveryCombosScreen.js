@@ -814,17 +814,24 @@ export default function DeliveryCombosScreen() {
         confirmLabel="Remover"
       />
 
-      {/* Create / Edit modal */}
-      <Modal visible={showComboModal && isFocused} transparent animationType="fade">
+      {/* Create / Edit modal — Sessão 28.8: full-sheet mobile, 2 colunas desktop */}
+      <Modal
+        visible={showComboModal && isFocused}
+        transparent
+        animationType={isDesktop ? 'fade' : 'slide'}
+      >
         <TouchableOpacity
-          style={styles.modalOverlay}
+          style={[styles.modalOverlay, !isDesktop && styles.modalOverlayMobile]}
           activeOpacity={1}
           onPress={handleCloseModal}
         >
-          <TouchableOpacity activeOpacity={1} style={styles.modalContent} onPress={() => {}}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Sessão 28.8 — Modal header com ícone, título e X claro */}
-              <View style={styles.modalHeader}>
+          <TouchableOpacity
+            activeOpacity={1}
+            style={[styles.modalContent, isDesktop ? styles.modalContentDesktop : styles.modalContentMobile]}
+            onPress={() => {}}
+          >
+            {/* Sessão 28.8 — Modal header com ícone, título e X claro */}
+            <View style={styles.modalHeader}>
                 <View style={styles.modalHeaderIcon}>
                   <Feather name="layers" size={18} color={colors.primary} />
                 </View>
@@ -845,6 +852,16 @@ export default function DeliveryCombosScreen() {
                 </TouchableOpacity>
               </View>
 
+              {/* Sessão 28.8 — body com 2 colunas no desktop, scroll vertical mobile */}
+              <ScrollView
+                style={styles.modalBody}
+                contentContainerStyle={[
+                  { paddingBottom: spacing.md },
+                  isDesktop && styles.modalBodyTwoCol,
+                ]}
+                showsVerticalScrollIndicator={false}
+              >
+              <View style={isDesktop ? styles.modalColLeft : null}>
               <InputField
                 label="Nome do combo"
                 value={novoCombo.nome}
@@ -974,6 +991,9 @@ export default function DeliveryCombosScreen() {
                 );
               })}
 
+              </View>{/* /modalColLeft */}
+
+              <View style={isDesktop ? styles.modalCol : null}>
               <Text style={styles.modalSubtitle}>Adicionar itens</Text>
 
               <SearchBar
@@ -1088,6 +1108,9 @@ export default function DeliveryCombosScreen() {
                 );
               })()}
 
+              </View>{/* /modalCol direita */}
+              </ScrollView>
+
               {/* Sessão 28.8 — Footer sticky-like com hierarquia clara */}
               {isEditing ? (
                 <View style={styles.editModalFooter}>
@@ -1152,7 +1175,6 @@ export default function DeliveryCombosScreen() {
                   </TouchableOpacity>
                 </View>
               )}
-            </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -1584,20 +1606,50 @@ const styles = StyleSheet.create({
     padding: 8,
   },
 
-  // Sessão 28.8 — Modal refinado: full-screen mobile, centrado desktop
+  // Sessão 28.8 — Modal refinado: full-sheet mobile, centrado desktop
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center', alignItems: 'center',
   },
+  modalOverlayMobile: {
+    justifyContent: 'flex-end', // sheet vindo de baixo
+    padding: 0,
+  },
   modalContent: {
     backgroundColor: '#fff',
-    width: '100%',
-    maxHeight: '90%',
-    maxWidth: 720,
     borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    paddingBottom: 0,
     overflow: 'hidden',
+  },
+  modalContentDesktop: {
+    width: '90%',
+    maxWidth: 1100,
+    maxHeight: '90%',
+    paddingHorizontal: spacing.md,
+  },
+  modalContentMobile: {
+    width: '100%',
+    maxHeight: '95%',
+    borderTopLeftRadius: borderRadius.lg,
+    borderTopRightRadius: borderRadius.lg,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    paddingHorizontal: spacing.md,
+  },
+  // Sessão 28.8 — body com 2 colunas desktop / vertical mobile
+  modalBody: {
+    flex: 1,
+  },
+  modalBodyTwoCol: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  modalCol: {
+    flex: 1,
+  },
+  modalColLeft: {
+    borderRightWidth: 1,
+    borderRightColor: colors.border,
+    paddingRight: spacing.md,
   },
   modalHeader: {
     flexDirection: 'row',
