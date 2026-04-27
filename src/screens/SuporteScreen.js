@@ -155,27 +155,57 @@ export default function SuporteScreen({ navigation }) {
         plataforma: Platform.OS + (Platform.OS === 'web' ? '-web' : ''),
       };
 
-      // 2) Insere na tabela feedback (sempre persiste, mesmo se email falhar)
-      const { error: insertError } = await supabase.from('feedback').insert([payload]);
-      if (insertError) {
-        // Se RLS/tabela ainda não existe, tenta a Edge Function direto
-        console.warn('[Suporte.feedback] insert falhou, tentando edge function:', insertError.message);
-      }
-
-      // 3) Dispara email via Edge Function (best effort — não bloqueia o usuário)
+      // 2) Insere na tabela feedback (best-effort — se RLS bloquear, segue
+      //    pra Edge Function que ainda envia o email)
+      let insertOk = false;
+      let insertErrMsg = null;
       try {
-        await supabase.functions.invoke('send-feedback-email', { body: payload });
-      } catch (_e) {
-        // ok — feedback já foi salvo na tabela; o email é best-effort
+        const { error: insertError } = await supabase.from('feedback').insert([payload]);
+        if (insertError) {
+          insertErrMsg = insertError.message || String(insertError);
+          console.warn('[Suporte.feedback] insert falhou:', insertError);
+        } else {
+          insertOk = true;
+        }
+      } catch (e) {
+        insertErrMsg = (e && e.message) || String(e);
+        console.warn('[Suporte.feedback] insert exception:', e);
       }
 
-      setSuggestionSent(true);
-      setSuggestion('');
-      setTimeout(() => setSuggestionSent(false), 5000);
+      // 3) Dispara email via Edge Function (sempre tenta, mesmo se INSERT falhar)
+      let emailOk = false;
+      let emailErrMsg = null;
+      try {
+        const { data, error: fnError } = await supabase.functions.invoke('send-feedback-email', { body: payload });
+        if (fnError) {
+          emailErrMsg = fnError.message || String(fnError);
+          console.warn('[Suporte.feedback] edge function error:', fnError);
+        } else {
+          emailOk = !!(data?.ok);
+        }
+      } catch (e) {
+        emailErrMsg = (e && e.message) || String(e);
+        console.warn('[Suporte.feedback] edge function exception:', e);
+      }
+
+      // Sucesso parcial: se ALGUM dos dois deu certo, considera enviado.
+      if (insertOk || emailOk) {
+        setSuggestionSent(true);
+        setSuggestion('');
+        setTimeout(() => setSuggestionSent(false), 5000);
+      } else {
+        // AMBOS falharam → mostra erro detalhado pra debug
+        const partes = [];
+        if (insertErrMsg) partes.push(`Banco: ${insertErrMsg}`);
+        if (emailErrMsg) partes.push(`Email: ${emailErrMsg}`);
+        const detalhe = partes.length ? ` (${partes.join(' | ')})` : '';
+        setSuggestionError(`Não foi possível enviar agora.${detalhe}`);
+        setTimeout(() => setSuggestionError(null), 8000);
+      }
     } catch (err) {
       console.error('[Suporte.enviarSugestao]', err);
-      setSuggestionError('Não foi possível enviar agora. Tente novamente em alguns minutos.');
-      setTimeout(() => setSuggestionError(null), 4000);
+      setSuggestionError(`Erro inesperado: ${(err && err.message) || String(err)}`);
+      setTimeout(() => setSuggestionError(null), 8000);
     } finally {
       setSending(false);
     }
