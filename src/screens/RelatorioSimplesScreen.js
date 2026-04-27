@@ -267,6 +267,23 @@ export default function RelatorioSimplesScreen({ navigation }) {
           margem: p.margem,
         }));
 
+      // --- Sessão 28.8 — Precificação detalhada por produto ---
+      // Para cada produto: nome, CMV (custo unitário), preço venda, lucro,
+      // margem %, markup. Ordenado por nome para fácil consulta.
+      const precificacao = [...produtosComPreco]
+        .sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || '')))
+        .map(p => ({
+          id: p.id,
+          nome: p.nome,
+          categoria_id: p.categoria_id,
+          cmv: p.custoUn,                       // custo dos ingredientes/preparos/embalagens
+          custoTotal: p.custoUn + p.despFixasVal + p.despVarVal, // custo + rateio
+          precoVenda: p.precoVenda,
+          lucro: p.margemReais,
+          margem: p.margem,
+          markup: p.custoUn > 0 ? p.precoVenda / p.custoUn : 0,
+        }));
+
       // --- Margem média por categoria (top 5) ---
       const catsMap = {};
       (cats || []).forEach(c => { catsMap[c.id] = c.nome; });
@@ -285,11 +302,14 @@ export default function RelatorioSimplesScreen({ navigation }) {
 
       setData({
         resumo,
+        precificacao,
         melhores,
         atencao,
         pontoEquilibrio,
         deliveryInsight,
         tendencia,
+        // Sessão 28.8 — historicoFaturamento removido do JSX (já está no Painel/Financeiro)
+        // mantido no objeto para retrocompatibilidade se alguém quiser readicionar
         historicoFaturamento,
         topProdutos,
         margemPorCategoria,
@@ -687,6 +707,95 @@ export default function RelatorioSimplesScreen({ navigation }) {
         </View>
       )}
 
+      {/* Sessão 28.8 — Precificação detalhada por produto */}
+      {data.precificacao && data.precificacao.length > 0 && (
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={[styles.iconCircle, { backgroundColor: colors.primary + '15' }]}>
+              <Feather name="dollar-sign" size={18} color={colors.primary} />
+            </View>
+            <Text style={styles.cardTitle}>Precificação por Produto</Text>
+          </View>
+          <Text style={styles.cardText}>
+            {data.precificacao.length} produto{data.precificacao.length === 1 ? '' : 's'} com preço de venda. Toque em cada linha para editar.
+          </Text>
+
+          {/* Cabeçalho da tabela (só desktop) */}
+          {Platform.OS === 'web' && (
+            <View style={styles.precHeader}>
+              <Text style={[styles.precHeaderText, { flex: 2 }]}>Produto</Text>
+              <Text style={[styles.precHeaderText, { flex: 1, textAlign: 'right' }]}>CMV</Text>
+              <Text style={[styles.precHeaderText, { flex: 1, textAlign: 'right' }]}>Preço</Text>
+              <Text style={[styles.precHeaderText, { flex: 1, textAlign: 'right' }]}>Lucro</Text>
+              <Text style={[styles.precHeaderText, { flex: 0.8, textAlign: 'right' }]}>Margem</Text>
+            </View>
+          )}
+
+          {data.precificacao.map((p, idx) => {
+            const margemPos = p.margem >= 0.10;
+            const margemAlerta = p.margem < 0.10 && p.margem >= 0;
+            const margemNeg = p.margem < 0;
+            const corMargem = margemPos ? colors.success : margemAlerta ? colors.warning : colors.error;
+
+            // Layout desktop: linha de tabela
+            if (Platform.OS === 'web') {
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[styles.precRow, idx % 2 === 0 && styles.precRowEven]}
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate('Produtos', { screen: 'ProdutoForm', params: { id: p.id } })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Editar ${p.nome}`}
+                >
+                  <Text style={[styles.precCell, { flex: 2 }]} numberOfLines={1}>{p.nome}</Text>
+                  <Text style={[styles.precCell, { flex: 1, textAlign: 'right' }]}>{formatCurrency(p.cmv)}</Text>
+                  <Text style={[styles.precCell, { flex: 1, textAlign: 'right', fontWeight: '600' }]}>{formatCurrency(p.precoVenda)}</Text>
+                  <Text style={[styles.precCell, { flex: 1, textAlign: 'right', color: p.lucro >= 0 ? colors.success : colors.error }]}>{formatCurrency(p.lucro)}</Text>
+                  <Text style={[styles.precCell, { flex: 0.8, textAlign: 'right', color: corMargem, fontWeight: '600' }]}>{formatPercent(p.margem)}</Text>
+                </TouchableOpacity>
+              );
+            }
+            // Layout mobile: card empilhado
+            return (
+              <TouchableOpacity
+                key={p.id}
+                style={styles.precCardMobile}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('Produtos', { screen: 'ProdutoForm', params: { id: p.id } })}
+                accessibilityRole="button"
+                accessibilityLabel={`Editar ${p.nome}`}
+              >
+                <View style={styles.precCardHeader}>
+                  <Text style={styles.precCardTitle} numberOfLines={1}>{p.nome}</Text>
+                  <View style={[styles.precMargemBadge, { backgroundColor: corMargem + '15' }]}>
+                    <Text style={[styles.precMargemBadgeText, { color: corMargem }]}>{formatPercent(p.margem)}</Text>
+                  </View>
+                </View>
+                <View style={styles.precCardGrid}>
+                  <View style={styles.precCardItem}>
+                    <Text style={styles.precCardItemLabel}>CMV</Text>
+                    <Text style={styles.precCardItemValue}>{formatCurrency(p.cmv)}</Text>
+                  </View>
+                  <View style={styles.precCardItem}>
+                    <Text style={styles.precCardItemLabel}>Preço Venda</Text>
+                    <Text style={[styles.precCardItemValue, { fontWeight: '700' }]}>{formatCurrency(p.precoVenda)}</Text>
+                  </View>
+                  <View style={styles.precCardItem}>
+                    <Text style={styles.precCardItemLabel}>Lucro/un</Text>
+                    <Text style={[styles.precCardItemValue, { color: p.lucro >= 0 ? colors.success : colors.error }]}>{formatCurrency(p.lucro)}</Text>
+                  </View>
+                  <View style={styles.precCardItem}>
+                    <Text style={styles.precCardItemLabel}>Markup</Text>
+                    <Text style={styles.precCardItemValue}>{p.markup ? p.markup.toFixed(2) + '×' : '—'}</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
       {/* Melhores Produtos */}
       {data.melhores.length > 0 && (
         <View style={[styles.card, styles.cardSuccess]}>
@@ -834,37 +943,9 @@ export default function RelatorioSimplesScreen({ navigation }) {
         </View>
       )}
 
-      {/* Histórico de Faturamento (gráfico de barras 12m) */}
-      {data.historicoFaturamento && data.historicoFaturamento.length > 0 && (() => {
-        const maxV = Math.max(...data.historicoFaturamento.map(h => h.valor)) || 1;
-        return (
-          <View style={[styles.card]}>
-            <View style={styles.cardHeader}>
-              <View style={[styles.iconCircle, { backgroundColor: colors.primary + '15' }]}>
-                <Feather name="bar-chart-2" size={18} color={colors.primary} />
-              </View>
-              <Text style={styles.cardTitle}>Histórico de Faturamento</Text>
-            </View>
-            <Text style={styles.cardText}>Últimos {data.historicoFaturamento.length} {data.historicoFaturamento.length === 1 ? 'mês' : 'meses'}</Text>
-            <View style={styles.barsRow}>
-              {data.historicoFaturamento.map((h, i) => {
-                const altura = h.valor > 0 ? Math.max(8, (h.valor / maxV) * 120) : 4;
-                return (
-                  <View key={i} style={styles.barCol}>
-                    <View style={styles.barTrack}>
-                      <View style={[styles.barFill, { height: altura, backgroundColor: colors.primary }]} />
-                    </View>
-                    <Text style={styles.barLabel} numberOfLines={1}>{h.label}</Text>
-                  </View>
-                );
-              })}
-            </View>
-            <Text style={styles.chartCaption}>
-              Pico: {formatCurrency(maxV)}
-            </Text>
-          </View>
-        );
-      })()}
+      {/* Sessão 28.8 — Histórico de Faturamento removido daqui.
+          Visualização disponível em Painel/Financeiro (evita duplicação
+          de informação financeira no relatório de precificação). */}
 
       {/* Top 5 Produtos por Lucro */}
       {data.topProdutos && data.topProdutos.length > 0 && (() => {
@@ -976,6 +1057,92 @@ const styles = StyleSheet.create({
   },
 
   // Bar chart horizontal (top produtos / categorias)
+  // Sessão 28.8 — Tabela/cards de Precificação por Produto
+  precHeader: {
+    flexDirection: 'row',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    marginTop: spacing.sm,
+  },
+  precHeaderText: {
+    fontSize: 11,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  precRow: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+  },
+  precRowEven: {
+    backgroundColor: colors.background,
+  },
+  precCell: {
+    fontSize: 13,
+    fontFamily: fontFamily.regular,
+    color: colors.text,
+  },
+  precCardMobile: {
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.sm,
+    padding: 12,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  precCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 8,
+  },
+  precCardTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  precMargemBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  precMargemBadgeText: {
+    fontSize: 11,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '700',
+  },
+  precCardGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  precCardItem: {
+    flex: 1,
+    minWidth: '47%',
+    paddingVertical: 4,
+  },
+  precCardItemLabel: {
+    fontSize: 10,
+    fontFamily: fontFamily.medium,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  precCardItemValue: {
+    fontSize: 13,
+    fontFamily: fontFamily.medium,
+    color: colors.text,
+  },
   hbarRow: {
     flexDirection: 'row',
     alignItems: 'center',
