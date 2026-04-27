@@ -1,24 +1,58 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Platform, Dimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
- * useListDensity — preferência GLOBAL de densidade das linhas das listas.
+ * useListDensity — preferência GLOBAL de densidade da UI mobile-web.
+ *
+ * Sessão 28.6 — densidade reformulada para virar a base visual real do mobile.
+ *
+ * Default por plataforma (Sessão 28.6):
+ *  - mobile (web < 1024 OU iOS/Android): `compact` (UI real mobile)
+ *  - desktop web (≥ 1024): `comfortable` (mais ar, leitura confortável)
+ *
+ * O usuário pode sobrescrever em Configurações; a preferência persiste.
  *
  * Lê/escreve em AsyncStorage (`@pref:listDensity`). Valores: 'comfortable'|'compact'.
  *
- * IMPORTANTE: usa um "store" em memória + listeners para que TODAS as telas
- * que consomem o hook re-renderizem instantaneamente quando a densidade
- * for alterada em qualquer lugar do app. Sem isso, mudar a densidade nas
- * Configurações não reflete nas telas já montadas (Insumos, Produtos, etc.).
+ * Module-level store + listeners broadcast: TODAS as telas montadas re-renderizam
+ * quando a densidade muda em qualquer ponto. Sem isso, mudar em Configurações
+ * não reflete nas telas já montadas.
  *
- * Retorna estilos prontos para spread nos rowItem/gridCard:
- *   - rowOverride: { paddingVertical } | null
- *   - nameOverride: { fontSize } | null
- *   - avatarSize: number (px)
+ * Tokens expostos (para spread inline em componentes):
+ *  - density: 'comfortable' | 'compact'
+ *  - isCompact: bool
+ *  - rowOverride: { paddingVertical } | null      → linhas de lista
+ *  - nameOverride: { fontSize } | null            → nome principal em rows
+ *  - avatarSize: number                           → avatar/ícone redondo
+ *  - cardPadding: number                          → padding interno de cards
+ *  - sectionGap: number                           → gap entre seções
+ *  - headerHeight: number                         → altura de WebHeader
+ *  - inputHeight: number                          → altura de inputs/selects
+ *  - buttonHeight: number                         → altura de primary buttons
+ *  - chipHeight: number                           → altura de chips/tags
+ *  - iconSize: number                             → ícones de ações
+ *  - rowMinHeight: number                         → minHeight de cell de lista
+ *  - listItemFontSize: number                     → font da lista
+ *  - listItemSubtitleFontSize: number             → font do subtítulo
+ *  - titleFontSize: number                        → font de section title
+ *  - bodyLineHeight: number                       → line-height base
  */
 
 const STORAGE_KEY = '@pref:listDensity';
-let _value = 'comfortable';
+
+// Detecta default por plataforma. Mobile (RN nativo OU web < 1024) → compact.
+function _detectDefault() {
+  if (Platform.OS !== 'web') return 'compact';
+  try {
+    const w = Dimensions.get('window').width;
+    return w < 1024 ? 'compact' : 'comfortable';
+  } catch {
+    return 'compact';
+  }
+}
+
+let _value = _detectDefault();
 let _loaded = false;
 let _loadingPromise = null;
 const _listeners = new Set();
@@ -36,7 +70,6 @@ async function _ensureLoaded() {
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
       if (raw != null) {
-        // Pode estar serializado como JSON ("\"compact\"") ou crú ("compact")
         try {
           const parsed = JSON.parse(raw);
           if (parsed === 'comfortable' || parsed === 'compact') {
@@ -47,7 +80,7 @@ async function _ensureLoaded() {
         }
       }
     } catch {
-      // mantém default
+      // mantém default detectado
     } finally {
       _loaded = true;
       _notify();
@@ -66,6 +99,44 @@ export async function setListDensity(next) {
   } catch {}
   _notify();
 }
+
+// Tokens dimensionados — compact é base mobile, comfortable é ar adicional desktop.
+const TOKENS = {
+  compact: {
+    rowPaddingVertical: 8,
+    rowMinHeight: 48,
+    nameFontSize: 13,
+    avatarSize: 32,
+    cardPadding: 12,
+    sectionGap: 16,
+    headerHeight: 52,
+    inputHeight: 42,
+    buttonHeight: 44,
+    chipHeight: 28,
+    iconSize: 18,
+    listItemFontSize: 13,
+    listItemSubtitleFontSize: 11,
+    titleFontSize: 14,
+    bodyLineHeight: 18,
+  },
+  comfortable: {
+    rowPaddingVertical: 14,
+    rowMinHeight: 60,
+    nameFontSize: 15,
+    avatarSize: 44,
+    cardPadding: 18,
+    sectionGap: 24,
+    headerHeight: 64,
+    inputHeight: 50,
+    buttonHeight: 52,
+    chipHeight: 36,
+    iconSize: 22,
+    listItemFontSize: 15,
+    listItemSubtitleFontSize: 13,
+    titleFontSize: 16,
+    bodyLineHeight: 22,
+  },
+};
 
 export default function useListDensity() {
   const [density, setDensityLocal] = useState(_value);
@@ -90,12 +161,28 @@ export default function useListDensity() {
   }, []);
 
   const isCompact = density === 'compact';
+  const t = TOKENS[density] || TOKENS.compact;
+
   return {
     density,
     setDensity,
     isCompact,
-    rowOverride: isCompact ? { paddingVertical: 8 } : null,
-    nameOverride: isCompact ? { fontSize: 13 } : null,
-    avatarSize: isCompact ? 32 : 40,
+    // Legado — mantém API antiga p/ não quebrar consumers existentes
+    rowOverride: { paddingVertical: t.rowPaddingVertical },
+    nameOverride: { fontSize: t.nameFontSize },
+    avatarSize: t.avatarSize,
+    // Tokens novos
+    cardPadding: t.cardPadding,
+    sectionGap: t.sectionGap,
+    headerHeight: t.headerHeight,
+    inputHeight: t.inputHeight,
+    buttonHeight: t.buttonHeight,
+    chipHeight: t.chipHeight,
+    iconSize: t.iconSize,
+    rowMinHeight: t.rowMinHeight,
+    listItemFontSize: t.listItemFontSize,
+    listItemSubtitleFontSize: t.listItemSubtitleFontSize,
+    titleFontSize: t.titleFontSize,
+    bodyLineHeight: t.bodyLineHeight,
   };
 }

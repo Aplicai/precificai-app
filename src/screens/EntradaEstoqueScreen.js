@@ -18,6 +18,7 @@ import { formatCurrency } from '../utils/calculations';
 import PickerSelect from '../components/PickerSelect';
 import EmptyState from '../components/EmptyState';
 import ModalFormWrapper from '../components/ModalFormWrapper';
+import useListDensity from '../hooks/useListDensity';
 
 function parseNum(s) {
   if (s === null || s === undefined || s === '') return null;
@@ -26,6 +27,7 @@ function parseNum(s) {
 }
 
 export default function EntradaEstoqueScreen({ navigation, route }) {
+  const { isCompact, inputHeight, buttonHeight } = useListDensity();
   const presetTipo = route?.params?.entidadeTipo;
   const presetId = route?.params?.entidadeId;
   const returnTo = route?.params?.returnTo;
@@ -195,7 +197,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
 
         <Text style={styles.label}>Quantidade recebida ({unidade})</Text>
         <TextInput
-          style={[styles.input, qtdInvalida && styles.inputError]}
+          style={[styles.input, { minHeight: inputHeight, paddingVertical: isCompact ? 8 : 12 }, qtdInvalida && styles.inputError]}
           value={quantidade}
           onChangeText={setQuantidade}
           keyboardType="decimal-pad"
@@ -208,7 +210,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
 
         <Text style={styles.label}>Custo unitário (R$ / {unidade})</Text>
         <TextInput
-          style={[styles.input, custoInvalido && styles.inputError]}
+          style={[styles.input, { minHeight: inputHeight, paddingVertical: isCompact ? 8 : 12 }, custoInvalido && styles.inputError]}
           value={custoUnitario}
           onChangeText={setCustoUnitario}
           keyboardType="decimal-pad"
@@ -228,7 +230,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
 
         <Text style={styles.label}>Motivo (opcional)</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { minHeight: inputHeight, paddingVertical: isCompact ? 8 : 12 }]}
           value={motivo}
           onChangeText={setMotivo}
           placeholder='Ex: "NF 1234"'
@@ -237,7 +239,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
         />
 
         <TouchableOpacity
-          style={[styles.btnPrimary, !podeSalvar && styles.btnDisabled]}
+          style={[styles.btnPrimary, { minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md }, !podeSalvar && styles.btnDisabled]}
           onPress={salvar}
           disabled={!podeSalvar}
           activeOpacity={0.8}

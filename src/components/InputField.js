@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TextInput, StyleSheet } from 'react-native';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
+import useListDensity from '../hooks/useListDensity';
 
 /**
  * Sessão 28 — InputField agora aceita props extra para web mobile:
@@ -42,10 +43,13 @@ export default function InputField({
   onFocus,
   testID,
 }) {
+  const { isCompact, inputHeight } = useListDensity();
+  const labelMarginBottom = isCompact ? 4 : 6;
+  const inputPaddingVertical = isCompact ? 8 : 12;
   return (
     <View style={[styles.container, style]}>
       {label && (
-        <View style={styles.labelRow}>
+        <View style={[styles.labelRow, { marginBottom: labelMarginBottom }]}>
           <Text style={[styles.label, error && { color: colors.error }]}>{label}</Text>
           {rightLabel}
         </View>
@@ -55,6 +59,7 @@ export default function InputField({
         <TextInput
           style={[
             styles.input,
+            { minHeight: inputHeight, paddingVertical: inputPaddingVertical },
             !editable && styles.inputDisabled,
             multiline && { height: numberOfLines * 40, textAlignVertical: 'top' },
             prefix && { borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeftWidth: 0 },

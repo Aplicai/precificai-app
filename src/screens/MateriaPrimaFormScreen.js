@@ -12,6 +12,7 @@ import InfoTooltip from '../components/InfoTooltip';
 import ModalFormWrapper from '../components/ModalFormWrapper';
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import useListDensity from '../hooks/useListDensity';
 import { t } from '../i18n/pt-BR';
 import {
   UNIDADES_MEDIDA,
@@ -38,6 +39,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   const editId = route.params?.id;
   const returnTo = route.params?.returnTo;
   const { isDesktop, isMobile } = useResponsiveLayout();
+  const { isCompact, buttonHeight } = useListDensity();
   // Sessão Forms-Mobile — agrupamentos 2/3-col viram coluna no mobile p/ não
   // espremer os inputs e respeitar o padrão de 1-campo-por-linha.
   const rowStyle = isMobile
@@ -704,7 +706,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
 
         {/* Botão salvar (novo) */}
         {!editId && (
-          <TouchableOpacity style={styles.btnSave} onPress={salvarNovo}>
+          <TouchableOpacity style={[styles.btnSave, { minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md }]} onPress={salvarNovo}>
             <Text style={styles.btnSaveText}>Salvar Insumo</Text>
           </TouchableOpacity>
         )}

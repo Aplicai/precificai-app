@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { View, TextInput, StyleSheet, TouchableOpacity, Platform, Text } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, borderRadius, fontFamily } from '../utils/theme';
+import useListDensity from '../hooks/useListDensity';
 
 /**
  * SearchBar — caixa de busca padronizada (audit P1-19).
@@ -29,6 +30,10 @@ export default function SearchBar({
   const enableShortcut = shortcut === undefined ? !isModal : shortcut;
   const inputRef = useRef(null);
   const isWeb = Platform.OS === 'web';
+  const { isCompact } = useListDensity();
+  // Compact mantém hitSlop suficiente via área visual total + ícones; height 40 / 48.
+  const containerHeight = isCompact ? 40 : 48;
+  const inputInnerHeight = isCompact ? 38 : 46;
 
   // P3-F: Atalho Cmd+K / Ctrl+K para focar a busca (apenas Web)
   useEffect(() => {
@@ -47,11 +52,11 @@ export default function SearchBar({
   }, [isWeb, enableShortcut]);
 
   return (
-    <View style={[styles.container, isModal && styles.containerModal, style]}>
+    <View style={[styles.container, { height: containerHeight }, isModal && styles.containerModal, style]}>
       <Feather name="search" size={16} color={colors.disabled} style={styles.icon} />
       <TextInput
         ref={inputRef}
-        style={styles.input}
+        style={[styles.input, { height: inputInnerHeight }]}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}

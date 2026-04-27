@@ -12,9 +12,12 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
 import { getNotifPrefs, saveNotifPrefs, requestAndRegisterPush, isPushSupported } from '../services/push';
+import useListDensity from '../hooks/useListDensity';
 
 export default function NotificacoesScreen() {
   const { user } = useAuth();
+  // Sessão 28.6 — densidade aplicada
+  const { isCompact, cardPadding, titleFontSize, listItemSubtitleFontSize, bodyLineHeight, iconSize } = useListDensity();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [saveError, setSaveError] = useState(null);
@@ -145,7 +148,7 @@ export default function NotificacoesScreen() {
         </TouchableOpacity>
       )}
 
-      <Text style={styles.sectionTitle} accessibilityRole="header">Tipos de notificação</Text>
+      <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }]} accessibilityRole="header">Tipos de notificação</Text>
 
       <Item
         icon="package"
@@ -153,6 +156,11 @@ export default function NotificacoesScreen() {
         desc="Avisamos quando algum insumo ou embalagem ficar abaixo do mínimo definido."
         value={prefs.estoque_baixo}
         onChange={() => toggle('estoque_baixo')}
+        isCompact={isCompact}
+        cardPadding={cardPadding}
+        descFontSize={listItemSubtitleFontSize}
+        descLineHeight={bodyLineHeight}
+        iconSize={iconSize}
       />
       <Item
         icon="alert-triangle"
@@ -160,6 +168,11 @@ export default function NotificacoesScreen() {
         desc="Quando um produto ficar com margem abaixo de 5%, te avisamos imediatamente."
         value={prefs.margem_critica}
         onChange={() => toggle('margem_critica')}
+        isCompact={isCompact}
+        cardPadding={cardPadding}
+        descFontSize={listItemSubtitleFontSize}
+        descLineHeight={bodyLineHeight}
+        iconSize={iconSize}
       />
       <Item
         icon="bar-chart-2"
@@ -167,6 +180,11 @@ export default function NotificacoesScreen() {
         desc="Toda noite, um pequeno resumo de vendas e lucro do dia."
         value={prefs.resumo_diario}
         onChange={() => toggle('resumo_diario')}
+        isCompact={isCompact}
+        cardPadding={cardPadding}
+        descFontSize={listItemSubtitleFontSize}
+        descLineHeight={bodyLineHeight}
+        iconSize={iconSize}
       />
 
       <Text style={styles.help}>
@@ -176,21 +194,21 @@ export default function NotificacoesScreen() {
   );
 }
 
-function Item({ icon, title, desc, value, onChange }) {
+function Item({ icon, title, desc, value, onChange, isCompact, cardPadding, descFontSize, descLineHeight, iconSize }) {
   return (
     <View
-      style={styles.item}
+      style={[styles.item, cardPadding ? { padding: cardPadding, marginBottom: isCompact ? 6 : 10 } : null]}
       accessible
       accessibilityRole="switch"
       accessibilityLabel={`${title}. ${desc}`}
       accessibilityState={{ checked: value }}
     >
-      <View style={styles.itemIcon}>
-        <Feather name={icon} size={18} color={colors.primary} />
+      <View style={[styles.itemIcon, isCompact ? { width: 32, height: 32, borderRadius: 16, marginRight: 10 } : null]}>
+        <Feather name={icon} size={iconSize || 18} color={colors.primary} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.itemTitle}>{title}</Text>
-        <Text style={styles.itemDesc}>{desc}</Text>
+        <Text style={[styles.itemDesc, descFontSize ? { fontSize: descFontSize, lineHeight: descLineHeight } : null]}>{desc}</Text>
       </View>
       <Switch
         value={value}

@@ -6,6 +6,7 @@ import { Text, View, Image, Platform, TouchableOpacity, ActivityIndicator, Dimen
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fontFamily } from '../utils/theme';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import useListDensity from '../hooks/useListDensity';
 import WebLayout from '../components/web/WebLayout';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { getSetupStatus } from '../utils/setupStatus';
@@ -117,9 +118,12 @@ const TAB_ICONS = {
   'Mais': { set: 'feather', name: 'menu' },
 };
 
-function TabIcon({ label, focused, badge }) {
+function TabIcon({ label, focused, badge, baseSize }) {
   const iconDef = TAB_ICONS[label] || { set: 'feather', name: 'file' };
-  const size = focused ? 22 : 20;
+  // Sessão 28.6 — usa token iconSize do useListDensity (compact=18, comfortable=22).
+  // baseSize default 22 mantém retrocompatibilidade.
+  const fallbackBase = baseSize ?? 22;
+  const size = focused ? fallbackBase : fallbackBase - 2;
   const color = focused ? colors.primary : colors.textSecondary;
 
   return (
@@ -306,7 +310,12 @@ function MainTabs({ route }) {
   // Sessão 28 — em telas estreitas (≤360pt) "Ferramentas" e "Embalagens" truncavam.
   // Encolher fonte e padding mantém label legível sem clip.
   const isNarrow = !isDesktop && width <= 360;
-  const tabFontSize = isNarrow ? 9 : 10;
+  // Sessão 28.6 — densidade aplicada à tabBar mobile (compact=60h/9pt, comfortable=70h/11pt).
+  // No desktop o tabBar é hidden (display:none), preservamos comportamento atual.
+  const { isCompact: densityCompact, iconSize: tabIconSize } = useListDensity();
+  const tabBarHeightMobile = densityCompact ? 60 : 70;
+  const tabBarFontSize = isNarrow ? 9 : (densityCompact ? 9 : 11);
+  const tabFontSize = tabBarFontSize;
 
   const checkFinanceiro = useCallback(() => {
     getFinanceiroStatus().then(s => setFinPendente(!s.completo)).catch(() => {});
@@ -318,15 +327,15 @@ function MainTabs({ route }) {
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ focused }) => (
-          <TabIcon label={route.name} focused={focused} badge={route.name === 'Mais' && finPendente} />
+          <TabIcon label={route.name} focused={focused} badge={route.name === 'Mais' && finPendente} baseSize={tabIconSize} />
         ),
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: {
           ...(isDesktop ? { display: 'none' } : {}),
-          height: Platform.OS === 'ios' ? 88 : 66,
-          paddingBottom: Platform.OS === 'ios' ? 28 : 8,
-          paddingTop: 8,
+          height: Platform.OS === 'ios' ? (tabBarHeightMobile + 22) : tabBarHeightMobile,
+          paddingBottom: Platform.OS === 'ios' ? 28 : (densityCompact ? 6 : 8),
+          paddingTop: densityCompact ? 6 : 8,
           backgroundColor: colors.surface,
           borderTopWidth: 1, borderTopColor: colors.border + '80',
           ...Platform.select({

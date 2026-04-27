@@ -19,6 +19,7 @@ import { getDatabase } from '../database/database';
 import { baixarEstoque, registrarEntrada } from '../services/estoque';
 import PickerSelect from '../components/PickerSelect';
 import ModalFormWrapper from '../components/ModalFormWrapper';
+import useListDensity from '../hooks/useListDensity';
 
 function parseNum(s) {
   if (s === null || s === undefined || s === '') return null;
@@ -27,6 +28,7 @@ function parseNum(s) {
 }
 
 export default function AjusteEstoqueScreen({ navigation, route }) {
+  const { isCompact, inputHeight, buttonHeight } = useListDensity();
   // Sessão 25: pré-seleção via params (clique no card de Insumo deve
   // abrir o modal já com o insumo escolhido — antes obrigava o usuário a
   // selecionar de novo).
@@ -289,7 +291,7 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
           {modo === 'saldo' ? `Saldo agora (${unidade})` : `Quantidade (${unidade})`}
         </Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { minHeight: inputHeight, paddingVertical: isCompact ? 8 : 12 }]}
           value={quantidade}
           onChangeText={setQuantidade}
           keyboardType="decimal-pad"
@@ -332,7 +334,7 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
         )}
 
         <TouchableOpacity
-          style={[styles.btnPrimary, !podeSalvar && styles.btnDisabled]}
+          style={[styles.btnPrimary, { minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md }, !podeSalvar && styles.btnDisabled]}
           onPress={pedirConfirmacao}
           disabled={!podeSalvar}
           activeOpacity={0.8}

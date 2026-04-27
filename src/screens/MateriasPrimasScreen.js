@@ -134,8 +134,8 @@ export default function MateriasPrimasScreen({ navigation }) {
   // Bug fix: no mobile o grid renderiza apenas chips com preço (sem nome), o que não faz sentido.
   // Força layout de lista no mobile; toggle só aparece em desktop (onde grid é o default).
   const isGrid = isDesktop;
-  // Densidade global (P3-G)
-  const { rowOverride, nameOverride, avatarSize } = useListDensity();
+  // Densidade global (P3-G) — Sessão 28.6 expõe tokens dimensionais novos
+  const { rowOverride, nameOverride, avatarSize, isCompact, rowMinHeight, titleFontSize, listItemSubtitleFontSize, sectionGap } = useListDensity();
   // Sessão 26 — Estoque absorvido em Insumos atrás do flag (default OFF)
   const [estoqueOn] = useFeatureFlag('modo_avancado_estoque');
   // Seleção múltipla (P1-21)
@@ -692,12 +692,12 @@ export default function MateriasPrimasScreen({ navigation }) {
             const isCollapsed = collapsedSections[section.catId];
             return (
               <TouchableOpacity
-                style={styles.sectionHeader}
+                style={[styles.sectionHeader, isCompact && { paddingTop: 8, paddingBottom: 4 }]}
                 onPress={() => setCollapsedSections(prev => ({ ...prev, [section.catId]: !prev[section.catId] }))}
                 activeOpacity={0.6}
               >
                 <View style={[styles.sectionDot, { backgroundColor: section.catColor }]} />
-                <Text style={styles.sectionTitle}>{section.title}</Text>
+                <Text style={[styles.sectionTitle, { fontSize: isCompact ? 11 : titleFontSize }]}>{section.title}</Text>
                 <Text style={styles.sectionCount}>{section.totalCount}</Text>
                 {section.catId !== null && section.catId !== 'null' && (
                   <TouchableOpacity
@@ -734,6 +734,7 @@ export default function MateriasPrimasScreen({ navigation }) {
                   !isLast && styles.rowBorder,
                   selected && styles.rowSelected,
                   rowOverride,
+                  { minHeight: rowMinHeight },
                 ]}
                 onPress={() => handleRowPress(item)}
                 onLongPress={() => handleRowLongPress(item)}
@@ -760,7 +761,7 @@ export default function MateriasPrimasScreen({ navigation }) {
                     <HighlightedText text={item.nome} query={busca} style={[styles.rowNome, nameOverride, { flexShrink: 1 }]} numberOfLines={1} />
                   </View>
                   {item.marca ? (
-                    <HighlightedText text={item.marca} query={busca} style={styles.rowMarca} numberOfLines={1} />
+                    <HighlightedText text={item.marca} query={busca} style={[styles.rowMarca, { fontSize: listItemSubtitleFontSize }]} numberOfLines={1} />
                   ) : null}
                   {estoqueOn ? (() => {
                     const st = statusEstoque(item);

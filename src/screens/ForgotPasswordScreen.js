@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvo
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
+import useListDensity from '../hooks/useListDensity';
 import useRateLimit from '../hooks/useRateLimit';
 import { mapAuthError } from '../utils/authErrors';
 
@@ -13,6 +14,7 @@ const RESET_TIMEOUT_MS = 30000;
 
 export default function ForgotPasswordScreen({ navigation }) {
   const { resetPassword } = useAuth();
+  const { isCompact, inputHeight, buttonHeight } = useListDensity();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -104,7 +106,7 @@ export default function ForgotPasswordScreen({ navigation }) {
 
               <Text style={styles.label}>Email</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, { minHeight: inputHeight, paddingVertical: isCompact ? 8 : 12 }]}
                 value={email}
                 onChangeText={onChangeEmail}
                 placeholder="seu@email.com"
@@ -119,7 +121,7 @@ export default function ForgotPasswordScreen({ navigation }) {
               />
 
               <TouchableOpacity
-                style={[styles.primaryBtn, { marginTop: 24 }, btnDisabled && styles.primaryBtnDisabled]}
+                style={[styles.primaryBtn, { marginTop: 24, minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md }, btnDisabled && styles.primaryBtnDisabled]}
                 onPress={handleReset}
                 disabled={btnDisabled}
                 activeOpacity={0.8}

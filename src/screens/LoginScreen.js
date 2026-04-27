@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvo
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
+import useListDensity from '../hooks/useListDensity';
 import useRateLimit from '../hooks/useRateLimit';
 import { mapAuthError } from '../utils/authErrors';
 import { parseRateLimitSeconds } from '../utils/parseRateLimit';
@@ -14,6 +15,7 @@ const LOGIN_TIMEOUT_MS = 30000;
 
 export default function LoginScreen({ navigation }) {
   const { signIn } = useAuth();
+  const { isCompact, inputHeight, buttonHeight } = useListDensity();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -122,7 +124,7 @@ export default function LoginScreen({ navigation }) {
 
           <Text style={styles.label}>Email</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { minHeight: inputHeight, paddingVertical: isCompact ? 8 : 12 }]}
             value={email}
             onChangeText={onChangeEmail}
             placeholder="seu@email.com"
@@ -137,10 +139,10 @@ export default function LoginScreen({ navigation }) {
           />
 
           <Text style={styles.label}>Senha</Text>
-          <View style={styles.passwordContainer}>
+          <View style={[styles.passwordContainer, { minHeight: inputHeight }]}>
             <TextInput
               ref={passwordRef}
-              style={styles.passwordInput}
+              style={[styles.passwordInput, { paddingVertical: isCompact ? 8 : 12 }]}
               value={password}
               onChangeText={onChangePassword}
               placeholder="Sua senha"
@@ -165,7 +167,7 @@ export default function LoginScreen({ navigation }) {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.primaryBtn, btnDisabled && styles.primaryBtnDisabled]}
+            style={[styles.primaryBtn, { minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md }, btnDisabled && styles.primaryBtnDisabled]}
             onPress={handleLogin}
             disabled={btnDisabled}
             activeOpacity={0.7}

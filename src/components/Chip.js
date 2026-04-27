@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import useListDensity from '../hooks/useListDensity';
 
 /**
  * Chip — pílula compacta com truncamento semântico e tooltip nativo no web.
@@ -41,6 +42,7 @@ export default function Chip({
   const palette = color
     ? { bg: color + '15', fg: color }
     : (VARIANT_COLORS[variant] || VARIANT_COLORS.default);
+  const { chipHeight } = useListDensity();
 
   const fullLabel = String(label ?? '');
   const tooltipText = tooltip || fullLabel;
@@ -53,7 +55,7 @@ export default function Chip({
       style={[
         styles.chip,
         size === 'md' && styles.chipMd,
-        { backgroundColor: palette.bg },
+        { backgroundColor: palette.bg, minHeight: chipHeight },
         maxWidth ? { maxWidth } : null,
         style,
       ]}

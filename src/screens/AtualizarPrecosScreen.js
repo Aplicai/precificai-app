@@ -9,6 +9,7 @@ import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
+import useListDensity from '../hooks/useListDensity';
 
 // Audit P1: helper defensivo p/ números vindos de DB ou input manual.
 function safeNum(v) {
@@ -31,6 +32,7 @@ const TABS = [
 
 export default function AtualizarPrecosScreen() {
   const { isDesktop } = useResponsiveLayout();
+  const { isCompact, rowMinHeight, titleFontSize, listItemFontSize } = useListDensity();
   const [activeTab, setActiveTab] = useState('insumos');
   const [items, setItems] = useState([]);
   // Audit P1: persistir busca entre navegações (padrão da casa).
@@ -183,12 +185,13 @@ export default function AtualizarPrecosScreen() {
           index === items.length - 1 && !isDesktop && styles.rowLast,
           index < items.length - 1 && !isDesktop && styles.rowBorder,
           isWeb && { cursor: 'pointer' },
+          { minHeight: rowMinHeight, paddingVertical: isCompact ? 8 : 14 },
         ]}
         activeOpacity={0.7}
         onPress={() => openEditModal(item)}
       >
         <View style={styles.rowInner}>
-          <Text style={[styles.rowNome, isDesktop && styles.rowNomeDesktop]} numberOfLines={2}>
+          <Text style={[styles.rowNome, isDesktop && styles.rowNomeDesktop, { fontSize: isDesktop ? 14 : listItemFontSize }]} numberOfLines={2}>
             {item.displayName || item.nome}
           </Text>
           <View style={styles.rowRight}>

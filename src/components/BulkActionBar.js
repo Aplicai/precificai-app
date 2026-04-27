@@ -3,6 +3,7 @@ import { Animated, View, Text, TouchableOpacity, StyleSheet, Platform } from 're
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import useListDensity from '../hooks/useListDensity';
 
 /**
  * BulkActionBar — barra flutuante de ações em massa (audit P1-21).
@@ -29,6 +30,12 @@ export default function BulkActionBar({
   actions = [],
 }) {
   const { isMobile } = useResponsiveLayout();
+  // Sessão 28.6 — densidade aplicada ao padding/altura visual da bar.
+  const { isCompact, cardPadding } = useListDensity();
+  const barPadV = isCompact ? 6 : 10;
+  const barPadH = isCompact ? 8 : 12;
+  const actionPadH = isCompact ? 8 : 12;
+  const actionPadV = isCompact ? 5 : 8;
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(40)).current;
 
@@ -55,10 +62,10 @@ export default function BulkActionBar({
       pointerEvents={visible ? 'auto' : 'none'}
       style={[styles.wrap, { bottom: isMobile ? 84 : 16, opacity, transform: [{ translateY }] }]}
     >
-      <View style={styles.bar}>
+      <View style={[styles.bar, { paddingVertical: barPadV, paddingLeft: barPadH, paddingRight: barPadH * 0.5 }]}>
         {/* Contagem + Cancelar */}
         <TouchableOpacity onPress={onCancel} style={styles.cancelBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Feather name="x" size={18} color={colors.textPrimary} />
+          <Feather name="x" size={isCompact ? 16 : 18} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.countText}>
           {count} {count === 1 ? 'selecionado' : 'selecionados'}
@@ -69,24 +76,24 @@ export default function BulkActionBar({
 
         {/* Selecionar todos (opcional) */}
         {showSelectAll && (
-          <TouchableOpacity onPress={onSelectAll} style={styles.actionBtn}>
-            <Feather name="check-square" size={15} color={colors.textPrimary} />
+          <TouchableOpacity onPress={onSelectAll} style={[styles.actionBtn, { paddingHorizontal: actionPadH, paddingVertical: actionPadV }]}>
+            <Feather name="check-square" size={isCompact ? 13 : 15} color={colors.textPrimary} />
             <Text style={styles.actionText}>Todos</Text>
           </TouchableOpacity>
         )}
 
         {/* Ações extras */}
         {actions.map((a, i) => (
-          <TouchableOpacity key={i} onPress={a.onPress} style={styles.actionBtn}>
-            <Feather name={a.icon} size={15} color={a.color || colors.textPrimary} />
+          <TouchableOpacity key={i} onPress={a.onPress} style={[styles.actionBtn, { paddingHorizontal: actionPadH, paddingVertical: actionPadV }]}>
+            <Feather name={a.icon} size={isCompact ? 13 : 15} color={a.color || colors.textPrimary} />
             <Text style={[styles.actionText, a.color && { color: a.color }]}>{a.label}</Text>
           </TouchableOpacity>
         ))}
 
         {/* Excluir */}
         {onDelete && (
-          <TouchableOpacity onPress={onDelete} style={[styles.actionBtn, styles.deleteBtn]}>
-            <Feather name="trash-2" size={15} color="#fff" />
+          <TouchableOpacity onPress={onDelete} style={[styles.actionBtn, styles.deleteBtn, { paddingHorizontal: actionPadH, paddingVertical: actionPadV }]}>
+            <Feather name="trash-2" size={isCompact ? 13 : 15} color="#fff" />
             <Text style={[styles.actionText, { color: '#fff' }]}>Excluir</Text>
           </TouchableOpacity>
         )}

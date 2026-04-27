@@ -10,6 +10,7 @@ import ModalFormWrapper from '../components/ModalFormWrapper';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import useListDensity from '../hooks/useListDensity';
 import { calcPrecoUnitarioEmbalagem, formatCurrency } from '../utils/calculations';
 import { t } from '../i18n/pt-BR';
 // Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
@@ -25,6 +26,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
   const editId = route.params?.id;
   const isFocused = useIsFocused();
   const { isDesktop, isMobile } = useResponsiveLayout();
+  const { isCompact, buttonHeight } = useListDensity();
   // Sessão Forms-Mobile — agrupamentos 2-col viram coluna no mobile p/ não
   // espremer os inputs e respeitar o padrão de 1-campo-por-linha.
   const rowStyle = isMobile
@@ -487,7 +489,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         </View>
       ) : (
         <View style={styles.stickyFooter}>
-          <TouchableOpacity style={styles.btnSave} onPress={salvarNovo}>
+          <TouchableOpacity style={[styles.btnSave, { minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md }]} onPress={salvarNovo}>
             <Text style={styles.btnSaveText}>Salvar Embalagem</Text>
           </TouchableOpacity>
         </View>

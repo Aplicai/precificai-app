@@ -14,6 +14,7 @@ import { suggestPrice, gatherFinancialContext, getCategoriaMedia, getHistoricoVe
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import useListDensity from '../hooks/useListDensity';
 import { t } from '../i18n/pt-BR';
 // Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
@@ -45,6 +46,7 @@ const CONSERVACAO_OPCOES = [
 export default function ProdutoFormScreen({ route, navigation }) {
   const isFocused = useIsFocused();
   const { isDesktop } = useResponsiveLayout();
+  const { isCompact, buttonHeight } = useListDensity();
   const editId = route.params?.id;
   const defaultCategoriaId = route.params?.categoriaId || null;
   const [form, setForm] = useState({
@@ -1594,7 +1596,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
         </View>
       ) : (
         <View style={styles.stickyFooter}>
-          <Pressable style={styles.btnSave} onPress={salvar}>
+          <Pressable style={[styles.btnSave, { minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md }]} onPress={salvar}>
             <Text style={styles.btnSaveText}>Salvar Produto</Text>
           </Pressable>
         </View>

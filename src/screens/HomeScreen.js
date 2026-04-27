@@ -14,6 +14,7 @@ import Loader from '../components/Loader';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { useAuth } from '../contexts/AuthContext';
 import useFeatureFlag from '../hooks/useFeatureFlag';
+import useListDensity from '../hooks/useListDensity';
 
 const GAP = spacing.sm;
 
@@ -49,6 +50,8 @@ export default function HomeScreen({ navigation }) {
   // Sessão polish — KPIs estouravam em 320pt por causa de minWidth: 150.
   // ≤360pt: 1 coluna (100%); demais mobile: 2 colunas (48%); desktop usa kpiCardDesktop.
   const kpiCardWidth = width <= 360 ? '100%' : '48%';
+  // Sessão 28.6 — densidade aplicada em cards e títulos da Home
+  const { isCompact, cardPadding, sectionGap, titleFontSize } = useListDensity();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [d, setD] = useState({
@@ -680,7 +683,7 @@ export default function HomeScreen({ navigation }) {
 
       {/* KPIs - Saúde da Precificação */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Text style={styles.sectionTitle}>Saúde da Precificação</Text>
+        <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }]}>Saúde da Precificação</Text>
         <InfoTooltip
           title="Regra 30-30-30-10"
           text="Referência do setor de alimentação para composição saudável do preço de venda."
@@ -717,7 +720,7 @@ export default function HomeScreen({ navigation }) {
           const Wrapper = k.onPress ? TouchableOpacity : View;
           const wrapperProps = k.onPress ? { activeOpacity: 0.7, onPress: k.onPress } : {};
           return (
-            <Wrapper key={k.label} style={[styles.kpiCard, !isDesktop && { width: kpiCardWidth, minWidth: undefined }, isDesktop && styles.kpiCardDesktop]} {...wrapperProps}>
+            <Wrapper key={k.label} style={[styles.kpiCard, { padding: cardPadding, minHeight: isCompact ? 80 : 96 }, !isDesktop && { width: kpiCardWidth, minWidth: undefined }, isDesktop && styles.kpiCardDesktop]} {...wrapperProps}>
               <View style={styles.kpiHeader}>
                 <View style={[styles.kpiIconCircle, { backgroundColor: k.color + '15' }]}>
                   <Feather name={k.icon} size={14} color={k.color} />
@@ -747,7 +750,7 @@ export default function HomeScreen({ navigation }) {
       {/* Análises locked */}
       {pendente && (
         <>
-          <Text style={styles.sectionTitle}>Análises</Text>
+          <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }]}>Análises</Text>
           <View style={styles.analysisLocked}>
             <View style={styles.lockedIconCircle}>
               <Feather name="lock" size={24} color={colors.textSecondary} />
@@ -765,7 +768,7 @@ export default function HomeScreen({ navigation }) {
       )}
 
       {/* Ações Rápidas */}
-      <Text style={styles.sectionTitle}>Ações Rápidas</Text>
+      <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }]}>Ações Rápidas</Text>
       <View style={styles.acoesRow}>
         {acoes.map((a) => (
           <TouchableOpacity key={a.label} style={styles.acaoBtn} activeOpacity={0.7} onPress={() => nav(a.tab)}>
@@ -788,7 +791,7 @@ export default function HomeScreen({ navigation }) {
           contexto correto (produto específico, financeiro, insumos, etc.). */}
       {d.insights?.length > 0 && (
         <>
-          <Text style={styles.sectionTitle}>Análises Rápidas</Text>
+          <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }]}>Análises Rápidas</Text>
           {d.insights.map((insight, i) => {
             const a = insight.action;
             const Wrapper = a ? TouchableOpacity : View;

@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform, Pressable, Keyboard
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import useListDensity from '../hooks/useListDensity';
 
 /**
  * Wraps a form screen to render as a modal popup on desktop web
@@ -16,6 +17,11 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
  */
 export default function ModalFormWrapper({ children, title, onClose }) {
   const { isDesktop } = useResponsiveLayout();
+  // Sessão 28.6 — densidade aplicada ao header mobile do modal.
+  const { isCompact, iconSize } = useListDensity();
+  const backBtnDim = isCompact ? 40 : 44;
+  const titleFontSize = isCompact ? 16 : 18;
+  const headerPadV = isCompact ? 8 : 14;
 
   if (!isDesktop) {
     // Mobile: full-screen with custom header.
@@ -23,19 +29,19 @@ export default function ModalFormWrapper({ children, title, onClose }) {
     // conteúdo no iOS para o footer não ficar atrás do teclado.
     return (
       <View style={styles.mobileWrapper}>
-        <View style={styles.mobileHeader}>
+        <View style={[styles.mobileHeader, { paddingVertical: headerPadV }]}>
           <TouchableOpacity
             onPress={onClose}
-            style={styles.backBtn}
+            style={[styles.backBtn, { width: backBtnDim, height: backBtnDim, borderRadius: backBtnDim / 2 }]}
             activeOpacity={0.7}
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
             accessibilityRole="button"
             accessibilityLabel="Voltar"
           >
-            <Feather name="arrow-left" size={22} color={colors.textLight} />
+            <Feather name="arrow-left" size={iconSize} color={colors.textLight} />
           </TouchableOpacity>
-          <Text style={styles.mobileTitle} numberOfLines={1}>{title}</Text>
-          <View style={{ width: 44 }} />
+          <Text style={[styles.mobileTitle, { fontSize: titleFontSize }]} numberOfLines={1}>{title}</Text>
+          <View style={{ width: backBtnDim }} />
         </View>
         <KeyboardAvoidingView
           style={{ flex: 1 }}

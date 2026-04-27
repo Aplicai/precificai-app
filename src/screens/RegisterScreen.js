@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import zxcvbn from 'zxcvbn';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
+import useListDensity from '../hooks/useListDensity';
 import useRateLimit from '../hooks/useRateLimit';
 import { mapAuthError } from '../utils/authErrors';
 import { parseRateLimitSeconds } from '../utils/parseRateLimit';
@@ -59,6 +60,7 @@ const translateFeedback = (msg) => (msg ? (FEEDBACK_PT[msg] || msg) : '');
 export default function RegisterScreen({ navigation }) {
   const { signUp } = useAuth();
   const rateLimit = useRateLimit();
+  const { isCompact, inputHeight, buttonHeight } = useListDensity();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -208,7 +210,7 @@ export default function RegisterScreen({ navigation }) {
 
           <Text style={styles.label}>Email</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { minHeight: inputHeight, paddingVertical: isCompact ? 8 : 12 }]}
             value={email}
             onChangeText={onChangeEmail}
             placeholder="seu@email.com"
@@ -223,10 +225,10 @@ export default function RegisterScreen({ navigation }) {
           />
 
           <Text style={styles.label}>Senha</Text>
-          <View style={styles.passwordContainer}>
+          <View style={[styles.passwordContainer, { minHeight: inputHeight }]}>
             <TextInput
               ref={passwordRef}
-              style={styles.passwordInput}
+              style={[styles.passwordInput, { paddingVertical: isCompact ? 8 : 12 }]}
               value={password}
               onChangeText={onChangePassword}
               placeholder="Crie uma senha segura"
@@ -285,7 +287,7 @@ export default function RegisterScreen({ navigation }) {
           ) : null}
 
           <TouchableOpacity
-            style={[styles.primaryBtn, { marginTop: 20 }, btnDisabled && styles.primaryBtnDisabled]}
+            style={[styles.primaryBtn, { marginTop: 20, minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md }, btnDisabled && styles.primaryBtnDisabled]}
             onPress={handleRegister}
             disabled={btnDisabled}
             activeOpacity={0.8}

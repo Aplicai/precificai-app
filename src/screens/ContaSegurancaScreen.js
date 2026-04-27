@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { t } from '../i18n/pt-BR';
+import useListDensity from '../hooks/useListDensity';
 // Sprint 1 Q9 — helper para Alert pós-sucesso confiável no web (Alert.alert com onPress não dispara no RN Web).
 import { notifySuccess } from '../utils/notify';
 
@@ -30,6 +31,7 @@ function isValidEmail(s) {
 
 export default function ContaSegurancaScreen({ navigation }) {
   const { user } = useAuth();
+  const { isCompact, buttonHeight } = useListDensity();
   const [section, setSection] = useState(null); // 'email' | 'senha' | null
   const [newEmail, setNewEmail] = useState('');
   const [confirmEmail, setConfirmEmail] = useState('');
@@ -297,7 +299,7 @@ export default function ContaSegurancaScreen({ navigation }) {
           />
           <Text style={styles.hint}>Será enviado um e-mail de confirmação para o novo endereço e para o endereço atual.</Text>
           <TouchableOpacity
-            style={[styles.saveBtn, loading && { opacity: 0.6 }]}
+            style={[styles.saveBtn, { minHeight: buttonHeight, paddingVertical: isCompact ? 8 : 12 }, loading && { opacity: 0.6 }]}
             onPress={handleUpdateEmail}
             disabled={loading}
           >
@@ -394,7 +396,7 @@ export default function ContaSegurancaScreen({ navigation }) {
           <Text style={styles.hint}>A senha deve ter no mínimo 8 caracteres, com letras maiúsculas, minúsculas e números.</Text>
 
           <TouchableOpacity
-            style={[styles.saveBtn, loading && { opacity: 0.6 }]}
+            style={[styles.saveBtn, { minHeight: buttonHeight, paddingVertical: isCompact ? 8 : 12 }, loading && { opacity: 0.6 }]}
             onPress={handleUpdatePassword}
             disabled={loading}
           >

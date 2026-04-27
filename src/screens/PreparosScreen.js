@@ -81,7 +81,7 @@ export default function PreparosScreen({ navigation }) {
   const [viewMode, setViewMode] = usePersistedState('preparos.viewMode', 'list');
   // Bug fix: no mobile o grid renderiza apenas chips com preço (sem nome). Força lista no mobile.
   const isGrid = isDesktop;
-  const { rowOverride, nameOverride, avatarSize } = useListDensity();
+  const { rowOverride, nameOverride, avatarSize, isCompact, rowMinHeight, titleFontSize, listItemSubtitleFontSize } = useListDensity();
   const bulk = useBulkSelection();
   // Mapa de cores por categoria ID
   const [catColorMap, setCatColorMap] = useState({});
@@ -670,12 +670,12 @@ export default function PreparosScreen({ navigation }) {
             const isCollapsed = collapsedSections[section.catId];
             return (
               <TouchableOpacity
-                style={styles.sectionHeader}
+                style={[styles.sectionHeader, isCompact && { paddingTop: 8, paddingBottom: 4 }]}
                 onPress={() => setCollapsedSections(prev => ({ ...prev, [section.catId]: !prev[section.catId] }))}
                 activeOpacity={0.6}
               >
                 <View style={[styles.sectionDot, { backgroundColor: section.catColor }]} />
-                <Text style={styles.sectionTitle}>{section.title}</Text>
+                <Text style={[styles.sectionTitle, { fontSize: isCompact ? 11 : titleFontSize }]}>{section.title}</Text>
                 <Text style={styles.sectionCount}>{section.totalCount}</Text>
                 <Feather
                   name={isCollapsed ? 'chevron-right' : 'chevron-down'}
@@ -703,6 +703,7 @@ export default function PreparosScreen({ navigation }) {
                   !isLast && styles.rowBorder,
                   selected && styles.rowSelected,
                   rowOverride,
+                  { minHeight: rowMinHeight },
                 ]}
                 onPress={() => handleRowPress(item)}
                 onLongPress={() => handleRowLongPress(item)}
@@ -727,7 +728,7 @@ export default function PreparosScreen({ navigation }) {
                     )}
                     <HighlightedText text={item.nome} query={busca} style={[styles.rowNome, nameOverride]} numberOfLines={1} />
                   </View>
-                  <Text style={styles.rowMarca} numberOfLines={1}>
+                  <Text style={[styles.rowMarca, { fontSize: listItemSubtitleFontSize }]} numberOfLines={1}>
                     Rende {formatRendimento(item.rendimento_total, item.unidade_medida)}
                   </Text>
                 </View>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, useWindowDimensions } from 'react-native';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
+import useListDensity from '../hooks/useListDensity';
 
 export default function ConfirmDeleteModal({ visible, isFocused = true, titulo, nome, onConfirm, onCancel, confirmLabel = 'Excluir', aviso = null }) {
   const shouldShow = visible && isFocused;
@@ -8,10 +9,12 @@ export default function ConfirmDeleteModal({ visible, isFocused = true, titulo, 
   // em destaque acima e Cancelar como link abaixo. Em desktop continuam side-by-side.
   const { width } = useWindowDimensions();
   const isMobile = width <= 480;
+  // Sessão 28.6 — tokens de densidade aplicados aos botões e padding interno.
+  const { buttonHeight, cardPadding } = useListDensity();
   return (
     <Modal visible={shouldShow} transparent animationType="fade">
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onCancel}>
-        <TouchableOpacity activeOpacity={1} style={[styles.content, isMobile && styles.contentMobile]} onPress={() => {}}>
+        <TouchableOpacity activeOpacity={1} style={[styles.content, isMobile && styles.contentMobile, { padding: cardPadding }]} onPress={() => {}}>
           <Text style={styles.title}>{titulo || 'Confirmar Exclusão'}</Text>
           {nome ? (
             <Text style={styles.message}>
@@ -28,19 +31,19 @@ export default function ConfirmDeleteModal({ visible, isFocused = true, titulo, 
           )}
           {isMobile ? (
             <View style={styles.actionsStacked}>
-              <TouchableOpacity style={styles.confirmBtnFull} onPress={onConfirm} accessibilityRole="button" accessibilityLabel={confirmLabel}>
+              <TouchableOpacity style={[styles.confirmBtnFull, { height: buttonHeight, minHeight: buttonHeight }]} onPress={onConfirm} accessibilityRole="button" accessibilityLabel={confirmLabel}>
                 <Text style={styles.confirmText}>{confirmLabel}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.cancelLink} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Cancelar">
+              <TouchableOpacity style={[styles.cancelLink, { height: buttonHeight, minHeight: buttonHeight }]} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Cancelar">
                 <Text style={styles.cancelLinkText}>Cancelar</Text>
               </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.actions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Cancelar">
+              <TouchableOpacity style={[styles.cancelBtn, { height: buttonHeight }]} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Cancelar">
                 <Text style={styles.cancelText}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmBtn} onPress={onConfirm} accessibilityRole="button" accessibilityLabel={confirmLabel}>
+              <TouchableOpacity style={[styles.confirmBtn, { height: buttonHeight }]} onPress={onConfirm} accessibilityRole="button" accessibilityLabel={confirmLabel}>
                 <Text style={styles.confirmText}>{confirmLabel}</Text>
               </TouchableOpacity>
             </View>

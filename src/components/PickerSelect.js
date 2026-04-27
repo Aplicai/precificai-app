@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, FlatList, StyleSheet, TextInput, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
+import useListDensity from '../hooks/useListDensity';
 
 export default function PickerSelect({ label, value, options, onValueChange, placeholder, style, displayValue, onCreateNew, createLabel }) {
   const [visible, setVisible] = useState(false);
@@ -10,6 +11,13 @@ export default function PickerSelect({ label, value, options, onValueChange, pla
   // para aproveitar melhor a área e ficar mais perto do dedo.
   const { width } = useWindowDimensions();
   const isMobile = width <= 480;
+  const { isCompact, cardPadding } = useListDensity();
+  const selectorMinHeight = isCompact ? 40 : 48;
+  const optionPadding = isCompact ? 8 : 14;
+  const optionMinHeight = isCompact ? 40 : 48;
+  const labelMarginBottom = isCompact ? 4 : 6;
+  // Sessão 28.6 — header do sheet usa cardPadding token.
+  const modalHeaderPad = cardPadding;
   // Bug fix (P0-04): Antes, quando `value` estava setado mas as `options` ainda não
   // tinham carregado (timing/async) ou quando havia mismatch de tipo (string vs number),
   // o componente caía no fallback "Selecione..." mesmo com valor preenchido — o que
@@ -36,8 +44,8 @@ export default function PickerSelect({ label, value, options, onValueChange, pla
 
   return (
     <View style={[styles.container, style]}>
-      {label && <Text style={styles.label}>{label}</Text>}
-      <TouchableOpacity style={styles.selector} onPress={() => setVisible(true)}>
+      {label && <Text style={[styles.label, { marginBottom: labelMarginBottom }]}>{label}</Text>}
+      <TouchableOpacity style={[styles.selector, { minHeight: selectorMinHeight }]} onPress={() => setVisible(true)}>
         <Text style={[styles.selectorText, !isFilled && styles.placeholder]}>{selectedLabel}</Text>
         <Text style={styles.arrow}>▼</Text>
       </TouchableOpacity>
@@ -47,8 +55,8 @@ export default function PickerSelect({ label, value, options, onValueChange, pla
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
         <TouchableOpacity style={[styles.overlay, isMobile && styles.overlayMobile]} onPress={closeModal} activeOpacity={1}>
-          <TouchableOpacity activeOpacity={1} style={[styles.modal, isMobile && styles.modalMobile]} onPress={() => {}}>
-            <Text style={styles.modalTitle}>{label || 'Selecione'}</Text>
+          <TouchableOpacity activeOpacity={1} style={[styles.modal, isMobile && styles.modalMobile, { padding: modalHeaderPad }]} onPress={() => {}}>
+            <Text style={[styles.modalTitle, { marginBottom: modalHeaderPad }]}>{label || 'Selecione'}</Text>
             {options.length > 6 && (
               <TextInput
                 style={styles.searchInput}
@@ -63,7 +71,7 @@ export default function PickerSelect({ label, value, options, onValueChange, pla
               keyExtractor={(item) => String(item.value)}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={[styles.option, item.value === value && styles.optionSelected]}
+                  style={[styles.option, { padding: optionPadding, minHeight: optionMinHeight }, item.value === value && styles.optionSelected]}
                   onPress={() => { onValueChange(item.value); closeModal(); }}
                 >
                   <Text style={[styles.optionText, item.value === value && styles.optionTextSelected]}>

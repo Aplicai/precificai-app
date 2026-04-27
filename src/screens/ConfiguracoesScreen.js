@@ -190,7 +190,12 @@ export default function ConfiguracoesScreen({ navigation }) {
         </TouchableOpacity>
       ))}
 
-      {/* Aparência: densidade das listas */}
+      {/* Aparência: densidade das listas
+          Sessão 28.6 — toggle reformulado: compact agora é o padrão mobile real.
+          Sub-labels deixam claro qual é o default por plataforma; helper text
+          abaixo explica o impacto visual da escolha. Preview row mostra ao vivo
+          a diferença de tamanho. Default por plataforma vale só na 1ª execução
+          (depois respeita preferência persistida em AsyncStorage — ver useListDensity). */}
       <View style={styles.aparenciaSection}>
         <View style={styles.backupHeader}>
           <View style={[styles.iconBox, { backgroundColor: colors.purple + '12' }]}>
@@ -203,27 +208,6 @@ export default function ConfiguracoesScreen({ navigation }) {
         </View>
         <View style={styles.densityRow}>
           <TouchableOpacity
-            onPress={() => setDensity('comfortable')}
-            activeOpacity={0.7}
-            style={[
-              styles.densityBtn,
-              density === 'comfortable' && styles.densityBtnActive,
-            ]}
-            accessibilityRole="radio"
-            accessibilityLabel="Densidade confortável"
-            accessibilityState={{ selected: density === 'comfortable' }}
-          >
-            <Feather
-              name="menu"
-              size={18}
-              color={density === 'comfortable' ? colors.primary : colors.textSecondary}
-            />
-            <Text style={[
-              styles.densityBtnText,
-              density === 'comfortable' && styles.densityBtnTextActive,
-            ]}>Confortável</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
             onPress={() => setDensity('compact')}
             activeOpacity={0.7}
             style={[
@@ -232,6 +216,7 @@ export default function ConfiguracoesScreen({ navigation }) {
             ]}
             accessibilityRole="radio"
             accessibilityLabel="Densidade compacta"
+            accessibilityHint="Mais denso, padrão mobile"
             accessibilityState={{ selected: density === 'compact' }}
           >
             <Feather
@@ -243,8 +228,96 @@ export default function ConfiguracoesScreen({ navigation }) {
               styles.densityBtnText,
               density === 'compact' && styles.densityBtnTextActive,
             ]}>Compacto</Text>
+            <Text style={[
+              styles.densityBtnSubText,
+              density === 'compact' && styles.densityBtnSubTextActive,
+            ]}>mais denso, padrão mobile</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setDensity('comfortable')}
+            activeOpacity={0.7}
+            style={[
+              styles.densityBtn,
+              density === 'comfortable' && styles.densityBtnActive,
+            ]}
+            accessibilityRole="radio"
+            accessibilityLabel="Densidade confortável"
+            accessibilityHint="Mais ar, padrão desktop"
+            accessibilityState={{ selected: density === 'comfortable' }}
+          >
+            <Feather
+              name="menu"
+              size={18}
+              color={density === 'comfortable' ? colors.primary : colors.textSecondary}
+            />
+            <Text style={[
+              styles.densityBtnText,
+              density === 'comfortable' && styles.densityBtnTextActive,
+            ]}>Confortável</Text>
+            <Text style={[
+              styles.densityBtnSubText,
+              density === 'comfortable' && styles.densityBtnSubTextActive,
+            ]}>mais ar, padrão desktop</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Preview row — exemplo ao vivo de uma linha de lista no modo escolhido.
+            Usa os mesmos tokens do hook (rowMinHeight + paddingVertical + fontSize),
+            então reflete exatamente o que o usuário verá em Insumos/Produtos. */}
+        <Text style={styles.densityPreviewLabel}>Pré-visualização</Text>
+        <View style={styles.densityPreviewBox}>
+          <View
+            style={[
+              styles.densityPreviewRow,
+              {
+                minHeight: density === 'compact' ? 48 : 60,
+                paddingVertical: density === 'compact' ? 8 : 14,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.densityPreviewAvatar,
+                {
+                  width: density === 'compact' ? 32 : 44,
+                  height: density === 'compact' ? 32 : 44,
+                },
+              ]}
+            >
+              <Feather
+                name="package"
+                size={density === 'compact' ? 16 : 20}
+                color={colors.primary}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[
+                  styles.densityPreviewTitle,
+                  { fontSize: density === 'compact' ? 13 : 15 },
+                ]}
+                numberOfLines={1}
+              >
+                Tomate italiano
+              </Text>
+              <Text
+                style={[
+                  styles.densityPreviewSubtitle,
+                  { fontSize: density === 'compact' ? 11 : 13 },
+                ]}
+                numberOfLines={1}
+              >
+                R$ 8,50 / kg
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Helper inline — explica impacto da escolha em PT-BR.
+            Mantém o usuário ciente de que a escolha vale para todo o app. */}
+        <Text style={styles.densityHelper}>
+          O modo compacto deixa mais conteúdo visível e é o padrão recomendado no celular. O confortável dá mais espaço para leitura, ideal em tablets e desktop.
+        </Text>
       </View>
 
       {/* Recursos avançados — flags que ligam módulos opcionais */}
@@ -413,12 +486,15 @@ const styles = StyleSheet.create({
   },
   densityBtn: {
     flex: 1,
+    minHeight: 48,
     paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.xs,
     borderRadius: borderRadius.md,
     borderWidth: 2,
     borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   densityBtnActive: {
     borderColor: colors.primary,
@@ -432,6 +508,56 @@ const styles = StyleSheet.create({
   },
   densityBtnTextActive: {
     color: colors.primary,
+  },
+  densityBtnSubText: {
+    marginTop: 2,
+    fontSize: fonts.tiny,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  densityBtnSubTextActive: {
+    color: colors.primary,
+  },
+  densityPreviewLabel: {
+    marginTop: spacing.md,
+    marginBottom: 6,
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.semiBold,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  densityPreviewBox: {
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border + '80',
+    paddingHorizontal: spacing.sm,
+  },
+  densityPreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  densityPreviewAvatar: {
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.primary + '12',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  densityPreviewTitle: {
+    fontFamily: fontFamily.semiBold,
+    color: colors.text,
+  },
+  densityPreviewSubtitle: {
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  densityHelper: {
+    marginTop: spacing.sm,
+    fontSize: fonts.tiny,
+    lineHeight: 16,
+    color: colors.textSecondary,
   },
   // Recursos avançados (Sessão 26)
   advancedSection: {

@@ -8,6 +8,7 @@ import { formatCurrency, converterParaBase } from '../utils/calculations';
 import EmptyState from '../components/EmptyState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
+import useListDensity from '../hooks/useListDensity';
 
 // Audit P1: helper defensivo para qualquer número vindo de DB.
 function safeNum(v) {
@@ -32,6 +33,7 @@ function escapeHtml(str) {
 
 export default function ListaComprasScreen({ navigation }) {
   const { isDesktop, isMobile } = useResponsiveLayout();
+  const { isCompact, rowMinHeight, titleFontSize, listItemSubtitleFontSize, cardPadding } = useListDensity();
   const bottomOffset = isMobile ? 86 : 16; // BottomTab clearance on mobile
   const [produtos, setProdutos] = useState([]);
   const [quantidades, setQuantidades] = useState({});
@@ -434,14 +436,14 @@ export default function ListaComprasScreen({ navigation }) {
 
                 return Object.entries(groups).map(([catName, items], ci) => (
                   <View key={catName}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6, marginTop: ci > 0 ? 12 : 0 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: isCompact ? 4 : 6, marginTop: ci > 0 ? (isCompact ? 8 : 12) : 0 }}>
                       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: CATEGORY_COLORS[ci % CATEGORY_COLORS.length] }} />
-                      <Text style={{ fontSize: 13, fontFamily: fontFamily.semiBold, color: colors.text }}>{catName}</Text>
-                      <Text style={{ fontSize: 11, color: colors.textSecondary }}>({items.length})</Text>
+                      <Text style={{ fontSize: titleFontSize, fontFamily: fontFamily.semiBold, color: colors.text }}>{catName}</Text>
+                      <Text style={{ fontSize: listItemSubtitleFontSize, color: colors.textSecondary }}>({items.length})</Text>
                     </View>
                     <View style={isDesktop ? styles.gridContainer : undefined}>
                       {items.map(p => (
-                        <View key={p.id} style={isDesktop ? styles.gridCardProduto : styles.produtoRow}>
+                        <View key={p.id} style={isDesktop ? styles.gridCardProduto : [styles.produtoRow, { minHeight: rowMinHeight, paddingVertical: isCompact ? 8 : 14 }]}>
                           {Platform.OS === 'web' ? (
                             <div title={p.nome} style={{ flex: 1, overflow: 'hidden' }}>
                               <Text style={isDesktop ? styles.gridCardName : styles.produtoNome} numberOfLines={1}>{p.nome}</Text>
@@ -526,10 +528,10 @@ export default function ListaComprasScreen({ navigation }) {
                   </View>
                 ) : (
                   lista.grouped[cat].map(item => (
-                    <View key={item.mp_id} style={styles.itemRow}>
+                    <View key={item.mp_id} style={[styles.itemRow, { minHeight: rowMinHeight, paddingVertical: isCompact ? 6 : 10 }]}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.itemNome}>{item.nome}</Text>
-                        <Text style={styles.itemQty}>
+                        <Text style={[styles.itemQty, { fontSize: listItemSubtitleFontSize }]}>
                           {item.displayQty % 1 === 0 ? item.displayQty : item.displayQty.toFixed(2)} {item.displayUnit}
                         </Text>
                       </View>

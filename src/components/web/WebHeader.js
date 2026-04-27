@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigationState } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, fontFamily, webLayout } from '../../utils/theme';
+import useListDensity from '../../hooks/useListDensity';
 
 const ROUTE_TITLES = {
   'Início': 'Painel Geral',
@@ -108,6 +109,10 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
   // para preservar área útil. WebHeader só monta em width >= 1024 (useResponsiveLayout).
   const { width } = useWindowDimensions();
   const isCompact = width < 1280;
+  // Sessão 28.6 — tokens de densidade (compact=52 / comfortable=64)
+  const { headerHeight, iconSize, isCompact: densityCompact } = useListDensity();
+  const titleFontSize = densityCompact ? 16 : 18;
+  const backIconSize = densityCompact ? 18 : 20;
 
   const navState = useNavigationState(s => s);
   const tabState = navState?.routes?.[navState.index]?.state;
@@ -185,7 +190,7 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
   const initials = user?.email ? user.email.substring(0, 2).toUpperCase() : 'US';
 
   return (
-    <View style={[styles.container, { paddingHorizontal: isCompact ? spacing.md : 24 }]}>
+    <View style={[styles.container, { height: headerHeight, paddingHorizontal: isCompact ? spacing.md : 24 }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
         {(canGoBack || parentScreen || returnTo) && Platform.OS === 'web' && (
           <div
@@ -197,10 +202,10 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
               width: 44, height: 44, borderRadius: 22,
             }}
           >
-            <Feather name="arrow-left" size={20} color="#fff" />
+            <Feather name="arrow-left" size={backIconSize} color="#fff" />
           </div>
         )}
-        <Text style={styles.title} numberOfLines={1}>{title}</Text>
+        <Text style={[styles.title, { fontSize: titleFontSize }]} numberOfLines={1}>{title}</Text>
       </View>
 
       <View style={styles.actions}>

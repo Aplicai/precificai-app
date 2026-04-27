@@ -3,6 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-nati
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useFeatureFlag from '../hooks/useFeatureFlag';
+import useListDensity from '../hooks/useListDensity';
 
 /**
  * Hub "Ferramentas" reorganizado (audit S9 — Sprint 4).
@@ -158,6 +159,8 @@ export default function MaisScreen({ navigation }) {
   // Sessão 26 — feature flags ocultam grupos/itens não-essenciais até user habilitar
   const [usaDelivery] = useFeatureFlag('usa_delivery');
   const [analiseAvancada] = useFeatureFlag('modo_avancado_analise');
+  // Sessão 28.6 — densidade aplicada em cards e títulos
+  const { isCompact, cardPadding, sectionGap, titleFontSize, iconSize, listItemSubtitleFontSize, bodyLineHeight } = useListDensity();
   const flagOn = (name) => {
     if (!name) return true;
     if (name === 'usa_delivery') return !!usaDelivery;
@@ -174,29 +177,29 @@ export default function MaisScreen({ navigation }) {
         // Sprint 4 S9 — 1 cor por grupo. Item.color é fallback legacy.
         const c = group.groupColor || colors.primary;
         return (
-          <View key={group.key} style={[styles.group, gIdx > 0 && { marginTop: spacing.lg }]}>
-            <Text style={styles.sectionTitle}>{group.title}</Text>
+          <View key={group.key} style={[styles.group, gIdx > 0 && { marginTop: sectionGap }]}>
+            <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }]}>{group.title}</Text>
             {group.items.map((item) => (
               <TouchableOpacity
                 key={item.key}
-                style={styles.menuCard}
+                style={[styles.menuCard, { padding: cardPadding, marginBottom: isCompact ? 6 : 10 }]}
                 activeOpacity={0.6}
                 onPress={() => navigation.navigate(item.screen)}
                 accessibilityRole="button"
                 accessibilityLabel={`${item.title}. ${item.desc}`}
               >
-                <View style={[styles.iconCircle, { backgroundColor: c + '12', borderWidth: 1, borderColor: c + '30' }]}>
+                <View style={[styles.iconCircle, { backgroundColor: c + '12', borderWidth: 1, borderColor: c + '30', width: isCompact ? 36 : 44, height: isCompact ? 36 : 44, borderRadius: isCompact ? 18 : 22, marginRight: isCompact ? 10 : spacing.md }]}>
                   {item.set === 'material' ? (
-                    <MaterialCommunityIcons name={item.icon} size={22} color={c} />
+                    <MaterialCommunityIcons name={item.icon} size={isCompact ? 18 : 22} color={c} />
                   ) : (
-                    <Feather name={item.icon} size={22} color={c} />
+                    <Feather name={item.icon} size={isCompact ? 18 : 22} color={c} />
                   )}
                 </View>
                 <View style={styles.menuBody}>
                   <Text style={styles.menuTitle} numberOfLines={1}>{item.title}</Text>
-                  <Text style={styles.menuDesc} numberOfLines={2}>{item.desc}</Text>
+                  <Text style={[styles.menuDesc, { fontSize: listItemSubtitleFontSize, lineHeight: bodyLineHeight }]} numberOfLines={2}>{item.desc}</Text>
                 </View>
-                <Feather name="chevron-right" size={18} color={colors.textSecondary} />
+                <Feather name="chevron-right" size={iconSize} color={colors.textSecondary} />
               </TouchableOpacity>
             ))}
           </View>

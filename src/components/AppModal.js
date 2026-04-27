@@ -58,6 +58,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import useListDensity from '../hooks/useListDensity';
 
 const SIZE_MAP = Object.freeze({
   sm: 420,
@@ -84,6 +85,10 @@ export default function AppModal({
   const { width } = useWindowDimensions();
   const isMobile = width <= 480;
   const isTinyScreen = width <= 360;
+  // Sessão 28.6 — densidade no header do modal.
+  const { isCompact: densityCompact } = useListDensity();
+  const headerPadding = densityCompact ? 12 : 18;
+  const headerTitleFontSize = densityCompact ? 16 : 18;
 
   function handleBackdropPress() {
     if (dismissOnBackdrop && typeof onClose === 'function') onClose();
@@ -113,8 +118,8 @@ export default function AppModal({
       >
         {/* Header implícito quando usuário passa `title` mas não usa AppModal.Header */}
         {title != null && (
-          <View style={styles.headerImplicit}>
-            <Text style={styles.headerImplicitTitle} numberOfLines={2}>{title}</Text>
+          <View style={[styles.headerImplicit, { padding: headerPadding, paddingBottom: headerPadding * 0.66 }]}>
+            <Text style={[styles.headerImplicitTitle, { fontSize: headerTitleFontSize }]} numberOfLines={2}>{title}</Text>
             {typeof onClose === 'function' && (
               <TouchableOpacity
                 onPress={onClose}
