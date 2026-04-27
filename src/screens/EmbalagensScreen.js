@@ -498,11 +498,11 @@ export default function EmbalagensScreen({ navigation }) {
             <Feather name="plus" size={14} color={colors.primary} />
           </TouchableOpacity>
         </ScrollView>
-        <View style={styles.searchSortRow}>
-          <View style={{ flex: 1 }}>
+        <View style={[styles.searchSortRow, !isDesktop && styles.searchSortRowMobile]}>
+          <View style={!isDesktop ? { width: '100%' } : { flex: 1 }}>
             <SearchBar value={busca} onChangeText={setBusca} placeholder="Buscar..." />
           </View>
-          <View style={styles.sortMenuWrap}>
+          <View style={[styles.sortMenuWrap, !isDesktop && styles.sortMenuWrapMobile]}>
             <SortMenu
               value={sortBy}
               onChange={setSortBy}
@@ -886,8 +886,19 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingRight: spacing.md,
   },
+  searchSortRowMobile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 0,
+    paddingRight: 0,
+  },
   sortMenuWrap: {
     paddingTop: spacing.xs,
+  },
+  sortMenuWrapMobile: {
+    paddingTop: 0,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
   },
   filtroChip: {
     flexDirection: 'row', alignItems: 'center',
