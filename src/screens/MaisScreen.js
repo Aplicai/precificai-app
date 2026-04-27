@@ -53,6 +53,17 @@ const MENU_GROUPS = [
         set: 'feather',
         screen: 'ListaCompras',
       },
+      // Sessão 28.8 — Combos como recurso opcional (delivery OU combos avançado)
+      {
+        key: 'combos',
+        title: 'Combos / Kits',
+        desc: 'Pacotes de produtos vendidos juntos (combo executivo, kit lanche...)',
+        icon: 'layers',
+        set: 'feather',
+        tab: 'Produtos',
+        screen: 'CombosScreen',
+        flag: ['usa_delivery', 'modo_avancado_combos'],
+      },
       {
         key: 'fornecedores',
         title: 'Comparar Fornecedores',
@@ -159,13 +170,22 @@ export default function MaisScreen({ navigation }) {
   // Sessão 26 — feature flags ocultam grupos/itens não-essenciais até user habilitar
   const [usaDelivery] = useFeatureFlag('usa_delivery');
   const [analiseAvancada] = useFeatureFlag('modo_avancado_analise');
+  // Sessão 28.8 — Combos como recurso avançado opcional
+  const [combosAvancado] = useFeatureFlag('modo_avancado_combos');
   // Sessão 28.6 — densidade aplicada em cards e títulos
   const { isCompact, cardPadding, sectionGap, titleFontSize, iconSize, listItemSubtitleFontSize, bodyLineHeight } = useListDensity();
-  const flagOn = (name) => {
+  const _isFlagOn = (name) => {
     if (!name) return true;
     if (name === 'usa_delivery') return !!usaDelivery;
     if (name === 'modo_avancado_analise') return !!analiseAvancada;
+    if (name === 'modo_avancado_combos') return !!combosAvancado;
     return true;
+  };
+  // Sessão 28.8 — flag pode ser string ou array (OR)
+  const flagOn = (flag) => {
+    if (!flag) return true;
+    if (Array.isArray(flag)) return flag.some(_isFlagOn);
+    return _isFlagOn(flag);
   };
   const visibleGroups = MENU_GROUPS
     .filter((g) => flagOn(g.flag))
@@ -184,7 +204,14 @@ export default function MaisScreen({ navigation }) {
                 key={item.key}
                 style={[styles.menuCard, { padding: cardPadding, marginBottom: isCompact ? 6 : 10 }]}
                 activeOpacity={0.6}
-                onPress={() => navigation.navigate(item.screen)}
+                onPress={() => {
+                  // Sessão 28.8 — item.tab opcional pra cross-stack navigation (ex: Combos vive em Produtos)
+                  if (item.tab) {
+                    navigation.navigate(item.tab, { screen: item.screen });
+                  } else {
+                    navigation.navigate(item.screen);
+                  }
+                }}
                 accessibilityRole="button"
                 accessibilityLabel={`${item.title}. ${item.desc}`}
               >

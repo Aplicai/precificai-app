@@ -28,6 +28,11 @@ export const FLAG_DEFAULTS = {
   modo_avancado_estoque: false,
   usa_delivery: false,
   modo_avancado_analise: false,
+  // Sessão 28.8 — Combos como recurso avançado opcional. Quando ON,
+  // habilita CRUD de combos na Sidebar/MaisScreen e CTA de criação na
+  // tab Combos de Atualizar Preços. Default OFF para manter UX simples
+  // pra quem não precisa montar pacotes/kits.
+  modo_avancado_combos: false,
 };
 
 /**

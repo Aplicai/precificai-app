@@ -30,7 +30,7 @@ const TABS = [
   { key: 'combos', label: 'Combos', icon: 'layers' },
 ];
 
-export default function AtualizarPrecosScreen() {
+export default function AtualizarPrecosScreen({ navigation }) {
   const { isDesktop } = useResponsiveLayout();
   const { isCompact, rowMinHeight, titleFontSize, listItemFontSize } = useListDensity();
   const [activeTab, setActiveTab] = useState('insumos');
@@ -360,13 +360,30 @@ export default function AtualizarPrecosScreen() {
           <View style={styles.desktopContentWrap}>
             <View style={styles.desktopContentInner}>
               {items.length === 0 ? (
-                <EmptyState
-                  icon={busca.trim() ? 'search' : 'dollar-sign'}
-                  title={busca.trim() ? 'Nenhum item encontrado' : 'Nenhum item cadastrado'}
-                  description={busca.trim()
-                    ? `Nenhum resultado para "${busca}".`
-                    : `Cadastre itens na aba de ${activeTab} para atualizar preços aqui.`}
-                />
+                <View style={{ alignItems: 'center' }}>
+                  <EmptyState
+                    icon={busca.trim() ? 'search' : (activeTab === 'combos' ? 'layers' : 'dollar-sign')}
+                    title={busca.trim() ? 'Nenhum item encontrado' : (activeTab === 'combos' ? 'Nenhum combo cadastrado' : 'Nenhum item cadastrado')}
+                    description={busca.trim()
+                      ? `Nenhum resultado para "${busca}".`
+                      : (activeTab === 'combos'
+                        ? 'Combos são pacotes de produtos vendidos juntos (combo executivo, kit lanche, café da manhã).'
+                        : `Cadastre itens na aba de ${activeTab} para atualizar preços aqui.`)}
+                  />
+                  {/* Sessão 28.8 — CTA criar combo direto da tab */}
+                  {!busca.trim() && activeTab === 'combos' && navigation && (
+                    <TouchableOpacity
+                      style={styles.emptyCtaBtn}
+                      activeOpacity={0.7}
+                      onPress={() => navigation.navigate('Produtos', { screen: 'CombosScreen' })}
+                      accessibilityRole="button"
+                      accessibilityLabel="Criar primeiro combo"
+                    >
+                      <Feather name="plus" size={14} color="#fff" />
+                      <Text style={styles.emptyCtaBtnText}>Criar primeiro combo</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               ) : (
                 renderDesktopGrid()
               )}
@@ -381,13 +398,30 @@ export default function AtualizarPrecosScreen() {
           renderItem={renderItem}
           keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
-            <EmptyState
-              icon={busca.trim() ? 'search' : 'dollar-sign'}
-              title={busca.trim() ? 'Nenhum item encontrado' : 'Nenhum item cadastrado'}
-              description={busca.trim()
-                ? `Nenhum resultado para "${busca}".`
-                : `Cadastre itens na aba de ${activeTab} para atualizar preços aqui.`}
-            />
+            <View style={{ alignItems: 'center' }}>
+              <EmptyState
+                icon={busca.trim() ? 'search' : (activeTab === 'combos' ? 'layers' : 'dollar-sign')}
+                title={busca.trim() ? 'Nenhum item encontrado' : (activeTab === 'combos' ? 'Nenhum combo cadastrado' : 'Nenhum item cadastrado')}
+                description={busca.trim()
+                  ? `Nenhum resultado para "${busca}".`
+                  : (activeTab === 'combos'
+                    ? 'Combos são pacotes de produtos vendidos juntos (combo executivo, kit lanche, café da manhã).'
+                    : `Cadastre itens na aba de ${activeTab} para atualizar preços aqui.`)}
+              />
+              {/* Sessão 28.8 — CTA criar combo direto da tab */}
+              {!busca.trim() && activeTab === 'combos' && navigation && (
+                <TouchableOpacity
+                  style={styles.emptyCtaBtn}
+                  activeOpacity={0.7}
+                  onPress={() => navigation.navigate('Produtos', { screen: 'CombosScreen' })}
+                  accessibilityRole="button"
+                  accessibilityLabel="Criar primeiro combo"
+                >
+                  <Feather name="plus" size={14} color="#fff" />
+                  <Text style={styles.emptyCtaBtnText}>Criar primeiro combo</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           }
           ListFooterComponent={<View style={{ height: 20 }} />}
         />
@@ -615,6 +649,25 @@ const styles = StyleSheet.create({
   },
 
   // ── Mobile list ──
+  // Sessão 28.8 — CTA dentro do empty state da tab Combos
+  emptyCtaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: borderRadius.sm,
+    minHeight: 40,
+    marginTop: -spacing.md,
+    marginBottom: spacing.md,
+  },
+  emptyCtaBtnText: {
+    color: '#fff',
+    fontSize: fonts.small,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+  },
   list: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.xs,

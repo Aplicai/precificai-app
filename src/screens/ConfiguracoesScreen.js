@@ -91,6 +91,8 @@ export default function ConfiguracoesScreen({ navigation }) {
   const [estoqueOn, setEstoqueOn] = useFeatureFlag('modo_avancado_estoque');
   const [analiseOn, setAnaliseOn] = useFeatureFlag('modo_avancado_analise');
   const [deliveryOn, setDeliveryOn] = useFeatureFlag('usa_delivery');
+  // Sessão 28.8 — flag opcional pra exibir o CRUD de combos sem depender de delivery
+  const [combosOn, setCombosOn] = useFeatureFlag('modo_avancado_combos');
 
   // Audit P0 (Fase 2 - Fix #10): race-guard contra setState após unmount.
   // exportBackup pode rodar 30s+ em base grande; usuário pode trocar de tela.
@@ -359,6 +361,13 @@ export default function ConfiguracoesScreen({ navigation }) {
           desc="Engenharia do Cardápio (BCG) e Comparador de Fornecedores"
           value={analiseOn}
           onChange={setAnaliseOn}
+        />
+        <FlagToggleRow
+          icon="layers"
+          label="Combos / Kits"
+          desc="Vender pacotes de produtos juntos (ex: combo executivo, kit lanche, café da manhã)"
+          value={combosOn}
+          onChange={setCombosOn}
         />
       </View>
 

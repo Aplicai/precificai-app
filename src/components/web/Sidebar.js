@@ -17,7 +17,8 @@ const NAV_SECTIONS = [
       { key: 'preparos', label: 'Preparos', icon: 'pot-steam-outline', iconSet: 'material', tab: 'Preparos', screen: 'Preparos' },
       { key: 'embalagens', label: 'Embalagens', icon: 'package', iconSet: 'feather', tab: 'Embalagens', screen: 'Embalagens' },
       { key: 'produtos', label: 'Produtos', icon: 'tag', iconSet: 'feather', tab: 'Produtos', screen: 'ProdutosList' },
-      { key: 'combos', label: 'Combos', icon: 'layers', iconSet: 'feather', tab: 'Produtos', screen: 'CombosScreen', flag: 'usa_delivery' },
+      // Sessão 28.8 — Combos aparece se delivery OU recurso avançado de combos estiver on
+      { key: 'combos', label: 'Combos / Kits', icon: 'layers', iconSet: 'feather', tab: 'Produtos', screen: 'CombosScreen', flag: ['usa_delivery', 'modo_avancado_combos'] },
     ],
   },
   {
@@ -141,11 +142,20 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
   // Sessão 26 — feature flags filtram itens da sidebar para esconder Delivery/BCG/Fornecedores
   const [usaDelivery] = useFeatureFlag('usa_delivery');
   const [analiseAvancada] = useFeatureFlag('modo_avancado_analise');
-  const flagOn = (name) => {
+  // Sessão 28.8 — Combos como recurso avançado opcional (independente de delivery)
+  const [combosAvancado] = useFeatureFlag('modo_avancado_combos');
+  const _isFlagOn = (name) => {
     if (!name) return true;
     if (name === 'usa_delivery') return !!usaDelivery;
     if (name === 'modo_avancado_analise') return !!analiseAvancada;
+    if (name === 'modo_avancado_combos') return !!combosAvancado;
     return true;
+  };
+  // Aceita string OU array (OR — exibe se PELO MENOS UMA flag estiver on)
+  const flagOn = (flag) => {
+    if (!flag) return true;
+    if (Array.isArray(flag)) return flag.some(_isFlagOn);
+    return _isFlagOn(flag);
   };
   const filteredSections = NAV_SECTIONS
     .map((sec) => ({ ...sec, items: sec.items.filter((it) => flagOn(it.flag)) }))
