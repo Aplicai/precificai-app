@@ -16,6 +16,8 @@ import { t } from '../i18n/pt-BR';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 // Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
+// Sessão 28.8 — exibe nome+marca p/ distinguir insumos com mesmo nome
+import { formatInsumoLabel, formatIngLabel } from '../utils/formatInsumo';
 import {
   UNIDADES_MEDIDA,
   formatCurrency,
@@ -155,7 +157,7 @@ export default function PreparoFormScreen({ route, navigation }) {
       setForm({ nome: item.nome, rendimento_total: String(item.rendimento_total || ''), unidade_medida: item.unidade_medida || 'g', categoria_id: item.categoria_id || null, modo_preparo: item.modo_preparo || '', observacoes: item.observacoes || '', validade_dias: String(item.validade_dias || ''), temp_congelado: item.temp_congelado || '', tempo_congelado: item.tempo_congelado || '', temp_refrigerado: item.temp_refrigerado || '', tempo_refrigerado: item.tempo_refrigerado || '', temp_ambiente: item.temp_ambiente || '', tempo_ambiente: item.tempo_ambiente || '' });
       if (item.modo_preparo || item.observacoes || item.validade_dias) setShowInfoAdicional(true);
       const ings = await db.getAllAsync(
-        `SELECT pi.*, mp.nome as mp_nome, mp.preco_por_kg, mp.unidade_medida as mp_unidade FROM preparo_ingredientes pi
+        `SELECT pi.*, mp.nome as mp_nome, mp.marca as mp_marca, mp.preco_por_kg, mp.unidade_medida as mp_unidade FROM preparo_ingredientes pi
          JOIN materias_primas mp ON mp.id = pi.materia_prima_id WHERE pi.preparo_id = ?`, [editId]
       );
       setIngredientes(ings);
@@ -199,6 +201,7 @@ export default function PreparoFormScreen({ route, navigation }) {
     setQuantityPrompt({
       materia_prima_id: mp.id,
       nome: mp.nome,
+      marca: mp.marca || '',
       unidade: mp.unidade_medida || 'g',
       preco_por_kg: mp.preco_por_kg,
       quantidade: '',
@@ -216,6 +219,7 @@ export default function PreparoFormScreen({ route, navigation }) {
     setIngredientes(prev => [...prev, {
       materia_prima_id: quantityPrompt.materia_prima_id,
       mp_nome: quantityPrompt.nome,
+      mp_marca: quantityPrompt.marca || '',
       preco_por_kg: quantityPrompt.preco_por_kg,
       mp_unidade: quantityPrompt.unidade,
       quantidade_utilizada: qtd,
@@ -425,7 +429,7 @@ export default function PreparoFormScreen({ route, navigation }) {
               label="Adicionar insumo"
               value={null}
               onValueChange={(v) => { if (v) openQuantityPrompt(v); }}
-              options={materiasPrimas.map(mp => ({ label: mp.nome, value: mp.id }))}
+              options={materiasPrimas.map(mp => ({ label: formatInsumoLabel(mp), value: mp.id }))}
               placeholder="Selecione um insumo"
               onCreateNew={() => navigation.navigate('MateriaPrimaForm')}
               createLabel="Cadastrar novo insumo"
@@ -452,7 +456,7 @@ export default function PreparoFormScreen({ route, navigation }) {
                 const custo = calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade);
                 return (
                   <View key={idx} style={[styles.ingRow, idx % 2 === 0 && styles.ingRowEven]}>
-                    <Text style={[styles.ingCell, { flex: 2 }]} numberOfLines={1}>{ing.mp_nome || mp?.nome}</Text>
+                    <Text style={[styles.ingCell, { flex: 2 }]} numberOfLines={1}>{formatIngLabel(ing) || formatInsumoLabel(mp)}</Text>
                     <Text style={[styles.ingCell, { flex: 1, textAlign: 'center' }]}>{ing.quantidade_utilizada}</Text>
                     <Text style={[styles.ingCell, { flex: 1, textAlign: 'center' }]}>{unidade}</Text>
                     <Text style={[styles.ingCellCusto, { flex: 1.2, textAlign: 'right' }]}>{formatCurrency(custo)}</Text>

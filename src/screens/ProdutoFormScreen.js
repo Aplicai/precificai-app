@@ -5,6 +5,8 @@ import { getDatabase } from '../database/database';
 import InputField from '../components/InputField';
 import Card from '../components/Card';
 import PickerSelect from '../components/PickerSelect';
+// Sessão 28.8 — exibe nome+marca p/ distinguir insumos com mesmo nome
+import { formatInsumoLabel, formatIngLabel, buildSearchString } from '../utils/formatInsumo';
 import InfoTooltip from '../components/InfoTooltip';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import SaveStatus from '../components/SaveStatus';
@@ -284,9 +286,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
       // Cada bloco de relacionamento isolado para que falha em um não derrube o resto
       try {
         const ings = await db.getAllAsync(
-          `SELECT pi.*, mp.nome as mp_nome, mp.preco_por_kg, mp.unidade_medida as mp_unidade FROM produto_ingredientes pi
+          `SELECT pi.*, mp.nome as mp_nome, mp.marca as mp_marca, mp.preco_por_kg, mp.unidade_medida as mp_unidade FROM produto_ingredientes pi
            JOIN materias_primas mp ON mp.id = pi.materia_prima_id WHERE pi.produto_id = ?`, [editId]);
-        setIngredientes((ings || []).map(i => ({ materia_prima_id: i.materia_prima_id, mp_nome: i.mp_nome || i.nome, preco_por_kg: i.preco_por_kg, quantidade_utilizada: i.quantidade_utilizada, unidade: i.mp_unidade || i.unidade_medida || 'g' })));
+        setIngredientes((ings || []).map(i => ({ materia_prima_id: i.materia_prima_id, mp_nome: i.mp_nome || i.nome, mp_marca: i.mp_marca || '', preco_por_kg: i.preco_por_kg, quantidade_utilizada: i.quantidade_utilizada, unidade: i.mp_unidade || i.unidade_medida || 'g' })));
       } catch (e) {
         if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.loadIngredientes]', e);
         setIngredientes([]);
@@ -467,7 +469,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
       setIngredientes(prev => prev.map((item, i) => i === existingIdx ? { ...item, quantidade_utilizada: item.quantidade_utilizada + qtd } : item));
     } else {
       const unidade = mp.unidade_medida || 'g';
-      setIngredientes(prev => [...prev, { materia_prima_id: id, mp_nome: mp.nome, preco_por_kg: mp.preco_por_kg, quantidade_utilizada: qtd, unidade }]);
+      setIngredientes(prev => [...prev, { materia_prima_id: id, mp_nome: mp.nome, mp_marca: mp.marca || '', preco_por_kg: mp.preco_por_kg, quantidade_utilizada: qtd, unidade }]);
     }
     showFeedback(setIngAdicionado);
   }
@@ -972,7 +974,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </View>
               {ingredientes.map((ing, idx) => (
                 <View key={idx} style={[styles.tableRow, idx % 2 === 0 && styles.tableRowEven]}>
-                  <Text style={[styles.tableCell, { flex: 2 }]} numberOfLines={1}>{ing.mp_nome}</Text>
+                  <Text style={[styles.tableCell, { flex: 2 }]} numberOfLines={1}>{formatIngLabel(ing) || ing.mp_nome}</Text>
                   <TextInput
                     style={[styles.inlineQtyInput, { flex: 1 }]}
                     value={String(ing.quantidade_utilizada)}
@@ -1013,20 +1015,20 @@ export default function ProdutoFormScreen({ route, navigation }) {
             <View style={styles.dropdownContainer}>
               <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
                 {materiasPrimas
-                  .filter(m => !buscaIng || normalizeSearch(m.nome).includes(normalizeSearch(buscaIng)))
+                  .filter(m => !buscaIng || normalizeSearch(buildSearchString(m)).includes(normalizeSearch(buscaIng)))
                   .map(m => (
                     <TouchableOpacity
                       key={m.id}
                       style={styles.dropdownItem}
                       onPress={() => { addIngrediente(m.id, '1'); setBuscaIng(''); setActiveSearch(null); }}
                     >
-                      <Text style={styles.dropdownItemName}>{m.nome}</Text>
+                      <Text style={styles.dropdownItemName}>{formatInsumoLabel(m)}</Text>
                       <Text style={styles.dropdownItemDetail}>
                         {formatCurrency(m.preco_por_kg)}/{getLabelPrecoBase(m.unidade_medida).replace('Preço por ', '')}
                       </Text>
                     </TouchableOpacity>
                   ))}
-                {materiasPrimas.filter(m => !buscaIng || normalizeSearch(m.nome).includes(normalizeSearch(buscaIng))).length === 0 && (
+                {materiasPrimas.filter(m => !buscaIng || normalizeSearch(buildSearchString(m)).includes(normalizeSearch(buscaIng))).length === 0 && (
                   <Text style={styles.listEmpty}>Nenhum insumo encontrado</Text>
                 )}
               </ScrollView>
@@ -1459,7 +1461,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                       const custoIng = calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada || 0, ing.unidade || 'g', ing.unidade || 'g');
                       return (
                         <View key={ing.id || i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
-                          <Text style={{ fontSize: 12, color: colors.textSecondary, flex: 1 }} numberOfLines={1}>{ing.mp_nome || ing.nome}</Text>
+                          <Text style={{ fontSize: 12, color: colors.textSecondary, flex: 1 }} numberOfLines={1}>{formatIngLabel(ing) || ing.mp_nome || ing.nome}</Text>
                           <Text style={{ fontSize: 12, color: colors.text, fontFamily: fontFamily.semiBold }}>{formatCurrency(custoIng)}</Text>
                         </View>
                       );
