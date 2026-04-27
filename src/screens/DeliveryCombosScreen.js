@@ -1300,10 +1300,13 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   // Override aplicado inline no desktop pelo renderDesktopGridCard
+  // Sessão 28.8 — flexGrow 0 + maxWidth pra evitar card sozinho na última
+  // linha esticar pra width inteira do container.
   comboCardV2Desktop: {
     minWidth: 280,
+    maxWidth: 380,
     flexBasis: 320,
-    flexGrow: 1,
+    flexGrow: 0,
     flexShrink: 1,
     marginHorizontal: 0,
     marginBottom: 0,
