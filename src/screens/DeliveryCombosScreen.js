@@ -72,6 +72,15 @@ export default function DeliveryCombosScreen() {
     saveErrorTimerRef.current = setTimeout(() => setSaveError(null), 4000);
   }
 
+  // APP-38 — toast de sucesso (verde) usando o mesmo banner do erro mas com cor diferente
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState(null);
+  const saveSuccessTimerRef = useRef(null);
+  function showSaveSuccess(msg) {
+    setSaveSuccessMsg(msg);
+    if (saveSuccessTimerRef.current) clearTimeout(saveSuccessTimerRef.current);
+    saveSuccessTimerRef.current = setTimeout(() => setSaveSuccessMsg(null), 2500);
+  }
+
   // Modal state
   const [showComboModal, setShowComboModal] = useState(false);
   const [editingCombo, setEditingCombo] = useState(null); // null = creating, object = editing
@@ -403,6 +412,9 @@ export default function DeliveryCombosScreen() {
   // Save for NEW combos only
   async function salvarNovo() {
     if (!novoCombo.nome.trim() || novoCombo.itens.length === 0) return;
+    // APP-38 — loading state: spinner durante request, toast sucesso/erro, otimistic update
+    setSaveStatus('saving');
+    const t0 = Date.now();
     try {
       const db = await getDatabase();
       const res = await db.runAsync(
@@ -416,14 +428,23 @@ export default function DeliveryCombosScreen() {
           [comboId, item.tipo, item.item_id, item.quantidade]
         );
       }
-
+      // APP-38 — otimistic update: insere o combo na lista local antes do reload completo
+      const elapsed = Date.now() - t0;
+      if (elapsed > 3000 && typeof console !== 'undefined' && console.warn) {
+        console.warn('[DeliveryCombos.salvarNovo] save lento:', elapsed, 'ms');
+      }
+      setCombos(prev => [{ id: comboId, nome: novoCombo.nome.trim(), preco_venda: parseInputValue(novoCombo.preco_venda), itens: novoCombo.itens, custo: 0 }, ...prev]);
       setShowComboModal(false);
       setEditingCombo(null);
       setNovoCombo({ nome: '', preco_venda: '', itens: [] });
+      setSaveStatus('saved');
+      // Toast de sucesso visível
+      try { showSaveSuccess && showSaveSuccess('Combo criado com sucesso'); } catch (_) {}
       setLoaded(false);
       loadData();
     } catch (e) {
       console.error('[DeliveryCombosScreen.salvarNovo]', e);
+      setSaveStatus('error');
       showSaveError('Falha ao criar combo. Tente novamente.');
     }
   }
@@ -799,6 +820,16 @@ export default function DeliveryCombosScreen() {
           accessibilityLiveRegion="polite"
         >
           <Text style={styles.errorBannerText}>{saveError}</Text>
+        </View>
+      )}
+      {/* APP-38 — toast de sucesso */}
+      {saveSuccessMsg && (
+        <View
+          style={[styles.errorBanner, { backgroundColor: '#dcfce7', borderColor: '#16a34a' }]}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+        >
+          <Text style={[styles.errorBannerText, { color: '#15803d' }]}>✓ {saveSuccessMsg}</Text>
         </View>
       )}
 

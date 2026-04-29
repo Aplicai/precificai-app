@@ -16,7 +16,8 @@
     "validate:env": "node scripts/validate-env.js",
     "prebuild:web": "node scripts/validate-env.js",
     "build:web": "npx expo export --platform web",
-    "smoke:prod": "node scripts/smoke-test-prod.js"
+    "smoke:prod": "node scripts/smoke-test-prod.js",
+    "test": "node --test __tests__/precificacao.test.mjs __tests__/listaCompras.test.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",

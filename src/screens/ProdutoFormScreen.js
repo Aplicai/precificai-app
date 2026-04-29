@@ -72,6 +72,32 @@ export default function ProdutoFormScreen({ route, navigation }) {
   const [preparosList, setPreparosList] = useState([]);
   const [embalagensList, setEmbalagensList] = useState([]);
   const [config, setConfig] = useState({ despFixasPerc: 0, despVarPerc: 0, lucroDesejado: 0.15, markup: 1 });
+  // APP-36 — quando categoria muda em produto NOVO sem embalagens, pré-seleciona embalagem padrão da categoria.
+  // Não acontece em produto sendo editado (não sobrescreve escolha do usuário).
+  useEffect(() => {
+    if (editId) return; // edição: não sobrescreve
+    if (!form.categoria_id) return;
+    if (produtoEmbalagens.length > 0) return; // já tem alguma embalagem escolhida
+    let cancel = false;
+    (async () => {
+      try {
+        const db = await getDatabase();
+        const { getEmbalagemPadrao } = await import('../services/embalagemPadrao');
+        const embId = await getEmbalagemPadrao(db, form.categoria_id, 'balcao');
+        if (cancel || !embId) return;
+        const em = embalagensList.find(e => e.id === embId);
+        if (!em) return;
+        setProdutoEmbalagens([{
+          embalagem_id: em.id, em_nome: em.nome, preco_unitario: em.preco_unitario,
+          quantidade_utilizada: 1,
+          // APP-36 — flag pra renderizar badge "Sugerida pra [categoria]"
+          _sugeridaPorCategoria: true,
+        }]);
+      } catch (_) {}
+    })();
+    return () => { cancel = true; };
+  }, [form.categoria_id, editId, embalagensList]);
+
   // APP-19/24b: modal de transparência do cálculo
   const [comoCalculadoVisible, setComoCalculadoVisible] = useState(false);
 

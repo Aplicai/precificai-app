@@ -60,7 +60,14 @@ export default function HomeScreen({ navigation }) {
     produtosMargBaixa: [], produtosSemPreco: [],
     cmvPercent: 0, pontoEquilibrio: 0, fatMedio: 0,
     insights: [], featuredInsight: null,
+    // APP-43 — vendas por canal (vem da configuracao)
+    vendasMesBalcao: 0, vendasMesDelivery: 0,
+    // APP-44 — modo compacto dos gráficos (default ON)
   });
+  // APP-42 — filtro do painel: 'geral' | 'balcao' | 'delivery'
+  const [canalView, setCanalView] = useState('geral');
+  // APP-44 — modo compacto pra gráficos / "ver detalhe"
+  const [graficosExpandidos, setGraficosExpandidos] = useState(false);
   const [alertas, setAlertas] = useState([]);
   const [finStatus, setFinStatus] = useState(null);
   const [setupStatus, setSetupStatus] = useState(null);
@@ -332,7 +339,14 @@ export default function HomeScreen({ navigation }) {
       insights.sort((a, b) => (a.priority || 3) - (b.priority || 3));
       const featuredInsight = insights[0] || null;
 
-      setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, produtosMargBaixa: uniqueProds, produtosSemPreco, cmvPercent, pontoEquilibrio, fatMedio, insights, featuredInsight });
+      // APP-43 — busca volumes por canal
+      let vendasMesBalcao = 0, vendasMesDelivery = 0;
+      try {
+        const cfgRow = await db.getFirstAsync('SELECT vendas_mes_balcao, vendas_mes_delivery FROM configuracao LIMIT 1');
+        vendasMesBalcao = Number(cfgRow?.vendas_mes_balcao) || 0;
+        vendasMesDelivery = Number(cfgRow?.vendas_mes_delivery) || 0;
+      } catch (_) { /* coluna pode não existir em build antigo */ }
+      setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, produtosMargBaixa: uniqueProds, produtosSemPreco, cmvPercent, pontoEquilibrio, fatMedio, insights, featuredInsight, vendasMesBalcao, vendasMesDelivery });
       setAlertas(pendencias);
     } catch (e) {
       // Antes: catch silencioso → usuário via tudo zerado sem entender por quê.
@@ -681,6 +695,70 @@ export default function HomeScreen({ navigation }) {
         </TouchableOpacity>
       )}
 
+      {/* APP-42 — segmented control filtro Geral / Balcão / Delivery */}
+      <View style={styles.canalToggleRow}>
+        {[
+          { key: 'geral', label: 'Geral', icon: 'grid' },
+          { key: 'balcao', label: 'Balcão', icon: 'shopping-bag' },
+          { key: 'delivery', label: 'Delivery', icon: 'truck' },
+        ].map(opt => {
+          const active = canalView === opt.key;
+          return (
+            <TouchableOpacity
+              key={opt.key}
+              style={[styles.canalTogglePill, active && styles.canalTogglePillActive]}
+              onPress={() => setCanalView(opt.key)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+            >
+              <Feather name={opt.icon} size={12} color={active ? '#fff' : colors.textSecondary} />
+              <Text style={[styles.canalTogglePillText, active && styles.canalTogglePillTextActive]}>{opt.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* APP-42/43 — Visão por canal: card com volumes, ticket médio, faturamento estimado por canal */}
+      {canalView !== 'geral' && (
+        (() => {
+          const isBalcao = canalView === 'balcao';
+          const vendas = isBalcao ? d.vendasMesBalcao : d.vendasMesDelivery;
+          const totalVendas = (d.vendasMesBalcao || 0) + (d.vendasMesDelivery || 0);
+          const ticketMedio = vendas > 0 && d.fatMedio > 0 && totalVendas > 0
+            ? (d.fatMedio * (vendas / totalVendas)) / vendas
+            : 0;
+          const faturamentoEstimado = ticketMedio * vendas;
+          return (
+            <View style={[styles.kpiCard, { padding: 14, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: isBalcao ? colors.primary : colors.accent }]}>
+              <Text style={[styles.kpiLabel, { fontSize: 12, marginBottom: 6 }]}>
+                {isBalcao ? 'Visão balcão' : 'Visão delivery'}
+              </Text>
+              {vendas > 0 ? (
+                <>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>Vendas/mês</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>{vendas} un</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>Ticket médio (estimado)</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>R$ {ticketMedio.toFixed(2).replace('.', ',')}</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                    <Text style={{ fontSize: 13, color: colors.textSecondary }}>Faturamento estimado</Text>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: colors.primary }}>R$ {faturamentoEstimado.toFixed(2).replace('.', ',')}</Text>
+                  </View>
+                </>
+              ) : (
+                <Text style={{ fontSize: 12, color: colors.textSecondary, fontStyle: 'italic', marginTop: 4 }}>
+                  Informe o volume de vendas {isBalcao ? 'no balcão' : 'no delivery'} no Financeiro pra ver os números desse canal.
+                </Text>
+              )}
+            </View>
+          );
+        })()
+      )}
+
       {/* KPIs - Saúde da Precificação */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }]}>Saúde da Precificação</Text>
@@ -997,6 +1075,23 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   // Sessão 28 — paddingBottom 40→100 garante último card visível acima do BottomTab
   content: { padding: spacing.md, paddingBottom: 100, maxWidth: 960, alignSelf: 'center', width: '100%' },
+
+  // APP-42 — segmented control filtro canal
+  canalToggleRow: {
+    flexDirection: 'row', gap: 6,
+    backgroundColor: colors.surface,
+    padding: 4, borderRadius: 22,
+    marginBottom: spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  canalTogglePill: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 18,
+  },
+  canalTogglePillActive: { backgroundColor: colors.primary },
+  canalTogglePillText: { fontSize: 12, color: colors.textSecondary, fontFamily: fontFamily.semiBold },
+  canalTogglePillTextActive: { color: '#fff' },
 
   // Greeting
   greetingRow: { marginBottom: spacing.md },

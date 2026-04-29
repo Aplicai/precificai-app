@@ -11,6 +11,12 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, calcDespesasFixasPercentual, calcMarkup } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
+// APP-30/33/34 — config centralizada de constantes financeiras
+import {
+  SALARIO_MINIMO_VIGENTE, SALARIO_MINIMO_FMT,
+  getSugestaoMargemSeguranca,
+  classificarSaudeCustoFixo, FAIXAS_SAUDE_CUSTO_FIXO,
+} from '../config/financeiro';
 
 // Parsing seguro: aceita "12,5" e "12.5", retorna NaN para entrada inválida (não 0 silencioso).
 function parseNum(str) {
@@ -63,6 +69,11 @@ export default function ConfiguracaoScreen() {
   const [configId, setConfigId] = useState(null);
   const [faturamentoMode, setFaturamentoMode] = useState('media'); // 'media' or 'mensal'
   const [faturamentoMedioInput, setFaturamentoMedioInput] = useState('');
+  // APP-30 — segmento do perfil pra contextualizar sugestões
+  const [segmentoUsuario, setSegmentoUsuario] = useState('');
+  // APP-43 — quantitativo de vendas por canal (balcão e delivery)
+  const [vendasBalcao, setVendasBalcao] = useState('');
+  const [vendasDelivery, setVendasDelivery] = useState('');
   // Densidade global de listas (P3-G)
 
   const mesesCurtos = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -95,12 +106,15 @@ export default function ConfiguracaoScreen() {
     try {
       setLoadError(false);
     const db = await getDatabase();
-    const [configs, fixas, variaveis, fatRaw] = await Promise.all([
+    const [configs, fixas, variaveis, fatRaw, perfilRows] = await Promise.all([
       db.getAllAsync('SELECT * FROM configuracao'),
       db.getAllAsync('SELECT * FROM despesas_fixas ORDER BY id'),
       db.getAllAsync('SELECT * FROM despesas_variaveis ORDER BY id'),
       db.getAllAsync('SELECT * FROM faturamento_mensal ORDER BY id'),
+      // APP-30 — segmento pra sugestões contextualizadas
+      db.getAllAsync('SELECT segmento FROM perfil LIMIT 1'),
     ]);
+    setSegmentoUsuario(perfilRows?.[0]?.segmento || '');
     let config = configs?.[0];
     if (!config) {
       // Criar row de configuração se não existir
@@ -115,6 +129,9 @@ export default function ConfiguracaoScreen() {
         setLucroDesejado(String((lucro * 100).toFixed(1)));
       }
       setMargemSeguranca(String(((config.margem_seguranca || 0) * 100).toFixed(1)));
+      // APP-43 — vendas por canal
+      setVendasBalcao(config.vendas_mes_balcao > 0 ? String(config.vendas_mes_balcao) : '');
+      setVendasDelivery(config.vendas_mes_delivery > 0 ? String(config.vendas_mes_delivery) : '');
     }
 
     setDespesasFixas(fixas);
@@ -166,11 +183,42 @@ export default function ConfiguracaoScreen() {
     loadData();
   }
 
+  // APP-43 — salvar volumes de venda por canal (defensivo se coluna não existir)
+  async function salvarVendasCanal(campo, valor) {
+    const db = await getDatabase();
+    const v = Number.isFinite(parseInt(valor, 10)) ? parseInt(valor, 10) : 0;
+    const colMap = { balcao: 'vendas_mes_balcao', delivery: 'vendas_mes_delivery' };
+    const col = colMap[campo];
+    if (!col) return;
+    try {
+      await db.runAsync(`UPDATE configuracao SET ${col} = ? WHERE id > 0`, [v]);
+      showSaved('Volume de vendas salvo');
+      loadData();
+    } catch (e) {
+      console.warn('[ConfiguracaoScreen.salvarVendasCanal] coluna inexistente?', e?.message);
+      showError('Não foi possível salvar (coluna pode estar faltando).');
+    }
+  }
+
   async function salvarMargemSeguranca() {
     const db = await getDatabase();
     const valor = parseFloat(margemSeguranca.replace(',', '.'));
-    if (isNaN(valor) || valor < 0 || valor > 30) {
-      return Alert.alert('Valor inválido', 'A margem de segurança deve ser entre 0% e 30%.');
+    // APP-30 — só bloqueia valores realmente inválidos (negativo/NaN). >30% vira warning, não bloqueia.
+    if (isNaN(valor) || valor < 0) {
+      return Alert.alert('Valor inválido', 'A margem de segurança não pode ser negativa.');
+    }
+    if (valor > 30) {
+      // Aviso não-bloqueante (proxy via Alert porque ConfiguracaoScreen ainda usa modais antigos)
+      Alert.alert(
+        'Valor incomum',
+        'Margem de segurança acima de 30% é incomum. Confirme se faz sentido para seu negócio.',
+        [{ text: 'Cancelar', style: 'cancel' }, { text: 'Salvar mesmo assim', onPress: async () => {
+          await db.runAsync('UPDATE configuracao SET margem_seguranca = ? WHERE id > 0', [valor / 100]);
+          showSaved('Margem de segurança salva');
+          loadData();
+        }}]
+      );
+      return;
     }
     await db.runAsync('UPDATE configuracao SET margem_seguranca = ? WHERE id > 0', [valor / 100]);
     showSaved('Margem de segurança salva');
@@ -291,12 +339,52 @@ export default function ConfiguracaoScreen() {
     // Auto-open value modal for the newly added item
     const newId = result?.lastInsertRowId;
     if (newId) {
+      // APP-33 — Pró-labore tem placeholder com salário mínimo + valor inicial sugerido
+      const isProLabore = descricao.toLowerCase().includes('pró-labore') || descricao.toLowerCase().includes('pro-labore');
+      const placeholderInicial = isProLabore ? String(SALARIO_MINIMO_VIGENTE).replace('.', ',') : '0,00';
       setTimeout(() => {
         setCurrencyModal({
-          title: descricao, value: '0', prefix: 'R$', placeholder: '0,00',
+          title: descricao, value: '0', prefix: 'R$', placeholder: placeholderInicial,
           onConfirm: async (val) => {
             const parsed = parseNum(val);
             const v = Number.isFinite(parsed) ? parsed : 0;
+            // APP-33 — warnings pró-labore (não bloqueante)
+            if (isProLabore) {
+              if (v === 0) {
+                Alert.alert(
+                  'Pró-labore zerado',
+                  'Você não está se pagando? Seu trabalho tem custo. Coloque ao menos um valor simbólico — depois você pode ajustar.',
+                  [
+                    { text: 'Voltar e ajustar', style: 'cancel' },
+                    { text: 'Salvar zerado mesmo assim', onPress: async () => {
+                      const dbx = await getDatabase();
+                      await dbx.runAsync('UPDATE despesas_fixas SET valor = ? WHERE id = ?', [v, newId]);
+                      setCurrencyModal(null);
+                      showSaved();
+                      loadData();
+                    } },
+                  ]
+                );
+                return;
+              }
+              if (v > 0 && v < SALARIO_MINIMO_VIGENTE) {
+                Alert.alert(
+                  'Abaixo do salário mínimo',
+                  `Esse valor está abaixo do salário mínimo vigente (${SALARIO_MINIMO_FMT}). Pode salvar mesmo assim, mas considere se o seu trabalho não vale ao menos isso.`,
+                  [
+                    { text: 'Cancelar', style: 'cancel' },
+                    { text: 'Salvar mesmo assim', onPress: async () => {
+                      const dbx = await getDatabase();
+                      await dbx.runAsync('UPDATE despesas_fixas SET valor = ? WHERE id = ?', [v, newId]);
+                      setCurrencyModal(null);
+                      showSaved();
+                      loadData();
+                    } },
+                  ]
+                );
+                return;
+              }
+            }
             const dbx = await getDatabase();
             await dbx.runAsync('UPDATE despesas_fixas SET valor = ? WHERE id = ?', [v, newId]);
             setCurrencyModal(null);
@@ -398,6 +486,64 @@ export default function ConfiguracaoScreen() {
             <Text style={s.kpiLabel}>CMV Máximo</Text>
           </View>
         </View>
+
+        {/* APP-34 — Card "Saúde dos custos fixos" com cores dinâmicas verde/amarelo/vermelho */}
+        {(() => {
+          if (!(faturamentoMedio > 0)) {
+            return (
+              <View style={s.saudeBox}>
+                <Feather name="info" size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />
+                <Text style={s.saudeBoxTextMuted}>
+                  Preencha seu faturamento para ver a análise de custos.
+                </Text>
+              </View>
+            );
+          }
+          const totalFixasR = (despesasFixas || []).reduce((acc, d) => acc + (Number.isFinite(d.valor) ? d.valor : 0), 0);
+          const faixa = classificarSaudeCustoFixo(despFixasPerc);
+          const corFundo = faixa === 'saudavel' ? colors.success + '12'
+                         : faixa === 'atencao' ? colors.warning + '14'
+                         : colors.error + '14';
+          const corBorda = faixa === 'saudavel' ? colors.success
+                         : faixa === 'atencao' ? colors.warning
+                         : colors.error;
+          const corValor = corBorda;
+          const tituloFaixa = FAIXAS_SAUDE_CUSTO_FIXO[faixa].label;
+          const emojiFaixa = FAIXAS_SAUDE_CUSTO_FIXO[faixa].emoji;
+          const textoExpl = faixa === 'saudavel'
+            ? 'Seus custos fixos estão em nível saudável. Negócios de alimentação tendem a ficar abaixo de 30% do faturamento.'
+            : faixa === 'atencao'
+            ? 'Seus custos fixos estão na faixa de atenção. Vale revisar contas que podem ser reduzidas.'
+            : 'Seus custos fixos estão acima da faixa saudável. Negócios sustentáveis no setor mantêm abaixo de 30%.';
+          return (
+            <View style={[s.saudeBox, { backgroundColor: corFundo, borderLeftColor: corBorda }]}>
+              <Text style={s.saudeBoxTitle}>📊 Saúde dos seus custos fixos</Text>
+              <View style={s.saudeBoxRow}>
+                <Text style={s.saudeBoxLabel}>Faturamento mensal:</Text>
+                <Text style={s.saudeBoxValue}>{formatCurrency(faturamentoMedio)}</Text>
+              </View>
+              <View style={s.saudeBoxRow}>
+                <Text style={s.saudeBoxLabel}>Custos fixos do mês:</Text>
+                <Text style={s.saudeBoxValue}>{formatCurrency(totalFixasR)}</Text>
+              </View>
+              <View style={[s.saudeBoxRow, { marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.border }]}>
+                <Text style={[s.saudeBoxLabel, { fontFamily: fontFamily.bold }]}>% do faturamento:</Text>
+                <Text style={[s.saudeBoxValue, { color: corValor, fontSize: fonts.body, fontFamily: fontFamily.bold }]}>
+                  {(despFixasPerc * 100).toFixed(1)}%
+                </Text>
+              </View>
+              <Text style={[s.saudeBoxStatus, { color: corValor }]}>
+                {emojiFaixa} {tituloFaixa}
+              </Text>
+              <Text style={s.saudeBoxExplain}>{textoExpl}</Text>
+              <View style={s.saudeBoxFaixas}>
+                <Text style={s.saudeBoxFaixasItem}>🟢 Até 25% — Saudável</Text>
+                <Text style={s.saudeBoxFaixasItem}>🟡 25% a 35% — Atenção</Text>
+                <Text style={s.saudeBoxFaixasItem}>🔴 Acima de 35% — Crítico</Text>
+              </View>
+            </View>
+          );
+        })()}
 
         {/* Composition bar */}
         {total > 0 && (
@@ -564,49 +710,78 @@ export default function ConfiguracaoScreen() {
             </View>
 
 
-            {/* Margem de Segurança inline */}
-            <View style={s.subSection}>
-              <View style={s.subSectionHeader}>
-                <Feather name="shield" size={14} color={colors.info} />
-                <Text style={s.subSectionTitle}>Margem de Segurança</Text>
-                <InfoTooltip
-                  title="Margem de Segurança"
-                  text="Percentual extra adicionado ao custo dos insumos pra cobrir variações de preço de fornecedor. Evita ter que atualizar preço toda hora se o ingrediente subir um pouco."
-                  examples={[
-                    'Se a farinha pode subir até 10%, coloque 10% — assim seu preço já está protegido.',
-                    '0% = você atualiza preço toda vez que o fornecedor reajusta.',
-                    'Sugestão para confeitaria: 5% a 10%.',
-                  ]}
-                />
-              </View>
-              <TouchableOpacity
-                style={s.inlineValueBtn}
-                activeOpacity={0.7}
-                onPress={() => setCurrencyModal({
-                  title: 'Margem de Segurança',
-                  value: margemSeguranca,
-                  suffix: '%',
-                  placeholder: '0',
-                  onConfirm: (val) => {
-                    setMargemSeguranca(val);
-                    setCurrencyModal(null);
-                    const parsed = parseFloat(val.replace(',', '.'));
-                    if (!isNaN(parsed) && parsed >= 0 && parsed <= 30) {
-                      getDatabase().then(db => {
-                        db.runAsync('UPDATE configuracao SET margem_seguranca = ? WHERE id > 0', [parsed / 100]);
-                        showSaved('Margem de segurança salva');
-                        loadData();
-                      });
-                    }
-                  },
-                })}
-              >
-                <Text style={[s.inlineValueText, parseFloat(margemSeguranca) > 0 && s.inlineValueTextFilled]}>
-                  {margemSeguranca}%
-                </Text>
-                <Feather name="edit-2" size={12} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
+            {/* APP-30 — Margem de Segurança com sugestão dinâmica por segmento + warning >30% */}
+            {(() => {
+              const sug = getSugestaoMargemSeguranca(segmentoUsuario);
+              const valorAtual = parseFloat(String(margemSeguranca).replace(',', '.'));
+              const acimaDoComum = Number.isFinite(valorAtual) && valorAtual > 30;
+              return (
+                <View style={s.subSection}>
+                  <View style={s.subSectionHeader}>
+                    <Feather name="shield" size={14} color={colors.info} />
+                    <Text style={s.subSectionTitle}>Margem de Segurança</Text>
+                    <InfoTooltip
+                      title="Margem de Segurança"
+                      text={
+                        'É um percentual extra que você adiciona aos custos dos insumos para se proteger contra variações de preço dos fornecedores.\n\n' +
+                        'Exemplo: se a farinha pode subir até 10% sem aviso, coloque 10% de margem de segurança. Assim você não precisa atualizar todos os preços toda vez que um insumo aumentar.'
+                      }
+                      examples={[
+                        'Confeitaria: 5-10%',
+                        'Lanchonete: 5-8%',
+                        'Pizzaria: 8-12%',
+                        'Restaurante: 5-10%',
+                        'Food truck: 8-15%',
+                        segmentoUsuario ? `Seu segmento (${segmentoUsuario}): sugerimos ${sug.label}` : '',
+                      ].filter(Boolean)}
+                    />
+                  </View>
+                  <TouchableOpacity
+                    style={s.inlineValueBtn}
+                    activeOpacity={0.7}
+                    onPress={() => setCurrencyModal({
+                      title: 'Margem de Segurança',
+                      value: margemSeguranca,
+                      suffix: '%',
+                      // APP-30 — placeholder dinâmico baseado no segmento
+                      placeholder: sug.label,
+                      onConfirm: (val) => {
+                        setMargemSeguranca(val);
+                        setCurrencyModal(null);
+                        const parsed = parseFloat(val.replace(',', '.'));
+                        // APP-30 — só persiste se válido (não-negativo). >30% PERSISTE também (vira só warning visual)
+                        if (!isNaN(parsed) && parsed >= 0) {
+                          getDatabase().then(db => {
+                            db.runAsync('UPDATE configuracao SET margem_seguranca = ? WHERE id > 0', [parsed / 100]);
+                            showSaved('Margem de segurança salva');
+                            loadData();
+                          });
+                        }
+                      },
+                    })}
+                  >
+                    <Text style={[s.inlineValueText, parseFloat(margemSeguranca) > 0 && s.inlineValueTextFilled]}>
+                      {margemSeguranca}%
+                    </Text>
+                    <Feather name="edit-2" size={12} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  {/* APP-30 — microcopy abaixo do campo */}
+                  <Text style={s.fieldMicroCopy}>
+                    Protege você de aumentos de fornecedor sem precisar atualizar preços.
+                    {segmentoUsuario ? ` Sugestão pra ${segmentoUsuario}: ${sug.label}.` : ` Sugestão geral: ${sug.label}.`}
+                  </Text>
+                  {/* APP-30 — aviso amarelo se acima do comum */}
+                  {acimaDoComum && (
+                    <View style={s.warningInline}>
+                      <Feather name="alert-triangle" size={12} color={colors.warning} style={{ marginRight: 6 }} />
+                      <Text style={s.warningInlineText}>
+                        Margem de segurança acima de 30% é incomum. Confirme se faz sentido para seu negócio.
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })()}
           </View>
         </View>
 
@@ -628,21 +803,36 @@ export default function ConfiguracaoScreen() {
           </View>
 
           <View style={s.stepBody}>
-            {/* Mode toggle */}
+            {/* APP-31 — Mode toggle com legendas explicativas */}
+            <Text style={s.modeToggleHeader}>Como você quer informar seu faturamento?</Text>
             <View style={s.modeToggle}>
               <TouchableOpacity
-                style={[s.modeBtn, faturamentoMode === 'media' && s.modeBtnActive]}
+                style={[s.modeBtnCard, faturamentoMode === 'media' && s.modeBtnCardActive]}
                 onPress={() => setFaturamentoMode('media')}
               >
-                <Feather name="dollar-sign" size={14} color={faturamentoMode === 'media' ? '#fff' : colors.textSecondary} />
-                <Text style={[s.modeBtnText, faturamentoMode === 'media' && s.modeBtnTextActive]}>Média mensal</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                  <Feather name="dollar-sign" size={14} color={faturamentoMode === 'media' ? colors.primary : colors.textSecondary} />
+                  <Text style={[s.modeBtnCardTitle, faturamentoMode === 'media' && s.modeBtnCardTitleActive]}>
+                    Faturamento médio mensal
+                  </Text>
+                </View>
+                <Text style={s.modeBtnCardSubtitle}>
+                  Mais rápido. Use se seu faturamento é parecido todo mês.
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[s.modeBtn, faturamentoMode === 'mensal' && s.modeBtnActive]}
+                style={[s.modeBtnCard, faturamentoMode === 'mensal' && s.modeBtnCardActive]}
                 onPress={() => setFaturamentoMode('mensal')}
               >
-                <Feather name="calendar" size={14} color={faturamentoMode === 'mensal' ? '#fff' : colors.textSecondary} />
-                <Text style={[s.modeBtnText, faturamentoMode === 'mensal' && s.modeBtnTextActive]}>Mês a mês</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                  <Feather name="calendar" size={14} color={faturamentoMode === 'mensal' ? colors.primary : colors.textSecondary} />
+                  <Text style={[s.modeBtnCardTitle, faturamentoMode === 'mensal' && s.modeBtnCardTitleActive]}>
+                    Faturamento mês a mês
+                  </Text>
+                </View>
+                <Text style={s.modeBtnCardSubtitle}>
+                  Mais preciso. Use se você tem datas sazonais fortes.
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -669,6 +859,13 @@ export default function ConfiguracaoScreen() {
                   </Text>
                   <Feather name="edit-2" size={14} color={colors.primary} style={{ marginLeft: 8 }} />
                 </TouchableOpacity>
+                {/* APP-31 — total anual também no modo média (×12) */}
+                {faturamentoMedio > 0 && (
+                  <View style={[s.avgRow, { marginTop: 8 }]}>
+                    <Text style={s.avgLabel}>Total anual estimado</Text>
+                    <Text style={s.avgValue}>{formatCurrency(faturamentoMedio * 12)}</Text>
+                  </View>
+                )}
               </View>
             ) : (
               <View>
@@ -712,8 +909,101 @@ export default function ConfiguracaoScreen() {
                 {mesesComFat.length > 0 && (
                   <Text style={s.avgSub}>{mesesComFat.length} {mesesComFat.length === 1 ? 'mês preenchido' : 'meses preenchidos'}</Text>
                 )}
+                {/* APP-31 — total anual em tempo real */}
+                <View style={[s.avgRow, { marginTop: 4, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 }]}>
+                  <Text style={s.avgLabel}>Total anual</Text>
+                  <Text style={s.avgValue}>
+                    {formatCurrency((faturamento || []).reduce((acc, f) => acc + (Number.isFinite(f.valor) ? f.valor : 0), 0))}
+                  </Text>
+                </View>
+                {/* APP-31 — botão "Replicar para todos os meses" usando o último valor preenchido */}
+                {mesesComFat.length > 0 && (
+                  <TouchableOpacity
+                    style={s.replicarBtn}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      const ultimo = mesesComFat[mesesComFat.length - 1];
+                      if (!ultimo || !(ultimo.valor > 0)) return;
+                      Alert.alert(
+                        'Replicar valor',
+                        `Aplicar ${formatCurrency(ultimo.valor)} (${ultimo.mes}) para TODOS os 12 meses? Vai sobrescrever os valores que você já preencheu nos outros meses.`,
+                        [
+                          { text: 'Cancelar', style: 'cancel' },
+                          { text: 'Replicar', onPress: async () => {
+                            const db = await getDatabase();
+                            for (const f of faturamento) {
+                              await db.runAsync('UPDATE faturamento_mensal SET valor = ? WHERE id = ?', [ultimo.valor, f.id]);
+                            }
+                            showSaved('Replicado para todos os meses');
+                            loadData();
+                          } },
+                        ]
+                      );
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Replicar último valor para todos os meses"
+                  >
+                    <Feather name="copy" size={12} color={colors.primary} style={{ marginRight: 6 }} />
+                    <Text style={s.replicarBtnText}>Replicar valor para todos os meses</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
+
+            {/* APP-43 — Volumes de venda por canal (opcional, dentro do step de Faturamento) */}
+            <View style={[s.subSection, { marginTop: spacing.md }]}>
+              <View style={s.subSectionHeader}>
+                <Feather name="bar-chart-2" size={14} color={colors.info} />
+                <Text style={s.subSectionTitle}>Volume de vendas por canal (opcional)</Text>
+                <InfoTooltip
+                  title="Volume de vendas"
+                  text="Informe quantas unidades vende por mês em cada canal. Usamos pra calcular ticket médio, custo fixo por venda e separar a saúde do balcão vs delivery no painel."
+                  examples={['150 unidades/mês no balcão', '80 unidades/mês via iFood']}
+                />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  style={[s.inlineValueBtn, { flex: 1 }]}
+                  activeOpacity={0.7}
+                  onPress={() => setCurrencyModal({
+                    title: 'Vendas/mês — Balcão',
+                    value: vendasBalcao,
+                    suffix: ' un',
+                    placeholder: '0',
+                    onConfirm: (val) => {
+                      setVendasBalcao(val);
+                      setCurrencyModal(null);
+                      salvarVendasCanal('balcao', val);
+                    },
+                  })}
+                >
+                  <Text style={s.fieldHint}>Balcão</Text>
+                  <Text style={[s.inlineValueText, parseInt(vendasBalcao, 10) > 0 && s.inlineValueTextFilled]}>
+                    {vendasBalcao ? `${vendasBalcao} un/mês` : '—'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.inlineValueBtn, { flex: 1 }]}
+                  activeOpacity={0.7}
+                  onPress={() => setCurrencyModal({
+                    title: 'Vendas/mês — Delivery',
+                    value: vendasDelivery,
+                    suffix: ' un',
+                    placeholder: '0',
+                    onConfirm: (val) => {
+                      setVendasDelivery(val);
+                      setCurrencyModal(null);
+                      salvarVendasCanal('delivery', val);
+                    },
+                  })}
+                >
+                  <Text style={s.fieldHint}>Delivery</Text>
+                  <Text style={[s.inlineValueText, parseInt(vendasDelivery, 10) > 0 && s.inlineValueTextFilled]}>
+                    {vendasDelivery ? `${vendasDelivery} un/mês` : '—'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </View>
 
@@ -750,12 +1040,36 @@ export default function ConfiguracaoScreen() {
                 <View style={s.suggestionsList}>
                   <Text style={s.suggestionsLabel}>Selecione para adicionar:</Text>
                   <View style={s.suggestionsRow}>
-                    {disponiveis.map(sug => (
-                      <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoFixa(sug)}>
-                        <Feather name="plus" size={12} color={colors.primary} />
-                        <Text style={s.suggestionChipText}>{sug}</Text>
-                      </TouchableOpacity>
-                    ))}
+                    {disponiveis.map(sug => {
+                      // APP-33 — chip de Pró-labore tem InfoTooltip explicativo do conceito
+                      const isProLabore = sug.toLowerCase().includes('pró-labore') || sug.toLowerCase().includes('pro-labore');
+                      return (
+                        <View key={sug} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <TouchableOpacity style={s.suggestionChip} onPress={() => adicionarSugestaoFixa(sug)}>
+                            <Feather name="plus" size={12} color={colors.primary} />
+                            <Text style={s.suggestionChipText}>{sug}</Text>
+                          </TouchableOpacity>
+                          {isProLabore && (
+                            <View style={{ marginLeft: 4 }}>
+                              <InfoTooltip
+                                title="Pró-labore"
+                                text={
+                                  'É o valor que você se paga pelo seu trabalho no negócio. Mesmo sendo dono(a), seu trabalho tem custo — e ele precisa estar no preço dos seus produtos.\n\n' +
+                                  `Sugestão mínima: salário mínimo vigente (${SALARIO_MINIMO_FMT}).\n` +
+                                  'Sugestão saudável: o que você ganharia trabalhando para outra pessoa fazendo a mesma coisa.\n\n' +
+                                  'Não confunda com lucro: lucro é o que sobra DEPOIS de pagar todos os custos, incluindo seu pró-labore.'
+                                }
+                                examples={[
+                                  `Mínimo: ${SALARIO_MINIMO_FMT}`,
+                                  'Confeiteiro autônomo: R$ 2.500-4.000',
+                                  'Pizzaiolo experiente: R$ 3.000-5.500',
+                                ]}
+                              />
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
                   </View>
                 </View>
               );
@@ -1152,6 +1466,96 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, width: '100%' },
   // APP-11: paddingBottom maior pra dar espaço pro footer fixo (BottomTab + sticky CTA)
   content: { padding: spacing.md, width: '100%', paddingBottom: 200, maxWidth: 960, alignSelf: 'center' },
+
+  // APP-30 — microcopy + warning inline
+  fieldMicroCopy: {
+    fontSize: fonts.tiny, color: colors.textSecondary,
+    marginTop: 6, paddingHorizontal: 2, lineHeight: 14,
+  },
+  warningInline: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    backgroundColor: colors.warning + '14',
+    borderLeftWidth: 3, borderLeftColor: colors.warning,
+    borderRadius: 4, padding: 8, marginTop: 6,
+  },
+  warningInlineText: {
+    flex: 1, fontSize: fonts.tiny, color: colors.warning,
+    fontFamily: fontFamily.medium, lineHeight: 14,
+  },
+
+  // APP-31 — toggle visual com card + subtitle
+  modeToggleHeader: {
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold,
+    color: colors.text, marginBottom: spacing.sm,
+  },
+  modeBtnCard: {
+    flex: 1, padding: spacing.sm + 2,
+    borderWidth: 1, borderColor: colors.border,
+    borderRadius: borderRadius.md, marginHorizontal: 4,
+    backgroundColor: colors.surface,
+  },
+  modeBtnCardActive: {
+    borderColor: colors.primary, borderWidth: 2,
+    backgroundColor: colors.primary + '0A',
+  },
+  modeBtnCardTitle: {
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold,
+    color: colors.textSecondary, marginLeft: 6,
+  },
+  modeBtnCardTitleActive: { color: colors.primary },
+  modeBtnCardSubtitle: {
+    fontSize: fonts.tiny, color: colors.textSecondary,
+    lineHeight: 14,
+  },
+  replicarBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 8, paddingHorizontal: 12,
+    backgroundColor: colors.primary + '0F',
+    borderRadius: borderRadius.sm,
+    marginTop: spacing.sm,
+  },
+  replicarBtnText: {
+    fontSize: fonts.tiny, color: colors.primary,
+    fontFamily: fontFamily.semiBold,
+  },
+
+  // APP-34 — card "Saúde dos custos fixos"
+  saudeBox: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.textSecondary,
+    backgroundColor: colors.surface,
+    flexDirection: 'column',
+  },
+  saudeBoxTitle: {
+    fontSize: fonts.small, fontFamily: fontFamily.bold,
+    color: colors.text, marginBottom: spacing.sm,
+  },
+  saudeBoxRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 2,
+  },
+  saudeBoxLabel: { fontSize: fonts.tiny, color: colors.textSecondary, fontFamily: fontFamily.medium },
+  saudeBoxValue: { fontSize: fonts.small, color: colors.text, fontFamily: fontFamily.semiBold },
+  saudeBoxStatus: {
+    fontSize: fonts.body, fontFamily: fontFamily.bold,
+    marginTop: spacing.sm, marginBottom: 4, textAlign: 'center',
+  },
+  saudeBoxExplain: {
+    fontSize: fonts.tiny, color: colors.textSecondary,
+    lineHeight: 15, marginBottom: spacing.sm,
+  },
+  saudeBoxFaixas: {
+    paddingTop: spacing.sm,
+    borderTopWidth: 1, borderTopColor: colors.border,
+    gap: 2,
+  },
+  saudeBoxFaixasItem: { fontSize: fonts.tiny, color: colors.textSecondary, lineHeight: 16 },
+  saudeBoxTextMuted: {
+    flex: 1, fontSize: fonts.small, color: colors.textSecondary, fontStyle: 'italic',
+  },
 
   // APP-11: banner explicando auto-save
   autoSaveBanner: {

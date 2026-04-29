@@ -256,6 +256,8 @@ export default function KitInicioScreen({ navigation, route }) {
       setProgressStep('insumos');
       setProgressMsg(`Cadastrando ${insumosTemplate.length} insumos...`);
       let criados = 0;
+      // APP-52 — total geral de itens preservados (insumos + embalagens + preparos + produtos)
+      let totalPulados = 0;
       if (insumosTemplate.length > 0) {
         // APP-52: dedup. Quando aplicando kit ADICIONAL (sem reset), não duplicar
         // insumos que já existem. Compara por nome (case-insensitive, trim).
@@ -297,6 +299,7 @@ export default function KitInicioScreen({ navigation, route }) {
         // APP-52: filtra duplicados antes do INSERT
         const insumoRows = insumoRowsRaw.filter(r => !existentesNomes.has(String(r.nome).trim().toLowerCase()));
         const pulados = insumoRowsRaw.length - insumoRows.length;
+        totalPulados += pulados;
         if (pulados > 0) {
           console.log(`[KitInicio] ${pulados} insumos já existiam — não duplicados (APP-52)`);
         }
@@ -539,7 +542,12 @@ export default function KitInicioScreen({ navigation, route }) {
       if (embsCriadas > 0)    partes.push(`${embsCriadas} embalagen${embsCriadas === 1 ? 'm' : 's'}`);
       if (prepsCriados > 0)   partes.push(`${prepsCriados} preparo${prepsCriados === 1 ? '' : 's'}`);
       if (prodsCriados > 0)   partes.push(`${prodsCriados} produto${prodsCriados === 1 ? '' : 's'}`);
-      setProgressMsg(`Pronto! ${partes.join(', ')}.`);
+      // APP-52 — informa quantos itens foram preservados (multi-kit sem sobrescrever)
+      let msgFinal = `Pronto! ${partes.join(', ')}.`;
+      if (!resetar && totalPulados > 0) {
+        msgFinal += ` ${totalPulados} ite${totalPulados === 1 ? 'm' : 'ns'} já existiam e foram preservados.`;
+      }
+      setProgressMsg(msgFinal);
       setDone(true);
       setLoading(false);
       // Sessão 28.9 — NÃO auto-fecha. User precisa LER o aviso de "atualize preços"

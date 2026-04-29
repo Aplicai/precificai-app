@@ -37,6 +37,9 @@ export default function EmbalagemFormScreen({ route, navigation }) {
     quantidade: '', unidade_medida: 'Unidades', preco_embalagem: '',
   });
   const [categorias, setCategorias] = useState([]);
+  // APP-36 — categorias DE PRODUTO (não da embalagem) para marcar como padrão
+  const [categoriasProduto, setCategoriasProduto] = useState([]);
+  const [categoriasPadraoSel, setCategoriasPadraoSel] = useState([]); // array de categoria_id
   const [catPickerVisible, setCatPickerVisible] = useState(false);
   const [novaCatMode, setNovaCatMode] = useState(false);
   const [novaCatNome, setNovaCatNome] = useState('');
@@ -125,6 +128,10 @@ export default function EmbalagemFormScreen({ route, navigation }) {
   async function loadCategorias() {
     const db = await getDatabase();
     setCategorias(await db.getAllAsync('SELECT * FROM categorias_embalagens ORDER BY nome'));
+    // APP-36 — categorias de produto (pra marcar embalagem como padrão delas)
+    try {
+      setCategoriasProduto(await db.getAllAsync('SELECT id, nome FROM categorias_produtos ORDER BY nome'));
+    } catch (_) { /* tabela pode ter outro nome em build antigo */ }
   }
 
   async function loadItem() {
@@ -138,6 +145,12 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         unidade_medida: item.unidade_medida || 'Unidades',
         preco_embalagem: String(item.preco_embalagem || ''),
       });
+      // APP-36 — carrega categorias para as quais esta embalagem é padrão (canal balcão)
+      try {
+        const { getCategoriasPadraoDaEmbalagem } = await import('../services/embalagemPadrao');
+        const padroes = await getCategoriasPadraoDaEmbalagem(db, editId, 'balcao');
+        setCategoriasPadraoSel(padroes);
+      } catch (_) { /* defensivo */ }
       // Load price history
       try {
         const hist = await db.getAllAsync('SELECT * FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC LIMIT 10', [editId]);
@@ -178,6 +191,11 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         'UPDATE embalagens SET nome=?, marca=?, categoria_id=?, quantidade=?, unidade_medida=?, preco_embalagem=?, preco_unitario=?, updated_at=? WHERE id=?',
         [f.nome, f.marca, f.categoria_id, q, f.unidade_medida, p, pu, new Date().toISOString(), editId]
       );
+      // APP-36 — persiste categorias padrão (canal balcão por enquanto; delivery vem com APP-29c UI)
+      try {
+        const { setCategoriasPadraoDaEmbalagem } = await import('../services/embalagemPadrao');
+        await setCategoriasPadraoDaEmbalagem(db, editId, categoriasPadraoSel, 'balcao');
+      } catch (_) {}
       setSaveStatus('saved');
     } catch (e) {
       console.error('[EmbalagemForm.autoSave]', e);
@@ -196,10 +214,17 @@ export default function EmbalagemFormScreen({ route, navigation }) {
     allowExit.current = true;
     const db = await getDatabase();
     const params = [form.nome, form.marca, form.categoria_id, qtd, form.unidade_medida, preco, precoUn];
-    await db.runAsync(
+    const result = await db.runAsync(
       'INSERT INTO embalagens (nome, marca, categoria_id, quantidade, unidade_medida, preco_embalagem, preco_unitario) VALUES (?,?,?,?,?,?,?)',
       params
     );
+    // APP-36 — persiste categorias padrão da nova embalagem
+    if (categoriasPadraoSel.length > 0 && result?.lastInsertRowId) {
+      try {
+        const { setCategoriasPadraoDaEmbalagem } = await import('../services/embalagemPadrao');
+        await setCategoriasPadraoDaEmbalagem(db, result.lastInsertRowId, categoriasPadraoSel, 'balcao');
+      } catch (_) {}
+    }
     navigation.goBack();
   }
 
@@ -363,6 +388,49 @@ export default function EmbalagemFormScreen({ route, navigation }) {
             <Text style={styles.resultEmptyText}>
               Preencha os campos para ver o custo calculado.
             </Text>
+          </View>
+        )}
+
+        {/* APP-36 — Definir como embalagem padrão para categorias de produto */}
+        {categoriasProduto.length > 0 && (
+          <View style={{ marginTop: spacing.md, padding: spacing.md, backgroundColor: colors.surface, borderRadius: borderRadius.md }}>
+            <Text style={{ fontSize: fonts.small, fontFamily: fontFamily.semiBold, color: colors.text, marginBottom: 4 }}>
+              Definir como padrão para:
+            </Text>
+            <Text style={{ fontSize: fonts.tiny, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 14 }}>
+              Quando você cadastrar um novo produto nessas categorias, esta embalagem virá pré-selecionada.
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {categoriasProduto.map(cat => {
+                const selected = categoriasPadraoSel.includes(cat.id);
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={{
+                      paddingHorizontal: 10, paddingVertical: 6,
+                      borderRadius: 16, borderWidth: 1,
+                      borderColor: selected ? colors.primary : colors.border,
+                      backgroundColor: selected ? colors.primary + '14' : 'transparent',
+                      flexDirection: 'row', alignItems: 'center', gap: 4,
+                    }}
+                    onPress={() => {
+                      setCategoriasPadraoSel(prev => selected ? prev.filter(x => x !== cat.id) : [...prev, cat.id]);
+                    }}
+                    activeOpacity={0.7}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: selected }}
+                    accessibilityLabel={`${selected ? 'Remover' : 'Marcar'} embalagem padrão para ${cat.nome}`}
+                  >
+                    {selected && <Feather name="check" size={11} color={colors.primary} />}
+                    <Text style={{
+                      fontSize: fonts.tiny,
+                      color: selected ? colors.primary : colors.textSecondary,
+                      fontFamily: selected ? fontFamily.semiBold : fontFamily.regular,
+                    }}>{cat.nome}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         )}
 

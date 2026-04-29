@@ -358,10 +358,18 @@ export default function ConfiguracoesScreen({ navigation }) {
         <FlagToggleRow
           icon="bar-chart-2"
           label="Análise avançada"
-          desc="Engenharia do Cardápio (BCG) e Comparador de Fornecedores"
+          desc="Ranking de Produtos (BCG), Margem Crítica, Comparador de Fornecedores. Parâmetros configuráveis no Painel."
           value={analiseOn}
           onChange={setAnaliseOn}
         />
+        {/* APP-46 — quando análise avançada ativa, atalho pra ajustar parâmetros */}
+        {analiseOn && (
+          <View style={{ marginLeft: 36, marginTop: -6, marginBottom: 8 }}>
+            <Text style={{ fontSize: 11, color: colors.textSecondary, lineHeight: 14 }}>
+              💡 Ajuste os limites no Painel: clique em qualquer KPI (CMV, Margem Líquida) pra abrir o modal e mudar a meta.
+            </Text>
+          </View>
+        )}
         <FlagToggleRow
           icon="layers"
           label="Combos / Kits"
