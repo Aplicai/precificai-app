@@ -216,6 +216,21 @@ export default function PreparoFormScreen({ route, navigation }) {
       // mantém modal aberto para o usuário corrigir
       return Alert.alert('Quantidade', 'Informe uma quantidade válida (maior que zero).');
     }
+    // APP-06: modo edição — atualiza o ingrediente existente em vez de adicionar
+    if (Number.isInteger(quantityPrompt.editIndex)) {
+      const idx = quantityPrompt.editIndex;
+      setIngredientes(prev => prev.map((ing, i) => i === idx ? {
+        ...ing,
+        materia_prima_id: quantityPrompt.materia_prima_id,
+        mp_nome: quantityPrompt.nome,
+        mp_marca: quantityPrompt.marca || '',
+        preco_por_kg: quantityPrompt.preco_por_kg,
+        mp_unidade: quantityPrompt.unidade,
+        quantidade_utilizada: qtd,
+      } : ing));
+      setQuantityPrompt(null);
+      return;
+    }
     setIngredientes(prev => [...prev, {
       materia_prima_id: quantityPrompt.materia_prima_id,
       mp_nome: quantityPrompt.nome,
@@ -227,6 +242,24 @@ export default function PreparoFormScreen({ route, navigation }) {
     setQuantityPrompt(null);
     setIngAdicionado(true);
     setTimeout(() => setIngAdicionado(false), 1500);
+  }
+
+  // APP-06: abre o modal em modo edição pra trocar quantidade (e potencialmente o insumo)
+  // sem precisar excluir e recriar.
+  function editarIngrediente(index) {
+    const ing = ingredientes[index];
+    if (!ing) return;
+    const mp = materiasPrimas.find(m => m.id === ing.materia_prima_id);
+    setQuantityPrompt({
+      editIndex: index,
+      materia_prima_id: ing.materia_prima_id,
+      nome: ing.mp_nome || mp?.nome || '',
+      marca: ing.mp_marca || mp?.marca || '',
+      unidade: ing.mp_unidade || mp?.unidade_medida || 'g',
+      preco_por_kg: ing.preco_por_kg || mp?.preco_por_kg || 0,
+      quantidade: String(ing.quantidade_utilizada || ''),
+    });
+    setTimeout(() => qtyInputRef.current?.focus(), 200);
   }
 
   function adicionarIngrediente() {
@@ -394,8 +427,8 @@ export default function PreparoFormScreen({ route, navigation }) {
                 label="Rendimento total"
                 value={form.rendimento_total}
                 onChangeText={(v) => { setForm(p => ({ ...p, rendimento_total: v })); setErrors(p => ({ ...p, rendimento_total: undefined })); }}
-                keyboardType="numeric"
-                placeholder="Ex: 500"
+                keyboardType="decimal-pad"
+                placeholder="Ex: 500 (use vírgula para decimais)"
                 error={errors.rendimento_total}
                 rightLabel={
                   <InfoTooltip
@@ -455,15 +488,23 @@ export default function PreparoFormScreen({ route, navigation }) {
                 const unidade = getUnidadeDoIngrediente(ing);
                 const custo = calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade);
                 return (
-                  <View key={idx} style={[styles.ingRow, idx % 2 === 0 && styles.ingRowEven]}>
+                  // APP-06: linha agora é touch-target — tap abre modal de edição (qtd / trocar insumo).
+                  <TouchableOpacity
+                    key={idx}
+                    style={[styles.ingRow, idx % 2 === 0 && styles.ingRowEven]}
+                    onPress={() => editarIngrediente(idx)}
+                    activeOpacity={0.6}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Editar ${formatIngLabel(ing) || formatInsumoLabel(mp)}, ${ing.quantidade_utilizada} ${unidade}`}
+                  >
                     <Text style={[styles.ingCell, { flex: 2 }]} numberOfLines={1}>{formatIngLabel(ing) || formatInsumoLabel(mp)}</Text>
                     <Text style={[styles.ingCell, { flex: 1, textAlign: 'center' }]}>{ing.quantidade_utilizada}</Text>
                     <Text style={[styles.ingCell, { flex: 1, textAlign: 'center' }]}>{unidade}</Text>
                     <Text style={[styles.ingCellCusto, { flex: 1.2, textAlign: 'right' }]}>{formatCurrency(custo)}</Text>
-                    <TouchableOpacity onPress={() => removerIngrediente(idx)} style={styles.ingRemoveBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                    <TouchableOpacity onPress={(e) => { e.stopPropagation && e.stopPropagation(); removerIngrediente(idx); }} style={styles.ingRemoveBtn} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                       <Text style={styles.ingRemoveText}>✕</Text>
                     </TouchableOpacity>
-                  </View>
+                  </TouchableOpacity>
                 );
               })}
 
@@ -637,7 +678,14 @@ export default function PreparoFormScreen({ route, navigation }) {
         </View>
       ) : (
         <View style={styles.stickyFooter}>
-          <TouchableOpacity style={[styles.btnSave, { minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md }]} onPress={salvarNovo}>
+          <TouchableOpacity
+            style={[
+              styles.btnSave,
+              { minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md },
+              isDesktop && { maxWidth: 360, alignSelf: 'center', width: '100%' },
+            ]}
+            onPress={salvarNovo}
+          >
             <Text style={styles.btnSaveText}>Salvar Preparo</Text>
           </TouchableOpacity>
         </View>
@@ -738,8 +786,8 @@ export default function PreparoFormScreen({ route, navigation }) {
                   style={styles.modalInput}
                   value={quantityPrompt.quantidade}
                   onChangeText={(v) => setQuantityPrompt(prev => prev ? { ...prev, quantidade: v } : null)}
-                  keyboardType="numeric"
-                  placeholder="Ex: 200"
+                  keyboardType="decimal-pad"
+                  placeholder="Ex: 200 ou 0,25"
                   placeholderTextColor={colors.disabled}
                   autoFocus
                   onSubmitEditing={confirmQuantity}

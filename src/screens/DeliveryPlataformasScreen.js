@@ -29,7 +29,8 @@ const PLAT_NUMERIC_FIELDS = Object.freeze([
 ]);
 
 // Field-specific validation: percent fields capped at [0, 100]
-const PLAT_PERCENT_FIELDS = new Set(['taxa_plataforma', 'desconto_promocao']);
+// APP-29: comissao_app agora é %; desconto_promocao agora é R$ (cupom recorrente)
+const PLAT_PERCENT_FIELDS = new Set(['taxa_plataforma', 'comissao_app']);
 
 // Color cycling for platform avatars (same pattern as MateriasPrimasScreen)
 const PLATFORM_COLORS = [
@@ -62,12 +63,18 @@ function getPlatformStyle(name) {
   return null;
 }
 
+// APP-29/29b: mapping semântico dos campos existentes (sem migration de schema)
+//   taxa_plataforma  (%)  = Comissão da plataforma
+//   comissao_app     (%)  = Taxa de pagamento online (REPURPOSED — antes era R$)
+//   desconto_promocao(R$) = Cupom de desconto recorrente (REPURPOSED — antes era %)
+//   taxa_entrega     (R$) = Frete subsidiado recorrente
+// Defaults pré-cadastrados: comissão + taxa pgto online padrão de mercado 2025-2026.
 const DEFAULT_PLATFORMS = [
-  { plataforma: 'iFood', taxa_plataforma: 27, taxa_entrega: 0, comissao_app: 0, desconto_promocao: 0, ativo: 1 },
-  { plataforma: 'Rappi', taxa_plataforma: 25, taxa_entrega: 0, comissao_app: 0, desconto_promocao: 0, ativo: 1 },
-  { plataforma: '99Food', taxa_plataforma: 20, taxa_entrega: 0, comissao_app: 0, desconto_promocao: 0, ativo: 1 },
-  { plataforma: 'Uber Eats', taxa_plataforma: 30, taxa_entrega: 0, comissao_app: 0, desconto_promocao: 0, ativo: 1 },
-  { plataforma: 'Venda Direta', taxa_plataforma: 0, taxa_entrega: 5, comissao_app: 0, desconto_promocao: 0, ativo: 1 },
+  { plataforma: 'iFood', taxa_plataforma: 27, taxa_entrega: 0, comissao_app: 3.2, desconto_promocao: 0, ativo: 1 },
+  { plataforma: 'Rappi', taxa_plataforma: 25, taxa_entrega: 0, comissao_app: 3, desconto_promocao: 0, ativo: 1 },
+  { plataforma: '99Food', taxa_plataforma: 22, taxa_entrega: 0, comissao_app: 3, desconto_promocao: 0, ativo: 1 },
+  { plataforma: 'Uber Eats', taxa_plataforma: 30, taxa_entrega: 0, comissao_app: 3, desconto_promocao: 0, ativo: 1 },
+  { plataforma: 'Site Próprio / WhatsApp', taxa_plataforma: 0, taxa_entrega: 0, comissao_app: 0, desconto_promocao: 0, ativo: 1 },
 ];
 
 export default function DeliveryPlataformasScreen() {
@@ -330,38 +337,57 @@ export default function DeliveryPlataformasScreen() {
 
                 {isExpanded && (
                   <View style={styles.platformFields}>
+                    {/* APP-25/29: campos remapeados pro modelo correto de delivery.
+                        Comissão e Taxa pgto online são SEMPRE aplicadas; cupom e frete são promoções recorrentes opcionais. */}
+                    <View style={styles.subSectionHeader}>
+                      <Text style={styles.subSectionTitle}>Custos sempre aplicados</Text>
+                      <InfoTooltip
+                        title="Custos fixos da plataforma"
+                        text="A comissão é o que a plataforma fica com cada venda. A taxa de pagamento online é cobrada à parte (substitui a maquininha do balcão)."
+                      />
+                    </View>
+
                     <InputField
-                      label="Taxa da Plataforma (%)"
+                      label="Comissão da plataforma (%)"
                       value={safeNum(plat.taxa_plataforma) > 0 ? String(plat.taxa_plataforma) : ''}
                       onChangeText={(val) => updatePlatform(plat.id, 'taxa_plataforma', parseInputValue(val, { percent: true }))}
-                      keyboardType="numeric"
-                      placeholder="0"
-                      accessibilityLabel={`Taxa da plataforma ${plat.plataforma} em porcentagem`}
+                      keyboardType="decimal-pad"
+                      placeholder="Ex: 27"
+                      accessibilityLabel={`Comissão da plataforma ${plat.plataforma} em porcentagem`}
                     />
                     <InputField
-                      label="Taxa de Entrega (R$ por pedido)"
+                      label="Taxa de pagamento online (%)"
+                      value={safeNum(plat.comissao_app) > 0 ? String(plat.comissao_app) : ''}
+                      onChangeText={(val) => updatePlatform(plat.id, 'comissao_app', parseInputValue(val, { percent: true }))}
+                      keyboardType="decimal-pad"
+                      placeholder="Ex: 3,2"
+                      accessibilityLabel={`Taxa de pagamento online da plataforma ${plat.plataforma}`}
+                    />
+
+                    <View style={[styles.subSectionHeader, { marginTop: spacing.md }]}>
+                      <Text style={styles.subSectionTitle}>Promoções recorrentes (opcional)</Text>
+                      <InfoTooltip
+                        title="Quando preencher"
+                        text="Use só se você dá cupom fixo todo dia ou subsidia frete grátis sempre. Para promoções pontuais, deixe em branco e simule manualmente."
+                      />
+                    </View>
+
+                    <InputField
+                      label="Cupom de desconto recorrente (R$)"
+                      value={safeNum(plat.desconto_promocao) > 0 ? String(plat.desconto_promocao) : ''}
+                      onChangeText={(val) => updatePlatform(plat.id, 'desconto_promocao', parseInputValue(val))}
+                      keyboardType="decimal-pad"
+                      placeholder="Ex: 5,00"
+                      accessibilityLabel={`Cupom recorrente da plataforma ${plat.plataforma} em reais`}
+                    />
+                    <InputField
+                      label="Frete subsidiado recorrente (R$)"
                       value={safeNum(plat.taxa_entrega) > 0 ? String(plat.taxa_entrega) : ''}
                       onChangeText={(val) => updatePlatform(plat.id, 'taxa_entrega', parseInputValue(val))}
-                      keyboardType="numeric"
-                      placeholder="0,00"
-                      accessibilityLabel={`Taxa de entrega da plataforma ${plat.plataforma} em reais`}
-                    />
-                    <InputField
-                      label="Comissão do App (R$ por pedido)"
-                      value={safeNum(plat.comissao_app) > 0 ? String(plat.comissao_app) : ''}
-                      onChangeText={(val) => updatePlatform(plat.id, 'comissao_app', parseInputValue(val))}
-                      keyboardType="numeric"
-                      placeholder="0,00"
-                      accessibilityLabel={`Comissão do app ${plat.plataforma} em reais`}
-                    />
-                    <InputField
-                      label="Descontos e Promoções (%)"
-                      value={safeNum(plat.desconto_promocao) > 0 ? String(plat.desconto_promocao) : ''}
-                      onChangeText={(val) => updatePlatform(plat.id, 'desconto_promocao', parseInputValue(val, { percent: true }))}
-                      keyboardType="numeric"
-                      placeholder="0"
+                      keyboardType="decimal-pad"
+                      placeholder="Ex: 8,00"
                       style={{ marginBottom: spacing.xs }}
-                      accessibilityLabel={`Desconto promocional da plataforma ${plat.plataforma} em porcentagem`}
+                      accessibilityLabel={`Frete subsidiado da plataforma ${plat.plataforma} em reais`}
                     />
                     <TouchableOpacity
                       style={styles.removeBtn}
@@ -443,6 +469,19 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
   },
 
+  // APP-25/29: sub-section headers for "Custos sempre aplicados" vs "Promoções recorrentes"
+  subSectionHeader: {
+    flexDirection: 'row', alignItems: 'center',
+    marginBottom: spacing.sm,
+    gap: 6,
+  },
+  subSectionTitle: {
+    fontSize: fonts.tiny,
+    color: colors.textSecondary,
+    fontFamily: fontFamily.semiBold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   // Status bar
   statusRow: { flexDirection: 'row', marginBottom: spacing.md },
   statusChip: {

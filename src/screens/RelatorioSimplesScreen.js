@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida } from '../utils/calculations';
 import EmptyState from '../components/EmptyState';
 import Loader from '../components/Loader';
 import usePersistedState from '../hooks/usePersistedState';
@@ -120,10 +120,11 @@ export default function RelatorioSimplesScreen({ navigation }) {
         const divisor = getDivisorRendimento(p);
         const custoUn = divisor > 0 ? safeNum(custoTotal / divisor) : 0;
         const precoVenda = safeNum(p.preco_venda);
+        // Sessão 28.9 — Auditoria P0-02: usar funções centrais
         const despFixasVal = safeNum(precoVenda * dfPerc);
         const despVarVal = safeNum(precoVenda * totalVar);
-        const lucro = precoVenda - custoUn - despFixasVal - despVarVal;
-        const margem = precoVenda > 0 ? safeNum(lucro / precoVenda) : 0;
+        const lucro = calcLucroLiquido(precoVenda, custoUn, despFixasVal, despVarVal);
+        const margem = calcMargemLiquida(precoVenda, custoUn, despFixasVal, despVarVal);
 
         return { ...p, custoUn, precoVenda, lucro, margem, margemReais: lucro, despFixasVal, despVarVal };
       });

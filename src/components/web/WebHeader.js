@@ -37,6 +37,8 @@ const ROUTE_TITLES = {
   'DeliveryPlataformas': 'Plataformas',
   'DeliveryPrecos': 'Precificação Delivery',
   'DeliveryProdutosScreen': 'Produtos Delivery',
+  // APP-28: Simulador em lote
+  'SimuladorLote': 'Simulador em Lote',
   // Sprint 1 Q4 — "Engenharia do Cardápio" → "Ranking de Produtos" (linguagem clara para o usuário leigo).
   'MatrizBCG': 'Ranking de Produtos',
   'Configuracoes': 'Configurações',
@@ -137,6 +139,7 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
     'DeliveryPlataformas': { tab: 'Mais', screen: 'DeliveryHub' },
     'DeliveryPrecos': { tab: 'Mais', screen: 'DeliveryHub' },
     'DeliveryProdutosScreen': { tab: 'Mais', screen: 'DeliveryHub' },
+    'SimuladorLote': { tab: 'Mais', screen: 'DeliveryHub' },
     // Form screens inside tab stacks
     'ProdutoForm': { tab: 'Produtos', screen: 'ProdutosList' },
     'ProdutoFormHome': { tab: 'Início', screen: 'HomeMain' },

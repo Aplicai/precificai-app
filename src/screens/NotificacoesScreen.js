@@ -13,9 +13,12 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { useAuth } from '../contexts/AuthContext';
 import { getNotifPrefs, saveNotifPrefs, requestAndRegisterPush, isPushSupported } from '../services/push';
 import useListDensity from '../hooks/useListDensity';
+import { useNavigation } from '@react-navigation/native';
+import BackToSettings from '../components/BackToSettings';
 
 export default function NotificacoesScreen() {
   const { user } = useAuth();
+  const navigation = useNavigation();
   // Sessão 28.6 — densidade aplicada
   const { isCompact, cardPadding, titleFontSize, listItemSubtitleFontSize, bodyLineHeight, iconSize } = useListDensity();
   const [loading, setLoading] = useState(true);
@@ -99,6 +102,8 @@ export default function NotificacoesScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ padding: spacing.md }}>
+      {/* APP-12: voltar pra Configurações */}
+      <BackToSettings navigation={navigation} />
       {loadError && (
         <TouchableOpacity
           style={styles.errorBanner}

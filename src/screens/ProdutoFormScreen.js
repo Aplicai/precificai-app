@@ -24,7 +24,11 @@ import {
   UNIDADES_MEDIDA, formatCurrency, formatPercent, calcMarkup, calcDespesasFixasPercentual,
   converterParaBase, getTipoUnidade, calcCustoIngrediente, calcCustoPreparo,
   getLabelPrecoBase, normalizeSearch, getTipoVenda,
+  calcLucroLiquido, calcMargemLiquida, calcCMVPercentual,
 } from '../utils/calculations';
+// APP-19/24b: engine unificada + modal de transparência do cálculo
+import { calcularPrecoBalcao } from '../utils/precificacao';
+import ComoCalculadoModal from '../components/ComoCalculadoModal';
 
 const UNIDADES_TEMPO = [
   { label: 'Minutos', value: 'Minutos' },
@@ -68,6 +72,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
   const [preparosList, setPreparosList] = useState([]);
   const [embalagensList, setEmbalagensList] = useState([]);
   const [config, setConfig] = useState({ despFixasPerc: 0, despVarPerc: 0, lucroDesejado: 0.15, markup: 1 });
+  // APP-19/24b: modal de transparência do cálculo
+  const [comoCalculadoVisible, setComoCalculadoVisible] = useState(false);
 
   // Autocomplete dropdown visibility
   const [activeSearch, setActiveSearch] = useState(null); // null | 'preparo' | 'ingrediente' | 'embalagem'
@@ -393,9 +399,10 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
   const despFixasValor = precoVenda * config.despFixasPerc;
   const despVarValor = precoVenda * config.despVarPerc;
-  const lucroLiquido = precoVenda - custoUnitario - despFixasValor - despVarValor;
-  const lucroPerc = precoVenda > 0 ? lucroLiquido / precoVenda : 0;
-  const cmvPerc = precoVenda > 0 ? custoUnitario / precoVenda : 0;
+  // Sessão 28.9 — Auditoria P0-02: usar funções centrais
+  const lucroLiquido = calcLucroLiquido(precoVenda, custoUnitario, despFixasValor, despVarValor);
+  const lucroPerc = calcMargemLiquida(precoVenda, custoUnitario, despFixasValor, despVarValor);
+  const cmvPerc = calcCMVPercentual(custoUnitario, precoVenda);
 
   function showFeedback(setter) {
     setter(true);
@@ -751,7 +758,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                         label="Unidades por receita"
                         value={form.rendimento_unidades}
                         onChangeText={(v) => setForm(p => ({ ...p, rendimento_unidades: v }))}
-                        keyboardType="numeric"
+                        keyboardType="decimal-pad"
                         placeholder="Ex: 10"
                       />
                     </View>
@@ -774,7 +781,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                         label={`Rendimento total (${tipoVenda === 'kg' ? 'kg' : 'L'})`}
                         value={form.rendimento_total}
                         onChangeText={(v) => setForm(p => ({ ...p, rendimento_total: v }))}
-                        keyboardType="numeric"
+                        keyboardType="decimal-pad"
                         placeholder={tipoVenda === 'kg' ? 'Ex: 1,2' : 'Ex: 5'}
                       />
                     </View>
@@ -813,18 +820,25 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 <Text style={styles.costsItemLabel}>CMV{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : ' Unit.'}</Text>
                 <Text style={styles.costsItemValue}>{formatCurrency(custoUnitario)}</Text>
               </View>
-              <View style={styles.costsItem}>
-                <Text style={styles.costsItemLabel}>Sugerido</Text>
+              <TouchableOpacity
+                style={styles.costsItem}
+                onPress={() => setComoCalculadoVisible(true)}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Ver como o preço sugerido foi calculado"
+              >
+                <Text style={styles.costsItemLabel}>Sugerido <Feather name="info" size={11} color={colors.primary} /></Text>
                 <Text style={[styles.costsItemValue, { color: colors.primary }]}>{formatCurrency(precoSugerido)}</Text>
-              </View>
+              </TouchableOpacity>
               <View style={styles.costsItem}>
-                <Text style={styles.costsItemLabel}>Lucro</Text>
+                {/* APP-21: nomenclatura padronizada — "Lucro Líquido" deixa explícito que é após custos fixos+variáveis */}
+                <Text style={styles.costsItemLabel}>Lucro Líquido</Text>
                 <Text style={[styles.costsItemValue, { color: lucroLiquido >= 0 ? colors.success : colors.error }]}>
                   {formatCurrency(lucroLiquido)}
                 </Text>
               </View>
               <View style={styles.costsItem}>
-                <Text style={styles.costsItemLabel}>Margem</Text>
+                <Text style={styles.costsItemLabel}>Margem Líq.</Text>
                 <Text style={[styles.costsItemValue, { color: lucroPerc >= config.lucroDesejado ? colors.success : lucroPerc >= (config.lucroDesejado - 0.10) ? '#E6A800' : colors.error }]}>
                   {formatPercent(lucroPerc)}
                 </Text>
@@ -888,7 +902,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                       style={[styles.inlineQtyInput, { flex: 1 }]}
                       value={String(pp.quantidade_utilizada)}
                       onChangeText={(v) => updateQuantidade('preparo', idx, v)}
-                      keyboardType="numeric"
+                      keyboardType="decimal-pad"
                       selectTextOnFocus
                     />
                     <Text style={[styles.tableCell, { flex: 0.8, textAlign: 'center' }]}>{unidade}</Text>
@@ -979,7 +993,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     style={[styles.inlineQtyInput, { flex: 1 }]}
                     value={String(ing.quantidade_utilizada)}
                     onChangeText={(v) => updateQuantidade('ingrediente', idx, v)}
-                    keyboardType="numeric"
+                    keyboardType="decimal-pad"
                     selectTextOnFocus
                   />
                   <Text style={[styles.tableCell, { flex: 0.8, textAlign: 'center' }]}>{ing.unidade}</Text>
@@ -1063,7 +1077,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                       style={[styles.inlineQtyInput, { flex: 1 }]}
                       value={String(pe.quantidade_utilizada)}
                       onChangeText={(v) => updateQuantidade('embalagem', idx, v)}
-                      keyboardType="numeric"
+                      keyboardType="decimal-pad"
                       selectTextOnFocus
                     />
                     <Text style={[styles.tableCellCusto, { flex: 1.2, textAlign: 'right' }]}>{formatCurrency(custo)}</Text>
@@ -1598,7 +1612,14 @@ export default function ProdutoFormScreen({ route, navigation }) {
         </View>
       ) : (
         <View style={styles.stickyFooter}>
-          <Pressable style={[styles.btnSave, { minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md }]} onPress={salvar}>
+          <Pressable
+            style={[
+              styles.btnSave,
+              { minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md },
+              isDesktop && { maxWidth: 360, alignSelf: 'center', width: '100%' },
+            ]}
+            onPress={salvar}
+          >
             <Text style={styles.btnSaveText}>Salvar Produto</Text>
           </Pressable>
         </View>
@@ -1708,6 +1729,20 @@ export default function ProdutoFormScreen({ route, navigation }) {
         onClose={() => setAiVisible(false)}
         onRetry={abrirSugestaoIA}
         onApply={aplicarPrecoIA}
+      />
+
+      {/* APP-19/24b: Modal de transparência do cálculo de preço sugerido */}
+      <ComoCalculadoModal
+        visible={comoCalculadoVisible}
+        onClose={() => setComoCalculadoVisible(false)}
+        modo="balcao"
+        titulo={form.nome || 'Produto'}
+        resultado={calcularPrecoBalcao({
+          cmv: custoUnitario,
+          lucroPerc: lucroEfetivo,
+          fixoPerc: config.despFixasPerc,
+          variavelPerc: config.despVarPerc,
+        })}
       />
     </KeyboardAvoidingView>
   );

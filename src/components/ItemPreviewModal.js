@@ -34,6 +34,9 @@ export default function ItemPreviewModal({
   onToggleFavorite,
   onEdit,
   onClose,
+  // Sessão 28.9 — APP-05: ações secundárias (ex: "Mudar categoria") aparecem
+  // como linha de chips clicáveis acima dos botões Fechar/Editar.
+  extraActions,
 }) {
   const isFav = favorito === 1 || favorito === true;
   return (
@@ -81,6 +84,24 @@ export default function ItemPreviewModal({
               </View>
             ))}
           </ScrollView>
+
+          {/* Sessão 28.9 — Ações extras (ex: Mudar categoria) */}
+          {extraActions && extraActions.length > 0 && (
+            <View style={styles.extraActions}>
+              {extraActions.map((act, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={styles.extraActionChip}
+                  onPress={() => act.onPress && act.onPress()}
+                  accessibilityRole="button"
+                  accessibilityLabel={act.label}
+                >
+                  {act.icon && <Feather name={act.icon} size={13} color={colors.primary} />}
+                  <Text style={styles.extraActionChipText}>{act.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
           {/* Actions */}
           <View style={styles.actions}>
@@ -171,6 +192,33 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'right',
     maxWidth: '60%',
+  },
+  // Sessão 28.9 — APP-05: ações secundárias (chips entre fields e botões)
+  extraActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  extraActionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.primary + '40',
+    backgroundColor: colors.primary + '08',
+  },
+  extraActionChipText: {
+    fontSize: fonts.tiny,
+    color: colors.primary,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
   },
   actions: {
     flexDirection: 'row',

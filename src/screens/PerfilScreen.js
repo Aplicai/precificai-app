@@ -7,6 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
+import BackToSettings from '../components/BackToSettings';
 
 // Multi-tenant: cada usuário tem sua chave de avatar (mesmo padrão de
 // usePushPermissions). Sem userId, não persiste nada — evita vazamento entre contas.
@@ -194,6 +195,8 @@ export default function PerfilScreen({ navigation, route }) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      {/* APP-12: voltar pra Configurações sempre visível (exceto no fluxo de setup) */}
+      {!isSetup && <BackToSettings navigation={navigation} />}
 
       {/* Audit P0: banner de erro de carregamento (antes era silent) */}
       {loadError ? (

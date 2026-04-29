@@ -7,6 +7,7 @@ import usePersistedState from '../hooks/usePersistedState';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../config/supabase';
 import { getDatabase } from '../database/database';
+import BackToSettings from '../components/BackToSettings';
 
 async function openExternal(url, onError) {
   try {
@@ -225,6 +226,8 @@ export default function SuporteScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* APP-12: voltar pra Configurações sempre visível */}
+      <BackToSettings navigation={navigation} />
       <Text style={styles.header} accessibilityRole="header">Central de Suporte</Text>
 
       {linkError && (

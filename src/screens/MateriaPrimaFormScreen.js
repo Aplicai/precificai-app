@@ -23,6 +23,7 @@ import {
   converterParaBase,
   calcCustoIngrediente,
   calcCustoPreparo,
+  calcMargem,
 } from '../utils/calculations';
 // Sprint 2 S5 — checagem de dependências antes de DELETE (evita órfãos em preparo_ingredientes / produto_ingredientes).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
@@ -100,9 +101,14 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   const [novaCatIcone, setNovaCatIcone] = useState('tag');
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [errors, setErrors] = useState({});
+  // APP-14: flag indica que o valor pago veio pré-preenchido pelo Kit (estimativa de mercado)
+  const [ehValorEstimado, setEhValorEstimado] = useState(false);
   // Sessão 28.8 — sugestão do dicionário pré-cadastrado (zero IA)
   const [sugestao, setSugestao] = useState(null);
-  const [sugestaoDispensada, setSugestaoDispensada] = useState(false);
+  // Dispensa POR canonical: armazena normalize() do nome canonical
+  // que o user aplicou OU dispensou. Suggestion volta se user limpar
+  // o campo OU digitar nome que casa com canonical DIFERENTE.
+  const [sugestaoDispensadaPara, setSugestaoDispensadaPara] = useState(null);
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
   const [historicoPrecos, setHistoricoPrecos] = useState([]);
   const pendingNavAction = useRef(null);
@@ -215,13 +221,38 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     const db = await getDatabase();
     const item = await db.getFirstAsync('SELECT * FROM materias_primas WHERE id = ?', [editId]);
     if (item) {
+      // APP-14: detecta se o valor foi pré-preenchido pelo Kit (marcador no campo marca).
+      // Esconde o marcador da UI e ativa o badge "valor estimado".
+      const marcaValor = item.marca || '';
+      const eEstimado = marcaValor === '__VALOR_ESTIMADO_KIT__';
+      setEhValorEstimado(eEstimado);
+      // APP-04: normalização defensiva da unidade_medida.
+      // Bug reportado: usuária salvou "kg", reabriu e veio "un".
+      // 1) Trim e remoção de aspas (caso Supabase devolva como JSON-string '"kg"')
+      // 2) Validação contra a lista oficial; fallback pra 'kg' (mais comum em
+      //    confeitaria) em vez de 'g' que era o default antigo
+      // 3) Log explícito quando há fallback, pra rastrear o bug em produção
+      let unidadeRaw = item.unidade_medida;
+      if (typeof unidadeRaw === 'string') {
+        unidadeRaw = unidadeRaw.trim().replace(/^"+|"+$/g, '');
+      }
+      const VALID_UNITS = ['g','kg','mL','L','un'];
+      let unidadeFinal;
+      if (VALID_UNITS.includes(unidadeRaw)) {
+        unidadeFinal = unidadeRaw;
+      } else {
+        unidadeFinal = 'kg';
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('[MateriaPrimaForm.loadItem] APP-04 fallback: unidade_medida inválida no DB =', JSON.stringify(item.unidade_medida), '→ usando "kg". Item id:', editId, 'nome:', item.nome);
+        }
+      }
       setForm({
         nome: item.nome,
-        marca: item.marca || '',
+        marca: eEstimado ? '' : marcaValor,
         categoria_id: item.categoria_id || null,
         quantidade_bruta: String(item.quantidade_bruta || ''),
         quantidade_liquida: String(item.quantidade_liquida || ''),
-        unidade_medida: item.unidade_medida || 'g',
+        unidade_medida: unidadeFinal,
         valor_pago: String(item.valor_pago || ''),
       });
       // Carregar histórico de preços
@@ -271,6 +302,17 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     const f = formRef.current;
     if (!f.nome.trim()) return; // não salva sem nome
 
+    // Sessão 28.9 — APP-04: garantia defensiva pra unidade nunca regredir.
+    // Se unidade_medida vier vazia/inválida, NÃO faz auto-save (evita corromper
+    // o valor salvo). Loga pra debug.
+    const unidadeValida = ['g','kg','mL','L','un'].includes(f.unidade_medida);
+    if (!unidadeValida) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('[MateriaPrimaForm.autoSave] BLOQUEADO: unidade inválida =', f.unidade_medida, '(form completo)', f);
+      }
+      return;
+    }
+
     // F2-J2-03 / CR-1: usa helper parseNum (Number.isFinite-aware) com `?? 0` p/ DB
     const qb = parseNum(f.quantidade_bruta) ?? 0;
     const ql = parseNum(f.quantidade_liquida) ?? 0;
@@ -285,6 +327,72 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         'UPDATE materias_primas SET nome=?, marca=?, categoria_id=?, quantidade_bruta=?, quantidade_liquida=?, fator_correcao=?, unidade_medida=?, valor_pago=?, preco_por_kg=? WHERE id=?',
         [f.nome, f.marca, f.categoria_id, qb, ql, fc, f.unidade_medida, vp, pb, editId]
       );
+
+      // Sessão 28.9 — APP-08/09/10: cascade automático.
+      // Quando preço/unidade do insumo muda, recalcula custo_total e custo_por_kg
+      // de TODOS os preparos que usam esse insumo. Sem isso, os preparos ficavam
+      // com custo stale e os produtos derivados também.
+      try {
+        const preparosAfetados = await db.getAllAsync(
+          'SELECT DISTINCT preparo_id FROM preparo_ingredientes WHERE materia_prima_id = ?',
+          [editId]
+        );
+        for (const row of (preparosAfetados || [])) {
+          const prepId = row.preparo_id;
+          const ingsPrep = await db.getAllAsync(
+            `SELECT pi.quantidade_utilizada, pi.materia_prima_id, mp.preco_por_kg, mp.unidade_medida
+             FROM preparo_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id
+             WHERE pi.preparo_id = ?`, [prepId]);
+          let custoTotalPrep = 0;
+          for (const ing of (ingsPrep || [])) {
+            custoTotalPrep += calcCustoIngrediente(
+              ing.preco_por_kg || 0,
+              ing.quantidade_utilizada,
+              ing.unidade_medida || 'g',
+              ing.unidade_medida || 'g'
+            );
+          }
+          // Pega rendimento do preparo pra calcular custo_por_kg
+          const prepRow = await db.getFirstAsync(
+            'SELECT rendimento_total FROM preparos WHERE id = ?', [prepId]);
+          const rend = parseNum(prepRow?.rendimento_total) || 1;
+          const custoPorKgPrep = rend > 0 ? (custoTotalPrep / rend) * 1000 : 0;
+          await db.runAsync(
+            'UPDATE preparos SET custo_total=?, custo_por_kg=? WHERE id=?',
+            [custoTotalPrep, custoPorKgPrep, prepId]
+          );
+          // Atualiza também o "custo" individual de cada linha de preparo_ingredientes
+          for (const ing of (ingsPrep || [])) {
+            const c = calcCustoIngrediente(
+              ing.preco_por_kg || 0,
+              ing.quantidade_utilizada,
+              ing.unidade_medida || 'g',
+              ing.unidade_medida || 'g'
+            );
+            await db.runAsync(
+              'UPDATE preparo_ingredientes SET custo=? WHERE preparo_id=? AND materia_prima_id=?',
+              [c, prepId, ing.materia_prima_id]
+            );
+          }
+        }
+      } catch (cascadeErr) {
+        console.warn('[MateriaPrimaForm.cascadeUpdate]', cascadeErr);
+      }
+
+      // APP-23: cascade adicional pra delivery_combos. Os preparos já foram
+      // atualizados acima; aqui propagamos pra combos que usam produtos ou preparos.
+      try {
+        const { recalcularTodosCombos } = await import('../services/cascadeRecalc');
+        await recalcularTodosCombos(db);
+      } catch (e) { console.warn('[MateriaPrimaForm.cascadeCombos]', e); }
+
+      // Sessão 28.9 — APP-09/10: limpa cache do wrapper pra outras telas
+      // (Produtos, Preparos, Home) lerem custos atualizados imediatamente.
+      try {
+        const { clearQueryCache } = await import('../database/supabaseDb');
+        clearQueryCache();
+      } catch (e) { /* defensivo */ }
+
       // Histórico de preço NÃO é registrado no auto-save
       // Apenas no "Salvar e voltar" para evitar erros de digitação
       // Check margin erosion (P2: throttle — caro com N+1 queries por produto)
@@ -310,7 +418,8 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
               const embs = await db.getAllAsync('SELECT pe.quantidade_utilizada, e.preco_unitario FROM produto_embalagens pe JOIN embalagens e ON e.id = pe.embalagem_id WHERE pe.produto_id = ?', [prod.id]);
               const custoEmb = embs.reduce((a, pe) => a + (pe.quantidade_utilizada || 0) * (pe.preco_unitario || 0), 0);
               const custoTotal = custoIng + custoPr + custoEmb;
-              const margem = prod.preco_venda > 0 ? (prod.preco_venda - custoTotal) / prod.preco_venda : 0;
+              // Sessão 28.9 — Auditoria P0-02: usar calcMargem (alerta de margem baixa do produto)
+              const margem = calcMargem(prod.preco_venda, custoTotal);
               if (margem < 0.10) {
                 warnings.push(`${prod.nome}: margem ${(margem * 100).toFixed(1)}%`);
               }
@@ -341,6 +450,11 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       return Alert.alert('Campos obrigatórios', 'Preencha todos os campos obrigatórios antes de salvar.');
+    }
+    // APP-04: valida unidade no save manual também
+    const VALID_UNITS_SAVE = ['g','kg','mL','L','un'];
+    if (!VALID_UNITS_SAVE.includes(form.unidade_medida)) {
+      return Alert.alert('Unidade inválida', 'Selecione uma unidade de medida válida antes de salvar.');
     }
     setErrors({});
     allowExit.current = true;
@@ -427,15 +541,30 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
           onChangeText={(v) => {
             setForm(p => ({ ...p, nome: v }));
             setErrors(p => ({ ...p, nome: undefined }));
-            // Sessão 28.8 — sugere via dicionário se nome ≥4 chars e user
-            // ainda não preencheu unidade/categoria manualmente.
-            if (sugestaoDispensada) return;
-            if ((v || '').trim().length < 4) { setSugestao(null); return; }
-            // Não sugere se já tem categoria/unidade customizada (evita pisar dados do user)
-            const semDadosManuais = !form.categoria_id && (form.unidade_medida === 'g' || !form.unidade_medida);
-            if (!semDadosManuais) return;
+            // Sessão 28.8 — sugestão via dicionário (zero IA, zero custo)
+            // Comportamento (pós-fix campo recorrente):
+            //  - Campo vazio → reseta dispensa (user pode começar de novo)
+            //  - <4 chars → não sugere (mas mantém estado)
+            //  - Match casa com canonical JÁ aplicado/dispensado → silêncio
+            //  - Match com canonical DIFERENTE → sugestão aparece
+            //    (mesmo que outros campos estejam preenchidos — user pode
+            //     querer SOBREPOR dados ao trocar pra insumo diferente)
+            const trimmed = (v || '').trim();
+            if (!trimmed) {
+              setSugestao(null);
+              setSugestaoDispensadaPara(null);
+              return;
+            }
+            if (trimmed.length < 4) { setSugestao(null); return; }
             try {
               const m = matchInsumo(v);
+              if (!m) { setSugestao(null); return; }
+              const canonicalNorm = normalizeStr(m.nome_canonico);
+              if (sugestaoDispensadaPara && sugestaoDispensadaPara === canonicalNorm) {
+                // Mesmo canonical da última dispensa/aplicação → não re-sugere
+                setSugestao(null);
+                return;
+              }
               setSugestao(m);
             } catch (_) { /* defensive */ }
           }}
@@ -445,7 +574,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         />
 
         {/* Sessão 28.8 — Banner de sugestão do dicionário */}
-        {sugestao && !sugestaoDispensada && (
+        {sugestao && (
           <View style={styles.sugestaoBanner} accessibilityLiveRegion="polite">
             <View style={styles.sugestaoHeader}>
               <Feather name="zap" size={14} color={colors.primary} />
@@ -494,8 +623,8 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                     quantidade_liquida: sugestao.qtd_tipica_compra ? String(sugestao.qtd_tipica_compra) : p.quantidade_liquida,
                     categoria_id: categoria_id || p.categoria_id,
                   }));
+                  setSugestaoDispensadaPara(normalizeStr(sugestao.nome_canonico));
                   setSugestao(null);
-                  setSugestaoDispensada(true);
                 }}
                 accessibilityRole="button"
                 accessibilityLabel="Usar sugestão"
@@ -505,7 +634,10 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.sugestaoBtn}
-                onPress={() => { setSugestao(null); setSugestaoDispensada(true); }}
+                onPress={() => {
+                  setSugestaoDispensadaPara(normalizeStr(sugestao.nome_canonico));
+                  setSugestao(null);
+                }}
                 accessibilityRole="button"
                 accessibilityLabel="Dispensar sugestão"
               >
@@ -553,7 +685,6 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
               value={form.unidade_medida}
               onValueChange={(v) => setForm(p => ({ ...p, unidade_medida: v }))}
               options={UNIDADES_MEDIDA.map(u => ({ label: u.label, value: u.value }))}
-              displayValue={form.unidade_medida}
             />
           </View>
           <View style={{ flex: 1 }}>
@@ -561,15 +692,19 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
               label="Qtd. Bruta"
               value={form.quantidade_bruta}
               onChangeText={(v) => { setForm(p => ({ ...p, quantidade_bruta: v })); setErrors(p => ({ ...p, quantidade_bruta: undefined })); }}
-              keyboardType="numeric"
-              placeholder="Ex: 1000"
+              keyboardType="decimal-pad"
+              placeholder="Ex: 1000 (use vírgula para decimais)"
               error={errors.quantidade_bruta}
               style={styles.fieldCompact}
               rightLabel={
                 <InfoTooltip
-                  title="Quantidade Bruta"
-                  text="Peso ou volume TOTAL como comprado, incluindo partes descartadas."
-                  examples={['Cebola com casca = 1000g', 'Frango com ossos = 2000g']}
+                  title="Quantidade Bruta (o que você paga)"
+                  text="É o peso ou volume TOTAL na hora da compra, incluindo o que será descartado. É por essa quantidade que a nota fiscal cobra."
+                  examples={[
+                    '1 kg de maracujá com casca = 1000 g',
+                    '500 g de camarão com cabeça = 500 g',
+                    '1 kg de cebola com casca = 1000 g',
+                  ]}
                 />
               }
             />
@@ -579,15 +714,19 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
               label="Qtd. Líquida"
               value={form.quantidade_liquida}
               onChangeText={(v) => { setForm(p => ({ ...p, quantidade_liquida: v })); setErrors(p => ({ ...p, quantidade_liquida: undefined })); }}
-              keyboardType="numeric"
-              placeholder="Ex: 800"
+              keyboardType="decimal-pad"
+              placeholder="Ex: 800 (use vírgula para decimais)"
               error={errors.quantidade_liquida}
               style={styles.fieldCompact}
               rightLabel={
                 <InfoTooltip
-                  title="Quantidade Líquida"
-                  text="Peso ou volume APROVEITÁVEL, após retirar partes descartadas."
-                  examples={['Cebola sem casca = 800g', 'Frango sem ossos = 1400g']}
+                  title="Quantidade Líquida (o que você usa)"
+                  text="É o peso ou volume APROVEITÁVEL, depois de tirar casca, osso, semente, talo ou qualquer parte que vai pro lixo. É essa quantidade que entra de fato no produto."
+                  examples={[
+                    '1 kg de maracujá rende 350 g de polpa',
+                    '500 g de camarão limpo = 350 g',
+                    '1 kg de cebola descascada = 800 g',
+                  ]}
                 />
               }
             />
@@ -611,6 +750,16 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             />
           }
         />
+
+        {/* APP-14: badge "valor estimado" quando o item veio pré-preenchido pelo Kit de Início */}
+        {ehValorEstimado && (
+          <View style={styles.estimadoBadge}>
+            <Feather name="info" size={14} color={colors.warning} style={{ marginRight: 6 }} />
+            <Text style={styles.estimadoBadgeText}>
+              Valor estimado a partir de média de mercado. Atualize com o seu preço real.
+            </Text>
+          </View>
+        )}
 
         {/* Resultado Calculado */}
         {temDadosCalculo ? (
@@ -642,6 +791,15 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
               <Text style={styles.perdaHint}>
                 Perda estimada: {perdaPercent.toFixed(0)}%. O custo real é {fatorCorrecao > 0 ? (1 / fatorCorrecao).toFixed(1) : '-'}x o preço pago
               </Text>
+            )}
+            {/* APP-17: nota sobre origem dos fatores de perda pré-preenchidos pelo kit */}
+            {perdaPercent > 0 && (
+              <View style={styles.fatorNote}>
+                <Feather name="info" size={12} color={colors.textSecondary} />
+                <Text style={styles.fatorNoteText}>
+                  Fatores de perda baseados em referências do setor (Tabela TACO e literatura de food cost). Ajuste se o seu rendimento real for diferente.
+                </Text>
+              </View>
             )}
           </>
         ) : (
@@ -796,7 +954,14 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
 
         {/* Botão salvar (novo) */}
         {!editId && (
-          <TouchableOpacity style={[styles.btnSave, { minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md }]} onPress={salvarNovo}>
+          <TouchableOpacity
+            style={[
+              styles.btnSave,
+              { minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md },
+              isDesktop && { maxWidth: 360, alignSelf: 'center', width: '100%' },
+            ]}
+            onPress={salvarNovo}
+          >
             <Text style={styles.btnSaveText}>Salvar Insumo</Text>
           </TouchableOpacity>
         )}
@@ -1017,6 +1182,36 @@ const styles = StyleSheet.create({
     color: colors.warning, textAlign: 'center',
     marginTop: spacing.xs + 2, paddingHorizontal: spacing.sm,
   },
+  // APP-17: nota informativa sobre fatores de perda padrão do setor
+  fatorNote: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    marginTop: spacing.xs + 2, paddingHorizontal: spacing.sm,
+    gap: 4,
+  },
+  fatorNoteText: {
+    flex: 1, fontSize: fonts.tiny, color: colors.textSecondary,
+    fontFamily: fontFamily.regular, lineHeight: 14,
+  },
+  // APP-14: badge "valor estimado" quando o preço veio pré-preenchido pelo Kit
+  estimadoBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.warning + '15',
+    borderLeftWidth: 3,
+    borderLeftColor: colors.warning,
+    borderRadius: borderRadius.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  estimadoBadgeText: {
+    flex: 1,
+    fontSize: fonts.tiny,
+    color: colors.text,
+    fontFamily: fontFamily.medium,
+    lineHeight: 16,
+  },
 
   // Histórico de preços
   historicoSection: {
@@ -1156,9 +1351,12 @@ const styles = StyleSheet.create({
   pickerContainer: { marginBottom: spacing.sm },
   pickerLabel: { fontSize: fonts.small, color: colors.textSecondary, marginBottom: spacing.xs, fontWeight: '600' },
   pickerSelector: {
+    // Sessão 28.9 — APP-05: aumenta visibilidade do picker (era difícil
+    // perceber que era clicável). Touch target 48pt + chevron mais forte.
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border,
     borderRadius: borderRadius.sm, padding: spacing.sm + 2,
+    minHeight: 48,
   },
   pickerText: { fontSize: fonts.regular, color: colors.text },
   pickerPlaceholder: { color: colors.disabled },

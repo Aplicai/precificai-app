@@ -7,7 +7,6 @@ import Card from '../components/Card';
 import EmptyState from '../components/EmptyState';
 import SearchBar from '../components/SearchBar';
 import InfoTooltip from '../components/InfoTooltip';
-import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import {
   formatCurrency,
@@ -254,7 +253,6 @@ export default function ComparativoCanaisScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <FinanceiroPendenteBanner />
 
       {loadError && (
         <View

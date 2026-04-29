@@ -11,7 +11,9 @@ import InputField from '../components/InputField';
 import SaveStatus from '../components/SaveStatus';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, calcDespesasFixasPercentual } from '../utils/calculations';
+// APP-22: usar engine unificada também para combos (antes era markup fixo 35% sem contar fixos/variáveis)
+import { calcularPrecoCombo } from '../utils/precificacao';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 
@@ -53,6 +55,8 @@ export default function DeliveryCombosScreen() {
   const isFocused = useIsFocused();
   const { isDesktop } = useResponsiveLayout();
   const [combos, setCombos] = useState([]);
+  // APP-22: contexto financeiro pra alimentar a fórmula completa do combo
+  const [contextoFin, setContextoFin] = useState({ lucroPerc: 0.15, fixoPerc: 0, variavelPerc: 0 });
   const [busca, setBusca] = usePersistedState('deliveryCombos.busca', '');
   const [confirmRemove, setConfirmRemove] = useState(null);
 
@@ -76,6 +80,21 @@ export default function DeliveryCombosScreen() {
   const [buscaItem, setBuscaItem] = useState('');
   // Sessão 28.8 — filtro por tipo no modal de adicionar item
   const [filtroTipoItem, setFiltroTipoItem] = useState(null);
+  // Sessão 28.9 — categorias colapsáveis (start: TODAS recolhidas para "limpar" o modal)
+  // Cada chave = tipo de categoria. Toggle via setinha.
+  const [catExpanded, setCatExpanded] = useState({
+    produto: false,
+    preparo: false,
+    materia_prima: false,
+    embalagem: false,
+  });
+  const toggleCat = (key) => setCatExpanded(prev => ({ ...prev, [key]: !prev[key] }));
+
+  // Sessão 28.9 — auto-expandir categoria quando filtro específico é selecionado
+  useEffect(() => {
+    if (!filtroTipoItem) return; // "Tudo" — mantém estado atual
+    setCatExpanded(prev => ({ ...prev, [filtroTipoItem]: true }));
+  }, [filtroTipoItem]);
 
   // Auto-save state (edit mode)
   const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved'
@@ -131,7 +150,8 @@ export default function DeliveryCombosScreen() {
     const db = await getDatabase();
 
     const [prods, allIngs, allPreps, allEmbs, embalagensList, preparosList, materiasList,
-           combosList, allComboItens, dProds, allDProdItens] = await Promise.all([
+           combosList, allComboItens, dProds, allDProdItens,
+           cfgRows, fixasRows, varsRows, fatRows] = await Promise.all([
       db.getAllAsync('SELECT * FROM produtos ORDER BY nome'),
       db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
       db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
@@ -143,7 +163,24 @@ export default function DeliveryCombosScreen() {
       db.getAllAsync('SELECT * FROM delivery_combo_itens'),
       db.getAllAsync('SELECT * FROM delivery_produtos ORDER BY nome'),
       db.getAllAsync('SELECT * FROM delivery_produto_itens'),
+      // APP-22: contexto financeiro pra fórmula completa do combo
+      db.getAllAsync('SELECT * FROM configuracao'),
+      db.getAllAsync('SELECT valor FROM despesas_fixas'),
+      db.getAllAsync('SELECT percentual FROM despesas_variaveis'),
+      db.getAllAsync('SELECT valor FROM faturamento_mensal WHERE valor > 0'),
     ]);
+
+    // APP-22: monta contexto financeiro
+    try {
+      const cfg = cfgRows?.[0] || {};
+      const totalFixas = (fixasRows || []).reduce((a, r) => a + (Number.isFinite(r.valor) ? r.valor : 0), 0);
+      const fatMedio = (fatRows || []).length > 0
+        ? (fatRows || []).reduce((a, r) => a + (Number.isFinite(r.valor) ? r.valor : 0), 0) / (fatRows || []).length : 0;
+      const fixoPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
+      const lucroPerc = Number.isFinite(cfg.lucro_desejado) ? cfg.lucro_desejado : 0.15;
+      const variavelPerc = (varsRows || []).reduce((a, r) => a + (Number.isFinite(r.percentual) ? r.percentual : 0), 0);
+      setContextoFin({ lucroPerc, fixoPerc, variavelPerc });
+    } catch (e) { console.warn('[DeliveryCombos.contextoFin] falha ao montar:', e); }
 
     // Build lookup maps
     const ingsByProd = {};
@@ -549,16 +586,25 @@ export default function DeliveryCombosScreen() {
   const custoPreparosCombo = novoCombo.itens.filter(i => i.tipo === 'preparo').reduce((a, i) => a + safeNum(i.custoUnit) * safeNum(i.quantidade), 0);
   const custoEmbalagensCombo = novoCombo.itens.filter(i => i.tipo === 'embalagem').reduce((a, i) => a + safeNum(i.custoUnit) * safeNum(i.quantidade), 0);
   const lucroCombo = precoVendaModal - custoTotal;
-  const margemDesejada = 0.35; // 35% default
-  const precoSugerido = custoTotal > 0 ? custoTotal / (1 - margemDesejada) : 0;
+  // APP-22: preço sugerido do combo agora usa fórmula completa (markup divisor) com
+  // lucro + custos fixos + variáveis, não mais markup fixo de 35%.
+  // Antes: combo de R$ 9,88 sugeria R$ 11; agora ~R$ 22+ porque inclui fixos+variáveis+lucro real.
+  const sugCombo = calcularPrecoCombo({
+    cmvCombo: custoTotal,
+    lucroPerc: contextoFin.lucroPerc,
+    fixoPerc: contextoFin.fixoPerc,
+    variavelPerc: contextoFin.variavelPerc,
+  });
+  const precoSugerido = sugCombo?.preco || 0;
 
   // ─── RENDER ───────────────────────────────────────────────
 
   function renderComboCard({ item: combo, index }) {
     const precoV = safeNum(combo.preco_venda);
     const custoC = safeNum(combo.custo);
+    // Sessão 28.9 — Auditoria P0-02: usar calcMargem (combo é venda direta, sem despesas op.)
     const lucro = precoV - custoC;
-    const margem = precoV > 0 ? ((precoV - custoC) / precoV) * 100 : 0;
+    const margem = calcMargem(precoV, custoC) * 100;
     const margemColor = margem >= 25 ? colors.success : margem >= 15 ? colors.accent : colors.error;
     const comboColor = getComboColor(index);
     const itens = combo.itens || [];
@@ -631,8 +677,9 @@ export default function DeliveryCombosScreen() {
   function renderDesktopGridCard({ item: combo, index }) {
     const precoV = safeNum(combo.preco_venda);
     const custoC = safeNum(combo.custo);
+    // Sessão 28.9 — Auditoria P0-02: usar calcMargem (combo é venda direta, sem despesas op.)
     const lucro = precoV - custoC;
-    const margem = precoV > 0 ? ((precoV - custoC) / precoV) * 100 : 0;
+    const margem = calcMargem(precoV, custoC) * 100;
     const margemColor = margem >= 25 ? colors.success : margem >= 15 ? colors.accent : colors.error;
     const comboColor = getComboColor(index);
     const itens = combo.itens || [];
@@ -1078,32 +1125,42 @@ export default function DeliveryCombosScreen() {
                   );
                 }
 
+                // Sessão 28.9 — Header colapsável: setinha + nome + count
+                // Quando user busca, força aberto pra mostrar resultados.
+                const renderCatBlock = (key, label, items, renderFn) => {
+                  if (!items || items.length === 0) return null;
+                  const expanded = !!termo || catExpanded[key];
+                  return (
+                    <View style={styles.modalCatBlock}>
+                      <TouchableOpacity
+                        style={styles.modalCatHeader}
+                        onPress={() => toggleCat(key)}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded }}
+                        accessibilityLabel={`${label}, ${items.length} ${items.length === 1 ? 'item' : 'itens'}`}
+                      >
+                        <Feather
+                          name={expanded ? 'chevron-down' : 'chevron-right'}
+                          size={14}
+                          color={colors.textSecondary}
+                        />
+                        <Text style={styles.modalCatHeaderLabel}>{label}</Text>
+                        <View style={styles.modalCatHeaderCount}>
+                          <Text style={styles.modalCatHeaderCountText}>{items.length}</Text>
+                        </View>
+                      </TouchableOpacity>
+                      {expanded && items.map(renderFn)}
+                    </View>
+                  );
+                };
+
                 return (
                   <>
-                    {filteredProdutos.length > 0 && (
-                      <View style={styles.modalCatBlock}>
-                        <Text style={styles.modalCatLabel}>Produtos · {filteredProdutos.length}</Text>
-                        {filteredProdutos.map(p => renderRow(p, `prod-${p.id}`, 'produto', (x) => safeNum(x.preco_venda)))}
-                      </View>
-                    )}
-                    {filteredPreparos.length > 0 && (
-                      <View style={styles.modalCatBlock}>
-                        <Text style={styles.modalCatLabel}>Preparos · {filteredPreparos.length}</Text>
-                        {filteredPreparos.map(pr => renderRow(pr, `prep-${pr.id}`, 'preparo', (x) => safeNum(x.custo_total)))}
-                      </View>
-                    )}
-                    {filteredMaterias.length > 0 && (
-                      <View style={styles.modalCatBlock}>
-                        <Text style={styles.modalCatLabel}>Insumos · {filteredMaterias.length}</Text>
-                        {filteredMaterias.map(m => renderRow(m, `mp-${m.id}`, 'materia_prima', (x) => safeNum(x.preco_por_kg)))}
-                      </View>
-                    )}
-                    {filteredEmbalagens.length > 0 && (
-                      <View style={styles.modalCatBlock}>
-                        <Text style={styles.modalCatLabel}>Embalagens · {filteredEmbalagens.length}</Text>
-                        {filteredEmbalagens.map(e => renderRow(e, `emb-${e.id}`, 'embalagem', (x) => safeNum(x.preco_unitario)))}
-                      </View>
-                    )}
+                    {renderCatBlock('produto', 'Produtos', filteredProdutos, (p) => renderRow(p, `prod-${p.id}`, 'produto', (x) => safeNum(x.preco_venda)))}
+                    {renderCatBlock('preparo', 'Preparos', filteredPreparos, (pr) => renderRow(pr, `prep-${pr.id}`, 'preparo', (x) => safeNum(x.custo_total)))}
+                    {renderCatBlock('materia_prima', 'Insumos', filteredMaterias, (m) => renderRow(m, `mp-${m.id}`, 'materia_prima', (x) => safeNum(x.preco_por_kg)))}
+                    {renderCatBlock('embalagem', 'Embalagens', filteredEmbalagens, (e) => renderRow(e, `emb-${e.id}`, 'embalagem', (x) => safeNum(x.preco_unitario)))}
                   </>
                 );
               })()}
@@ -1502,6 +1559,39 @@ const styles = StyleSheet.create({
   // Categoria block (Produtos / Preparos / etc)
   modalCatBlock: {
     marginTop: spacing.sm,
+  },
+  // Sessão 28.9 — Header colapsável da categoria
+  modalCatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: colors.background,
+    gap: 6,
+    minHeight: 36,
+  },
+  modalCatHeaderLabel: {
+    flex: 1,
+    fontSize: fonts.small,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  modalCatHeaderCount: {
+    minWidth: 22,
+    height: 18,
+    paddingHorizontal: 6,
+    borderRadius: 9,
+    backgroundColor: colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCatHeaderCountText: {
+    fontSize: 11,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '700',
+    color: colors.primary,
   },
   // Linha de adicionar item V2 (touch target adequado, badge tipo, custo)
   modalAddItemV2: {

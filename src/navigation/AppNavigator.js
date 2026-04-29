@@ -8,6 +8,8 @@ import { colors, fontFamily } from '../utils/theme';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useListDensity from '../hooks/useListDensity';
 import WebLayout from '../components/web/WebLayout';
+import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
+import PrecosZeradosBanner from '../components/PrecosZeradosBanner';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { getSetupStatus } from '../utils/setupStatus';
 import { determineInitialRoute, determineInitialRouteSafe } from '../utils/initialRoute';
@@ -17,6 +19,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 // Sessão 28.8 — LandingScreen NÃO é importada porque a landing fica em
 // projeto Vercel separado (`precificai-site` em precificaiapp.com).
 // Este app vive em app.precificaiapp.com e abre direto em Login/Register.
@@ -41,6 +44,8 @@ import DeliveryCombosScreen from '../screens/DeliveryCombosScreen';
 import MaisScreen from '../screens/MaisScreen';
 import AtualizarPrecosScreen from '../screens/AtualizarPrecosScreen';
 import SimuladorScreen from '../screens/SimuladorScreen';
+// APP-28: simulador em lote (todos produtos × todas plataformas em uma tela)
+import SimuladorLoteScreen from '../screens/SimuladorLoteScreen';
 import RelatorioSimplesScreen from '../screens/RelatorioSimplesScreen';
 import FornecedoresScreen from '../screens/FornecedoresScreen';
 import ListaComprasScreen from '../screens/ListaComprasScreen';
@@ -161,30 +166,47 @@ function TabIcon({ label, focused, badge, baseSize }) {
   );
 }
 
+// Sessão 28.9 — Wrapper que adiciona o FinanceiroPendenteBanner global acima
+// do Stack. Com isso o banner aparece em TODAS as telas dentro de cada tab,
+// sem precisar editar cada screen individualmente.
+function StackWithBanner({ children }) {
+  return (
+    <View style={{ flex: 1 }}>
+      <FinanceiroPendenteBanner />
+      <PrecosZeradosBanner />
+      {children}
+    </View>
+  );
+}
+
 function HomeStack() {
   return (
-    <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="HomeMain" component={HomeScreen} options={{
-        header: () => null, // Custom header rendered inside HomeScreen
-      }} />
-      <Stack.Screen name="Perfil" component={PerfilScreen} options={{ title: 'Meu Perfil' }} />
-      <Stack.Screen name="Configuracoes" component={ConfiguracoesScreen} options={{ title: 'Configurações' }} />
-      <Stack.Screen name="MargemBaixa" component={MargemBaixaScreen} options={{ title: 'Margem Baixa' }} />
-      <Stack.Screen name="ProdutoFormHome" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
-    </Stack.Navigator>
+    <StackWithBanner>
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen name="HomeMain" component={HomeScreen} options={{
+          header: () => null, // Custom header rendered inside HomeScreen
+        }} />
+        <Stack.Screen name="Perfil" component={PerfilScreen} options={{ title: 'Meu Perfil' }} />
+        <Stack.Screen name="Configuracoes" component={ConfiguracoesScreen} options={{ title: 'Configurações' }} />
+        <Stack.Screen name="MargemBaixa" component={MargemBaixaScreen} options={{ title: 'Margem Baixa' }} />
+        <Stack.Screen name="ProdutoFormHome" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
+      </Stack.Navigator>
+    </StackWithBanner>
   );
 }
 
 function ProdutosStack() {
   return (
-    <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="ProdutosList" component={ProdutosListScreen} options={({ navigation }) => ({ title: 'Produtos', ...backToHomeOption(navigation) })} />
-      <Stack.Screen name="ProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
-      <Stack.Screen name="CombosScreen" component={DeliveryCombosScreen} options={{ title: 'Combos' }} />
-      <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo', presentation: 'transparentModal', headerShown: false }} />
-      <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Novo Preparo', presentation: 'transparentModal', headerShown: false }} />
-      <Stack.Screen name="EmbalagemForm" component={EmbalagemFormScreen} options={{ title: 'Nova Embalagem', presentation: 'transparentModal', headerShown: false }} />
-    </Stack.Navigator>
+    <StackWithBanner>
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen name="ProdutosList" component={ProdutosListScreen} options={({ navigation }) => ({ title: 'Produtos', ...backToHomeOption(navigation) })} />
+        <Stack.Screen name="ProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
+        <Stack.Screen name="CombosScreen" component={DeliveryCombosScreen} options={{ title: 'Combos' }} />
+        <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo', presentation: 'transparentModal', headerShown: false }} />
+        <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Novo Preparo', presentation: 'transparentModal', headerShown: false }} />
+        <Stack.Screen name="EmbalagemForm" component={EmbalagemFormScreen} options={{ title: 'Nova Embalagem', presentation: 'transparentModal', headerShown: false }} />
+      </Stack.Navigator>
+    </StackWithBanner>
   );
 }
 
@@ -212,29 +234,35 @@ function backToHomeOption(navigation) {
 
 function InsumosStack() {
   return (
-    <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="MateriasPrimas" component={MateriasPrimasScreen} options={({ navigation }) => ({ title: 'Insumos', ...backToHomeOption(navigation) })} />
-      <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Insumo', presentation: 'transparentModal', headerShown: false }} />
-    </Stack.Navigator>
+    <StackWithBanner>
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen name="MateriasPrimas" component={MateriasPrimasScreen} options={({ navigation }) => ({ title: 'Insumos', ...backToHomeOption(navigation) })} />
+        <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Insumo', presentation: 'transparentModal', headerShown: false }} />
+      </Stack.Navigator>
+    </StackWithBanner>
   );
 }
 
 function EmbalagensStack() {
   return (
-    <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Embalagens" component={EmbalagensScreen} options={({ navigation }) => ({ title: 'Embalagens', ...backToHomeOption(navigation) })} />
-      <Stack.Screen name="EmbalagemForm" component={EmbalagemFormScreen} options={{ title: 'Embalagem', presentation: 'transparentModal', headerShown: false }} />
-    </Stack.Navigator>
+    <StackWithBanner>
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen name="Embalagens" component={EmbalagensScreen} options={({ navigation }) => ({ title: 'Embalagens', ...backToHomeOption(navigation) })} />
+        <Stack.Screen name="EmbalagemForm" component={EmbalagemFormScreen} options={{ title: 'Embalagem', presentation: 'transparentModal', headerShown: false }} />
+      </Stack.Navigator>
+    </StackWithBanner>
   );
 }
 
 function PreparosStack() {
   return (
-    <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="Preparos" component={PreparosScreen} options={({ navigation }) => ({ title: 'Preparos', ...backToHomeOption(navigation) })} />
-      <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Preparo', presentation: 'transparentModal', headerShown: false }} />
-      <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo', presentation: 'transparentModal', headerShown: false }} />
-    </Stack.Navigator>
+    <StackWithBanner>
+      <Stack.Navigator screenOptions={screenOptions}>
+        <Stack.Screen name="Preparos" component={PreparosScreen} options={({ navigation }) => ({ title: 'Preparos', ...backToHomeOption(navigation) })} />
+        <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Preparo', presentation: 'transparentModal', headerShown: false }} />
+        <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo', presentation: 'transparentModal', headerShown: false }} />
+      </Stack.Navigator>
+    </StackWithBanner>
   );
 }
 
@@ -255,6 +283,7 @@ function DeliveryStack() {
       <Stack.Screen name="DeliveryPlataformas" component={DeliveryPlataformasScreen} options={{ title: 'Plataformas' }} />
       <Stack.Screen name="DeliveryPrecos" component={DeliveryPrecosScreen} options={{ title: 'Precificação' }} />
       <Stack.Screen name="DeliveryProdutosScreen" component={DeliveryProdutosScreen} options={{ title: 'Produtos Delivery' }} />
+      <Stack.Screen name="SimuladorLote" component={SimuladorLoteScreen} options={{ title: 'Simulador em lote' }} />
     </Stack.Navigator>
   );
 }
@@ -269,6 +298,7 @@ function FinanceiroStack() {
 
 function MaisStack() {
   return (
+    <StackWithBanner>
     <Stack.Navigator screenOptions={screenOptions}>
       {/* Sprint 1 Q3 — display "Ferramentas" mas mantém route name "Mais" para preservar AsyncStorage LAST_TAB_KEY e refs cross-tab. */}
       <Stack.Screen name="MaisMain" component={MaisScreen} options={({ navigation }) => ({ title: 'Ferramentas', ...backToHomeOption(navigation) })} />
@@ -280,6 +310,7 @@ function MaisStack() {
       <Stack.Screen name="DeliveryPlataformas" component={DeliveryPlataformasScreen} options={{ title: 'Plataformas' }} />
       <Stack.Screen name="DeliveryPrecos" component={DeliveryPrecosScreen} options={{ title: 'Precificação' }} />
       <Stack.Screen name="DeliveryProdutosScreen" component={DeliveryProdutosScreen} options={{ title: 'Produtos Delivery' }} />
+      <Stack.Screen name="SimuladorLote" component={SimuladorLoteScreen} options={{ title: 'Simulador em lote' }} />
       <Stack.Screen name="Configuracoes" component={ConfiguracoesScreen} options={{ title: 'Configurações' }} />
       <Stack.Screen name="Perfil" component={PerfilScreen} options={{ title: 'Meu Perfil' }} />
       <Stack.Screen name="AtualizarPrecos" component={AtualizarPrecosScreen} options={{ title: 'Atualizar Preços' }} />
@@ -299,6 +330,7 @@ function MaisStack() {
       <Stack.Screen name="Termos" component={TermosScreen} options={{ title: 'Termos de Uso' }} />
       <Stack.Screen name="Privacidade" component={PrivacidadeScreen} options={{ title: 'Política de Privacidade' }} />
     </Stack.Navigator>
+    </StackWithBanner>
   );
 }
 
@@ -410,6 +442,7 @@ function AuthNavigator() {
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="Register" component={RegisterScreen} />
       <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <AuthStack.Screen name="ResetPassword" component={ResetPasswordScreen} />
     </AuthStack.Navigator>
   );
 }
@@ -532,12 +565,13 @@ const linking = {
       Register: 'register',
       Login: 'login',
       ForgotPassword: 'forgot-password',
+      ResetPassword: 'reset-password',
     },
   },
 };
 
 export default function AppNavigator() {
-  const { user, loading } = useAuth();
+  const { user, loading, passwordRecovery } = useAuth();
 
   if (loading) {
     return (
@@ -547,9 +581,15 @@ export default function AppNavigator() {
     );
   }
 
+  // Sessão 28.9 — APP-01: durante recovery de senha, força AuthNavigator
+  // (que tem ResetPassword), mesmo que o user esteja "logado" via sessão de recovery.
+  // Sem isso, o app cairia em rotas autenticadas e a tela de redefinir senha
+  // nunca apareceria pro usuário que clicou no link do email.
+  const isAuthRoutes = !user || passwordRecovery;
+
   return (
-    <NavigationContainer linking={!user ? linking : undefined}>
-      {user ? <AppContent /> : <AuthNavigator />}
+    <NavigationContainer linking={isAuthRoutes ? linking : undefined}>
+      {isAuthRoutes ? <AuthNavigator /> : <AppContent />}
     </NavigationContainer>
   );
 }

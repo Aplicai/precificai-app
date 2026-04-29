@@ -9,6 +9,7 @@ import { t } from '../i18n/pt-BR';
 import useListDensity from '../hooks/useListDensity';
 // Sprint 1 Q9 — helper para Alert pós-sucesso confiável no web (Alert.alert com onPress não dispara no RN Web).
 import { notifySuccess } from '../utils/notify';
+import BackToSettings from '../components/BackToSettings';
 
 // Mapeia mensagens cruas do Supabase auth para textos amigáveis (sem expor stack/tokens)
 function mapAuthError(rawMsg) {
@@ -80,10 +81,12 @@ export default function ContaSegurancaScreen({ navigation }) {
       const { error } = await supabase.auth.updateUser({ email: newEmail.trim() });
       if (error) throw error;
       // Sprint 1 Q9 — notifySuccess garante que o reset/section=null rode após o OK no web.
+      // APP-13: após salvar, voltar pra Configurações pra usuário não ficar perdido.
       notifySuccess(t.alertSuccess, t.auth.emailChanged + ' Confira também a caixa do e-mail atual.', () => {
         setNewEmail('');
         setConfirmEmail('');
         setSection(null);
+        try { if (navigation && navigation.canGoBack && navigation.canGoBack()) navigation.goBack(); } catch (_) {}
       });
     } catch (err) {
       console.error('[ContaSegurancaScreen.handleUpdateEmail]', err);
@@ -121,11 +124,13 @@ export default function ContaSegurancaScreen({ navigation }) {
       const { error } = await supabase.auth.updateUser({ password: newPass });
       if (error) throw error;
       // Sprint 1 Q9 — notifySuccess garante reset dos campos no web.
+      // APP-13: após salvar, voltar pra Configurações pra usuário não ficar perdido.
       notifySuccess(t.alertSuccess, t.auth.passwordChanged, () => {
         setCurrentPass('');
         setNewPass('');
         setConfirmPass('');
         setSection(null);
+        try { if (navigation && navigation.canGoBack && navigation.canGoBack()) navigation.goBack(); } catch (_) {}
       });
     } catch (err) {
       console.error('[ContaSegurancaScreen.handleUpdatePassword]', err);
@@ -252,6 +257,9 @@ export default function ContaSegurancaScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* APP-13: Botão voltar pra Configurações sempre visível no topo */}
+      <BackToSettings navigation={navigation} />
+
       {/* Current email info */}
       <View style={styles.infoCard}>
         <Feather name="mail" size={18} color={colors.primary} />
@@ -496,6 +504,15 @@ export default function ContaSegurancaScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, paddingBottom: 100, maxWidth: 600, alignSelf: 'center', width: '100%' },
+  // APP-13: link visível para voltar à tela de Configurações
+  backToSettings: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 8, paddingHorizontal: 4, marginBottom: spacing.sm,
+    alignSelf: 'flex-start',
+  },
+  backToSettingsText: {
+    fontSize: fonts.small, color: colors.primary, fontFamily: fontFamily.semiBold, marginLeft: 4,
+  },
   infoCard: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.surface, borderRadius: borderRadius.md,

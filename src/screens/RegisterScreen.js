@@ -10,8 +10,10 @@ import { mapAuthError } from '../utils/authErrors';
 import { parseRateLimitSeconds } from '../utils/parseRateLimit';
 
 const MIN_PASSWORD_LENGTH = 6;
-// Score mínimo do zxcvbn (0-4) para permitir cadastro. 2 = "razoável".
-const MIN_PASSWORD_SCORE = 2;
+// Sessão 28.9 — APP-03: relaxado de 2→1 (zxcvbn 0..4). Antes "teste2026*" era
+// bloqueado, frustrando user. Score 1 = "weak mas aceitável" (deixa user
+// decidir), bloqueia só score 0 (top-100 senhas comuns tipo "123456").
+const MIN_PASSWORD_SCORE = 1;
 
 // Mapa de cores e rótulos por nível de força (0=muito fraca → 4=excelente).
 // Usa paleta do theme: error (vermelho) → warning (coral) → success (verde).
@@ -248,6 +250,32 @@ export default function RegisterScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
+          {/* Sessão 28.9 — APP-03: hint de critérios visível ANTES de digitar */}
+          {!password && (
+            <Text style={styles.passwordHint}>
+              Use no m&iacute;nimo {MIN_PASSWORD_LENGTH} caracteres. Misture letras e n&uacute;meros pra ficar mais segura.
+            </Text>
+          )}
+
+          {/* APP-03: checklist de critérios em tempo real (caracteres, maiúscula, número, símbolo).
+              Não bloqueia — só ajuda o usuário a entender por que a barra está num nível e o que melhorar. */}
+          {password ? (
+            <View style={styles.criteriaWrap}>
+              {[
+                { ok: password.length >= 8, label: 'Mínimo 8 caracteres' },
+                { ok: /[A-Z]/.test(password), label: 'Pelo menos 1 letra maiúscula' },
+                { ok: /[a-z]/.test(password), label: 'Pelo menos 1 letra minúscula' },
+                { ok: /[0-9]/.test(password), label: 'Pelo menos 1 número' },
+                { ok: /[^A-Za-z0-9]/.test(password), label: 'Pelo menos 1 símbolo (recomendado)' },
+              ].map((c, i) => (
+                <View key={i} style={styles.criteriaRow}>
+                  <Feather name={c.ok ? 'check-circle' : 'circle'} size={12} color={c.ok ? colors.success : colors.disabled} />
+                  <Text style={[styles.criteriaText, { color: c.ok ? colors.success : colors.textSecondary }]}>{c.label}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
           {/* Indicador de força da senha — só aparece quando há texto digitado */}
           {passwordStrength ? (
             <View style={styles.strengthWrap}>
@@ -451,6 +479,14 @@ const styles = StyleSheet.create({
   eyeBtn: { paddingHorizontal: 12, paddingVertical: 12, justifyContent: 'center', alignItems: 'center' },
 
   // Indicador de força da senha (zxcvbn)
+  passwordHint: {
+    fontSize: 12, color: colors.textSecondary, marginTop: 6,
+    fontFamily: fontFamily.regular, lineHeight: 16,
+  },
+  // APP-03: checklist de critérios de senha
+  criteriaWrap: { marginTop: 8, marginBottom: 4, gap: 4 },
+  criteriaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  criteriaText: { fontSize: 12, fontFamily: fontFamily.medium },
   strengthWrap: { marginTop: 8 },
   strengthBarTrack: {
     height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden',

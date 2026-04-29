@@ -32,8 +32,12 @@ const SUGESTOES_FIXAS = [
   'Advocacia', 'Financiamento', 'Empréstimo', 'Leasing', 'Música ambiente',
   'TV a cabo', 'Associação comercial', 'Sindicato',
 ];
+// APP-32: removido "Perdas e desperdícios" da lista de custos por venda padrão.
+// Perda física de produto se cobre via fator de correção do INSUMO (ex: maracujá
+// com 65% de perda de polpa) ou via Margem de Segurança — não como % por venda.
+// Quem realmente quer pode adicionar manualmente, mas não vai mais sugerido.
 const SUGESTOES_VARIAVEIS = [
-  'Impostos (Simples)', 'Taxa maquininha', 'Taxa PIX', 'Perdas e desperdícios',
+  'Impostos (Simples)', 'Taxa maquininha', 'Taxa PIX',
   'Comissão vendedores', 'Comissão garçom', 'Taxa marketplace',
   'Gorjeta', 'Devoluções', 'Bonificações', 'Royalties', 'Taxa antecipação cartão',
   'Imposto sobre serviço', 'ICMS', 'Contribuição sindical',
@@ -567,8 +571,12 @@ export default function ConfiguracaoScreen() {
                 <Text style={s.subSectionTitle}>Margem de Segurança</Text>
                 <InfoTooltip
                   title="Margem de Segurança"
-                  text="Percentual adicionado ao custo dos insumos para cobrir variações de preço. Evita a necessidade de atualizar preços constantemente."
-                  examples={['Com 5%, um insumo de R$ 10 será calculado como R$ 10,50']}
+                  text="Percentual extra adicionado ao custo dos insumos pra cobrir variações de preço de fornecedor. Evita ter que atualizar preço toda hora se o ingrediente subir um pouco."
+                  examples={[
+                    'Se a farinha pode subir até 10%, coloque 10% — assim seu preço já está protegido.',
+                    '0% = você atualiza preço toda vez que o fornecedor reajusta.',
+                    'Sugestão para confeitaria: 5% a 10%.',
+                  ]}
                 />
               </View>
               <TouchableOpacity
@@ -1018,6 +1026,19 @@ export default function ConfiguracaoScreen() {
           )}
         </View>
 
+        {/* APP-11: aviso explícito de auto-save pra usuária não ficar com medo de perder dados */}
+        <View style={s.autoSaveBanner} accessibilityRole="alert">
+          <View style={s.autoSaveIcon}>
+            <Feather name="check-circle" size={16} color={colors.success} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.autoSaveTitle}>Tudo é salvo automaticamente</Text>
+            <Text style={s.autoSaveText}>
+              Cada valor que você confirma já fica gravado. Você pode sair desta tela quando quiser, nada se perde.
+            </Text>
+          </View>
+        </View>
+
         {/* Desktop: 2-column layout */}
         {isDesktop ? (
           <View style={s.desktopLayout}>
@@ -1031,6 +1052,29 @@ export default function ConfiguracaoScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* APP-11: footer fixo com CTA explícito de "Salvar" pra dar segurança ao usuário.
+          Os dados já são salvos automaticamente; este botão serve como confirmação visual + atalho pra voltar. */}
+      <View style={s.stickyFooter} pointerEvents="box-none">
+        <TouchableOpacity
+          style={s.stickyFooterBtn}
+          activeOpacity={0.8}
+          onPress={() => {
+            showSaved('Tudo salvo!');
+            setTimeout(() => {
+              try {
+                if (navigation && navigation.canGoBack && navigation.canGoBack()) navigation.goBack();
+                else if (navigation && navigation.navigate) navigation.navigate('Home');
+              } catch (_) {}
+            }, 600);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Salvar e voltar para o painel"
+        >
+          <Feather name="check" size={18} color="#fff" style={{ marginRight: 8 }} />
+          <Text style={s.stickyFooterBtnText}>Salvar e voltar ao painel</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Save feedback toast */}
       {savedFeedback && (
@@ -1106,7 +1150,58 @@ export default function ConfiguracaoScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, width: '100%' },
-  content: { padding: spacing.md, width: '100%', paddingBottom: 100, maxWidth: 960, alignSelf: 'center' },
+  // APP-11: paddingBottom maior pra dar espaço pro footer fixo (BottomTab + sticky CTA)
+  content: { padding: spacing.md, width: '100%', paddingBottom: 200, maxWidth: 960, alignSelf: 'center' },
+
+  // APP-11: banner explicando auto-save
+  autoSaveBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.success + '0F',
+    borderLeftWidth: 3,
+    borderLeftColor: colors.success,
+    borderRadius: borderRadius.sm,
+    padding: spacing.sm + 2,
+    marginBottom: spacing.md,
+  },
+  autoSaveIcon: { marginRight: spacing.sm, marginTop: 1 },
+  autoSaveTitle: {
+    fontSize: fonts.small, fontFamily: fontFamily.semiBold, color: colors.text, marginBottom: 2,
+  },
+  autoSaveText: {
+    fontSize: fonts.tiny, color: colors.textSecondary, lineHeight: 16,
+  },
+
+  // APP-11: footer fixo "Salvar e voltar"
+  stickyFooter: {
+    position: 'absolute',
+    left: 0, right: 0,
+    bottom: Platform.OS === 'web' ? 86 : 70,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    alignItems: 'center',
+  },
+  stickyFooterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
+    minHeight: 48,
+    width: '100%',
+    maxWidth: 420,
+  },
+  stickyFooterBtnText: {
+    color: '#fff',
+    fontSize: fonts.regular,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+  },
 
   // Page header
   pageHeader: {

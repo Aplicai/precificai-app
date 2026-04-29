@@ -12,7 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem } from '../utils/calculations';
 
 function safeNum(v) {
   const n = typeof v === 'number' ? v : parseFloat(v);
@@ -340,8 +340,10 @@ export default function DeliveryProdutosScreen() {
               {deliveryProdutos.map((dp, dpIndex) => {
                 const precoVenda = safeNum(dp.preco_venda);
                 const custo = safeNum(dp.custo);
+                // Sessão 28.9 — Auditoria P0-02: usar calcMargem (delivery view bruta).
+                // Multiplicado por 100 porque calcMargem retorna decimal e UI espera %.
                 const lucro = precoVenda - custo;
-                const margem = precoVenda > 0 ? (lucro / precoVenda) * 100 : 0;
+                const margem = calcMargem(precoVenda, custo) * 100;
                 const avatarColor = getAvatarColor(dpIndex);
                 const inicial = (dp.nome || '?').charAt(0).toUpperCase();
 

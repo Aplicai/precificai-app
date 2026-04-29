@@ -22,6 +22,7 @@ import ListStatsStrip from '../components/ListStatsStrip';
 import BulkPriceAdjustModal from '../components/BulkPriceAdjustModal';
 import { exportToCSV, isCsvExportSupported } from '../utils/exportCsv';
 import ItemPreviewModal from '../components/ItemPreviewModal';
+import EntityCreateModal from '../components/EntityCreateModal';
 import { formatTimeAgo } from '../utils/timeAgo';
 import ViewModeToggle from '../components/ViewModeToggle';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -95,6 +96,11 @@ export default function PreparosScreen({ navigation }) {
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [previewItem, setPreviewItem] = useState(null);
   const [infoToast, setInfoToast] = useState(null);
+  // Sessão 28.9 — modal popup pra Novo / Editar Preparo
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  function abrirCriacao() { setEditingId(null); setShowCreateModal(true); }
+  function abrirEdicao(id) { setEditingId(id); setShowCreateModal(true); }
 
   function toggleDesktopSection(key) { setCollapsedDesktop(prev => ({...prev, [key]: !prev[key]})); }
 
@@ -212,7 +218,7 @@ export default function PreparosScreen({ navigation }) {
             params
           );
         }
-        navigation.navigate('PreparoForm', { id: newId });
+        abrirEdicao(newId);
       } else {
         loadData();
       }
@@ -293,7 +299,7 @@ export default function PreparosScreen({ navigation }) {
 
   function handleRowPress(item) {
     if (bulk.active) bulk.toggle(item.id);
-    else navigation.navigate('PreparoForm', { id: item.id });
+    else abrirEdicao(item.id);
   }
   function handleRowLongPress(item) { bulk.enter(item.id); }
 
@@ -598,7 +604,7 @@ export default function PreparosScreen({ navigation }) {
       {/* Botão Adicionar */}
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '10', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14, marginHorizontal: 16, marginTop: 8, marginBottom: 4, borderWidth: 1, borderColor: colors.primary + '30', borderStyle: 'dashed' }}
-        onPress={() => navigation.navigate('PreparoForm', {})}
+        onPress={() => abrirCriacao()}
       >
         <Feather name="plus-circle" size={18} color={colors.primary} style={{ marginRight: 8 }} />
         <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 14 }}>Novo Preparo</Text>
@@ -620,7 +626,7 @@ export default function PreparosScreen({ navigation }) {
                       ? `Não encontramos resultados para "${busca}".`
                       : 'Passo 3 · Crie receitas base combinando seus insumos. Cadastre insumos primeiro se ainda não fez.'}
                     ctaLabel={!busca.trim() ? 'Cadastrar preparo' : undefined}
-                    onPress={!busca.trim() ? () => navigation.navigate('PreparoForm', {}) : undefined}
+                    onPress={!busca.trim() ? () => abrirCriacao() : undefined}
                   />
                 )
               ) : (
@@ -662,7 +668,7 @@ export default function PreparosScreen({ navigation }) {
                   ? `Não encontramos resultados para "${busca}".`
                   : 'Passo 3 · Crie receitas base combinando seus insumos. Cadastre insumos primeiro se ainda não fez.'}
                 ctaLabel={!busca.trim() ? 'Cadastrar preparo' : undefined}
-                onPress={!busca.trim() ? () => navigation.navigate('PreparoForm', {}) : undefined}
+                onPress={!busca.trim() ? () => abrirCriacao() : undefined}
               />
             )
           }
@@ -768,7 +774,7 @@ export default function PreparosScreen({ navigation }) {
       )}
 
       {!bulk.active && (
-        <FAB onPress={() => navigation.navigate('PreparoForm', {})} label={isDesktop ? 'Novo Preparo' : undefined} />
+        <FAB onPress={() => abrirCriacao()} label={isDesktop ? 'Novo Preparo' : undefined} />
       )}
 
       <BulkActionBar
@@ -845,9 +851,19 @@ export default function PreparosScreen({ navigation }) {
           const id = previewItem?.id;
           setPreviewItem(null);
           bulk.clear();
-          if (id) navigation.navigate('PreparoForm', { id });
+          if (id) abrirEdicao(id);
         }}
         onClose={() => setPreviewItem(null)}
+      />
+
+      {/* Sessão 28.9 — Modal popup pra Novo / Editar Preparo */}
+      <EntityCreateModal
+        visible={showCreateModal}
+        mode="preparo"
+        editId={editingId}
+        defaultCategoriaId={filtroCategoria}
+        onClose={() => { setShowCreateModal(false); setEditingId(null); }}
+        onSaved={() => loadData()}
       />
 
       {/* Modal nova categoria */}

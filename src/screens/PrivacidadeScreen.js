@@ -2,6 +2,8 @@ import React from 'react';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import { useNavigation } from '@react-navigation/native';
+import BackToSettings from '../components/BackToSettings';
 
 const ULTIMA_ATUALIZACAO = '24 de abril de 2026';
 
@@ -134,8 +136,11 @@ function DevPlaceholderBanner() {
 }
 
 export default function PrivacidadeScreen() {
+  const navigation = useNavigation();
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* APP-12: voltar pra Configurações */}
+      <BackToSettings navigation={navigation} />
       <DevPlaceholderBanner />
       <View style={styles.header}>
         <View style={styles.iconCircle}>

@@ -9,12 +9,14 @@ import SearchBar from '../components/SearchBar';
 import InfoTooltip from '../components/InfoTooltip';
 import Chip from '../components/Chip';
 import EmptyState from '../components/EmptyState';
-import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
 import InviabilidadeModal from '../components/InviabilidadeModal';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, calcDespesasFixasPercentual } from '../utils/calculations';
 // Sprint 2 S3 — fórmula canônica única em src/utils/deliveryPricing.js
-import { calcPrecoBreakEven } from '../utils/deliveryPricing';
+import { calcPrecoBreakEven, calcResultadoDelivery, calcSugestaoDeliveryCompleta, compararDeliveryVsBalcao } from '../utils/deliveryPricing';
+// APP-25: extrair imposto separado das demais variáveis (maquininha não entra no delivery)
+import { extrairImpostoPercentual } from '../utils/deliveryAdapter';
+import ComoCalculadoModal from '../components/ComoCalculadoModal';
 import usePersistedState from '../hooks/usePersistedState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
@@ -57,6 +59,11 @@ export default function DeliveryPrecosScreen() {
   const [showLegend, setShowLegend] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [inviabilidadeInfo, setInviabilidadeInfo] = useState(null);
+  // APP-25: contexto financeiro pra entrar na fórmula completa do delivery
+  // (lucro delivery, custos fixos %, imposto %).
+  const [contextoFinanceiro, setContextoFinanceiro] = useState({ lucroPerc: 0.15, fixoPerc: 0, impostoPerc: 0 });
+  // APP-19/24b: modal de transparência
+  const [comoCalculado, setComoCalculado] = useState(null); // { resultado, titulo } | null
   const isLoadingRef = useRef(false);
   const { isMobile } = useResponsiveLayout();
 
@@ -75,7 +82,8 @@ export default function DeliveryPrecosScreen() {
 
     const [plats, cats, prods, allIngs, allPreps, allEmbs,
            embalagensList, preparosList, materiasList, adicionaisList,
-           dProds, allDProdItens, combosList, allComboItens] = await Promise.all([
+           dProds, allDProdItens, combosList, allComboItens,
+           cfgRows, fixasRows, varsRows, fatRows] = await Promise.all([
       db.getAllAsync('SELECT * FROM delivery_config WHERE ativo = 1 ORDER BY id'),
       db.getAllAsync('SELECT * FROM categorias_produtos ORDER BY nome'),
       db.getAllAsync('SELECT * FROM produtos ORDER BY nome'),
@@ -90,10 +98,33 @@ export default function DeliveryPrecosScreen() {
       db.getAllAsync('SELECT * FROM delivery_produto_itens'),
       db.getAllAsync('SELECT * FROM delivery_combos ORDER BY nome'),
       db.getAllAsync('SELECT * FROM delivery_combo_itens'),
+      // APP-25: contexto financeiro pra fórmula completa
+      db.getAllAsync('SELECT * FROM configuracao'),
+      db.getAllAsync('SELECT valor FROM despesas_fixas'),
+      db.getAllAsync('SELECT descricao, percentual FROM despesas_variaveis'),
+      db.getAllAsync('SELECT valor FROM faturamento_mensal WHERE valor > 0'),
     ]);
 
     setPlataformas(plats);
     setCategorias(cats);
+
+    // APP-25: monta contexto financeiro
+    try {
+      const cfg = cfgRows?.[0] || {};
+      const totalFixas = (fixasRows || []).reduce((a, r) => a + (Number.isFinite(r.valor) ? r.valor : 0), 0);
+      const fatMedio = (fatRows || []).length > 0
+        ? (fatRows || []).reduce((a, r) => a + (Number.isFinite(r.valor) ? r.valor : 0), 0) / (fatRows || []).length
+        : 0;
+      const fixoPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
+      // No delivery, lucro pode ser específico (APP-26). Por enquanto usa o do balcão como default.
+      const lucroPerc = Number.isFinite(cfg.lucro_desejado_delivery) ? cfg.lucro_desejado_delivery
+                      : Number.isFinite(cfg.lucro_desejado) ? cfg.lucro_desejado : 0.15;
+      // Imposto: separado das demais variáveis (maquininha não entra no delivery — APP-25)
+      const impostoPerc = extrairImpostoPercentual(varsRows || []);
+      setContextoFinanceiro({ lucroPerc, fixoPerc, impostoPerc });
+    } catch (e) {
+      console.warn('[DeliveryPrecos.contextoFinanceiro] falha ao montar:', e);
+    }
 
     // Build lookup maps
     const ingsByProd = {};
@@ -207,9 +238,17 @@ export default function DeliveryPrecosScreen() {
     }
   }
 
-  // Sprint 2 S3 — delega para src/utils/deliveryPricing (única fonte de verdade).
-  // Antes esta tela tinha sua própria fórmula divergente de DeliveryHubScreen e ComparativoCanaisScreen,
-  // gerando 3 preços diferentes para o mesmo produto.
+  // APP-25: NOVO — preço sugerido delivery via fórmula completa (markup divisor)
+  // que inclui Lucro%, Fixos%, Imposto%, Comissão%, Taxa pgto online%, Cupom R$, Frete subsidiado R$.
+  // Substitui a antiga calcPrecoBreakEven que só calculava break-even (sem lucro nem custos fixos).
+  // O segundo parâmetro agora é o CMV unitário, não o preço balcão.
+  function calcDeliveryPriceFromCmv(cmv, plat) {
+    if (safeNum(cmv) <= 0) return { preco: 0, validacao: { ok: false, nivel: 'ok', mensagem: '' } };
+    return calcSugestaoDeliveryCompleta({ cmv, plat, contexto: contextoFinanceiro });
+  }
+
+  // Compat shim: telas que ainda passam (precoBalcao, plat) recebem a fórmula nova
+  // usando o preço balcão como aproximação de CMV (legado para break-even).
   function calcDeliveryPrice(precoVenda, plat) {
     if (safeNum(precoVenda) <= 0) return 0;
     return calcPrecoBreakEven(precoVenda, plat);
@@ -299,14 +338,12 @@ export default function DeliveryPrecosScreen() {
           negativos++;
           continue;
         }
-        const taxaPct = safeNum(plat.taxa_plataforma);
-        const taxa = price * (taxaPct / 100);
-        const comissao = safeNum(plat.comissao_app);
-        const desc = price * (safeNum(plat.desconto_promocao) / 100);
-        const lucro = price - custoUn - taxa - comissao - desc;
-        if (Number.isFinite(lucro)) {
-          totalLucro += lucro;
-          if (lucro < 0) negativos++;
+        // Sessão 28.9 — Auditoria P0-03: usar fonte canônica calcResultadoDelivery
+        // (antes essa tela tinha fórmula divergente — usava comissao_app como R$ quando é %).
+        const r = calcResultadoDelivery({ precoVenda: price, custoUnit: custoUn, plat });
+        if (Number.isFinite(r.lucro)) {
+          totalLucro += r.lucro;
+          if (r.lucro < 0) negativos++;
         }
         countItems++;
       }
@@ -331,19 +368,27 @@ export default function DeliveryPrecosScreen() {
   function renderPlatformRow(item, plat) {
     const custoUn = safeNum(item.custoUnitario);
     const precoVenda = safeNum(item.precoVenda);
-    const precoSugerido = calcDeliveryPrice(precoVenda, plat);
+    // APP-25: usar fórmula completa (CMV + lucro + fixos + imposto + comissão + taxa pgto online + cupom + frete)
+    const sugDelivery = calcDeliveryPriceFromCmv(custoUn, plat);
+    const precoSugerido = sugDelivery?.preco > 0 ? sugDelivery.preco : null;
+    // APP-27: validação automática delivery vs balcão
+    const validacaoVsBalcao = precoSugerido && precoVenda > 0
+      ? compararDeliveryVsBalcao(precoSugerido, precoVenda) : null;
     const precoDeliveryRaw = getEffectivePrice(item.id, plat.id, precoSugerido);
-    const inviavel = precoDeliveryRaw === null || !Number.isFinite(precoDeliveryRaw) || precoDeliveryRaw <= 0;
-    const precoDelivery = inviavel ? 0 : precoDeliveryRaw;
-    const taxaPct = safeNum(plat.taxa_plataforma);
-    const taxaPlatValor = precoDelivery * (taxaPct / 100);
-    const comissaoApp = safeNum(plat.comissao_app);
+    const inviavelInicial = precoDeliveryRaw === null || !Number.isFinite(precoDeliveryRaw) || precoDeliveryRaw <= 0;
+    const precoDelivery = inviavelInicial ? 0 : precoDeliveryRaw;
+    // Sessão 28.9 — Auditoria P0-03: usar fonte canônica calcResultadoDelivery
+    // (antes essa tela computava manualmente: taxa%, comissao_app como R$ - errado, desconto%)
+    const r = calcResultadoDelivery({ precoVenda: precoDelivery, custoUnit: custoUn, plat });
+    const taxaPct = safeNum(plat.taxa_plataforma);  // mantido para o badge "X%"
+    const taxaPlatValor = r.valorComissao;
+    const comissaoApp = 0; // legacy — já incluso em valorComissao
     const descontoPct = safeNum(plat.desconto_promocao);
-    const descontoValor = precoDelivery * (descontoPct / 100);
-    const lucroRaw = precoDelivery - custoUn - taxaPlatValor - comissaoApp - descontoValor;
-    const lucro = Number.isFinite(lucroRaw) ? lucroRaw : 0;
+    const descontoValor = r.valorDesconto;
+    const lucro = Number.isFinite(r.lucro) ? r.lucro : 0;
+    const margem = (!inviavelInicial && precoDelivery > 0) ? r.margem * 100 : 0;
+    const inviavel = inviavelInicial || r.inviavel;
     const isPositive = !inviavel && lucro >= 0;
-    const margem = (!inviavel && precoDelivery > 0) ? (lucro / precoDelivery) * 100 : 0;
     const customKey = `${item.id}-${plat.id}`;
 
     return (
@@ -391,15 +436,44 @@ export default function DeliveryPrecosScreen() {
           </TouchableOpacity>
         )}
 
+        {/* APP-27/27b: validação automática delivery vs balcão + viabilidade da fórmula */}
+        {sugDelivery?.validacao && !sugDelivery.validacao.ok && (
+          <View style={[styles.inviavelBanner, { backgroundColor: colors.error + '14' }]}>
+            <Feather name="x-octagon" size={12} color={colors.error} style={{ marginRight: 4 }} />
+            <Text style={styles.inviavelBannerText}>{sugDelivery.validacao.mensagem}</Text>
+          </View>
+        )}
+        {validacaoVsBalcao && !validacaoVsBalcao.ok && (
+          <View style={[styles.inviavelBanner, {
+            backgroundColor: (validacaoVsBalcao.nivel === 'critico' ? colors.error : colors.warning) + '14',
+          }]}>
+            <Feather
+              name={validacaoVsBalcao.nivel === 'critico' ? 'alert-octagon' : 'alert-triangle'}
+              size={12}
+              color={validacaoVsBalcao.nivel === 'critico' ? colors.error : colors.warning}
+              style={{ marginRight: 4 }}
+            />
+            <Text style={[styles.inviavelBannerText, {
+              color: validacaoVsBalcao.nivel === 'critico' ? colors.error : colors.warning,
+            }]}>{validacaoVsBalcao.mensagem}</Text>
+          </View>
+        )}
+
         {isMobile ? (
           /* Sessão 28+ — mobile-web: layout empilhado para Sugerido / Input / Lucro+Margem */
           <View style={styles.priceStackMobile}>
-            <View style={styles.priceStackRow}>
-              <Text style={styles.priceStackLabel}>Sugerido:</Text>
+            <TouchableOpacity
+              style={styles.priceStackRow}
+              activeOpacity={0.7}
+              onPress={() => sugDelivery && setComoCalculado({ resultado: sugDelivery, titulo: `${item.nome} — ${plat.plataforma}` })}
+              accessibilityRole="button"
+              accessibilityLabel="Ver como o preço sugerido foi calculado"
+            >
+              <Text style={styles.priceStackLabel}>Sugerido <Feather name="info" size={11} color={colors.primary} />:</Text>
               <Text style={styles.priceStackValue}>
                 {precoSugerido === null ? '—' : formatCurrency(precoSugerido)}
               </Text>
-            </View>
+            </TouchableOpacity>
             <View style={styles.priceStackRow}>
               <Text style={styles.priceStackLabel}>Preço Delivery:</Text>
               <View style={{ flex: 1, marginLeft: 12, maxWidth: 140 }}>
@@ -503,7 +577,6 @@ export default function DeliveryPrecosScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <FinanceiroPendenteBanner />
 
       {loadError && (
         <View
@@ -626,9 +699,8 @@ export default function DeliveryPrecosScreen() {
                       const isItemExpanded = expandedItems[item.id];
                       const itemPreco = safeNum(item.precoVenda);
                       const itemCusto = safeNum(item.custoUnitario);
-                      const margem = itemPreco > 0
-                        ? ((itemPreco - itemCusto) / itemPreco * 100)
-                        : 0;
+                      // Sessão 28.9 — Auditoria P0-02: usa calcMargem (margem bruta do produto, sem delivery)
+                      const margem = calcMargem(itemPreco, itemCusto) * 100;
                       const isFirst = itemIndex === 0;
                       const isLast = itemIndex === group.items.length - 1;
                       const avatarColor = item.tipo === 'combo' ? colors.purple : catColor;
@@ -754,6 +826,15 @@ export default function DeliveryPrecosScreen() {
         visible={!!inviabilidadeInfo}
         info={inviabilidadeInfo}
         onClose={() => setInviabilidadeInfo(null)}
+      />
+
+      {/* APP-19/24b/25: tela de transparência do cálculo delivery */}
+      <ComoCalculadoModal
+        visible={!!comoCalculado}
+        onClose={() => setComoCalculado(null)}
+        modo="delivery"
+        titulo={comoCalculado?.titulo}
+        resultado={comoCalculado?.resultado}
       />
     </ScrollView>
   );

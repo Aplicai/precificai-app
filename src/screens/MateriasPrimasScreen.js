@@ -10,6 +10,11 @@ import FABMenu from '../components/FABMenu';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, getTipoUnidade, normalizeSearch } from '../utils/calculations';
+
+// APP-14: marcador interno do Kit pra valor pré-preenchido (não exibir como marca).
+const MARCA_VALOR_ESTIMADO = '__VALOR_ESTIMADO_KIT__';
+const isMarcaEstimada = (m) => m === MARCA_VALOR_ESTIMADO;
+const marcaVisivel = (m) => (m && !isMarcaEstimada(m) ? m : '');
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
 import Skeleton from '../components/Skeleton';
@@ -634,12 +639,16 @@ export default function MateriasPrimasScreen({ navigation }) {
                                 {selected && <Feather name="check" size={12} color="#fff" />}
                               </View>
                             )}
-                            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }} {...(Platform.OS === 'web' ? { title: item.nome + (item.marca ? ' (' + item.marca + ')' : '') } : {})}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }} {...(Platform.OS === 'web' ? { title: item.nome + (marcaVisivel(item.marca) ? ' (' + marcaVisivel(item.marca) + ')' : '') } : {})}>
                               {Number(item.favorito) === 1 && (
                                 <Feather name="star" size={11} color={colors.yellow || '#FFC83A'} style={{ marginRight: 4 }} />
                               )}
+                              {/* APP-14: indicador visual sutil quando o valor ainda é a estimativa do Kit */}
+                              {isMarcaEstimada(item.marca) && (
+                                <Feather name="info" size={10} color={colors.warning || '#F39C12'} style={{ marginRight: 4 }} />
+                              )}
                               <HighlightedText text={item.nome} query={busca} style={styles.gridCardName} numberOfLines={1} />
-                              {item.marca ? <Text style={[styles.gridCardName, { color: colors.textSecondary, fontWeight: '400' }]} numberOfLines={1}> ({item.marca})</Text> : null}
+                              {marcaVisivel(item.marca) ? <Text style={[styles.gridCardName, { color: colors.textSecondary, fontWeight: '400' }]} numberOfLines={1}> ({marcaVisivel(item.marca)})</Text> : null}
                             </View>
                             <Text style={styles.gridCardPrice}>{formatCurrency(item.preco_por_kg)}</Text>
                           </TouchableOpacity>
@@ -760,8 +769,17 @@ export default function MateriasPrimasScreen({ navigation }) {
                     )}
                     <HighlightedText text={item.nome} query={busca} style={[styles.rowNome, nameOverride, { flexShrink: 1 }]} numberOfLines={1} />
                   </View>
-                  {item.marca ? (
-                    <HighlightedText text={item.marca} query={busca} style={[styles.rowMarca, { fontSize: listItemSubtitleFontSize }]} numberOfLines={1} />
+                  {marcaVisivel(item.marca) ? (
+                    <HighlightedText text={marcaVisivel(item.marca)} query={busca} style={[styles.rowMarca, { fontSize: listItemSubtitleFontSize }]} numberOfLines={1} />
+                  ) : null}
+                  {/* APP-14: badge "valor estimado" pra usuária identificar itens que precisa atualizar */}
+                  {isMarcaEstimada(item.marca) ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                      <Feather name="info" size={10} color={colors.warning || '#F39C12'} style={{ marginRight: 4 }} />
+                      <Text style={{ fontSize: fonts.tiny - 1, color: colors.warning || '#F39C12', fontFamily: fontFamily.medium }} numberOfLines={1}>
+                        Valor estimado — atualize com seu preço
+                      </Text>
+                    </View>
                   ) : null}
                   {estoqueOn ? (() => {
                     const st = statusEstoque(item);
@@ -983,6 +1001,20 @@ export default function MateriasPrimasScreen({ navigation }) {
           { label: 'Quantidade líquida', value: previewItem.quantidade_liquida },
           { label: 'Valor pago', value: formatCurrency(previewItem.valor_pago) },
           { label: 'Preço por kg/L', value: formatCurrency(previewItem.preco_por_kg), accent: true },
+        ] : []}
+        extraActions={previewItem ? [
+          {
+            icon: 'folder',
+            label: 'Mudar categoria',
+            onPress: () => {
+              // Sessão 28.9 — APP-05: ação direta de mover 1 insumo entre categorias.
+              // Usa o mesmo fluxo do bulk: marca SÓ esse item como selecionado e abre o picker.
+              bulk.clear();
+              bulk.enter(previewItem.id);
+              setPreviewItem(null);
+              setShowMoveModal(true);
+            },
+          },
         ] : []}
         onEdit={() => {
           const id = previewItem?.id;

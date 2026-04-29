@@ -4,7 +4,7 @@ import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 
 // Helper: extrai número finito ou 0
@@ -98,10 +98,11 @@ export default function MargemBaixaScreen({ navigation }) {
 
         const preco = safeNum(p.preco_venda);
         if (preco > 0) {
+          // Sessão 28.9 — Auditoria P0-02: usar funções centrais
           const despFixasVal = preco * safeNum(dfPerc);
           const despVarVal = preco * safeNum(totalVar);
-          const lucro = preco - custoUnit - despFixasVal - despVarVal;
-          const margem = preco > 0 ? safeNum(lucro / preco) : 0;
+          const lucro = calcLucroLiquido(preco, custoUnit, despFixasVal, despVarVal);
+          const margem = calcMargemLiquida(preco, custoUnit, despFixasVal, despVarVal);
 
           if (margem < meta) {
             result.push({

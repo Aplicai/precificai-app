@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import InfoTooltip from '../components/InfoTooltip';
@@ -112,7 +112,8 @@ export default function SimuladorScreen({ navigation }) {
         // Audit P0 (Fase 2 - Fix #8): guard contra divisor 0 (rendimento mal cadastrado).
         const divisor = getDivisorRendimento(p);
         const custoUnit = divisor > 0 ? (custoIng + custoPr + custoEmb) / divisor : (custoIng + custoPr + custoEmb);
-        const margem = p.preco_venda > 0 ? (p.preco_venda - custoUnit) / p.preco_venda : 0;
+        // Sessão 28.9 — Auditoria P0-02: usar calcMargem (bruta — simulador "what-if" só compara CMV)
+        const margem = calcMargem(p.preco_venda, custoUnit);
         return { id: p.id, nome: p.nome, preco_venda: p.preco_venda, custoAtual: custoUnit, margemAtual: margem, ingredientes: ings, preparos: preps, embalagens: embs, rendimento_unidades: p.rendimento_unidades || 1, unidade_rendimento: p.unidade_rendimento, rendimento_total: p.rendimento_total };
       });
       setProdutos(prodData);

@@ -4,10 +4,9 @@ import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import FAB from '../components/FAB';
-import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, calcDespesasFixasPercentual, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+import { formatCurrency, formatPercent, calcDespesasFixasPercentual, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual } from '../utils/calculations';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
 import Skeleton from '../components/Skeleton';
@@ -23,6 +22,7 @@ import BulkPriceAdjustModal from '../components/BulkPriceAdjustModal';
 import ListStatsStrip from '../components/ListStatsStrip';
 import { exportToCSV, isCsvExportSupported } from '../utils/exportCsv';
 import ItemPreviewModal from '../components/ItemPreviewModal';
+import EntityCreateModal from '../components/EntityCreateModal';
 import { formatTimeAgo } from '../utils/timeAgo';
 import ViewModeToggle from '../components/ViewModeToggle';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -99,6 +99,11 @@ export default function ProdutosListScreen({ navigation }) {
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [previewItem, setPreviewItem] = useState(null);
   const [infoToast, setInfoToast] = useState(null);
+  // Sessão 28.9 — modal popup pra Novo / Editar Produto (substitui navegação à tela cheia)
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  function abrirCriacao() { setEditingId(null); setShowCreateModal(true); }
+  function abrirEdicao(id) { setEditingId(id); setShowCreateModal(true); }
 
   function toggleDesktopSection(key) { setCollapsedDesktop(prev => ({...prev, [key]: !prev[key]})); }
 
@@ -202,12 +207,13 @@ export default function ProdutosListScreen({ navigation }) {
       const custoTotal = custoIng + custoPr + custoEmb;
       const custoUn = custoTotal / getDivisorRendimento(p);
       const precoVenda = p.preco_venda || 0;
+      // Sessão 28.9 — Auditoria P0-02: usar funções centrais
       const despFixasVal = precoVenda * dfPerc;
       const despVarVal = precoVenda * totalVar;
-      const lucro = precoVenda - custoUn - despFixasVal - despVarVal;
-      const cmv = precoVenda > 0 ? custoUn / precoVenda : 0;
-
-      const margem = precoVenda > 0 ? lucro / precoVenda : -1; // -1 = no price set
+      const lucro = calcLucroLiquido(precoVenda, custoUn, despFixasVal, despVarVal);
+      const cmv = calcCMVPercentual(custoUn, precoVenda);
+      // -1 = sentinel "sem preço" (calcMargemLiquida retornaria 0, mas a UI distingue)
+      const margem = precoVenda > 0 ? calcMargemLiquida(precoVenda, custoUn, despFixasVal, despVarVal) : -1;
       result.push({ ...p, custoTotal: custoUn, precoVenda, lucro, cmv, despFixasVal, despVarVal, margem });
     }
 
@@ -372,7 +378,7 @@ export default function ProdutosListScreen({ navigation }) {
 
   function handleRowPress(item) {
     if (bulk.active) bulk.toggle(item.id);
-    else navigation.navigate('ProdutoForm', { id: item.id });
+    else abrirEdicao(item.id);
   }
   function handleRowLongPress(item) { bulk.enter(item.id); }
 
@@ -561,7 +567,7 @@ export default function ProdutosListScreen({ navigation }) {
       ...preps.map(pr => db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)', [newId, pr.preparo_id, pr.quantidade_utilizada])),
       ...embs.map(em => db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)', [newId, em.embalagem_id, em.quantidade_utilizada])),
     ]);
-    navigation.navigate('ProdutoForm', { id: newId });
+    abrirEdicao(newId);
   }
 
   function removerCategoria(catId) {
@@ -736,7 +742,6 @@ export default function ProdutosListScreen({ navigation }) {
         })()}
       </View>
 
-      <FinanceiroPendenteBanner />
 
       {/* Banner de erro de carregamento (P1) */}
       {loadError && (
@@ -755,7 +760,7 @@ export default function ProdutosListScreen({ navigation }) {
       {/* Botão Adicionar */}
       <TouchableOpacity
         style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '10', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14, marginHorizontal: 16, marginTop: 8, marginBottom: 4, borderWidth: 1, borderColor: colors.primary + '30', borderStyle: 'dashed' }}
-        onPress={() => navigation.navigate('ProdutoForm', { categoriaId: filtroCategoria })}
+        onPress={() => abrirCriacao()}
       >
         <Feather name="plus-circle" size={18} color={colors.primary} style={{ marginRight: 8 }} />
         <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 14 }}>Novo Produto</Text>
@@ -777,7 +782,7 @@ export default function ProdutosListScreen({ navigation }) {
                       ? `Não encontramos resultados para "${busca}".`
                       : 'Último passo · Monte a ficha técnica completa combinando insumos, preparos e embalagens.'}
                     ctaLabel={!busca.trim() ? 'Criar Produto' : undefined}
-                    onPress={!busca.trim() ? () => navigation.navigate('ProdutoForm', { categoriaId: filtroCategoria }) : undefined}
+                    onPress={!busca.trim() ? () => abrirCriacao() : undefined}
                   />
                 )
               ) : (
@@ -817,7 +822,7 @@ export default function ProdutosListScreen({ navigation }) {
                   ? `Não encontramos resultados para "${busca}".`
                   : 'Crie sua primeira ficha técnica com ingredientes, preparos e embalagens.'}
                 ctaLabel={!busca.trim() ? 'Criar Produto' : undefined}
-                onPress={!busca.trim() ? () => navigation.navigate('ProdutoForm', { categoriaId: filtroCategoria }) : undefined}
+                onPress={!busca.trim() ? () => abrirCriacao() : undefined}
               />
             )
           }
@@ -931,7 +936,7 @@ export default function ProdutosListScreen({ navigation }) {
       )}
 
       {!bulk.active && (
-        <FAB onPress={() => navigation.navigate('ProdutoForm', { categoriaId: filtroCategoria })} label={isDesktop ? 'Novo Produto' : undefined} />
+        <FAB onPress={() => abrirCriacao()} label={isDesktop ? 'Novo Produto' : undefined} />
       )}
 
       <BulkActionBar
@@ -1008,9 +1013,19 @@ export default function ProdutosListScreen({ navigation }) {
           const id = previewItem?.id;
           setPreviewItem(null);
           bulk.clear();
-          if (id) navigation.navigate('ProdutoForm', { id });
+          if (id) abrirEdicao(id);
         }}
         onClose={() => setPreviewItem(null)}
+      />
+
+      {/* Sessão 28.9 — Modal popup pra Novo / Editar Produto */}
+      <EntityCreateModal
+        visible={showCreateModal}
+        mode="produto"
+        editId={editingId}
+        defaultCategoriaId={filtroCategoria}
+        onClose={() => { setShowCreateModal(false); setEditingId(null); }}
+        onSaved={() => loadData()}
       />
 
       {/* Modal nova categoria */}

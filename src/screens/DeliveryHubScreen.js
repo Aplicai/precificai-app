@@ -15,7 +15,7 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import SearchBar from '../components/SearchBar';
-import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem } from '../utils/calculations';
 // Sprint 2 S3 — fonte única da verdade para precificação delivery (substitui fórmula inline duplicada).
 import { calcResultadoDelivery, sugerirPrecoDelivery } from '../utils/deliveryPricing';
 
@@ -34,6 +34,8 @@ function safeNum(v) {
 const TABS = [
   { key: 'plataformas', label: 'Plataformas', icon: 'smartphone' },
   { key: 'simulador', label: 'Simulador de Preço', icon: 'trending-up' },
+  // APP-28: simulador em lote — todos produtos × todas plataformas em uma tabela
+  { key: 'lote', label: 'Simulador em Lote', icon: 'grid', navigateTo: 'SimuladorLote' },
   { key: 'visaogeral', label: 'Visão Geral', icon: 'grid' },
 ];
 
@@ -107,7 +109,8 @@ export default function DeliveryHubScreen({ navigation }) {
       const custoPr = preps.reduce((a, pp) => a + calcCustoPreparo(pp.custo_por_kg || 0, pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
       const custoEmb = embs.reduce((a, pe) => a + (pe.quantidade_utilizada || 0) * (pe.preco_unitario || 0), 0);
       const custoUnit = (custoIng + custoPr + custoEmb) / getDivisorRendimento(p);
-      const margem = p.preco_venda > 0 ? (p.preco_venda - custoUnit) / p.preco_venda : 0;
+      // Sessão 28.9 — Auditoria P0-02: usar calcMargem (bruta — delivery view não considera despesas operacionais)
+      const margem = calcMargem(p.preco_venda, custoUnit);
       return { ...p, custoUnit, margem };
     });
     setProdutos(prodData);
@@ -121,7 +124,7 @@ export default function DeliveryHubScreen({ navigation }) {
     const comboData = (comboRows || []).filter(c => c.preco_venda > 0).map(c => {
       const itens = itensByCombo[c.id] || [];
       const custoUnit = itens.reduce((a, item) => a + (prodCostMap[item.item_id] || 0) * (item.quantidade || 1), 0);
-      const margem = c.preco_venda > 0 ? (c.preco_venda - custoUnit) / c.preco_venda : 0;
+      const margem = calcMargem(c.preco_venda, custoUnit);
       return { ...c, custoUnit, margem, isCombo: true };
     });
     setCombos(comboData);
@@ -274,22 +277,21 @@ export default function DeliveryHubScreen({ navigation }) {
     if (!simResult) return null;
     const preco = parseFloat(String(precoCustom).replace(',', '.'));
     if (!Number.isFinite(preco) || preco <= 0) return null;
-    // Mesma lógica corrigida do simulador principal:
-    // 1. Desconto promo (%) sobre o preço
-    const valorDesconto = preco * simResult._descontoPct;
-    const precoComDesconto = preco * (1 - simResult._descontoPct);
-    // 2. Cupom (R$)
-    const cupom = simResult._cupomReais || 0;
-    const precoAposCupom = precoComDesconto - cupom;
-    // 3. Comissão (%) sobre (preço após cupom + frete)
-    const taxa = simResult._taxaEntrega || 0;
-    const baseComissao = precoAposCupom + taxa;
-    const valorComissao = baseComissao * simResult._comissaoPct;
-    // 4. Receita líquida = preço após cupom - comissão - taxa de entrega
-    const recLiq = precoAposCupom - valorComissao - taxa;
-    const lucro = recLiq - simResult.custoUnit;
-    const margem = (Number.isFinite(lucro) && preco > 0) ? lucro / preco : 0;
-    return { preco, recLiq, lucro, margem, valorComissao, valorDesconto, precoComDesconto, precoAposCupom, taxaEntrega: taxa };
+    // Sessão 28.9 — Auditoria P0-03: usar fonte canônica calcResultadoDelivery.
+    // Reconstrói o `plat` shape pra alimentar a função (simResult guarda decimais já normalizados).
+    const platLike = {
+      taxa_plataforma: simResult._comissaoPct * 100,
+      desconto_promocao: simResult._descontoPct * 100,
+      embalagem_extra: simResult._cupomReais || 0,
+      taxa_entrega: simResult._taxaEntrega || 0,
+    };
+    const r = calcResultadoDelivery({ precoVenda: preco, custoUnit: simResult.custoUnit, plat: platLike });
+    return {
+      preco, recLiq: r.receitaLiq, lucro: r.lucro, margem: r.margem,
+      valorComissao: r.valorComissao, valorDesconto: r.valorDesconto,
+      precoComDesconto: r.precoComDesconto, precoAposCupom: r.precoAposCupom,
+      taxaEntrega: r.taxaEntregaR$,
+    };
   }
 
   function getPlatColor(nome) {
@@ -337,6 +339,11 @@ export default function DeliveryHubScreen({ navigation }) {
               key={tab.key}
               style={[styles.tab, isActive && styles.tabActive]}
               onPress={() => {
+                // APP-28: tab "lote" navega pra tela própria do simulador em lote
+                if (tab.navigateTo) {
+                  navigation.navigate(tab.navigateTo);
+                  return;
+                }
                 setActiveTab(tab.key);
                 if (tab.key === 'simulador' || tab.key === 'visaogeral') {
                   loadData();
@@ -852,18 +859,19 @@ export default function DeliveryHubScreen({ navigation }) {
                     {[...produtos.map(p => ({ ...p, _key: 'prod_' + p.id, _label: p.nome })),
                       ...combos.map(c => ({ ...c, _key: 'combo_' + c.id, _label: c.nome + ' (Combo)' })),
                     ].map((prod, idx) => {
-                      // Fórmula corrigida: desconto -> cupom -> comissão sobre (valor após cupom + frete) -> taxa entrega
-                      const precoComDesc = prod.preco_venda * (1 - descPct);
-                      const precoAposCupom = precoComDesc - cupom;
-                      const baseComissaoVG = precoAposCupom + taxaEnt;
-                      const valorComissao = baseComissaoVG * comissao;
-                      const recLiq = precoAposCupom - valorComissao - taxaEnt;
-                      const lucro = recLiq - prod.custoUnit;
-                      const margemDel = prod.preco_venda > 0 ? lucro / prod.preco_venda : 0;
+                      // Sessão 28.9 — Auditoria P0-03: usar fonte canônica calcResultadoDelivery + sugerirPrecoDelivery
+                      const platLikeVG = {
+                        taxa_plataforma: comissao * 100,
+                        desconto_promocao: descPct * 100,
+                        embalagem_extra: cupom,
+                        taxa_entrega: taxaEnt,
+                      };
+                      const rVG = calcResultadoDelivery({ precoVenda: prod.preco_venda, custoUnit: prod.custoUnit, plat: platLikeVG });
+                      const lucro = rVG.lucro;
+                      const margemDel = rVG.margem;
                       const margemAlvoVG = (parseFloat(margemDesejada) || 30) / 100;
-                      const numSug = cupom * (1 - comissao) + taxaEnt + prod.custoUnit;
-                      const divisor = (1 - descPct) * (1 - comissao) - margemAlvoVG;
-                      const precoSug = divisor > 0 ? numSug / divisor : 0;
+                      const sugVG = sugerirPrecoDelivery({ custoUnit: prod.custoUnit, plat: platLikeVG, margemAlvo: margemAlvoVG, arredondar: false });
+                      const precoSug = sugVG.inviavel ? 0 : (sugVG.precoSugerido || 0);
 
                       const margemColor = margemDel < 0.05 ? colors.error : margemDel < 0.15 ? colors.warning : colors.success;
 

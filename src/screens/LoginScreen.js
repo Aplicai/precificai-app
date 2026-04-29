@@ -235,10 +235,11 @@ const styles = StyleSheet.create({
   // com mais destaque (semibold + sublinhado) para reduzir bounce de usuários
   // que esquecem a senha e não conseguem encontrar o link.
   // Sessão 28 — paddingVertical 4→12 (touch target 44pt ao invés de 21pt)
-  forgotBtn: { alignSelf: 'flex-end', marginTop: 10, marginBottom: 22, paddingVertical: 12, paddingHorizontal: 8, minHeight: 44, justifyContent: 'center' },
+  // Sessão 28.9 — APP-02: link aumentado (era 13pt, ficou pequeno demais segundo feedback de teste)
+  forgotBtn: { alignSelf: 'flex-end', marginTop: 12, marginBottom: 22, paddingVertical: 14, paddingHorizontal: 10, minHeight: 48, justifyContent: 'center' },
   forgotText: {
-    fontSize: 13, color: colors.primary, fontFamily: fontFamily.semiBold,
-    fontWeight: '600', textDecorationLine: 'underline',
+    fontSize: 15, color: colors.primary, fontFamily: fontFamily.semiBold,
+    fontWeight: '700', textDecorationLine: 'underline',
   },
   primaryBtn: {
     backgroundColor: colors.primary, borderRadius: borderRadius.md, paddingVertical: 14,

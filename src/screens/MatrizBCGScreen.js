@@ -2,7 +2,6 @@ import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
-import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
 import InfoTooltip from '../components/InfoTooltip';
 import BCGQuadranteModal from '../components/BCGQuadranteModal';
 import Loader from '../components/Loader';
@@ -328,7 +327,6 @@ export default function MatrizBCGScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 1200, alignSelf: 'center', width: '100%' }]}>
-      <FinanceiroPendenteBanner />
 
       {loadError ? (
         <View style={styles.errorBanner}>

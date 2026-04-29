@@ -163,3 +163,51 @@ export function calcPrecoBreakEven(precoVenda, plat) {
   });
   return r.inviavel ? null : r.precoSugerido;
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// APP-25/26/27: NOVO MODELO COMPLETO DE PRECIFICAÇÃO DELIVERY
+// ─────────────────────────────────────────────────────────────────────────
+//
+// O modelo legado acima (calcResultadoDelivery, sugerirPrecoDelivery) NÃO
+// considera custos fixos do mês nem imposto. A testadora reclamou: "Eu não
+// tô diluindo o custo fixo, eu não tô colocando esses 8% lá. O custo do mês
+// tem que entrar lá também."
+//
+// Esta nova função delega ao engine unificado em `precificacao.js` e adiciona
+// TODOS os componentes:
+//   - Lucro desejado delivery (configurável independente do balcão)
+//   - Custos fixos % (mesmo do balcão)
+//   - Imposto %
+//   - Comissão % (taxa_plataforma)
+//   - Taxa pagamento online % (comissao_app, agora interpretado como %)
+//   - Cupom recorrente em R$ (desconto_promocao, agora R$)
+//   - Frete subsidiado em R$ (taxa_entrega)
+//
+// Mantém o legado pra não quebrar telas existentes; novas telas devem usar este.
+
+import { calcularPrecoDelivery as _engCalcDelivery, compararDeliveryVsBalcao as _engCompara } from './precificacao';
+
+/**
+ * Preço sugerido delivery completo (APP-25).
+ *
+ * @param {object} params
+ * @param {number} params.cmv          - CMV em R$ (insumos + embalagem)
+ * @param {object} params.plat         - row delivery_config
+ * @param {object} params.contexto     - financeiro: { lucroPerc, fixoPerc, impostoPerc } em decimal
+ * @returns {object} resultado completo do engine
+ */
+export function calcSugestaoDeliveryCompleta({ cmv, plat, contexto }) {
+  const safe = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  return _engCalcDelivery({
+    cmv,
+    lucroPerc: safe(contexto?.lucroPerc),
+    fixoPerc: safe(contexto?.fixoPerc),
+    impostoPerc: safe(contexto?.impostoPerc),
+    comissaoPerc: safe(plat?.taxa_plataforma) / 100,
+    taxaPagamentoOnlinePerc: safe(plat?.comissao_app) / 100,
+    cupomR: safe(plat?.desconto_promocao),
+    freteSubsidiadoR: safe(plat?.taxa_entrega),
+  });
+}
+
+export const compararDeliveryVsBalcao = _engCompara;

@@ -156,6 +156,19 @@ export default function AtualizarPrecosScreen({ navigation }) {
         }
       }
 
+      // APP-08/09/10/23: cascade pra preparos e combos quando insumo/embalagem muda
+      try {
+        if (activeTab === 'insumos' || activeTab === 'embalagens') {
+          const { cascadeFromInsumo } = await import('../services/cascadeRecalc');
+          await cascadeFromInsumo(db);
+          const { clearQueryCache } = await import('../database/supabaseDb');
+          clearQueryCache();
+        } else if (activeTab === 'preparos') {
+          const { recalcularTodosCombos } = await import('../services/cascadeRecalc');
+          await recalcularTodosCombos(db);
+        }
+      } catch (e) { console.warn('[AtualizarPrecos.cascade]', e); }
+
       // Update local state
       setItems(prev => prev.map(i => i.id === item.id ? { ...i, price: numericValue } : i));
       setRecentSaved(prev => ({ ...prev, [item.id]: true }));

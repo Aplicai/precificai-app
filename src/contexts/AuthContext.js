@@ -12,6 +12,10 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Sessão 28.9 — APP-01: flag que indica que o user clicou no link de reset
+  // de senha. Quando true, AppNavigator força a tela ResetPassword mesmo que
+  // a sessão de recovery do Supabase pareça "logada".
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const lastActiveRef = useRef(Date.now());
   const timeoutRef = useRef(null);
 
@@ -57,6 +61,11 @@ export function AuthProvider({ children }) {
       setUser(s?.user ?? null);
       reportSetUser(s?.user ?? null);
       addBreadcrumb({ category: 'auth', message: `auth event: ${_event}` });
+      // Sessão 28.9 — APP-01: detecta quando user voltou do email de reset de senha.
+      // Sinaliza pro AppNavigator forçar a tela ResetPassword.
+      if (_event === 'PASSWORD_RECOVERY') {
+        setPasswordRecovery(true);
+      }
       setLoading(false);
     });
 
@@ -103,7 +112,14 @@ export function AuthProvider({ children }) {
   const resetPassword = async (email) => {
     addBreadcrumb({ category: 'auth', message: 'resetPassword attempt' });
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      // Sessão 28.9 — APP-01: passa redirectTo explícito.
+      // Sem isso, Supabase usa o "Site URL" do dashboard, que pode não estar
+      // alinhado com o domínio do app. Resultado: email gerado tem link
+      // quebrado E em alguns casos o envio falha silenciosamente.
+      const redirectTo = (typeof window !== 'undefined' && window.location)
+        ? `${window.location.origin}/reset-password`
+        : 'https://app.precificaiapp.com/reset-password';
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) throw error;
     } catch (err) {
       captureException(err, { screen: 'ForgotPassword', action: 'resetPassword' });
@@ -111,8 +127,16 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // Sessão 28.9 — APP-01: helper pra o ResetPasswordScreen sinalizar que terminou
+  // o fluxo de recovery (depois de redefinir senha + signOut).
+  const clearPasswordRecovery = useCallback(() => setPasswordRecovery(false), []);
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signOut, resetPassword }}>
+    <AuthContext.Provider value={{
+      user, session, loading,
+      signIn, signUp, signOut, resetPassword,
+      passwordRecovery, clearPasswordRecovery,
+    }}>
       {children}
     </AuthContext.Provider>
   );

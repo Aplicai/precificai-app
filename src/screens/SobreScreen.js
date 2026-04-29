@@ -3,6 +3,8 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking, Image } 
 import { Feather } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import { useNavigation } from '@react-navigation/native';
+import BackToSettings from '../components/BackToSettings';
 
 const VERSION = Constants?.expoConfig?.version || '2.0.0';
 
@@ -50,6 +52,7 @@ const FEATURES_AVANCADAS = [
 ];
 
 export default function SobreScreen() {
+  const navigation = useNavigation();
   const [linkError, setLinkError] = useState(null);
   const handleLink = (url) => openExternal(url, (msg) => {
     setLinkError(msg);
@@ -57,6 +60,8 @@ export default function SobreScreen() {
   });
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* APP-12: voltar pra Configurações */}
+      <BackToSettings navigation={navigation} />
       {linkError && (
         <View style={styles.errorBanner} accessibilityLiveRegion="polite">
           <Feather name="alert-circle" size={16} color="#dc2626" />

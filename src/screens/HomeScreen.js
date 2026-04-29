@@ -6,7 +6,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
+import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { getSetupStatus } from '../utils/setupStatus';
 import InfoTooltip from '../components/InfoTooltip';
@@ -197,10 +197,10 @@ export default function HomeScreen({ navigation }) {
 
         if (p.preco_venda > 0) {
           somaPrecos += p.preco_venda;
+          // Sessão 28.9 — Auditoria P0-02: usar funções centrais (calcLucroLiquido, calcMargemLiquida)
           const despFixasVal = p.preco_venda * dfPerc;
           const despVarVal = p.preco_venda * totalVar;
-          const lucro = p.preco_venda - custoUnit - despFixasVal - despVarVal;
-          const margem = lucro / p.preco_venda;
+          const margem = calcMargemLiquida(p.preco_venda, custoUnit, despFixasVal, despVarVal);
           somaMargens += margem;
           prodsComPreco++;
           if (margem < 0.10) produtosMargBaixa.push({ id: p.id, nome: p.nome, margem });
@@ -210,7 +210,7 @@ export default function HomeScreen({ navigation }) {
       }
 
       const margemMedia = prodsComPreco > 0 ? somaMargens / prodsComPreco : 0;
-      const cmvPercent = somaPrecos > 0 ? somaCustos / somaPrecos : 0;
+      const cmvPercent = calcCMVPercentual(somaCustos, somaPrecos);
       const denominador = 1 - cmvPercent - totalVar;
       const pontoEquilibrio = denominador > 0 ? totalFixas / denominador : 0;
       const resultadoFinanceiro = fatMedio - totalFixas;

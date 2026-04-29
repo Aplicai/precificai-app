@@ -7,7 +7,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { getDatabase } from '../database/database';
-import { converterParaBase, formatCurrency, formatPercent, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, getTipoVenda } from '../utils/calculations';
+import { converterParaBase, formatCurrency, formatPercent, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, calcMarkup, calcPrecoSugerido } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import Loader from '../components/Loader';
 
@@ -447,15 +447,13 @@ export default function ExportPDFScreen({ navigation }) {
         const lucroDesejado = config.lucro_desejado || 0.15;
 
         const despFixasVal = precoVenda * despFixasPerc;
+        // Sessão 28.9 — Auditoria P0-02: usar funções centrais
         const despVarVal = precoVenda * despVarPerc;
-        const lucroVal = precoVenda - cmv - despFixasVal - despVarVal;
-        const margemVal = precoVenda > 0 ? lucroVal / precoVenda : 0;
-
-        const totalPercDespesas = despFixasPerc + despVarPerc + lucroDesejado;
-        const markup = totalPercDespesas < 1 ? 1 / (1 - totalPercDespesas) : 0;
-        const precoSugerido = cmv * markup;
-
-        const cmvPerc = precoVenda > 0 ? cmv / precoVenda : 0;
+        const lucroVal = calcLucroLiquido(precoVenda, cmv, despFixasVal, despVarVal);
+        const margemVal = calcMargemLiquida(precoVenda, cmv, despFixasVal, despVarVal);
+        const markup = calcMarkup(despFixasPerc, despVarPerc, lucroDesejado);
+        const precoSugerido = calcPrecoSugerido(cmv, markup);
+        const cmvPerc = calcCMVPercentual(cmv, precoVenda);
 
         fichas.push({
           produto,
