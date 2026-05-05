@@ -198,14 +198,23 @@ import { calcularPrecoDelivery as _engCalcDelivery, compararDeliveryVsBalcao as 
  */
 export function calcSugestaoDeliveryCompleta({ cmv, plat, contexto }) {
   const safe = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  // Sessão 28.14 — BUG FIX: cupomR estava lendo `desconto_promocao` (que é %)
+  // enquanto o resto do app (normalizePlatform) lê o cupom de `embalagem_extra` (R$).
+  // Isso fazia o preço sugerido IGNORAR o cupom — gerava sugestão muito baixa
+  // (ex: cobrar R$5 dava prejuízo enquanto o sugerido aparecia R$2,51).
+  // Agora alinhamos: cupom R$ vem de `embalagem_extra`, descontoPct vem de `desconto_promocao` (e soma como % no variável).
+  const descontoPct = safe(plat?.desconto_promocao) / 100;
+  // Soma o descontoPct ao impostoPerc pra que a fórmula markup divisor o conta
+  // (afinal o desconto% sai do preço final, igual imposto e comissão)
+  const impostoComDesconto = safe(contexto?.impostoPerc) + descontoPct;
   return _engCalcDelivery({
     cmv,
     lucroPerc: safe(contexto?.lucroPerc),
     fixoPerc: safe(contexto?.fixoPerc),
-    impostoPerc: safe(contexto?.impostoPerc),
+    impostoPerc: impostoComDesconto,
     comissaoPerc: safe(plat?.taxa_plataforma) / 100,
     taxaPagamentoOnlinePerc: safe(plat?.comissao_app) / 100,
-    cupomR: safe(plat?.desconto_promocao),
+    cupomR: safe(plat?.embalagem_extra),
     freteSubsidiadoR: safe(plat?.taxa_entrega),
   });
 }

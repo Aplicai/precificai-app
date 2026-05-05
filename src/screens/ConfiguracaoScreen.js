@@ -1282,42 +1282,41 @@ export default function ConfiguracaoScreen() {
           <View>
             <SummaryPanel />
             <FormContent />
+            {/* Sessão 28.15: botão "Salvar e voltar" agora INLINE no fim do conteúdo
+                (antes era position: absolute e cobria a página o tempo todo). */}
+            <View style={s.inlineFooter}>
+              <TouchableOpacity
+                style={s.stickyFooterBtn}
+                activeOpacity={0.8}
+                onPress={() => {
+                  showSaved('Tudo salvo!');
+                  setTimeout(() => {
+                    try {
+                      if (navigation && navigation.navigate) {
+                        if (navigation.jumpTo) {
+                          navigation.jumpTo('Home');
+                        } else {
+                          navigation.navigate('Home');
+                        }
+                      }
+                    } catch (e) {
+                      console.warn('[ConfiguracaoScreen.salvarVoltar]', e);
+                    }
+                  }, 600);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Salvar e voltar para o painel"
+              >
+                <Feather name="check" size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={s.stickyFooterBtnText}>Salvar e voltar ao painel</Text>
+              </TouchableOpacity>
+              <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 8, textAlign: 'center' }}>
+                💾 As alterações já foram salvas automaticamente — esse botão só te leva pro Painel Geral.
+              </Text>
+            </View>
           </View>
         )}
       </ScrollView>
-
-      {/* APP-11/D-03: footer fixo com CTA. Sempre vai pro Painel Geral (tab Home),
-          não pra goBack que caía em tela aleatória dependendo do stack. */}
-      <View style={s.stickyFooter} pointerEvents="box-none">
-        <TouchableOpacity
-          style={s.stickyFooterBtn}
-          activeOpacity={0.8}
-          onPress={() => {
-            showSaved('Tudo salvo!');
-            setTimeout(() => {
-              try {
-                // D-03: navegação determinística pro Painel Geral (tab Home).
-                // Antes usava goBack que voltava pra tela aleatória do histórico.
-                if (navigation && navigation.navigate) {
-                  // jumpTo pra trocar de tab no BottomTab (mais confiável que navigate quando estamos em sub-stack)
-                  if (navigation.jumpTo) {
-                    navigation.jumpTo('Home');
-                  } else {
-                    navigation.navigate('Home');
-                  }
-                }
-              } catch (e) {
-                console.warn('[ConfiguracaoScreen.salvarVoltar]', e);
-              }
-            }, 600);
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Salvar e voltar para o painel"
-        >
-          <Feather name="check" size={18} color="#fff" style={{ marginRight: 8 }} />
-          <Text style={s.stickyFooterBtnText}>Salvar e voltar ao painel</Text>
-        </TouchableOpacity>
-      </View>
 
       {/* Save feedback toast */}
       {savedFeedback && (
@@ -1393,8 +1392,8 @@ export default function ConfiguracaoScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, width: '100%' },
-  // APP-11: paddingBottom maior pra dar espaço pro footer fixo (BottomTab + sticky CTA)
-  content: { padding: spacing.md, width: '100%', paddingBottom: 200, maxWidth: 960, alignSelf: 'center' },
+  // Sessão 28.15: footer agora inline, padding normal
+  content: { padding: spacing.md, width: '100%', paddingBottom: spacing.lg, maxWidth: 960, alignSelf: 'center' },
 
   // APP-30 — microcopy + warning inline
   fieldMicroCopy: {
@@ -1505,16 +1504,17 @@ const s = StyleSheet.create({
     fontSize: fonts.tiny, color: colors.textSecondary, lineHeight: 16,
   },
 
-  // APP-11: footer fixo "Salvar e voltar"
+  // Sessão 28.15: footer agora inline (não mais absolute), faz parte do scroll
+  inlineFooter: {
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+  },
+  // mantido por compat (pode ser removido em refactor futuro)
   stickyFooter: {
-    position: 'absolute',
-    left: 0, right: 0,
-    bottom: Platform.OS === 'web' ? 86 : 70,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
     alignItems: 'center',
   },
   stickyFooterBtn: {

@@ -1,10 +1,14 @@
-# ✅ CHECKLIST DE VALIDAÇÃO — Sessão 28.10
+# ✅ CHECKLIST DE VALIDAÇÃO — Sessões 28.10 + 28.11
 
-**Origem:** feedback do teste de usabilidade da Daniele
-**Deploy validado:** `index-8b4f3502bb851e1e5f65d1dfe9442dbd.js`
+**Origem:** feedback do teste de usabilidade da Daniele (2 rodadas)
+**Deploy live:** `index-e34a02c779f0921857bb9158884d8b91.js` (Rodada 2)
 **URL:** https://app.precificaiapp.com
 
-> ⚠️ **Antes de começar:** faça **hard refresh** (`Ctrl+Shift+R` no Chrome/Edge ou `Cmd+Shift+R` no Mac) pra garantir que o bundle novo carregou. Confirme em DevTools → Network o hash `8b4f3502bb...`.
+> ⚠️ **Antes de começar:** faça **hard refresh** (`Ctrl+Shift+R` no Chrome/Edge ou `Cmd+Shift+R` no Mac) pra garantir que o bundle novo carregou. Confirme em DevTools → Network o hash `e34a02c7...`.
+
+> 📌 Este arquivo cobre AMBAS as rodadas:
+> - **APP-XX** = rodada 1 (validar primeiro)
+> - **D-XX** = rodada 2 (correções da rodada 1 + novos itens) — ver seção no fim
 
 ---
 

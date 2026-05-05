@@ -162,10 +162,33 @@ export default function SimuladorLoteScreen() {
     <View style={styles.container}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.title}>Simulador em lote</Text>
+          <Text style={styles.title}>Visão geral / Simulador em lote</Text>
           <Text style={styles.subtitle}>
-            Veja o preço sugerido para cada produto em cada plataforma de delivery, com base no método Precificaí (CMV + lucro + custos fixos + imposto + comissão + taxa pgto online).
+            Preço sugerido para cada produto em cada plataforma. Cálculo: CMV + lucro + custos fixos + imposto + comissão + taxa pgto online.
           </Text>
+        </View>
+
+        {/* Legenda — sessão 28.12: subiu pra antes da tabela (mais visível com muitos itens) */}
+        <View style={styles.legend}>
+          <Text style={styles.legendTitle}>Como ler:</Text>
+          <View style={styles.legendGrid}>
+            <View style={styles.legendRow}>
+              <Feather name="check-circle" size={11} color={colors.success} />
+              <Text style={styles.legendText}>Viável (preço &gt; balcão)</Text>
+            </View>
+            <View style={styles.legendRow}>
+              <Feather name="alert-triangle" size={11} color={colors.warning} />
+              <Text style={styles.legendText}>Próximo do balcão</Text>
+            </View>
+            <View style={styles.legendRow}>
+              <Feather name="alert-octagon" size={11} color={colors.error} />
+              <Text style={styles.legendText}>Menor que balcão</Text>
+            </View>
+            <View style={styles.legendRow}>
+              <Feather name="x-circle" size={11} color={colors.error} />
+              <Text style={styles.legendText}>Inviável (taxas &gt; 100%)</Text>
+            </View>
+          </View>
         </View>
 
         {/* Tabela horizontal scrollável */}
@@ -240,26 +263,6 @@ export default function SimuladorLoteScreen() {
           </View>
         </ScrollView>
 
-        {/* Legenda dos status */}
-        <View style={styles.legend}>
-          <Text style={styles.legendTitle}>Como ler:</Text>
-          <View style={styles.legendRow}>
-            <Feather name="check-circle" size={12} color={colors.success} />
-            <Text style={styles.legendText}>Preço viável e maior que balcão (esperado)</Text>
-          </View>
-          <View style={styles.legendRow}>
-            <Feather name="alert-triangle" size={12} color={colors.warning} />
-            <Text style={styles.legendText}>Preço delivery próximo do balcão (verifique taxas)</Text>
-          </View>
-          <View style={styles.legendRow}>
-            <Feather name="alert-octagon" size={12} color={colors.error} />
-            <Text style={styles.legendText}>Preço delivery menor que balcão (erro de cálculo)</Text>
-          </View>
-          <View style={styles.legendRow}>
-            <Feather name="x-circle" size={12} color={colors.error} />
-            <Text style={styles.legendText}>Inviável: custos somam mais de 100% do preço</Text>
-          </View>
-        </View>
       </ScrollView>
 
       <ComoCalculadoModal
@@ -285,22 +288,26 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   headerRow: { backgroundColor: colors.primary + '12' },
-  cellProduto: { width: 180, padding: spacing.sm, justifyContent: 'center' },
-  cellNumeric: { width: 100, padding: spacing.sm, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 4 },
+  // Sessão 28.13: cells balanceados — fontes legíveis sem ficar tabloides
+  cellProduto: { width: 170, padding: spacing.sm, justifyContent: 'center' },
+  cellNumeric: { width: 92, padding: spacing.xs, paddingHorizontal: spacing.sm, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 4 },
   headerCell: { borderBottomWidth: 2, borderBottomColor: colors.primary },
-  headerText: { fontSize: fonts.tiny, fontFamily: fontFamily.bold, color: colors.text, textAlign: 'center' },
-  produtoNome: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, color: colors.text },
-  cellValueDim: { fontSize: fonts.small, color: colors.textSecondary, fontFamily: fontFamily.regular },
-  cellValuePrimary: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, color: colors.text },
+  headerText: { fontSize: 12, fontFamily: fontFamily.bold, color: colors.text, textAlign: 'center' },
+  produtoNome: { fontSize: 13, fontFamily: fontFamily.semiBold, color: colors.text },
+  cellValueDim: { fontSize: 13, color: colors.textSecondary, fontFamily: fontFamily.regular },
+  cellValuePrimary: { fontSize: 13, fontFamily: fontFamily.semiBold, color: colors.text },
   legend: {
-    marginTop: spacing.lg,
+    marginBottom: spacing.md,
     backgroundColor: colors.surface,
     padding: spacing.md,
     borderRadius: borderRadius.md,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
   },
-  legendTitle: { fontSize: fonts.small, fontFamily: fontFamily.bold, color: colors.text, marginBottom: spacing.sm },
-  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  legendText: { fontSize: fonts.tiny, color: colors.textSecondary, flex: 1 },
+  legendTitle: { fontSize: fonts.small, fontFamily: fontFamily.bold, color: colors.text, marginBottom: 8 },
+  legendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 200 },
+  legendText: { fontSize: fonts.small, color: colors.textSecondary },
   emptyTitle: { fontSize: fonts.large, fontFamily: fontFamily.bold, color: colors.text, marginTop: spacing.md, textAlign: 'center' },
   emptyDesc: { fontSize: fonts.small, color: colors.textSecondary, marginTop: spacing.sm, textAlign: 'center', lineHeight: 18, maxWidth: 320 },
   btnPrimary: {
