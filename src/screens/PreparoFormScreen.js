@@ -48,6 +48,12 @@ export default function PreparoFormScreen({ route, navigation }) {
   const [categorias, setCategorias] = useState([]);
   const [novoIng, setNovoIng] = useState({ materia_prima_id: null, quantidade: '' });
   const [quantityPrompt, setQuantityPrompt] = useState(null);
+  // D-20: embalagens opcionais (alguns preparos precisam de embalagem de armazenamento)
+  const [embalagens, setEmbalagens] = useState([]); // catálogo
+  const [preparoEmbalagens, setPreparoEmbalagens] = useState([]); // selecionadas neste preparo
+  const preparoEmbalagensRef = useRef(preparoEmbalagens);
+  preparoEmbalagensRef.current = preparoEmbalagens;
+  const [embPickerVisible, setEmbPickerVisible] = useState(false);
   const qtyInputRef = useRef(null);
   const [catPickerVisible, setCatPickerVisible] = useState(false);
   const [novaCatMode, setNovaCatMode] = useState(false);
@@ -96,6 +102,7 @@ export default function PreparoFormScreen({ route, navigation }) {
   useFocusEffect(useCallback(() => {
     loadMateriasPrimas();
     loadCategorias();
+    loadEmbalagens();
   }, []));
 
   // Intercepta saída para validar campos
@@ -131,7 +138,7 @@ export default function PreparoFormScreen({ route, navigation }) {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [form, ingredientes, loaded]);
+  }, [form, ingredientes, preparoEmbalagens, loaded]);
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -150,6 +157,35 @@ export default function PreparoFormScreen({ route, navigation }) {
     setCategorias(await db.getAllAsync('SELECT * FROM categorias_preparos ORDER BY nome'));
   }
 
+  // D-20: carrega catálogo de embalagens (sempre) e relação preparo×embalagem (se editId)
+  async function loadEmbalagens() {
+    try {
+      const db = await getDatabase();
+      const embs = await db.getAllAsync('SELECT id, nome, custo_unitario FROM embalagens ORDER BY nome');
+      setEmbalagens(embs || []);
+    } catch (e) {
+      // tabela não existe / outro erro — silencia, módulo opcional
+      setEmbalagens([]);
+    }
+  }
+
+  async function loadPreparoEmbalagens(id) {
+    if (!id) return;
+    try {
+      const db = await getDatabase();
+      const rows = await db.getAllAsync(
+        `SELECT pe.id, pe.embalagem_id, pe.quantidade_utilizada, e.nome, e.custo_unitario
+         FROM preparo_embalagens pe LEFT JOIN embalagens e ON e.id = pe.embalagem_id
+         WHERE pe.preparo_id = ?`, [id]
+      );
+      setPreparoEmbalagens(rows || []);
+    } catch (e) {
+      // migration ainda não rodada — apenas loga
+      if (typeof console !== 'undefined') console.warn('[PreparoForm.loadPreparoEmbalagens]', e?.message || e);
+      setPreparoEmbalagens([]);
+    }
+  }
+
   async function loadItem() {
     const db = await getDatabase();
     const item = await db.getFirstAsync('SELECT * FROM preparos WHERE id = ?', [editId]);
@@ -161,6 +197,8 @@ export default function PreparoFormScreen({ route, navigation }) {
          JOIN materias_primas mp ON mp.id = pi.materia_prima_id WHERE pi.preparo_id = ?`, [editId]
       );
       setIngredientes(ings);
+      // D-20: carrega embalagens deste preparo (se schema existir)
+      await loadPreparoEmbalagens(editId);
       // Marca como carregado após setar o form para evitar auto-save imediato
       setTimeout(() => setLoaded(true), 100);
     } else {
@@ -311,6 +349,19 @@ export default function PreparoFormScreen({ route, navigation }) {
           params
         );
       }
+      // D-20: re-save embalagens (silencioso se schema não existir)
+      try {
+        await db.runAsync('DELETE FROM preparo_embalagens WHERE preparo_id = ?', [editId]);
+        const embs = preparoEmbalagensRef.current || [];
+        for (const pe of embs) {
+          await db.runAsync(
+            'INSERT INTO preparo_embalagens (preparo_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
+            [editId, pe.embalagem_id, pe.quantidade_utilizada || 1]
+          );
+        }
+      } catch (e) {
+        if (typeof console !== 'undefined') console.warn('[PreparoForm.autoSave embalagens]', e?.message || e);
+      }
       setSaveStatus('saved');
     } catch (e) {
       console.error('[PreparoForm.autoSave]', e);
@@ -339,6 +390,17 @@ export default function PreparoFormScreen({ route, navigation }) {
       const custo = calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade);
       await db.runAsync('INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
         [newId, ing.materia_prima_id, ing.quantidade_utilizada, custo]);
+    }
+    // D-20: salva embalagens (silencioso se schema não existir)
+    try {
+      for (const pe of preparoEmbalagens) {
+        await db.runAsync(
+          'INSERT INTO preparo_embalagens (preparo_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
+          [newId, pe.embalagem_id, pe.quantidade_utilizada || 1]
+        );
+      }
+    } catch (e) {
+      if (typeof console !== 'undefined') console.warn('[PreparoForm.salvarNovo embalagens]', e?.message || e);
     }
     navigation.goBack();
   }
@@ -526,6 +588,70 @@ export default function PreparoFormScreen({ route, navigation }) {
           {ingredientes.length === 0 && (
             <View style={styles.ingEmpty}>
               <Text style={styles.ingEmptyText}>Selecione insumos acima para montar o preparo.</Text>
+            </View>
+          )}
+        </Card>
+
+        {/* D-20: Embalagens opcionais (ex: pote pra armazenar a calda, saco pra massa) */}
+        <Card title={`Embalagens${preparoEmbalagens.length > 0 ? ` (${preparoEmbalagens.length})` : ' (opcional)'}`} style={{ marginTop: spacing.sm }}>
+          <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
+            Adicione embalagens se este preparo for armazenado (ex: pote pra calda, saco pra massa). O custo entra no total do preparo.
+          </Text>
+          <PickerSelect
+            label="Adicionar embalagem"
+            value={null}
+            onValueChange={(v) => {
+              if (!v) return;
+              const em = embalagens.find(e => e.id === v);
+              if (!em) return;
+              if (preparoEmbalagens.some(pe => pe.embalagem_id === v)) return; // já adicionada
+              setPreparoEmbalagens(prev => [...prev, {
+                embalagem_id: em.id,
+                nome: em.nome,
+                custo_unitario: em.custo_unitario,
+                quantidade_utilizada: 1,
+              }]);
+            }}
+            options={embalagens.map(e => ({ label: `${e.nome} — ${formatCurrency(e.custo_unitario || 0)}/un`, value: e.id }))}
+            placeholder={embalagens.length === 0 ? 'Cadastre uma embalagem primeiro' : 'Selecione uma embalagem'}
+            onCreateNew={() => navigation.navigate('Embalagens', { screen: 'EmbalagemForm' })}
+            createLabel="Cadastrar nova embalagem"
+          />
+          {preparoEmbalagens.length > 0 && (
+            <View style={[styles.ingListContainer, { marginTop: spacing.sm }]}>
+              <View style={styles.ingListHeader}>
+                <Text style={[styles.ingHeaderText, { flex: 2 }]}>Embalagem</Text>
+                <Text style={[styles.ingHeaderText, { flex: 1, textAlign: 'center' }]}>Qtd</Text>
+                <Text style={[styles.ingHeaderText, { flex: 1.2, textAlign: 'right', paddingRight: 28 }]}>Custo</Text>
+              </View>
+              {preparoEmbalagens.map((pe, idx) => {
+                const totalPe = (Number(pe.custo_unitario) || 0) * (Number(pe.quantidade_utilizada) || 1);
+                return (
+                  <View key={pe.embalagem_id} style={[styles.ingRow, idx % 2 === 0 && styles.ingRowEven]}>
+                    <Text style={[styles.ingCell, { flex: 2 }]} numberOfLines={1}>{pe.nome}</Text>
+                    <TextInput
+                      style={[styles.ingCell, { flex: 1, textAlign: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 4, paddingVertical: 4 }]}
+                      value={String(pe.quantidade_utilizada)}
+                      keyboardType="decimal-pad"
+                      onChangeText={(v) => {
+                        const n = parseFloat(String(v).replace(',', '.')) || 0;
+                        setPreparoEmbalagens(prev => prev.map((it, i) => i === idx ? { ...it, quantidade_utilizada: n } : it));
+                      }}
+                      selectTextOnFocus
+                    />
+                    <View style={{ flex: 1.2, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
+                      <Text style={styles.ingCellCusto}>{formatCurrency(totalPe)}</Text>
+                      <TouchableOpacity
+                        onPress={() => setPreparoEmbalagens(prev => prev.filter((_, i) => i !== idx))}
+                        style={styles.ingRemoveBtn}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <Text style={styles.ingRemoveText}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
             </View>
           )}
         </Card>

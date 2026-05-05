@@ -114,6 +114,21 @@ export default function ProdutosListScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => {
     loadData();
+    // Sessão 28.14: se voltou de uma edição feita PELO modal de produto, reabre o modal automaticamente
+    (async () => {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+        if (!raw) return;
+        const info = JSON.parse(raw);
+        await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
+        // Só reabre se o modal era de produto E foi recente (< 5 min)
+        if (info?.mode !== 'produto') return;
+        if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) return;
+        setEditingId(info.editId || null);
+        setShowCreateModal(true);
+      } catch {}
+    })();
     return () => setConfirmDelete(null);
   }, [filtroCategoria, busca, sortBy]));
 

@@ -24,6 +24,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, TextInput, Platform } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import InputField from './InputField';
 import SearchBar from './SearchBar';
@@ -53,16 +54,20 @@ function parseInputValue(raw) {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Sessão 28.13: BUG fix — antes embalagem retornava 'un' SEMPRE (ignorando a unidade real)
+// e insumos ficavam minúsculos ('ml', 'l') quebrando matching com VALID_UNITS=['g','kg','mL','L','un'].
 function shortUnidade(rawUnidade, tipo) {
-  if (tipo === 'embalagem') return 'un';
-  const u = String(rawUnidade || '').toLowerCase();
-  if (u === 'g' || u === 'ml' || u === 'un') return u;
+  const raw = String(rawUnidade || '').trim();
+  // Match exato pra preservar caixa correta (mL ≠ ml, L ≠ l)
+  if (raw === 'g' || raw === 'kg' || raw === 'mL' || raw === 'L' || raw === 'un') return raw;
+  const u = raw.toLowerCase();
+  if (u === 'g') return 'g';
+  if (u === 'kg' || u.includes('quilo')) return 'kg';
+  if (u === 'ml' || u.includes('mili')) return 'mL';
+  if (u === 'l' || u.includes('litro')) return 'L';
+  if (u === 'un' || u.includes('unid')) return 'un';
   if (u.includes('grama')) return 'g';
-  if (u.includes('mili')) return 'ml';
-  if (u.includes('litro')) return 'L';
-  if (u.includes('unid')) return 'un';
-  if (u.includes('kg') || u.includes('quilo')) return 'kg';
-  return u || 'un';
+  return raw || 'un';
 }
 
 const TIPO_BADGE = {
@@ -88,6 +93,7 @@ export default function EntityCreateModal({
   defaultCategoriaId = null,
 }) {
   const { isDesktop } = useResponsiveLayout();
+  const navigation = useNavigation();
   const isProduto = mode === 'produto';
   const isEditing = !!editId;
 
@@ -150,9 +156,11 @@ export default function EntityCreateModal({
     setFiltroTipo(null);
     // Preparo só tem 1 categoria (insumos) → começa expandida.
     // Produto começa com tudo recolhido (filtro "Tudo"); expansão muda c/ filtro.
+    // Sessão 28.14: TODAS as categorias começam colapsadas — usuário vê os contadores
+    // (Insumos 35, Embalagens 12) e clica pra expandir a que precisa.
     setCatExpanded({
       preparo: false,
-      materia_prima: !isProduto,
+      materia_prima: false,
       embalagem: false,
     });
     setErro(null);
@@ -182,9 +190,10 @@ export default function EntityCreateModal({
       const preparos = await db.getAllAsync('SELECT * FROM preparos ORDER BY nome');
       setAllMaterias(materias || []);
       setAllPreparos(preparos || []);
+      // D-20 (sessão 28.13): embalagens carregadas em ambos os modos (preparo precisa pra armazenamento)
+      const embalagens = await db.getAllAsync('SELECT * FROM embalagens ORDER BY nome');
+      setAllEmbalagens(embalagens || []);
       if (isProduto) {
-        const embalagens = await db.getAllAsync('SELECT * FROM embalagens ORDER BY nome');
-        setAllEmbalagens(embalagens || []);
         const cats = await db.getAllAsync('SELECT * FROM categorias_produtos ORDER BY nome');
         setCategorias(cats || []);
         // Sessão 28.9 — config de markup pra análise de preço (mesma lógica do ProdutoFormScreen)
@@ -272,7 +281,8 @@ export default function EntityCreateModal({
           nome: e.e_nome || e.nome,
           quantidade: e.quantidade_utilizada,
           custoUnit: calcCustoUnit('embalagem', { preco_unitario: e.preco_unitario }),
-          unidade: 'un',
+          // Sessão 28.13: usa a unidade REAL da embalagem (não força 'un')
+          unidade: shortUnidade(e.e_unidade, 'embalagem') || 'un',
         }));
         setItens(next);
       } else {
@@ -291,14 +301,33 @@ export default function EntityCreateModal({
           `SELECT pi.*, mp.nome as mp_nome, mp.preco_por_kg, mp.unidade_medida as mp_unidade
            FROM preparo_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id
            WHERE pi.preparo_id = ?`, [editId]);
-        setItens((ings || []).map(i => ({
+        // D-20 (sessão 28.13): também carrega embalagens (silencioso se schema não existir)
+        let embsPrep = [];
+        try {
+          embsPrep = await db.getAllAsync(
+            `SELECT pe.*, em.nome as em_nome, em.preco_unitario, em.unidade_medida as em_unidade
+             FROM preparo_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id
+             WHERE pe.preparo_id = ?`, [editId]) || [];
+        } catch (e) {
+          if (typeof console !== 'undefined') console.warn('[EntityCreateModal preparo_embalagens load]', e?.message || e);
+        }
+        const nextPrep = (ings || []).map(i => ({
           tipo: 'materia_prima',
           id: i.materia_prima_id,
           nome: i.mp_nome || i.nome,
           quantidade: i.quantidade_utilizada,
           custoUnit: calcCustoUnit('materia_prima', { preco_por_kg: i.preco_por_kg, unidade_medida: i.mp_unidade }),
           unidade: shortUnidade(i.mp_unidade, 'materia_prima'),
-        })));
+        }));
+        embsPrep.forEach(e => nextPrep.push({
+          tipo: 'embalagem',
+          id: e.embalagem_id,
+          nome: e.em_nome || e.nome,
+          quantidade: e.quantidade_utilizada || 1,
+          custoUnit: calcCustoUnit('embalagem', { preco_unitario: e.preco_unitario }),
+          unidade: shortUnidade(e.em_unidade, 'embalagem') || 'un',
+        }));
+        setItens(nextPrep);
       }
     } catch (e) {
       setErro('Erro ao carregar');
@@ -470,6 +499,8 @@ export default function EntityCreateModal({
             [nome.trim(), categoriaId, rend, unidadeMedidaPrep, custoTotal, custoPorKg, editId]
           );
           await db.runAsync('DELETE FROM preparo_ingredientes WHERE preparo_id = ?', [editId]);
+          // D-20 (sessão 28.13): também limpa embalagens (silencioso se schema não existir)
+          try { await db.runAsync('DELETE FROM preparo_embalagens WHERE preparo_id = ?', [editId]); } catch (e) {}
         } else {
           const result = await db.runAsync(
             `INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg,
@@ -483,6 +514,14 @@ export default function EntityCreateModal({
             const cIng = safeNum(it.custoUnit) * safeNum(it.quantidade);
             await db.runAsync('INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
               [savedId, it.id, safeNum(it.quantidade), cIng]);
+          } else if (it.tipo === 'embalagem') {
+            // D-20: salva embalagens do preparo (silencioso se schema não existir)
+            try {
+              await db.runAsync('INSERT INTO preparo_embalagens (preparo_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
+                [savedId, it.id, safeNum(it.quantidade)]);
+            } catch (e) {
+              if (typeof console !== 'undefined') console.warn('[EntityCreateModal preparo_embalagens]', e?.message || e);
+            }
           }
         }
       }
@@ -521,7 +560,8 @@ export default function EntityCreateModal({
   const tipoOn = (t) => !filtroTipo || filtroTipo === t;
   const filteredMaterias = tipoOn('materia_prima') ? allMaterias.filter(m => !termo || (m.nome || '').toLowerCase().includes(termo)) : [];
   const filteredPreparos = (isProduto && tipoOn('preparo')) ? allPreparos.filter(p => !termo || (p.nome || '').toLowerCase().includes(termo)) : [];
-  const filteredEmbalagens = (isProduto && tipoOn('embalagem')) ? allEmbalagens.filter(e => !termo || (e.nome || '').toLowerCase().includes(termo)) : [];
+  // D-20 (sessão 28.13): embalagens disponíveis em produto E preparo (preparos que precisam armazenar — pote, saco, etc)
+  const filteredEmbalagens = (tipoOn('embalagem')) ? allEmbalagens.filter(e => !termo || (e.nome || '').toLowerCase().includes(termo)) : [];
 
   function renderRow(item, key, tipo, custoFn) {
     const badge = TIPO_BADGE[tipo];
@@ -780,28 +820,41 @@ export default function EntityCreateModal({
                       <View style={[styles.itemTipoBadge, { backgroundColor: badge.color + '15' }]}>
                         <Text style={[styles.itemTipoBadgeText, { color: badge.color }]}>{badge.label}</Text>
                       </View>
-                      <Text style={styles.itemNome} numberOfLines={1}>{it.nome}</Text>
-                      {/* Sessão 28.9 — APP-06: botão "trocar" preserva quantidade/unidade
-                          mas permite escolher outro insumo do picker (atalho: foca filtro do tipo correto) */}
+                      {/* D-18 (sessão 28.13b): tap no nome FECHA o modal e navega — antes abria atrás */}
                       <TouchableOpacity
+                        style={{ flex: 1 }}
                         onPress={() => {
-                          // Foca o filtro do mesmo tipo do item, abre o picker (já visível)
-                          setFiltroTipo(it.tipo);
-                          // Marca este item como "pendente de troca": remove ele e
-                          // o user clica num novo item da coluna direita pra adicionar.
-                          // Mantém a quantidade no clipboard mental do user (mostra hint).
-                          if (Platform.OS === 'web') {
-                            window.alert(`Selecione o novo item à direita. A quantidade (${it.quantidade} ${it.unidade}) e tipo (${badge.label}) serão preservados.`);
-                          }
-                          removerItem(index);
+                          if (!navigation) return;
+                          // Sessão 28.14: salva flag pra reabrir o produto/preparo após salvar o item editado
+                          try {
+                            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                            const reopenInfo = { mode, editId, ts: Date.now() };
+                            AsyncStorage.setItem('reopenEntityModalAfterEdit', JSON.stringify(reopenInfo));
+                          } catch {}
+                          // Fecha PRIMEIRO o EntityCreateModal pra a edição não abrir por trás
+                          try { onClose && onClose(); } catch {}
+                          // Pequeno delay pra modal terminar de fechar antes do navigate
+                          setTimeout(() => {
+                            try {
+                              if (it.tipo === 'preparo') navigation.navigate('Preparos', { screen: 'PreparoForm', params: { id: it.id, returnToEntityModal: true } });
+                              else if (it.tipo === 'materia_prima') navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: it.id, returnToEntityModal: true } });
+                              else if (it.tipo === 'embalagem') navigation.navigate('Embalagens', { screen: 'EmbalagemForm', params: { id: it.id, returnToEntityModal: true } });
+                            } catch (e) {
+                              try {
+                                if (it.tipo === 'preparo') navigation.navigate('PreparoForm', { id: it.id, returnToEntityModal: true });
+                                else if (it.tipo === 'materia_prima') navigation.navigate('MateriaPrimaForm', { id: it.id, returnToEntityModal: true });
+                                else if (it.tipo === 'embalagem') navigation.navigate('EmbalagemForm', { id: it.id, returnToEntityModal: true });
+                              } catch {}
+                            }
+                          }, 120);
                         }}
-                        style={styles.itemEditBtn}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         accessibilityRole="button"
-                        accessibilityLabel={`Trocar ${it.nome}`}
+                        accessibilityLabel={`Editar ${it.nome}`}
+                        activeOpacity={0.6}
                       >
-                        <Feather name="repeat" size={14} color={colors.primary} />
+                        <Text style={styles.itemNome} numberOfLines={1}>{it.nome} <Feather name="edit-2" size={10} color={colors.primary} /></Text>
                       </TouchableOpacity>
+                      {/* D-12 (sessão 28.12): ícone "trocar" removido. Pra trocar item: deletar (lixeira) e adicionar o novo do picker à direita. */}
                       <TouchableOpacity
                         onPress={() => removerItem(index)}
                         style={styles.itemDeleteBtn}
@@ -836,9 +889,23 @@ export default function EntityCreateModal({
                           <Feather name="plus" size={14} color={colors.text} />
                         </TouchableOpacity>
                       </View>
-                      {/* Sessão 28.9 — Unidade fora do stepper, em badge clara */}
+                      {/* Sessão 28.13b — unidade busca SEMPRE do catálogo atual (não cacheia) */}
                       <View style={styles.unidadeBadge}>
-                        <Text style={styles.unidadeBadgeText}>{it.unidade}</Text>
+                        <Text style={styles.unidadeBadgeText}>{(() => {
+                          if (it.tipo === 'materia_prima') {
+                            const mp = allMaterias.find(m => m.id === it.id);
+                            return shortUnidade(mp?.unidade_medida || it.unidade, 'materia_prima');
+                          }
+                          if (it.tipo === 'embalagem') {
+                            const em = allEmbalagens.find(e => e.id === it.id);
+                            return shortUnidade(em?.unidade_medida || it.unidade, 'embalagem') || 'un';
+                          }
+                          if (it.tipo === 'preparo') {
+                            const pr = allPreparos.find(p => p.id === it.id);
+                            return shortUnidade(pr?.unidade_medida || it.unidade, 'preparo');
+                          }
+                          return it.unidade;
+                        })()}</Text>
                       </View>
                       <View style={{ flex: 1, alignItems: 'flex-end' }}>
                         <Text style={styles.itemCustoTotal}>{formatCurrency(total)}</Text>

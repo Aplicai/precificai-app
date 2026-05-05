@@ -160,6 +160,23 @@ export default function MateriasPrimasScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => {
     loadData();
+    // Sessão 28.14: se voltou de uma edição feita PELO modal de produto/preparo,
+    // redireciona pra tab certa (a list lá vai reabrir o modal automaticamente)
+    (async () => {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+        if (!raw) return;
+        const info = JSON.parse(raw);
+        if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) {
+          await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
+          return;
+        }
+        // Mantém a flag pra lista alvo consumir; só redireciona
+        if (info.mode === 'produto') navigation.navigate('Produtos', { screen: 'ProdutosList' });
+        else if (info.mode === 'preparo') navigation.navigate('Preparos', { screen: 'PreparosMain' });
+      } catch {}
+    })();
     return () => setConfirmDelete(null);
   }, [filtroCategoria, busca, sortBy]));
 

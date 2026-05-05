@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Image, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Image, Platform, TouchableOpacity } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigationState, CommonActions, StackActions } from '@react-navigation/native';
 import { colors, spacing, fontFamily, webLayout } from '../../utils/theme';
@@ -192,8 +192,17 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
 
   return (
     <View style={[styles.container, { width: sidebarWidth }]}>
-      {/* Logo */}
-      <View style={[styles.logoArea, { height: headerHeight }]}>
+      {/* Logo — D-32 (sessão 28.12): clique vai pro Painel Geral */}
+      <TouchableOpacity
+        onPress={() => {
+          try { navigation.navigate('Início', { screen: 'HomeMain' }); }
+          catch (e) { try { navigation.navigate('Início'); } catch {} }
+        }}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel="Ir para o Painel Geral"
+        style={[styles.logoArea, { height: headerHeight }]}
+      >
         {collapsed ? (
           <Image
             source={require('../../../assets/images/logo-icon-green.png')}
@@ -207,7 +216,7 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
             resizeMode="contain"
           />
         )}
-      </View>
+      </TouchableOpacity>
 
       {/* Nav items - use div on web for visible scrollbar */}
       <ScrollView style={[styles.nav, Platform.OS === 'web' && { overflowY: 'auto' }]} showsVerticalScrollIndicator={true}>

@@ -93,6 +93,21 @@ export default function EmbalagensScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => {
     loadData();
+    // Sessão 28.14: redireciona pro Produtos/Preparos se veio de uma edição via modal
+    (async () => {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+        if (!raw) return;
+        const info = JSON.parse(raw);
+        if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) {
+          await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
+          return;
+        }
+        if (info.mode === 'produto') navigation.navigate('Produtos', { screen: 'ProdutosList' });
+        else if (info.mode === 'preparo') navigation.navigate('Preparos', { screen: 'PreparosMain' });
+      } catch {}
+    })();
     return () => setConfirmDelete(null);
   }, [filtroCategoria, busca, sortBy]));
 

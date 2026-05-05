@@ -15,9 +15,11 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import SearchBar from '../components/SearchBar';
-import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem } from '../utils/calculations';
+import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, calcDespesasFixasPercentual } from '../utils/calculations';
 // Sprint 2 S3 — fonte única da verdade para precificação delivery (substitui fórmula inline duplicada).
-import { calcResultadoDelivery, sugerirPrecoDelivery } from '../utils/deliveryPricing';
+import { calcResultadoDelivery, sugerirPrecoDelivery, calcSugestaoDeliveryCompleta } from '../utils/deliveryPricing';
+// Sessão 28.12 (D-22b): adapter pra extrair imposto% das despesas variáveis
+import { extrairImpostoPercentual } from '../utils/deliveryAdapter';
 // D-24: simulador em lote renderiza inline dentro do hub
 import SimuladorLoteScreen from './SimuladorLoteScreen';
 
@@ -36,9 +38,8 @@ function safeNum(v) {
 const TABS = [
   { key: 'plataformas', label: 'Plataformas', icon: 'smartphone' },
   { key: 'simulador', label: 'Simulador de Preço', icon: 'trending-up' },
-  // D-24: simulador em lote agora renderiza INLINE dentro do DeliveryHub (não abre nova rota)
-  { key: 'lote', label: 'Simulador em Lote', icon: 'grid' },
-  { key: 'visaogeral', label: 'Visão Geral', icon: 'grid' },
+  // D-24 + sessão 28.12: simulador em lote (inline) absorveu a tela "Visão Geral" — eram a mesma coisa.
+  { key: 'lote', label: 'Visão Geral / Lote', icon: 'grid' },
 ];
 
 const KNOWN_PLATFORMS = [
@@ -73,6 +74,8 @@ export default function DeliveryHubScreen({ navigation }) {
   const [precoCustom, setPrecoCustom] = usePersistedState('deliveryHub.precoMinimo', '');
   const [expandedPlats, setExpandedPlats] = useState({});
   const [margemDesejada, setMargemDesejada] = usePersistedState('deliveryHub.margemDesejada', '30');
+  // Sessão 28.12 (D-22b): contexto financeiro — usa MESMA fórmula do balcão (lucro + custos fixos + variáveis + impostos)
+  const [contextoFin, setContextoFin] = useState({ lucroPerc: 0.15, fixoPerc: 0, variavelPerc: 0, impostoPerc: 0, fatMedio: 0 });
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
@@ -83,7 +86,7 @@ export default function DeliveryHubScreen({ navigation }) {
     setLoadError(null);
     try {
     const db = await getDatabase();
-    const [plats, prods, allIngs, allPreps, allEmbs, comboRows, comboItensRows] = await Promise.all([
+    const [plats, prods, allIngs, allPreps, allEmbs, comboRows, comboItensRows, cfgRows, fixasRows, varsRows, fatRows] = await Promise.all([
       db.getAllAsync('SELECT * FROM delivery_config ORDER BY id'),
       db.getAllAsync('SELECT * FROM produtos WHERE preco_venda > 0 ORDER BY nome'),
       db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
@@ -91,9 +94,30 @@ export default function DeliveryHubScreen({ navigation }) {
       db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
       db.getAllAsync('SELECT * FROM delivery_combos ORDER BY nome'),
       db.getAllAsync('SELECT * FROM delivery_combo_itens'),
+      // Sessão 28.12 (D-22b): contexto financeiro — mesma fonte usada no balcão
+      db.getAllAsync('SELECT * FROM configuracao'),
+      db.getAllAsync('SELECT valor FROM despesas_fixas'),
+      db.getAllAsync('SELECT descricao, percentual FROM despesas_variaveis'),
+      db.getAllAsync('SELECT valor FROM faturamento_mensal WHERE valor > 0'),
     ]);
 
     setPlataformas(plats);
+
+    // D-22b: monta contexto financeiro pra simulador delivery (lucro + custos fixos + variáveis + imposto)
+    try {
+      const cfg = (cfgRows && cfgRows[0]) || {};
+      const totalFixas = (fixasRows || []).reduce((a, r) => a + safeNum(r.valor), 0);
+      const fatMedio = (fatRows || []).length > 0
+        ? (fatRows || []).reduce((a, r) => a + safeNum(r.valor), 0) / (fatRows || []).length : 0;
+      const fixoPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
+      const lucroPerc = Number.isFinite(cfg.lucro_desejado_delivery) ? cfg.lucro_desejado_delivery
+                      : Number.isFinite(cfg.lucro_desejado) ? cfg.lucro_desejado : 0.15;
+      const impostoPerc = extrairImpostoPercentual(varsRows || []);
+      const variavelPerc = (varsRows || []).reduce((a, d) => a + (Number.isFinite(d.percentual) ? d.percentual : 0), 0);
+      setContextoFin({ lucroPerc, fixoPerc, variavelPerc, impostoPerc, fatMedio });
+    } catch (e) {
+      console.warn('[DeliveryHubScreen.contextoFin]', e?.message || e);
+    }
 
     // Build product cost data
     const ingsByProd = {};
@@ -243,6 +267,14 @@ export default function DeliveryHubScreen({ navigation }) {
     const precoMinimo = sug.precoMinimo;
     const divisorMin = (1 - descontoPct) * (1 - comissaoPct);
 
+    // D-22b (sessão 28.12): preço sugerido COMPLETO usa MESMA fórmula do balcão
+    // (CMV + lucro + custos fixos + variáveis + imposto + comissão + taxa pgto + cupom + frete subsidiado)
+    const sugCompleta = calcSugestaoDeliveryCompleta({
+      cmv: custoUnit,
+      plat,
+      contexto: contextoFin,
+    });
+
     setSimResult({
       prodNome: isComboSel ? prod.nome + ' (Combo)' : prod.nome,
       platNome: plat.plataforma,
@@ -259,7 +291,7 @@ export default function DeliveryHubScreen({ navigation }) {
       margemAlvo,
       precoSugerido: (Number.isFinite(precoSugerido) && precoSugerido > 0) ? precoSugerido : null,
       precoMinimo: (Number.isFinite(precoMinimo) && precoMinimo > 0) ? precoMinimo : null,
-      inviavelPorTaxas: !(Number.isFinite(divisorMin) && divisorMin > 0), // descontos + comissão >= 100%
+      inviavelPorTaxas: !(Number.isFinite(divisorMin) && divisorMin > 0),
       // Intermediate values for breakdown display
       valorDesconto,
       precoComDesconto,
@@ -271,6 +303,9 @@ export default function DeliveryHubScreen({ navigation }) {
       _descontoPct: descontoPct,
       _cupomReais: cupomR$,
       _taxaEntrega: taxaEntregaR$,
+      // D-22b: sugestão completa (mesma fórmula balcão + extras delivery)
+      sugCompleta,
+      contextoFin,
     });
     setPrecoCustom('');
   }
@@ -649,57 +684,51 @@ export default function DeliveryHubScreen({ navigation }) {
                       </View>
                     </View>
 
-                    {/* Suggested prices */}
+                    {/* D-22b (sessão 28.12): preço sugerido COMPLETO + composição transparente */}
                     <View style={styles.suggestedCard}>
-                      <Text style={styles.suggestedTitle}>Preços sugeridos</Text>
-                      {/* Margin input */}
-                      <View style={[styles.suggestedRow, { borderTopWidth: 0 }]}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.suggestedLabel}>Margem desejada</Text>
-                          <Text style={styles.suggestedSub}>Ajuste para recalcular o preço sugerido</Text>
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                          <TextInput
-                            style={[styles.platInput, { width: 60, textAlign: 'center', fontSize: 16, fontFamily: fontFamily.bold }]}
-                            value={margemDesejada}
-                            onChangeText={(v) => {
-                              // Sanitiza: só dígitos, vírgula ou ponto
-                              const cleaned = v.replace(/[^0-9.,]/g, '');
-                              // Clamp 0-100: se valor parseável > 100, trava em 100
-                              const parsed = parseFloat(cleaned.replace(',', '.'));
-                              if (Number.isFinite(parsed) && parsed > 100) {
-                                setMargemDesejada('100');
-                              } else {
-                                setMargemDesejada(cleaned);
-                              }
-                            }}
-                            onBlur={() => { simularPreco(); }}
-                            keyboardType="numeric"
-                            selectTextOnFocus
-                            accessibilityLabel="Margem desejada em porcentagem"
-                            accessibilityHint="Valor entre 0 e 100"
-                          />
-                          <Text style={{ fontSize: 16, fontFamily: fontFamily.bold, color: colors.text }}>%</Text>
-                        </View>
-                      </View>
-                      {simResult.precoSugerido && (
-                        <View style={styles.suggestedRow}>
-                          <View>
-                            <Text style={styles.suggestedLabel}>Para atingir {(simResult.margemAlvo * 100).toFixed(0)}% de margem</Text>
-                            <Text style={styles.suggestedSub}>Preço ideal no delivery</Text>
+                      <Text style={styles.suggestedTitle}>Preço sugerido (mesma margem do balcão)</Text>
+                      <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 15 }}>
+                        Calculado com TODOS os custos do seu negócio: CMV + lucro + custos fixos + variáveis + imposto + comissão da plataforma + taxa pgto online + cupom + frete subsidiado.
+                      </Text>
+                      {simResult.sugCompleta?.validacao?.ok && Number.isFinite(simResult.sugCompleta?.preco) && simResult.sugCompleta.preco > 0 ? (
+                        <>
+                          <View style={[styles.suggestedRow, { borderTopWidth: 0, alignItems: 'center' }]}>
+                            <View>
+                              <Text style={styles.suggestedLabel}>Cobre tudo + lucro do balcão</Text>
+                              <Text style={styles.suggestedSub}>Mantém a mesma margem que você teria no balcão</Text>
+                            </View>
+                            <Text style={[styles.suggestedPrice, { color: colors.success, fontSize: 20 }]}>
+                              {formatCurrency(simResult.sugCompleta.preco)}
+                            </Text>
                           </View>
-                          <Text style={[styles.suggestedPrice, { color: colors.success }]}>{formatCurrency(simResult.precoSugerido)}</Text>
+                          {/* Composição completa */}
+                          <View style={{ backgroundColor: colors.background, borderRadius: 8, padding: 10, marginTop: 8 }}>
+                            <Text style={{ fontSize: 11, fontFamily: fontFamily.bold, color: colors.text, marginBottom: 6 }}>
+                              Composição do preço sugerido:
+                            </Text>
+                            {[
+                              { label: 'CMV (insumos + embalagem)', value: simResult.sugCompleta.cmv },
+                              { label: `Lucro desejado (${((contextoFin.lucroPerc || 0) * 100).toFixed(1)}%)`, value: simResult.sugCompleta.preco * (contextoFin.lucroPerc || 0) },
+                              { label: `Custos fixos (${((contextoFin.fixoPerc || 0) * 100).toFixed(1)}% do faturamento)`, value: simResult.sugCompleta.preco * (contextoFin.fixoPerc || 0) },
+                              { label: `Imposto (${((contextoFin.impostoPerc || 0) * 100).toFixed(1)}%)`, value: simResult.sugCompleta.preco * (contextoFin.impostoPerc || 0) },
+                              { label: `Comissão plataforma (${simResult.comissaoPct.toFixed(1)}%)`, value: simResult.sugCompleta.preco * (simResult.comissaoPct / 100) },
+                              ...(simResult.cupomReais > 0 ? [{ label: 'Cupom recorrente', value: simResult.cupomReais }] : []),
+                              ...(simResult.taxaEntrega > 0 ? [{ label: 'Frete subsidiado', value: simResult.taxaEntrega }] : []),
+                            ].map((row, i) => (
+                              <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
+                                <Text style={{ fontSize: 11, color: colors.textSecondary, flex: 1 }} numberOfLines={1}>{row.label}</Text>
+                                <Text style={{ fontSize: 11, color: colors.text, fontFamily: fontFamily.medium }}>{formatCurrency(row.value)}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        </>
+                      ) : (
+                        <View style={{ padding: 10, backgroundColor: colors.error + '15', borderRadius: 8 }}>
+                          <Text style={{ fontSize: 12, color: colors.error, fontFamily: fontFamily.medium }}>
+                            ⚠️ Custos somam mais de 100% do preço — impossível cobrar mantendo lucro. Reduza comissão, cupom ou custos fixos.
+                          </Text>
                         </View>
                       )}
-                      <View style={styles.suggestedRow}>
-                        <View>
-                          <Text style={styles.suggestedLabel}>Preço mínimo (sem lucro)</Text>
-                          <Text style={styles.suggestedSub}>Apenas cobre os custos</Text>
-                        </View>
-                        <Text style={[styles.suggestedPrice, { color: colors.error }]}>
-                          {Number.isFinite(simResult.precoMinimo) ? formatCurrency(simResult.precoMinimo) : '—'}
-                        </Text>
-                      </View>
                     </View>
                   </View>
                   </View>
@@ -745,60 +774,55 @@ export default function DeliveryHubScreen({ navigation }) {
                       {(() => {
                         const custom = calcCustom();
                         if (!custom) return null;
+                        // Sessão 28.13: composição completa igual ao "Preço sugerido"
+                        // Lucro Líquido = Preço - (CMV + custos fixos + variáveis + impostos + comissão + cupom + frete)
+                        const valLucroDesej = custom.preco * (contextoFin.lucroPerc || 0);
+                        const valFixos = custom.preco * (contextoFin.fixoPerc || 0);
+                        const valImposto = custom.preco * (contextoFin.impostoPerc || 0);
+                        const valComissao = custom.preco * (simResult.comissaoPct / 100);
+                        const totalGastos = simResult.custoUnit + valFixos + valImposto + valComissao + (simResult.cupomReais || 0) + (simResult.taxaEntrega || 0);
+                        const lucroLiquidoReais = custom.preco - totalGastos;
+                        const lucroLiquidoPerc = custom.preco > 0 ? (lucroLiquidoReais / custom.preco) : 0;
                         return (
                           <View style={{ marginTop: spacing.md }}>
-                            <View style={styles.breakdownRow}>
-                              <Text style={styles.breakdownLabel}>Preço na plataforma</Text>
-                              <Text style={[styles.breakdownValue, { fontFamily: fontFamily.bold }]}>{formatCurrency(custom.preco)}</Text>
-                            </View>
-                            <View style={styles.breakdownRow}>
-                              <Text style={styles.breakdownLabel}>Comissão ({simResult.comissaoPct.toFixed(1)}%)</Text>
-                              <Text style={[styles.breakdownValue, { color: colors.error }]}>-{formatCurrency(custom.preco * simResult.comissaoPct / 100)}</Text>
-                            </View>
-                            {simResult.descontoPct > 0 && (
-                              <View style={styles.breakdownRow}>
-                                <Text style={styles.breakdownLabel}>Desconto ({simResult.descontoPct.toFixed(1)}%)</Text>
-                                <Text style={[styles.breakdownValue, { color: colors.error }]}>-{formatCurrency(custom.preco * simResult.descontoPct / 100)}</Text>
+                            <Text style={{ fontSize: 11, fontFamily: fontFamily.bold, color: colors.text, marginBottom: 6 }}>
+                              Composição com este preço:
+                            </Text>
+                            {[
+                              { label: 'Preço cobrado na plataforma', value: custom.preco, bold: true, color: colors.text },
+                              { label: 'CMV (insumos + embalagem)', value: -simResult.custoUnit, color: colors.error },
+                              { label: `Custos fixos (${((contextoFin.fixoPerc || 0) * 100).toFixed(1)}% do faturamento)`, value: -valFixos, color: colors.error },
+                              { label: `Imposto (${((contextoFin.impostoPerc || 0) * 100).toFixed(1)}%)`, value: -valImposto, color: colors.error },
+                              { label: `Comissão plataforma (${simResult.comissaoPct.toFixed(1)}%)`, value: -valComissao, color: colors.error },
+                              ...(simResult.cupomReais > 0 ? [{ label: 'Cupom recorrente', value: -simResult.cupomReais, color: colors.error }] : []),
+                              ...(simResult.taxaEntrega > 0 ? [{ label: 'Frete subsidiado', value: -simResult.taxaEntrega, color: colors.error }] : []),
+                            ].map((row, i) => (
+                              <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                                <Text style={{ fontSize: 12, color: colors.textSecondary, flex: 1, fontFamily: row.bold ? fontFamily.bold : fontFamily.regular }} numberOfLines={1}>{row.label}</Text>
+                                <Text style={{ fontSize: 12, fontFamily: row.bold ? fontFamily.bold : fontFamily.medium, color: row.color || colors.text }}>
+                                  {row.value < 0 ? '-' : ''}{formatCurrency(Math.abs(row.value))}
+                                </Text>
                               </View>
-                            )}
-                            {simResult.cupomReais > 0 && (
-                              <View style={styles.breakdownRow}>
-                                <Text style={styles.breakdownLabel}>Cupom</Text>
-                                <Text style={[styles.breakdownValue, { color: colors.error }]}>-{formatCurrency(simResult.cupomReais)}</Text>
+                            ))}
+                            {/* Lucro líquido em destaque */}
+                            <View style={{ borderTopWidth: 1.5, borderTopColor: colors.border, marginTop: 8, paddingTop: 10 }}>
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Text style={{ fontSize: 13, fontFamily: fontFamily.bold, color: colors.text }}>Lucro líquido /un</Text>
+                                <Text style={{ fontSize: 18, fontFamily: fontFamily.bold, color: lucroLiquidoReais >= 0 ? colors.success : colors.error }}>
+                                  {formatCurrency(lucroLiquidoReais)}
+                                </Text>
                               </View>
-                            )}
-                            {simResult.taxaEntrega > 0 && (
-                              <View style={styles.breakdownRow}>
-                                <Text style={styles.breakdownLabel}>Taxa de entrega</Text>
-                                <Text style={[styles.breakdownValue, { color: colors.error }]}>-{formatCurrency(simResult.taxaEntrega)}</Text>
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                                <Text style={{ fontSize: 12, color: colors.textSecondary }}>Margem líquida</Text>
+                                <Text style={{ fontSize: 14, fontFamily: fontFamily.bold, color: lucroLiquidoPerc >= 0.10 ? colors.success : lucroLiquidoPerc >= 0 ? colors.warning : colors.error }}>
+                                  {(lucroLiquidoPerc * 100).toFixed(1)}%
+                                </Text>
                               </View>
-                            )}
-                            <View style={styles.breakdownRow}>
-                              <Text style={styles.breakdownLabel}>CMV do produto</Text>
-                              <Text style={[styles.breakdownValue, { color: colors.error }]}>-{formatCurrency(simResult.custoUnit)}</Text>
-                            </View>
-                            <View style={[styles.breakdownRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8, marginTop: 4 }]}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                <Text style={[styles.breakdownLabel, { fontFamily: fontFamily.bold }]}>Lucro Bruto /un</Text>
-                                <InfoTooltip
-                                  title="Lucro Bruto por Unidade"
-                                  text="É o valor que sobra após descontar comissões, taxas e custo do produto. Ainda não inclui custos do mês (aluguel, energia, funcionários) nem impostos."
-                                />
-                              </View>
-                              <Text style={[styles.breakdownValue, { fontFamily: fontFamily.bold, color: custom.lucro >= 0 ? colors.success : colors.error }]}>{formatCurrency(custom.lucro)}</Text>
-                            </View>
-                            <View style={styles.breakdownRow}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                <Text style={[styles.breakdownLabel, { fontFamily: fontFamily.bold }]}>Margem</Text>
-                                <InfoTooltip
-                                  title="Margem no Delivery"
-                                  text="Percentual de lucro bruto sobre o preço cobrado na plataforma, após descontar CMV, comissão, cupom e taxa de entrega. Não inclui custos do mês."
-                                  examples={['Acima de 15%: saudável', '5-15%: atenção', 'Abaixo de 5%: revise o preço']}
-                                />
-                              </View>
-                              <Text style={[styles.breakdownValue, { fontFamily: fontFamily.bold, fontSize: 18, color: custom.margem >= 0.15 ? colors.success : custom.margem >= 0.05 ? colors.warning : colors.error }]}>
-                                {(custom.margem * 100).toFixed(1)}%
-                              </Text>
+                              {lucroLiquidoReais < 0 && (
+                                <Text style={{ fontSize: 11, color: colors.error, marginTop: 6, fontStyle: 'italic' }}>
+                                  ⚠️ Você teria PREJUÍZO cobrando este valor. Aumente o preço ou reduza custos.
+                                </Text>
+                              )}
                             </View>
                           </View>
                         );
@@ -812,7 +836,8 @@ export default function DeliveryHubScreen({ navigation }) {
           </>
         )}
 
-        {activeTab === 'visaogeral' && (
+        {/* Sessão 28.12: tab "visaogeral" foi mesclada com "lote" — código antigo desativado */}
+        {false && activeTab === 'visaogeral' && (
           <>
             <View style={styles.infoCard}>
               <Feather name="grid" size={16} color={colors.primary} />
@@ -1106,11 +1131,13 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     borderWidth: 1, borderColor: colors.border,
     overflow: 'hidden',
+    padding: spacing.md,
+    marginTop: spacing.md,
   },
-  suggestedTitle: { fontSize: 13, fontFamily: fontFamily.semiBold, color: colors.text, padding: spacing.md, paddingBottom: spacing.xs },
+  suggestedTitle: { fontSize: 14, fontFamily: fontFamily.bold, color: colors.text, marginBottom: 4 },
   suggestedRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border,
+    paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border,
   },
   suggestedLabel: { fontSize: 13, fontFamily: fontFamily.medium, color: colors.text },
   suggestedSub: { fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.regular, marginTop: 2 },

@@ -119,10 +119,12 @@ export default function ProdutoFormScreen({ route, navigation }) {
   const [editPrecoModal, setEditPrecoModal] = useState(null); // { tipo: 'insumo', ing, idx }
   const [editPrecoValor, setEditPrecoValor] = useState('');
 
-  // D-17: ao abrir modal, popula com o preço atual
+  // D-17/D-18: ao abrir modal, popula com o preço atual
   useEffect(() => {
-    if (editPrecoModal?.ing) {
+    if (editPrecoModal?.tipo === 'insumo' && editPrecoModal?.ing) {
       setEditPrecoValor(String(editPrecoModal.ing.preco_por_kg || ''));
+    } else if (editPrecoModal?.tipo === 'preparo' && editPrecoModal?.pp) {
+      setEditPrecoValor(String(editPrecoModal.pp.custo_por_kg || ''));
     }
   }, [editPrecoModal]);
 
@@ -156,6 +158,47 @@ export default function ProdutoFormScreen({ route, navigation }) {
     } catch (e) {
       console.error('[ProdutoForm.salvarNovoPrecoInsumo]', e);
       Alert.alert('Erro', 'Não foi possível salvar o novo preço.');
+    }
+  }
+
+  // D-18: salva novo custo unitário do preparo (custo_por_kg) e propaga
+  async function salvarNovoPrecoPreparo() {
+    if (!editPrecoModal || editPrecoModal.tipo !== 'preparo') return;
+    const { pp, idx } = editPrecoModal;
+    const novoCusto = parseFloat(String(editPrecoValor).replace(',', '.'));
+    if (!Number.isFinite(novoCusto) || novoCusto < 0) {
+      Alert.alert('Valor inválido', 'Informe um custo válido.');
+      return;
+    }
+    try {
+      const db = await getDatabase();
+      await db.runAsync('UPDATE preparos SET custo_por_kg = ? WHERE id = ?', [novoCusto, pp.preparo_id]);
+      // Atualiza preparosList local pra refletir imediato no form
+      setPreparosList(prev => prev.map(p => p.id === pp.preparo_id ? { ...p, custo_por_kg: novoCusto } : p));
+      setProdutoPreparos(prev => prev.map((it, i) => i === idx ? { ...it, custo_por_kg: novoCusto } : it));
+      // D-19 cascade: produtos+combos que usam esse preparo
+      try {
+        const { cascadeFromPreparo, recalcularTodosCombos } = await import('../services/cascadeRecalc');
+        if (typeof cascadeFromPreparo === 'function') await cascadeFromPreparo(db, pp.preparo_id);
+        await recalcularTodosCombos(db);
+      } catch (_) {}
+      setEditPrecoModal(null);
+      setEditPrecoValor('');
+    } catch (e) {
+      console.error('[ProdutoForm.salvarNovoPrecoPreparo]', e);
+      Alert.alert('Erro', 'Não foi possível salvar o novo custo.');
+    }
+  }
+
+  // D-18: navegar pra tela completa do preparo (preserva edição inline simples + atalho pra full edit)
+  function abrirPreparoCompleto() {
+    if (!editPrecoModal || editPrecoModal.tipo !== 'preparo') return;
+    const preparoId = editPrecoModal.pp.preparo_id;
+    setEditPrecoModal(null);
+    try {
+      navigation.navigate('Preparos', { screen: 'PreparoForm', params: { id: preparoId, returnTo: 'ProdutoForm' } });
+    } catch (e) {
+      try { navigation.navigate('PreparoForm', { id: preparoId }); } catch {}
     }
   }
 
@@ -396,9 +439,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
       try {
         const embs = await db.getAllAsync(
-          `SELECT pe.*, em.nome as em_nome, em.preco_unitario FROM produto_embalagens pe
+          `SELECT pe.*, em.nome as em_nome, em.preco_unitario, em.unidade_medida as em_unidade FROM produto_embalagens pe
            JOIN embalagens em ON em.id = pe.embalagem_id WHERE pe.produto_id = ?`, [editId]);
-        setProdutoEmbalagens((embs || []).map(e => ({ embalagem_id: e.embalagem_id, em_nome: e.em_nome || e.nome, preco_unitario: e.preco_unitario, quantidade_utilizada: e.quantidade_utilizada })));
+        setProdutoEmbalagens((embs || []).map(e => ({ embalagem_id: e.embalagem_id, em_nome: e.em_nome || e.nome, preco_unitario: e.preco_unitario, quantidade_utilizada: e.quantidade_utilizada, unidade: e.em_unidade || 'un' })));
       } catch (e) {
         if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.loadEmbalagens]', e);
         setProdutoEmbalagens([]);
@@ -598,18 +641,28 @@ export default function ProdutoFormScreen({ route, navigation }) {
     showFeedback(setPrepAdicionado);
   }
 
-  function addEmbalagem(itemId, qty) {
+  async function addEmbalagem(itemId, qty) {
     const id = itemId;
     const qtd = parseNum(qty || '1');
     if (!id) return;
-    const em = embalagensList.find(e => e.id === id);
+    // Sessão 28.13: SEMPRE busca do DB pra pegar unidade ATUAL (mesma fix do D-06 pra insumos)
+    let em;
+    try {
+      const db = await getDatabase();
+      em = await db.getFirstAsync('SELECT id, nome, preco_unitario, unidade_medida FROM embalagens WHERE id = ?', [id]);
+    } catch (_) {
+      em = embalagensList.find(e => e.id === id);
+    }
+    if (!em) em = embalagensList.find(e => e.id === id);
     if (!em) return;
-    // If already exists, increment quantity
+    const VALID_UNITS = ['g','kg','mL','L','un'];
+    const unidadeRaw = typeof em.unidade_medida === 'string' ? em.unidade_medida.trim().replace(/^"+|"+$/g, '') : em.unidade_medida;
+    const unidade = VALID_UNITS.includes(unidadeRaw) ? unidadeRaw : 'un';
     const existingIdx = produtoEmbalagens.findIndex(e => e.embalagem_id === id);
     if (existingIdx >= 0) {
-      setProdutoEmbalagens(prev => prev.map((item, i) => i === existingIdx ? { ...item, quantidade_utilizada: item.quantidade_utilizada + qtd } : item));
+      setProdutoEmbalagens(prev => prev.map((item, i) => i === existingIdx ? { ...item, quantidade_utilizada: item.quantidade_utilizada + qtd, unidade } : item));
     } else {
-      setProdutoEmbalagens(prev => [...prev, { embalagem_id: id, em_nome: em.nome, preco_unitario: em.preco_unitario, quantidade_utilizada: qtd }]);
+      setProdutoEmbalagens(prev => [...prev, { embalagem_id: id, em_nome: em.nome, preco_unitario: em.preco_unitario, quantidade_utilizada: qtd, unidade }]);
     }
     showFeedback(setEmbAdicionado);
   }
@@ -1018,7 +1071,17 @@ export default function ProdutoFormScreen({ route, navigation }) {
                       selectTextOnFocus
                     />
                     <Text style={[styles.tableCell, { flex: 0.8, textAlign: 'center' }]}>{unidade}</Text>
-                    <Text style={[styles.tableCellCusto, { flex: 1.2, textAlign: 'right' }]}>{formatCurrency(custoPreparo(pp))}</Text>
+                    {/* D-18: tap no custo abre modal pra editar custo do preparo (cascade) */}
+                    <TouchableOpacity
+                      style={{ flex: 1.2, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}
+                      onPress={() => setEditPrecoModal({ tipo: 'preparo', pp, idx })}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Editar custo do preparo"
+                    >
+                      <Text style={[styles.tableCellCusto, { textAlign: 'right' }]}>{formatCurrency(custoPreparo(pp))}</Text>
+                      <Feather name="edit-2" size={11} color={colors.primary} />
+                    </TouchableOpacity>
                     <TouchableOpacity onPress={() => setProdutoPreparos(prev => prev.filter((_, i) => i !== idx))} style={{ width: 32, alignItems: 'center' }}>
                       <Text style={styles.removeBtn}>✕</Text>
                     </TouchableOpacity>
@@ -1876,38 +1939,78 @@ export default function ProdutoFormScreen({ route, navigation }) {
         })}
       />
 
-      {/* D-17: modal pra editar preço do insumo direto no form do produto (cascade automático) */}
+      {/* D-17/D-18: modal pra editar preço do insumo OU custo do preparo direto no form do produto (cascade automático) */}
       <Modal visible={!!editPrecoModal} transparent animationType="fade" onRequestClose={() => setEditPrecoModal(null)}>
         <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }} onPress={() => setEditPrecoModal(null)}>
-          <Pressable style={{ backgroundColor: '#fff', borderRadius: 12, padding: 20, width: '100%', maxWidth: 400 }} onPress={() => {}}>
-            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
-              Atualizar preço do insumo
-            </Text>
-            <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 16 }}>
-              {editPrecoModal?.ing?.mp_nome} {editPrecoModal?.ing?.mp_marca ? `(${editPrecoModal.ing.mp_marca})` : ''}
-            </Text>
-            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6 }}>
-              Novo preço por {editPrecoModal?.ing?.unidade || 'kg'}
-            </Text>
-            <TextInput
-              style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 16 }}
-              value={editPrecoValor}
-              onChangeText={setEditPrecoValor}
-              keyboardType="decimal-pad"
-              placeholder={String(editPrecoModal?.ing?.preco_por_kg || 0)}
-              autoFocus
-            />
-            <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 12, fontStyle: 'italic' }}>
-              💡 Atualizar aqui muda o preço do insumo em TODA a aplicação (insumos, preparos, produtos, combos).
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TouchableOpacity style={{ flex: 1, padding: 12, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: colors.border }} onPress={() => setEditPrecoModal(null)}>
-                <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={{ flex: 1, padding: 12, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary }} onPress={salvarNovoPrecoInsumo}>
-                <Text style={{ color: '#fff', fontWeight: '700' }}>Salvar e propagar</Text>
-              </TouchableOpacity>
-            </View>
+          <Pressable style={{ backgroundColor: '#fff', borderRadius: 12, padding: 20, width: '100%', maxWidth: 420 }} onPress={() => {}}>
+            {editPrecoModal?.tipo === 'preparo' ? (
+              <>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
+                  Atualizar custo do preparo
+                </Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 16 }}>
+                  {editPrecoModal?.pp?.pr_nome}
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6 }}>
+                  Novo custo por {editPrecoModal?.pp?.unidade || 'kg'}
+                </Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 12 }}
+                  value={editPrecoValor}
+                  onChangeText={setEditPrecoValor}
+                  keyboardType="decimal-pad"
+                  placeholder={String(editPrecoModal?.pp?.custo_por_kg || 0)}
+                  autoFocus
+                />
+                <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 12, fontStyle: 'italic' }}>
+                  💡 O custo do preparo normalmente é recalculado pelos insumos. Editar aqui sobrescreve o valor e propaga em TODOS os produtos/combos que usam.
+                </Text>
+                <TouchableOpacity onPress={abrirPreparoCompleto} style={{ paddingVertical: 8, marginBottom: 12 }}>
+                  <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13, textAlign: 'center' }}>
+                    ✏️ Editar receita completa do preparo →
+                  </Text>
+                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity style={{ flex: 1, padding: 12, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: colors.border }} onPress={() => setEditPrecoModal(null)}>
+                    <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={{ flex: 1, padding: 12, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary }} onPress={salvarNovoPrecoPreparo}>
+                    <Text style={{ color: '#fff', fontWeight: '700' }}>Salvar e propagar</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
+                  Atualizar preço do insumo
+                </Text>
+                <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 16 }}>
+                  {editPrecoModal?.ing?.mp_nome} {editPrecoModal?.ing?.mp_marca ? `(${editPrecoModal.ing.mp_marca})` : ''}
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6 }}>
+                  Novo preço por {editPrecoModal?.ing?.unidade || 'kg'}
+                </Text>
+                <TextInput
+                  style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 16 }}
+                  value={editPrecoValor}
+                  onChangeText={setEditPrecoValor}
+                  keyboardType="decimal-pad"
+                  placeholder={String(editPrecoModal?.ing?.preco_por_kg || 0)}
+                  autoFocus
+                />
+                <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 12, fontStyle: 'italic' }}>
+                  💡 Atualizar aqui muda o preço do insumo em TODA a aplicação (insumos, preparos, produtos, combos).
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity style={{ flex: 1, padding: 12, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: colors.border }} onPress={() => setEditPrecoModal(null)}>
+                    <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={{ flex: 1, padding: 12, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary }} onPress={salvarNovoPrecoInsumo}>
+                    <Text style={{ color: '#fff', fontWeight: '700' }}>Salvar e propagar</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
