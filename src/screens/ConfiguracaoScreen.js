@@ -342,9 +342,13 @@ export default function ConfiguracaoScreen() {
       // APP-33 — Pró-labore tem placeholder com salário mínimo + valor inicial sugerido
       const isProLabore = descricao.toLowerCase().includes('pró-labore') || descricao.toLowerCase().includes('pro-labore');
       const placeholderInicial = isProLabore ? String(SALARIO_MINIMO_VIGENTE).replace('.', ',') : '0,00';
+      // D-13: ao abrir modal pra pró-labore, título traz a explicação
+      const tituloModal = isProLabore
+        ? `${descricao}  💡 Quanto você se paga pelo trabalho. Sugestão: ${SALARIO_MINIMO_FMT}+`
+        : descricao;
       setTimeout(() => {
         setCurrencyModal({
-          title: descricao, value: '0', prefix: 'R$', placeholder: placeholderInicial,
+          title: tituloModal, value: '0', prefix: 'R$', placeholder: placeholderInicial,
           onConfirm: async (val) => {
             const parsed = parseNum(val);
             const v = Number.isFinite(parsed) ? parsed : 0;
@@ -745,17 +749,24 @@ export default function ConfiguracaoScreen() {
                       suffix: '%',
                       // APP-30 — placeholder dinâmico baseado no segmento
                       placeholder: sug.label,
-                      onConfirm: (val) => {
+                      onConfirm: async (val) => {
                         setMargemSeguranca(val);
                         setCurrencyModal(null);
-                        const parsed = parseFloat(val.replace(',', '.'));
-                        // APP-30 — só persiste se válido (não-negativo). >30% PERSISTE também (vira só warning visual)
-                        if (!isNaN(parsed) && parsed >= 0) {
-                          getDatabase().then(db => {
-                            db.runAsync('UPDATE configuracao SET margem_seguranca = ? WHERE id > 0', [parsed / 100]);
-                            showSaved('Margem de segurança salva');
-                            loadData();
-                          });
+                        // D-04: parse robusto + remove "%" se vier do input + log de erro pro usuário
+                        const cleanVal = String(val).replace(/[^\d,.\-]/g, '').replace(',', '.');
+                        const parsed = parseFloat(cleanVal);
+                        if (isNaN(parsed) || parsed < 0) {
+                          Alert.alert('Valor inválido', 'A margem de segurança não pode ser negativa.');
+                          return;
+                        }
+                        try {
+                          const db = await getDatabase();
+                          await db.runAsync('UPDATE configuracao SET margem_seguranca = ? WHERE id > 0', [parsed / 100]);
+                          showSaved('Margem de segurança salva');
+                          await loadData();
+                        } catch (e) {
+                          console.error('[ConfiguracaoScreen.salvarMargemSeguranca]', e);
+                          showError('Falha ao salvar margem de segurança. Tente de novo.');
                         }
                       },
                     })}
@@ -916,94 +927,14 @@ export default function ConfiguracaoScreen() {
                     {formatCurrency((faturamento || []).reduce((acc, f) => acc + (Number.isFinite(f.valor) ? f.valor : 0), 0))}
                   </Text>
                 </View>
-                {/* APP-31 — botão "Replicar para todos os meses" usando o último valor preenchido */}
-                {mesesComFat.length > 0 && (
-                  <TouchableOpacity
-                    style={s.replicarBtn}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      const ultimo = mesesComFat[mesesComFat.length - 1];
-                      if (!ultimo || !(ultimo.valor > 0)) return;
-                      Alert.alert(
-                        'Replicar valor',
-                        `Aplicar ${formatCurrency(ultimo.valor)} (${ultimo.mes}) para TODOS os 12 meses? Vai sobrescrever os valores que você já preencheu nos outros meses.`,
-                        [
-                          { text: 'Cancelar', style: 'cancel' },
-                          { text: 'Replicar', onPress: async () => {
-                            const db = await getDatabase();
-                            for (const f of faturamento) {
-                              await db.runAsync('UPDATE faturamento_mensal SET valor = ? WHERE id = ?', [ultimo.valor, f.id]);
-                            }
-                            showSaved('Replicado para todos os meses');
-                            loadData();
-                          } },
-                        ]
-                      );
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Replicar último valor para todos os meses"
-                  >
-                    <Feather name="copy" size={12} color={colors.primary} style={{ marginRight: 6 }} />
-                    <Text style={s.replicarBtnText}>Replicar valor para todos os meses</Text>
-                  </TouchableOpacity>
-                )}
+                {/* D-11: botão "Replicar valor para todos os meses" removido (Daniele
+                    achou que não fazia sentido). Quem quer mesmo valor em tudo usa o
+                    modo "Faturamento médio mensal". */}
               </View>
             )}
 
-            {/* APP-43 — Volumes de venda por canal (opcional, dentro do step de Faturamento) */}
-            <View style={[s.subSection, { marginTop: spacing.md }]}>
-              <View style={s.subSectionHeader}>
-                <Feather name="bar-chart-2" size={14} color={colors.info} />
-                <Text style={s.subSectionTitle}>Volume de vendas por canal (opcional)</Text>
-                <InfoTooltip
-                  title="Volume de vendas"
-                  text="Informe quantas unidades vende por mês em cada canal. Usamos pra calcular ticket médio, custo fixo por venda e separar a saúde do balcão vs delivery no painel."
-                  examples={['150 unidades/mês no balcão', '80 unidades/mês via iFood']}
-                />
-              </View>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TouchableOpacity
-                  style={[s.inlineValueBtn, { flex: 1 }]}
-                  activeOpacity={0.7}
-                  onPress={() => setCurrencyModal({
-                    title: 'Vendas/mês — Balcão',
-                    value: vendasBalcao,
-                    suffix: ' un',
-                    placeholder: '0',
-                    onConfirm: (val) => {
-                      setVendasBalcao(val);
-                      setCurrencyModal(null);
-                      salvarVendasCanal('balcao', val);
-                    },
-                  })}
-                >
-                  <Text style={s.fieldHint}>Balcão</Text>
-                  <Text style={[s.inlineValueText, parseInt(vendasBalcao, 10) > 0 && s.inlineValueTextFilled]}>
-                    {vendasBalcao ? `${vendasBalcao} un/mês` : '—'}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.inlineValueBtn, { flex: 1 }]}
-                  activeOpacity={0.7}
-                  onPress={() => setCurrencyModal({
-                    title: 'Vendas/mês — Delivery',
-                    value: vendasDelivery,
-                    suffix: ' un',
-                    placeholder: '0',
-                    onConfirm: (val) => {
-                      setVendasDelivery(val);
-                      setCurrencyModal(null);
-                      salvarVendasCanal('delivery', val);
-                    },
-                  })}
-                >
-                  <Text style={s.fieldHint}>Delivery</Text>
-                  <Text style={[s.inlineValueText, parseInt(vendasDelivery, 10) > 0 && s.inlineValueTextFilled]}>
-                    {vendasDelivery ? `${vendasDelivery} un/mês` : '—'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+            {/* D-10: Volume de vendas por canal removido (Daniele achou esquisito).
+                Dados ainda persistem no schema (não quebra nada) — só não exibimos UI. */}
           </View>
         </View>
 
@@ -1040,36 +971,14 @@ export default function ConfiguracaoScreen() {
                 <View style={s.suggestionsList}>
                   <Text style={s.suggestionsLabel}>Selecione para adicionar:</Text>
                   <View style={s.suggestionsRow}>
-                    {disponiveis.map(sug => {
-                      // APP-33 — chip de Pró-labore tem InfoTooltip explicativo do conceito
-                      const isProLabore = sug.toLowerCase().includes('pró-labore') || sug.toLowerCase().includes('pro-labore');
-                      return (
-                        <View key={sug} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <TouchableOpacity style={s.suggestionChip} onPress={() => adicionarSugestaoFixa(sug)}>
-                            <Feather name="plus" size={12} color={colors.primary} />
-                            <Text style={s.suggestionChipText}>{sug}</Text>
-                          </TouchableOpacity>
-                          {isProLabore && (
-                            <View style={{ marginLeft: 4 }}>
-                              <InfoTooltip
-                                title="Pró-labore"
-                                text={
-                                  'É o valor que você se paga pelo seu trabalho no negócio. Mesmo sendo dono(a), seu trabalho tem custo — e ele precisa estar no preço dos seus produtos.\n\n' +
-                                  `Sugestão mínima: salário mínimo vigente (${SALARIO_MINIMO_FMT}).\n` +
-                                  'Sugestão saudável: o que você ganharia trabalhando para outra pessoa fazendo a mesma coisa.\n\n' +
-                                  'Não confunda com lucro: lucro é o que sobra DEPOIS de pagar todos os custos, incluindo seu pró-labore.'
-                                }
-                                examples={[
-                                  `Mínimo: ${SALARIO_MINIMO_FMT}`,
-                                  'Confeiteiro autônomo: R$ 2.500-4.000',
-                                  'Pizzaiolo experiente: R$ 3.000-5.500',
-                                ]}
-                              />
-                            </View>
-                          )}
-                        </View>
-                      );
-                    })}
+                    {disponiveis.map(sug => (
+                      // D-13: tooltip de pró-labore movido pro modal que abre ao clicar
+                      // (estava esquisito ao lado do chip). Aqui só o chip clean.
+                      <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoFixa(sug)}>
+                        <Feather name="plus" size={12} color={colors.primary} />
+                        <Text style={s.suggestionChipText}>{sug}</Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 </View>
               );
@@ -1176,8 +1085,18 @@ export default function ConfiguracaoScreen() {
               <Text style={s.stepTitle}>Custos por venda</Text>
               <InfoTooltip
                 title="O que são Custos por venda?"
-                text="São porcentagens que somem da sua venda toda vez que alguém compra: imposto, taxa do cartão, taxa do iFood, comissão... quanto mais você vende, mais sai. Coloque o percentual médio que costuma pagar."
-                examples={['Imposto (Simples Nacional)', 'Taxa do cartão de crédito', 'Taxa do PIX', 'Comissão do iFood', 'Comissão de vendedor']}
+                text={
+                  'São porcentagens que somam da sua venda toda vez que alguém compra: imposto, taxa do cartão, etc.\n\n' +
+                  '⚠️ IMPORTANTE — Taxas do cartão (maquininha):\n' +
+                  'NÃO cadastre as taxas de débito e crédito separadas. Se você cadastrar as duas, o sistema vai aplicar AS DUAS sobre cada produto e o preço vai ficar errado.\n\n' +
+                  'Use só UMA "Taxa maquininha (média)" considerando o seu mix de pagamentos. Por exemplo, se você vende 60% no crédito (3,5%) e 40% no débito (1,5%), a média é 2,7%.'
+                }
+                examples={[
+                  'Imposto (Simples Nacional): 4-6%',
+                  'Taxa maquininha (MÉDIA do seu mix): 2-4%',
+                  'Taxa PIX (se cobra): 0,5-1%',
+                  'Comissão de vendedor: 5-10%',
+                ]}
               />
             </View>
             {totalVariaveis > 0 && (
@@ -1367,8 +1286,8 @@ export default function ConfiguracaoScreen() {
         )}
       </ScrollView>
 
-      {/* APP-11: footer fixo com CTA explícito de "Salvar" pra dar segurança ao usuário.
-          Os dados já são salvos automaticamente; este botão serve como confirmação visual + atalho pra voltar. */}
+      {/* APP-11/D-03: footer fixo com CTA. Sempre vai pro Painel Geral (tab Home),
+          não pra goBack que caía em tela aleatória dependendo do stack. */}
       <View style={s.stickyFooter} pointerEvents="box-none">
         <TouchableOpacity
           style={s.stickyFooterBtn}
@@ -1377,9 +1296,19 @@ export default function ConfiguracaoScreen() {
             showSaved('Tudo salvo!');
             setTimeout(() => {
               try {
-                if (navigation && navigation.canGoBack && navigation.canGoBack()) navigation.goBack();
-                else if (navigation && navigation.navigate) navigation.navigate('Home');
-              } catch (_) {}
+                // D-03: navegação determinística pro Painel Geral (tab Home).
+                // Antes usava goBack que voltava pra tela aleatória do histórico.
+                if (navigation && navigation.navigate) {
+                  // jumpTo pra trocar de tab no BottomTab (mais confiável que navigate quando estamos em sub-stack)
+                  if (navigation.jumpTo) {
+                    navigation.jumpTo('Home');
+                  } else {
+                    navigation.navigate('Home');
+                  }
+                }
+              } catch (e) {
+                console.warn('[ConfiguracaoScreen.salvarVoltar]', e);
+              }
             }, 600);
           }}
           accessibilityRole="button"

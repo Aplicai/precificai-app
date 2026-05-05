@@ -10,6 +10,8 @@ import useFeatureFlag from '../hooks/useFeatureFlag';
 // inline que só funcionava no web). No mobile, usa expo-file-system + expo-sharing
 // se instalados; senão mostra instrução de instalação (fail-soft).
 import { exportarBackupJSON } from '../services/backupService';
+// D-02: botão sair da conta no mobile
+import { useAuth } from '../contexts/AuthContext';
 
 // Versão dinâmica via expoConfig (em vez de hardcoded — evita desync após release).
 const APP_VERSION = Constants?.expoConfig?.version || Constants?.manifest?.version || '1.0.0';
@@ -87,6 +89,29 @@ function FlagToggleRow({ icon, materialIcon, label, desc, value, onChange }) {
 export default function ConfiguracoesScreen({ navigation }) {
   const [exporting, setExporting] = useState(false);
   const { density, setDensity } = useListDensity();
+  // D-02: signOut function pra botão sair da conta
+  const { signOut, user } = useAuth();
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function handleLogout() {
+    if (signingOut) return;
+    const confirmar = Platform.OS === 'web'
+      ? window.confirm('Sair da sua conta?')
+      : await new Promise(resolve => Alert.alert(
+          'Sair da conta',
+          'Tem certeza que quer sair? Seus dados ficam salvos e você pode entrar de novo a qualquer momento.',
+          [
+            { text: 'Cancelar', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Sair', style: 'destructive', onPress: () => resolve(true) },
+          ]
+        ));
+    if (!confirmar) return;
+    setSigningOut(true);
+    try { await signOut(); } catch (e) {
+      console.error('[ConfiguracoesScreen.handleLogout]', e);
+      setSigningOut(false);
+    }
+  }
   // Sessão 26: feature flags do modo avançado.
   const [estoqueOn, setEstoqueOn] = useFeatureFlag('modo_avancado_estoque');
   const [analiseOn, setAnaliseOn] = useFeatureFlag('modo_avancado_analise');
@@ -427,6 +452,22 @@ export default function ConfiguracoesScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
+      {/* D-02: botão sair da conta */}
+      <TouchableOpacity
+        style={styles.logoutBtn}
+        onPress={handleLogout}
+        disabled={signingOut}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel="Sair da conta"
+      >
+        <Feather name="log-out" size={16} color={colors.error} style={{ marginRight: 8 }} />
+        <Text style={styles.logoutBtnText}>{signingOut ? 'Saindo...' : 'Sair da conta'}</Text>
+      </TouchableOpacity>
+      {user?.email ? (
+        <Text style={styles.loggedAs}>Conectado como {user.email}</Text>
+      ) : null}
+
       <Text style={styles.version}>PrecificaApp v{APP_VERSION}</Text>
 
     </ScrollView>
@@ -488,6 +529,24 @@ const styles = StyleSheet.create({
     fontSize: fonts.regular, fontWeight: '700', color: colors.primary,
   },
   version: { fontSize: fonts.tiny, color: colors.disabled, textAlign: 'center', marginTop: spacing.lg },
+  // D-02: botão sair da conta
+  logoutBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.error + '0F',
+    borderWidth: 1, borderColor: colors.error + '40',
+    borderRadius: borderRadius.md,
+    paddingVertical: 14, paddingHorizontal: spacing.lg,
+    marginTop: spacing.lg, marginBottom: spacing.sm,
+    minHeight: 48,
+  },
+  logoutBtnText: {
+    color: colors.error, fontFamily: fontFamily.bold,
+    fontSize: fonts.regular, fontWeight: '700',
+  },
+  loggedAs: {
+    fontSize: fonts.tiny, color: colors.textSecondary,
+    textAlign: 'center', marginBottom: spacing.sm,
+  },
   aparenciaSection: {
     backgroundColor: colors.surface,
     borderRadius: borderRadius.md,

@@ -56,6 +56,8 @@ export default function DeliveryPrecosScreen() {
   const [expandedCats, setExpandedCats] = useState({});
   const [expandedItems, setExpandedItems] = useState({});
   const [customPrices, setCustomPrices] = usePersistedState('deliveryPrecos.customPrices', {});
+  // D-22: preços salvos no DB por produto×plataforma (substitui customPrices local quando preenchido)
+  const [precosSalvos, setPrecosSalvos] = useState({}); // { `${produto_id}-${plataforma_id}`: preco }
   const [showLegend, setShowLegend] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [inviabilidadeInfo, setInviabilidadeInfo] = useState(null);
@@ -107,6 +109,14 @@ export default function DeliveryPrecosScreen() {
 
     setPlataformas(plats);
     setCategorias(cats);
+
+    // D-22: carrega preços salvos por produto×plataforma
+    try {
+      const precos = await db.getAllAsync('SELECT produto_id, plataforma_id, preco_venda FROM produto_preco_delivery');
+      const map = {};
+      (precos || []).forEach(p => { map[`${p.produto_id}-${p.plataforma_id}`] = p.preco_venda; });
+      setPrecosSalvos(map);
+    } catch (_) { /* tabela pode não existir ainda */ }
 
     // APP-25: monta contexto financeiro
     try {
@@ -266,14 +276,40 @@ export default function DeliveryPrecosScreen() {
     setCustomPrices(prev => ({ ...prev, [`${itemId}-${platId}`]: value }));
   }
 
+  // D-22: salva preço no DB (persiste por produto×plataforma)
+  async function salvarPrecoDelivery(itemId, platId, value) {
+    const preco = parseFloat(String(value).replace(',', '.'));
+    if (!Number.isFinite(preco) || preco < 0) {
+      Alert.alert('Valor inválido', 'Informe um preço válido.');
+      return;
+    }
+    try {
+      const db = await getDatabase();
+      // Upsert manual (compatível com SQLite + Supabase)
+      const existing = await db.getFirstAsync('SELECT id FROM produto_preco_delivery WHERE produto_id = ? AND plataforma_id = ?', [itemId, platId]);
+      if (existing) {
+        await db.runAsync('UPDATE produto_preco_delivery SET preco_venda = ?, updated_at = ? WHERE id = ?', [preco, new Date().toISOString(), existing.id]);
+      } else {
+        await db.runAsync('INSERT INTO produto_preco_delivery (produto_id, plataforma_id, preco_venda) VALUES (?, ?, ?)', [itemId, platId, preco]);
+      }
+      setPrecosSalvos(prev => ({ ...prev, [`${itemId}-${platId}`]: preco }));
+      // Limpa customPrice local pra não conflitar
+      setCustomPrices(prev => { const n = { ...prev }; delete n[`${itemId}-${platId}`]; return n; });
+    } catch (e) {
+      console.error('[DeliveryPrecosScreen.salvarPrecoDelivery]', e);
+      Alert.alert('Erro', 'Não foi possível salvar o preço. Verifique se a migration foi aplicada.');
+    }
+  }
+
   function getEffectivePrice(itemId, platId, suggestedPrice) {
     const key = `${itemId}-${platId}`;
+    // D-22: prioridade — input local (não-salvo) > preço salvo no DB > sugerido
     const custom = customPrices[key];
     if (custom !== undefined && custom !== '') {
       const parsed = parseInputNumber(custom);
       if (parsed !== null && parsed >= 0) return parsed;
     }
-    // suggestedPrice pode ser null (inviável) — preserva null
+    if (precosSalvos[key] != null && precosSalvos[key] >= 0) return precosSalvos[key];
     return suggestedPrice;
   }
 
@@ -477,21 +513,41 @@ export default function DeliveryPrecosScreen() {
             <View style={styles.priceStackRow}>
               <Text style={styles.priceStackLabel}>Preço Delivery:</Text>
               <View style={{ flex: 1, marginLeft: 12, maxWidth: 140 }}>
-                <InputField
-                  value={
-                    customPrices[customKey] !== undefined
-                      ? String(customPrices[customKey])
-                      : (precoSugerido !== null && Number.isFinite(precoSugerido))
-                        ? String(precoSugerido.toFixed(2).replace('.', ','))
-                        : ''
-                  }
-                  onChangeText={(val) => handleCustomPrice(item.id, plat.id, val)}
-                  keyboardType="numeric"
-                  placeholder="0,00"
-                  style={styles.deliveryInput}
-                  inputStyle={styles.deliveryInputField}
-                  accessibilityLabel={`Preço delivery em ${plat.plataforma} para ${item.nome}`}
-                />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <InputField
+                    value={
+                      customPrices[customKey] !== undefined
+                        ? String(customPrices[customKey])
+                        : precosSalvos[customKey] != null
+                          ? String(precosSalvos[customKey].toFixed(2).replace('.', ','))
+                          : (precoSugerido !== null && Number.isFinite(precoSugerido))
+                            ? String(precoSugerido.toFixed(2).replace('.', ','))
+                            : ''
+                    }
+                    onChangeText={(val) => handleCustomPrice(item.id, plat.id, val)}
+                    keyboardType="decimal-pad"
+                    placeholder="0,00"
+                    style={[styles.deliveryInput, { flex: 1 }]}
+                    inputStyle={styles.deliveryInputField}
+                    accessibilityLabel={`Preço delivery em ${plat.plataforma} para ${item.nome}`}
+                  />
+                  {/* D-22: botão "Salvar" pra persistir como preço oficial */}
+                  {customPrices[customKey] !== undefined && customPrices[customKey] !== '' && (
+                    <TouchableOpacity
+                      style={{ paddingHorizontal: 8, paddingVertical: 6, backgroundColor: colors.primary, borderRadius: 6 }}
+                      onPress={() => salvarPrecoDelivery(item.id, plat.id, customPrices[customKey])}
+                      accessibilityRole="button"
+                      accessibilityLabel="Salvar como preço oficial desta plataforma"
+                    >
+                      <Feather name="check" size={12} color="#fff" />
+                    </TouchableOpacity>
+                  )}
+                  {precosSalvos[customKey] != null && customPrices[customKey] === undefined && (
+                    <View style={{ paddingHorizontal: 4 }}>
+                      <Feather name="check-circle" size={12} color={colors.success} />
+                    </View>
+                  )}
+                </View>
               </View>
             </View>
             <View style={styles.priceStackRow}>
@@ -577,6 +633,20 @@ export default function DeliveryPrecosScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+
+      {/* D-25: cabeçalho educativo explicando como funciona o preço delivery */}
+      <View style={styles.eduCard}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+          <Feather name="info" size={14} color={colors.primary} style={{ marginRight: 6 }} />
+          <Text style={styles.eduTitle}>Como o preço delivery é calculado</Text>
+        </View>
+        <Text style={styles.eduText}>
+          O preço sugerido considera <Text style={{ fontWeight: '700' }}>tudo</Text> do seu negócio: CMV do produto + custos fixos + impostos + comissão da plataforma + taxa de pagamento online + cupons + frete subsidiado. Tudo somado pra você ter <Text style={{ fontWeight: '700' }}>o mesmo lucro líquido</Text> do balcão, mesmo vendendo no iFood.
+        </Text>
+        <Text style={[styles.eduText, { marginTop: 6 }]}>
+          Você pode ajustar o preço manualmente na caixa de cada plataforma e clicar em <Text style={{ fontWeight: '700' }}>Salvar</Text> pra usar como preço oficial. Se deixar em branco, o sistema usa o sugerido.
+        </Text>
+      </View>
 
       {loadError && (
         <View
@@ -1119,6 +1189,17 @@ const styles = StyleSheet.create({
   },
   deliveryInput: { marginBottom: 0 },
   deliveryInputField: { paddingVertical: spacing.xs, fontSize: fonts.small },
+  // D-25 — cabeçalho educativo no topo da tela
+  eduCard: {
+    backgroundColor: colors.primary + '0A',
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  eduTitle: { fontSize: 13, fontFamily: fontFamily.bold, color: colors.text },
+  eduText: { fontSize: 12, color: colors.textSecondary, lineHeight: 17 },
   lucroValue: {
     fontSize: fonts.small,
     fontFamily: fontFamily.bold,

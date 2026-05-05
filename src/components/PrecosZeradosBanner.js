@@ -39,10 +39,11 @@ export default function PrecosZeradosBanner() {
         }
         if (!cancelled) setDismissed(false);
 
-        // 2. Conta insumos com valor_pago = 0 (ou nulo)
+        // 2. D-26: Conta insumos zerados OU com valor estimado pelo Kit
+        // (após APP-14, kit popula com valores médios + marca = '__VALOR_ESTIMADO_KIT__')
         const db = await getDatabase();
         const rows = await db.getAllAsync(
-          'SELECT COUNT(*) as zerados FROM materias_primas WHERE valor_pago IS NULL OR valor_pago = 0'
+          "SELECT COUNT(*) as zerados FROM materias_primas WHERE valor_pago IS NULL OR valor_pago = 0 OR marca = '__VALOR_ESTIMADO_KIT__'"
         );
         const total = await db.getAllAsync('SELECT COUNT(*) as total FROM materias_primas');
         const count = (rows && rows[0] && (rows[0].zerados ?? rows[0].count ?? 0)) || 0;
@@ -83,13 +84,13 @@ export default function PrecosZeradosBanner() {
       <Feather name="alert-circle" size={16} color="#B45309" style={{ marginRight: spacing.sm }} />
       <View style={styles.body}>
         <Text style={styles.title}>
-          Atualize os preços dos insumos
+          Confira os preços dos seus insumos
           {info.total > 0 && (
-            <Text style={styles.titleCount}>  ({info.count} de {info.total} sem preço)</Text>
+            <Text style={styles.titleCount}>  ({info.count} de {info.total} estão estimados)</Text>
           )}
         </Text>
         <Text style={styles.desc}>
-          Os preços do Kit vieram zerados — coloque os valores reais do seu fornecedor pra ver custos e margens corretos.
+          Os valores do Kit são médias de mercado — ajuste com os preços reais do seu fornecedor pra ver custos e margens corretos.
         </Text>
       </View>
       <TouchableOpacity

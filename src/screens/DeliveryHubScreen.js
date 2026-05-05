@@ -18,6 +18,8 @@ import SearchBar from '../components/SearchBar';
 import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem } from '../utils/calculations';
 // Sprint 2 S3 — fonte única da verdade para precificação delivery (substitui fórmula inline duplicada).
 import { calcResultadoDelivery, sugerirPrecoDelivery } from '../utils/deliveryPricing';
+// D-24: simulador em lote renderiza inline dentro do hub
+import SimuladorLoteScreen from './SimuladorLoteScreen';
 
 const isWeb = Platform.OS === 'web';
 
@@ -34,8 +36,8 @@ function safeNum(v) {
 const TABS = [
   { key: 'plataformas', label: 'Plataformas', icon: 'smartphone' },
   { key: 'simulador', label: 'Simulador de Preço', icon: 'trending-up' },
-  // APP-28: simulador em lote — todos produtos × todas plataformas em uma tabela
-  { key: 'lote', label: 'Simulador em Lote', icon: 'grid', navigateTo: 'SimuladorLote' },
+  // D-24: simulador em lote agora renderiza INLINE dentro do DeliveryHub (não abre nova rota)
+  { key: 'lote', label: 'Simulador em Lote', icon: 'grid' },
   { key: 'visaogeral', label: 'Visão Geral', icon: 'grid' },
 ];
 
@@ -339,11 +341,6 @@ export default function DeliveryHubScreen({ navigation }) {
               key={tab.key}
               style={[styles.tab, isActive && styles.tabActive]}
               onPress={() => {
-                // APP-28: tab "lote" navega pra tela própria do simulador em lote
-                if (tab.navigateTo) {
-                  navigation.navigate(tab.navigateTo);
-                  return;
-                }
                 setActiveTab(tab.key);
                 if (tab.key === 'simulador' || tab.key === 'visaogeral') {
                   loadData();
@@ -499,6 +496,11 @@ export default function DeliveryHubScreen({ navigation }) {
               )}
             </View>
           </>
+        )}
+
+        {/* D-24: simulador em lote inline (sem trocar de tela) */}
+        {activeTab === 'lote' && (
+          <SimuladorLoteScreen />
         )}
 
         {activeTab === 'simulador' && (

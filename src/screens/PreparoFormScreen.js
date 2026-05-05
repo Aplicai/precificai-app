@@ -497,7 +497,15 @@ export default function PreparoFormScreen({ route, navigation }) {
                     accessibilityRole="button"
                     accessibilityLabel={`Editar ${formatIngLabel(ing) || formatInsumoLabel(mp)}, ${ing.quantidade_utilizada} ${unidade}`}
                   >
-                    <Text style={[styles.ingCell, { flex: 2 }]} numberOfLines={1}>{formatIngLabel(ing) || formatInsumoLabel(mp)}</Text>
+                    {/* D-16: nome em cima, marca embaixo em itálico — distingue insumos parecidos de marcas diferentes */}
+                    <View style={{ flex: 2 }}>
+                      <Text style={styles.ingCell} numberOfLines={1}>{ing.mp_nome || mp?.nome || ''}</Text>
+                      {(ing.mp_marca || mp?.marca) ? (
+                        <Text style={{ fontSize: 11, color: colors.textSecondary, fontStyle: 'italic' }} numberOfLines={1}>
+                          {ing.mp_marca || mp?.marca}
+                        </Text>
+                      ) : null}
+                    </View>
                     <Text style={[styles.ingCell, { flex: 1, textAlign: 'center' }]}>{ing.quantidade_utilizada}</Text>
                     <Text style={[styles.ingCell, { flex: 1, textAlign: 'center' }]}>{unidade}</Text>
                     <Text style={[styles.ingCellCusto, { flex: 1.2, textAlign: 'right' }]}>{formatCurrency(custo)}</Text>

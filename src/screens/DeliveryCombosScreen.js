@@ -668,22 +668,22 @@ export default function DeliveryCombosScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Métricas em grid 2x2 */}
+        {/* D-30: métricas alinhadas com card de produto (CMV / Sugerido / Lucro Líquido / Margem Líq.) */}
         <View style={styles.comboCardV2Metrics}>
           <View style={styles.comboCardV2Metric}>
             <Text style={styles.comboCardV2MetricLabel}>CMV</Text>
             <Text style={styles.comboCardV2MetricValue}>{formatCurrency(custoC)}</Text>
           </View>
           <View style={styles.comboCardV2Metric}>
-            <Text style={styles.comboCardV2MetricLabel}>Preço</Text>
-            <Text style={[styles.comboCardV2MetricValue, { fontWeight: '700' }]}>{formatCurrency(precoV)}</Text>
+            <Text style={styles.comboCardV2MetricLabel}>Preço de Venda</Text>
+            <Text style={[styles.comboCardV2MetricValue, { fontWeight: '700', color: colors.primary }]}>{formatCurrency(precoV)}</Text>
           </View>
           <View style={styles.comboCardV2Metric}>
-            <Text style={styles.comboCardV2MetricLabel}>Lucro/un</Text>
+            <Text style={styles.comboCardV2MetricLabel}>Lucro Líquido</Text>
             <Text style={[styles.comboCardV2MetricValue, { color: lucro >= 0 ? colors.success : colors.error }]}>{formatCurrency(lucro)}</Text>
           </View>
           <View style={styles.comboCardV2Metric}>
-            <Text style={styles.comboCardV2MetricLabel}>Margem</Text>
+            <Text style={styles.comboCardV2MetricLabel}>Margem Líq.</Text>
             <View style={[styles.comboCardV2Badge, { backgroundColor: margemColor + '15' }]}>
               <Text style={[styles.comboCardV2BadgeText, { color: margemColor }]}>
                 {precoV > 0 ? `${margem.toFixed(1)}%` : '—'}

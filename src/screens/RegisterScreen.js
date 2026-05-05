@@ -9,7 +9,9 @@ import useRateLimit from '../hooks/useRateLimit';
 import { mapAuthError } from '../utils/authErrors';
 import { parseRateLimitSeconds } from '../utils/parseRateLimit';
 
-const MIN_PASSWORD_LENGTH = 6;
+// D-01: alinhar com checklist visual exibido ao usuário (8 chars + maiúscula + minúscula + número).
+// Símbolo é recomendado mas não obrigatório.
+const MIN_PASSWORD_LENGTH = 8;
 // Sessão 28.9 — APP-03: relaxado de 2→1 (zxcvbn 0..4). Antes "teste2026*" era
 // bloqueado, frustrando user. Score 1 = "weak mas aceitável" (deixa user
 // decidir), bloqueia só score 0 (top-100 senhas comuns tipo "123456").
@@ -125,15 +127,16 @@ export default function RegisterScreen({ navigation }) {
       return;
     }
     if (password.length < MIN_PASSWORD_LENGTH) {
-      // Audit P1: não expor regra exata (security through ambiguity ajuda contra brute-force)
-      setError('Senha muito curta. Use uma senha mais segura para proteger sua conta.');
+      setError(`A senha precisa de pelo menos ${MIN_PASSWORD_LENGTH} caracteres.`);
       return;
     }
-    // Bloqueio por força (zxcvbn): exige score mínimo "razoável" (2).
-    // Defesa em profundidade: complementa o limite de comprimento contra senhas
-    // longas porém previsíveis (ex.: "password123", "qwerty12345").
+    // D-01: enforce os critérios mostrados no checklist visual (Daniele reclamou que validação não seguia parâmetros).
+    if (!/[A-Z]/.test(password)) { setError('A senha precisa ter pelo menos 1 letra MAIÚSCULA.'); return; }
+    if (!/[a-z]/.test(password)) { setError('A senha precisa ter pelo menos 1 letra minúscula.'); return; }
+    if (!/[0-9]/.test(password)) { setError('A senha precisa ter pelo menos 1 número.'); return; }
+    // Símbolo continua sendo recomendação, não obrigatório
     if (passwordStrength && passwordStrength.score < MIN_PASSWORD_SCORE) {
-      setError('Senha muito fraca — tente combinar letras, números e símbolos.');
+      setError('Senha muito fraca — evite sequências óbvias (ex.: "abc123", "qwerty").');
       return;
     }
     setError('');

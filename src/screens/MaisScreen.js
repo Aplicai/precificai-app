@@ -62,7 +62,8 @@ const MENU_GROUPS = [
         set: 'feather',
         tab: 'Produtos',
         screen: 'CombosScreen',
-        flag: ['usa_delivery', 'modo_avancado_combos'],
+        // D-05: combos controlado APENAS por modo_avancado_combos (antes era OR com delivery)
+        flag: 'modo_avancado_combos',
       },
       {
         key: 'fornecedores',

@@ -20,6 +20,8 @@ import {
 } from '../data/templates';
 import { calcPrecoBase, calcFatorCorrecao } from '../utils/calculations';
 import { getPrecoReferencia } from '../data/precosReferencia';
+// D-27/D-28: aplica fatores de correção de referência (TACO) automaticamente
+import { getFatorCorrecaoReferencia, estimarQuantidadeLiquida } from '../data/fatoresCorrecao';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 // APP-14: marcador no campo `marca` pra UI mostrar badge "valor estimado".
@@ -130,35 +132,47 @@ export default function KitInicioScreen({ navigation, route }) {
       return;
     }
 
-    // Fluxo com confirmação dupla (reset) quando vem das Configurações
+    // D-29: Fluxo de aplicação fora do setup oferece DUAS opções:
+    //   1. Adicionar aos existentes (sem apagar)
+    //   2. Substituir tudo (apaga e recria)
     if (!isSetup) {
       if (Platform.OS === 'web') {
-        const confirm1 = window.confirm('Atenção: Aplicar este kit vai substituir todos os dados atuais do app (insumos, categorias, etc). Deseja continuar?');
-        if (!confirm1) return;
-        const confirm2 = window.confirm('Confirmação Final: Tem certeza? Esta ação não pode ser desfeita.');
-        if (!confirm2) return;
+        // Web: window.confirm só permite 2 botões. Vamos usar um confirm com a escolha invertida:
+        // OK = adicionar, Cancelar = abrir 2º confirm pra substituir
+        const adicionar = window.confirm(
+          'Como você quer aplicar este kit?\n\n' +
+          '✅ OK = Adicionar aos meus dados existentes (mantém tudo que já cadastrei)\n' +
+          '❌ Cancelar = quero APAGAR tudo e começar do zero com este kit'
+        );
+        if (adicionar) {
+          await executarKit(false);
+          return;
+        }
+        // User cancelou = quer substituir
+        const substituir = window.confirm(
+          '⚠️ ATENÇÃO\n\nVocê escolheu APAGAR todos os dados atuais (insumos, embalagens, preparos, produtos) e aplicar o kit limpo.\n\nEssa ação NÃO pode ser desfeita. Confirma?'
+        );
+        if (!substituir) return;
         await executarKit(true);
         return;
       } else {
+        // Mobile: 3 botões reais via Alert
         Alert.alert(
-          'Atenção',
-          'Aplicar este kit vai substituir todos os dados atuais do app (insumos, categorias, etc). Deseja continuar?',
+          'Como aplicar este kit?',
+          'Você pode adicionar os itens do kit aos seus dados existentes (recomendado) OU apagar tudo e começar limpo.',
           [
             { text: 'Cancelar', style: 'cancel' },
-            {
-              text: 'Sim, continuar',
-              style: 'destructive',
-              onPress: () => {
-                Alert.alert(
-                  'Confirmação Final',
-                  'Tem certeza? Esta ação não pode ser desfeita.',
-                  [
-                    { text: 'Cancelar', style: 'cancel' },
-                    { text: 'Sim, tenho certeza', style: 'destructive', onPress: () => executarKit(true) },
-                  ]
-                );
-              },
-            },
+            { text: 'Adicionar aos existentes', onPress: () => executarKit(false) },
+            { text: 'Substituir tudo', style: 'destructive', onPress: () => {
+              Alert.alert(
+                '⚠️ Confirmação',
+                'Vai APAGAR seus insumos, embalagens, preparos e produtos atuais. Tem certeza?',
+                [
+                  { text: 'Cancelar', style: 'cancel' },
+                  { text: 'Sim, apagar e aplicar', style: 'destructive', onPress: () => executarKit(true) },
+                ]
+              );
+            } },
           ]
         );
         return;
@@ -275,21 +289,34 @@ export default function KitInicioScreen({ navigation, route }) {
         }
         const firstCatId = Object.values(catMap)[0] || null;
         const insumoRowsRaw = insumosTemplate.map(insumo => {
-          const fc = calcFatorCorrecao(insumo.quantidade_bruta, insumo.quantidade_liquida);
+          // D-27/D-28: se template tem FC = 1 mas há referência conhecida (TACO), usa a referência
+          let qtBruta = insumo.quantidade_bruta;
+          let qtLiquida = insumo.quantidade_liquida;
+          const fcTemplate = calcFatorCorrecao(qtBruta, qtLiquida);
+          if (Math.abs(fcTemplate - 1) < 0.01) {
+            // Template não tem perda — checa se tem referência TACO
+            const fcRef = getFatorCorrecaoReferencia(insumo.nome);
+            if (fcRef > 1.05) {
+              // Aplica FC de referência ajustando quantidade líquida
+              qtLiquida = estimarQuantidadeLiquida(qtBruta, insumo.nome);
+            }
+          }
+          const fc = calcFatorCorrecao(qtBruta, qtLiquida);
           // APP-14: tenta pré-preencher com preço médio de mercado pra evitar
           // que a usuária precise pesquisar valor de cada insumo do zero.
           const valorRef = getPrecoReferencia(selected, insumo.nome);
           const valorFinal = valorRef != null ? valorRef : (insumo.valor_pago || 0);
           const isEstimado = valorRef != null;
-          const pb = calcPrecoBase(valorFinal, insumo.quantidade_liquida, insumo.unidade_medida);
+          // D-27: usa qtLiquida ajustada (não a do template)
+          const pb = calcPrecoBase(valorFinal, qtLiquida, insumo.unidade_medida);
           return {
             user_id: userId,
             nome: insumo.nome,
             // APP-14: marcador interno pra UI exibir badge "valor estimado, ajuste".
             marca: isEstimado ? MARCA_VALOR_ESTIMADO : '',
             categoria_id: (insumo.categoria && catMap[insumo.categoria]) || firstCatId,
-            quantidade_bruta: insumo.quantidade_bruta,
-            quantidade_liquida: insumo.quantidade_liquida,
+            quantidade_bruta: qtBruta,
+            quantidade_liquida: qtLiquida,
             fator_correcao: fc,
             unidade_medida: insumo.unidade_medida,
             valor_pago: valorFinal,

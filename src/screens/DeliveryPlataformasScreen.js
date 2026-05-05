@@ -160,20 +160,28 @@ export default function DeliveryPlataformasScreen() {
   async function adicionarPlataforma() {
     const nome = novaPlataforma.trim();
     if (!nome) return;
-    // Audit P1: case-insensitive dedupe
     const exists = plataformas.some(p => (p.plataforma || '').trim().toLowerCase() === nome.toLowerCase());
     if (exists) {
       showSaveError('Já existe uma plataforma com esse nome.');
       return;
     }
+    // D-08: se o nome bate com uma plataforma conhecida, traz os defaults (comissão + taxa pgto online)
+    const knownDefault = DEFAULT_PLATFORMS.find(d =>
+      (d.plataforma || '').toLowerCase() === nome.toLowerCase() ||
+      nome.toLowerCase().includes((d.plataforma || '').toLowerCase().split(' ')[0])
+    );
+    const defaults = knownDefault || { taxa_plataforma: 0, taxa_entrega: 0, comissao_app: 0, desconto_promocao: 0 };
     try {
       const db = await getDatabase();
       await db.runAsync(
         'INSERT INTO delivery_config (plataforma, taxa_plataforma, taxa_entrega, comissao_app, desconto_promocao, ativo) VALUES (?, ?, ?, ?, ?, ?)',
-        [nome, 0, 0, 0, 0, 1]
+        [nome, defaults.taxa_plataforma, defaults.taxa_entrega, defaults.comissao_app, defaults.desconto_promocao, 1]
       );
       setNovaPlataforma('');
       loadData();
+      if (knownDefault && typeof console !== 'undefined' && console.log) {
+        console.log(`[DeliveryPlataformas] Defaults aplicados: ${defaults.taxa_plataforma}% comissão + ${defaults.comissao_app}% taxa pgto online`);
+      }
     } catch (e) {
       console.error('[DeliveryPlataformasScreen.adicionarPlataforma]', e);
       showSaveError('Falha ao adicionar plataforma. Tente novamente.');
@@ -408,12 +416,40 @@ export default function DeliveryPlataformasScreen() {
         </Card>
 
         <Card title="Adicionar Plataforma">
+          {/* D-08: chips com plataformas conhecidas (defaults pré-preenchidos ao tap) */}
+          {(() => {
+            const existentes = plataformas.map(p => (p.plataforma || '').toLowerCase());
+            const disponiveis = DEFAULT_PLATFORMS.filter(d => !existentes.includes((d.plataforma || '').toLowerCase()));
+            if (disponiveis.length === 0) return null;
+            return (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: spacing.sm }}>
+                {disponiveis.map(p => (
+                  <TouchableOpacity
+                    key={p.plataforma}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '0F' }}
+                    onPress={() => { setNovaPlataforma(p.plataforma); setTimeout(() => adicionarPlataforma(), 50); }}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Adicionar ${p.plataforma} com taxas pré-preenchidas`}
+                  >
+                    <Feather name="plus" size={11} color={colors.primary} />
+                    <Text style={{ fontSize: fonts.tiny, color: colors.primary, fontFamily: fontFamily.semiBold }}>
+                      {p.plataforma}
+                    </Text>
+                    <Text style={{ fontSize: 10, color: colors.textSecondary }}>
+                      {p.taxa_plataforma > 0 ? `${p.taxa_plataforma}%` : 'sem comissão'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            );
+          })()}
           <View style={styles.addRow}>
             <InputField
               style={{ flex: 1, marginRight: spacing.sm, marginBottom: 0 }}
               value={novaPlataforma}
               onChangeText={setNovaPlataforma}
-              placeholder="Nome da plataforma"
+              placeholder="Ou digite outra plataforma"
             />
             <TouchableOpacity
               style={styles.addBtn}

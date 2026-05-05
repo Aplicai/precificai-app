@@ -915,23 +915,33 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
     background: #F4F6F5;
     padding: 0;
   }
+  /* D-31: cabeçalho ampliado — ocupa parte significativa da página com Precificaí + nome loja + data */
   .page-header {
     background: #004d47;
     color: #fff;
-    padding: 24px 32px;
+    padding: 40px 48px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    min-height: 110px;
   }
   .page-header h1 {
-    font-size: 24px;
-    font-weight: 700;
-    letter-spacing: -0.5px;
+    font-size: 42px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    line-height: 1;
+  }
+  .page-header .negocio-nome {
+    font-size: 20px;
+    margin-top: 8px;
+    opacity: 0.95;
+    font-weight: 500;
   }
   .page-header .meta {
     text-align: right;
-    font-size: 13px;
-    opacity: 0.85;
+    font-size: 16px;
+    opacity: 0.9;
+    font-weight: 500;
   }
   .page-content {
     max-width: 900px;
@@ -1109,14 +1119,19 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
     margin-top: 24px;
   }
   @page {
-    margin: 10mm 10mm 12mm 10mm;
+    /* D-09: margens reduzidas + browser headers eliminados via margem zero topo.
+       Antes a primeira página vinha em branco porque .ficha { break-inside: avoid }
+       empurrava o conteúdo todo pra página 2. */
+    margin: 6mm 8mm 10mm 8mm;
     size: A4;
   }
   @media print {
-    body { background: #fff; padding: 0; }
-    .page-header { margin: 0; }
-    .page-content { padding: 0 16px; }
-    .ficha { box-shadow: none; break-inside: avoid; }
+    body { background: #fff; padding: 0; margin: 0; }
+    .page-header { margin: 0 0 8mm 0; }
+    .page-content { padding: 0; }
+    /* D-09: removido break-inside:avoid das fichas (causava 1ª página em branco
+       quando ficha não cabia junto com o header). Cada ficha agora flui naturalmente. */
+    .ficha { box-shadow: none; }
     .page-footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 9px; color: #999; padding: 4px; }
   }
 </style>
@@ -1125,10 +1140,10 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
   <div class="page-header">
     <div>
       <h1>Precificaí</h1>
-      ${nomeNegocio ? `<div style="font-size:14px;margin-top:4px;opacity:0.9">${escapeHtml(nomeNegocio)}</div>` : ''}
+      ${nomeNegocio ? `<div class="negocio-nome">${escapeHtml(nomeNegocio)}</div>` : ''}
     </div>
     <div class="meta">
-      <div>Fichas Técnicas</div>
+      <div style="font-size:18px; font-weight:600;">Fichas Técnicas</div>
       <div>${dataStr}</div>
     </div>
   </div>
@@ -1234,16 +1249,19 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
     background: #F4F6F5;
     padding: 0;
   }
+  /* D-31: cabeçalho ampliado */
   .page-header {
     background: #004d47;
     color: #fff;
-    padding: 24px 32px;
+    padding: 40px 48px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    min-height: 110px;
   }
-  .page-header h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
-  .page-header .meta { text-align: right; font-size: 13px; opacity: 0.85; }
+  .page-header h1 { font-size: 42px; font-weight: 800; letter-spacing: -1px; line-height: 1; }
+  .page-header .negocio-nome { font-size: 20px; margin-top: 8px; opacity: 0.95; font-weight: 500; }
+  .page-header .meta { text-align: right; font-size: 16px; opacity: 0.9; font-weight: 500; }
   .page-content { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
   .ficha {
     background: #fff; border-radius: 12px; padding: 24px; margin-bottom: 24px;
@@ -1267,12 +1285,13 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
   tbody td { padding: 8px 10px; border-bottom: 1px solid #F4F6F5; }
   .total-row td { border-top: 2px solid #D8E0DE; background: #F4F6F5; }
   .page-footer { text-align: center; padding: 16px; font-size: 12px; color: #6B7D7B; border-top: 1px solid #D8E0DE; margin-top: 24px; }
-  @page { margin: 10mm 10mm 12mm 10mm; size: A4; }
+  /* D-09: margens reduzidas + remoção de break-inside:avoid (evita 1ª página em branco) */
+  @page { margin: 6mm 8mm 10mm 8mm; size: A4; }
   @media print {
-    body { background: #fff; padding: 0; }
-    .page-header { margin: 0; }
-    .page-content { padding: 0 16px; }
-    .ficha { box-shadow: none; break-inside: avoid; }
+    body { background: #fff; padding: 0; margin: 0; }
+    .page-header { margin: 0 0 8mm 0; }
+    .page-content { padding: 0; }
+    .ficha { box-shadow: none; }
     .page-footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 9px; color: #999; padding: 4px; }
   }
 </style>
@@ -1281,10 +1300,10 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
   <div class="page-header">
     <div>
       <h1>Precificaí</h1>
-      ${nomeNegocio ? `<div style="font-size:14px;margin-top:4px;opacity:0.9">${escapeHtml(nomeNegocio)}</div>` : ''}
+      ${nomeNegocio ? `<div class="negocio-nome">${escapeHtml(nomeNegocio)}</div>` : ''}
     </div>
     <div class="meta">
-      <div>Fichas Técnicas - Preparos</div>
+      <div style="font-size:18px; font-weight:600;">Fichas Técnicas - Preparos</div>
       <div>${dataStr}</div>
     </div>
   </div>

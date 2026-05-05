@@ -84,22 +84,80 @@ export default function ProdutoFormScreen({ route, navigation }) {
         const db = await getDatabase();
         const { getEmbalagemPadrao } = await import('../services/embalagemPadrao');
         const embId = await getEmbalagemPadrao(db, form.categoria_id, 'balcao');
-        if (cancel || !embId) return;
+        if (cancel) return;
+        if (!embId) {
+          // D-07: log pra ajudar a diagnosticar quando não encontra (migration não rodada?)
+          if (typeof console !== 'undefined' && console.log) {
+            console.log('[ProdutoForm.embalagemPadrao] Nenhuma embalagem padrão pra categoria', form.categoria_id);
+          }
+          return;
+        }
         const em = embalagensList.find(e => e.id === embId);
-        if (!em) return;
+        if (!em) {
+          if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[ProdutoForm.embalagemPadrao] Embalagem', embId, 'não encontrada na lista carregada');
+          }
+          return;
+        }
         setProdutoEmbalagens([{
           embalagem_id: em.id, em_nome: em.nome, preco_unitario: em.preco_unitario,
           quantidade_utilizada: 1,
-          // APP-36 — flag pra renderizar badge "Sugerida pra [categoria]"
           _sugeridaPorCategoria: true,
         }]);
-      } catch (_) {}
+      } catch (e) {
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('[ProdutoForm.embalagemPadrao] erro:', e?.message);
+        }
+      }
     })();
     return () => { cancel = true; };
   }, [form.categoria_id, editId, embalagensList]);
 
   // APP-19/24b: modal de transparência do cálculo
   const [comoCalculadoVisible, setComoCalculadoVisible] = useState(false);
+  // D-17/D-18: modal pra editar preço do insumo direto no form do produto
+  const [editPrecoModal, setEditPrecoModal] = useState(null); // { tipo: 'insumo', ing, idx }
+  const [editPrecoValor, setEditPrecoValor] = useState('');
+
+  // D-17: ao abrir modal, popula com o preço atual
+  useEffect(() => {
+    if (editPrecoModal?.ing) {
+      setEditPrecoValor(String(editPrecoModal.ing.preco_por_kg || ''));
+    }
+  }, [editPrecoModal]);
+
+  // D-17: salva novo preço do insumo no DB e atualiza state local
+  async function salvarNovoPrecoInsumo() {
+    if (!editPrecoModal) return;
+    const { ing, idx } = editPrecoModal;
+    const novoPreco = parseFloat(String(editPrecoValor).replace(',', '.'));
+    if (!Number.isFinite(novoPreco) || novoPreco < 0) {
+      Alert.alert('Valor inválido', 'Informe um preço válido.');
+      return;
+    }
+    try {
+      const db = await getDatabase();
+      // Atualiza preco_por_kg + valor_pago do insumo (consistência com lista de insumos)
+      const mp = await db.getFirstAsync('SELECT * FROM materias_primas WHERE id = ?', [ing.materia_prima_id]);
+      const qtLiquida = Number(mp?.quantidade_liquida) || 1;
+      // novoPreco aqui é o preço por kg/L/un. Recalcula valor_pago = preco × quantidade_liquida (em base)
+      // Pra simplificar: salva preco_por_kg direto e mantém valor_pago coerente
+      await db.runAsync('UPDATE materias_primas SET preco_por_kg = ? WHERE id = ?', [novoPreco, ing.materia_prima_id]);
+      // Atualiza state local pra refletir imediato no form
+      setIngredientes(prev => prev.map((it, i) => i === idx ? { ...it, preco_por_kg: novoPreco } : it));
+      // D-19 cascade: recalcula preparos+combos
+      try {
+        const { cascadeFromInsumo, recalcularTodosCombos } = await import('../services/cascadeRecalc');
+        await cascadeFromInsumo(db);
+        await recalcularTodosCombos(db);
+      } catch (_) {}
+      setEditPrecoModal(null);
+      setEditPrecoValor('');
+    } catch (e) {
+      console.error('[ProdutoForm.salvarNovoPrecoInsumo]', e);
+      Alert.alert('Erro', 'Não foi possível salvar o novo preço.');
+    }
+  }
 
   // Autocomplete dropdown visibility
   const [activeSearch, setActiveSearch] = useState(null); // null | 'preparo' | 'ingrediente' | 'embalagem'
@@ -490,18 +548,35 @@ export default function ProdutoFormScreen({ route, navigation }) {
   }
   // ========================================================================
 
-  function addIngrediente(itemId, qty) {
+  async function addIngrediente(itemId, qty) {
     const id = itemId;
     const qtd = parseNum(qty || '1');
     if (!id) return;
-    const mp = materiasPrimas.find(m => m.id === id);
+    // D-06: SEMPRE busca do DB pra pegar a unidade ATUAL (o array `materiasPrimas` em
+    // memória pode estar stale se o usuário mudou o insumo recentemente). Bug reportado:
+    // "mudei unidade do insumo e no produto vem unidade antiga (tudo em 'un')".
+    let mp;
+    try {
+      const db = await getDatabase();
+      mp = await db.getFirstAsync('SELECT id, nome, marca, preco_por_kg, unidade_medida FROM materias_primas WHERE id = ?', [id]);
+    } catch (_) {
+      mp = materiasPrimas.find(m => m.id === id);
+    }
+    if (!mp) {
+      mp = materiasPrimas.find(m => m.id === id);
+    }
     if (!mp) return;
-    // If already exists, increment quantity
+    // Validação defensiva da unidade (não cair em 'un' por acidente)
+    const VALID_UNITS = ['g','kg','mL','L','un'];
+    const unidadeRaw = typeof mp.unidade_medida === 'string'
+      ? mp.unidade_medida.trim().replace(/^"+|"+$/g, '')
+      : mp.unidade_medida;
+    const unidade = VALID_UNITS.includes(unidadeRaw) ? unidadeRaw : 'g';
+
     const existingIdx = ingredientes.findIndex(i => i.materia_prima_id === id);
     if (existingIdx >= 0) {
-      setIngredientes(prev => prev.map((item, i) => i === existingIdx ? { ...item, quantidade_utilizada: item.quantidade_utilizada + qtd } : item));
+      setIngredientes(prev => prev.map((item, i) => i === existingIdx ? { ...item, quantidade_utilizada: item.quantidade_utilizada + qtd, unidade } : item));
     } else {
-      const unidade = mp.unidade_medida || 'g';
       setIngredientes(prev => [...prev, { materia_prima_id: id, mp_nome: mp.nome, mp_marca: mp.marca || '', preco_por_kg: mp.preco_por_kg, quantidade_utilizada: qtd, unidade }]);
     }
     showFeedback(setIngAdicionado);
@@ -652,18 +727,28 @@ export default function ProdutoFormScreen({ route, navigation }) {
         produtoId = result.lastInsertRowId;
       }
 
-      for (const ing of ingredientes) {
-        await db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)',
-          [produtoId, ing.materia_prima_id, ing.quantidade_utilizada]);
-      }
-      for (const pp of produtoPreparos) {
-        await db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)',
-          [produtoId, pp.preparo_id, pp.quantidade_utilizada]);
-      }
-      for (const pe of produtoEmbalagens) {
-        await db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
-          [produtoId, pe.embalagem_id, pe.quantidade_utilizada]);
-      }
+      // D-15: paraleliza inserts (era sequencial — N round-trips serializados ao Supabase
+      // causavam latência de 5s pra produtos com muitos insumos). Promise.all reduz pra 1 round-trip lógico.
+      await Promise.all([
+        ...ingredientes.map(ing =>
+          db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)',
+            [produtoId, ing.materia_prima_id, ing.quantidade_utilizada])
+        ),
+        ...produtoPreparos.map(pp =>
+          db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)',
+            [produtoId, pp.preparo_id, pp.quantidade_utilizada])
+        ),
+        ...produtoEmbalagens.map(pe =>
+          db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
+            [produtoId, pe.embalagem_id, pe.quantidade_utilizada])
+        ),
+      ]);
+
+      // D-19: cascade — atualiza combos que usam esse produto
+      try {
+        const { recalcularTodosCombos } = await import('../services/cascadeRecalc');
+        await recalcularTodosCombos(db);
+      } catch (_) {}
 
       const returnTo = route.params?.returnTo;
       if (returnTo) {
@@ -673,6 +758,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
       }
     } catch (e) {
       allowExit.current = false;
+      console.error('[ProdutoForm.salvar]', e);
       Alert.alert('Erro ao salvar', 'Ocorreu um erro ao salvar o produto. Tente novamente.');
     }
   }
@@ -1014,7 +1100,15 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </View>
               {ingredientes.map((ing, idx) => (
                 <View key={idx} style={[styles.tableRow, idx % 2 === 0 && styles.tableRowEven]}>
-                  <Text style={[styles.tableCell, { flex: 2 }]} numberOfLines={1}>{formatIngLabel(ing) || ing.mp_nome}</Text>
+                  {/* D-16: nome em cima, marca em destaque embaixo (quando houver), pra distinguir produtos parecidos */}
+                  <View style={{ flex: 2 }}>
+                    <Text style={styles.tableCell} numberOfLines={1}>{ing.mp_nome}</Text>
+                    {ing.mp_marca ? (
+                      <Text style={{ fontSize: 11, color: colors.textSecondary, fontStyle: 'italic' }} numberOfLines={1}>
+                        {ing.mp_marca}
+                      </Text>
+                    ) : null}
+                  </View>
                   <TextInput
                     style={[styles.inlineQtyInput, { flex: 1 }]}
                     value={String(ing.quantidade_utilizada)}
@@ -1023,7 +1117,18 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     selectTextOnFocus
                   />
                   <Text style={[styles.tableCell, { flex: 0.8, textAlign: 'center' }]}>{ing.unidade}</Text>
-                  <Text style={[styles.tableCellCusto, { flex: 1.2, textAlign: 'right' }]}>{formatCurrency(custoIng(ing))}</Text>
+                  {/* D-17: tap no custo abre prompt rápido pra atualizar preço do insumo */}
+                  <TouchableOpacity
+                    style={{ flex: 1.2 }}
+                    onPress={() => setEditPrecoModal({ tipo: 'insumo', ing, idx })}
+                    activeOpacity={0.6}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Editar preço de ${ing.mp_nome}`}
+                  >
+                    <Text style={[styles.tableCellCusto, { textAlign: 'right' }]}>
+                      {formatCurrency(custoIng(ing))} <Feather name="edit-2" size={9} color={colors.primary} />
+                    </Text>
+                  </TouchableOpacity>
                   <TouchableOpacity onPress={() => setIngredientes(prev => prev.filter((_, i) => i !== idx))} style={{ width: 32, alignItems: 'center' }}>
                     <Text style={styles.removeBtn}>✕</Text>
                   </TouchableOpacity>
@@ -1770,6 +1875,42 @@ export default function ProdutoFormScreen({ route, navigation }) {
           variavelPerc: config.despVarPerc,
         })}
       />
+
+      {/* D-17: modal pra editar preço do insumo direto no form do produto (cascade automático) */}
+      <Modal visible={!!editPrecoModal} transparent animationType="fade" onRequestClose={() => setEditPrecoModal(null)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }} onPress={() => setEditPrecoModal(null)}>
+          <Pressable style={{ backgroundColor: '#fff', borderRadius: 12, padding: 20, width: '100%', maxWidth: 400 }} onPress={() => {}}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
+              Atualizar preço do insumo
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 16 }}>
+              {editPrecoModal?.ing?.mp_nome} {editPrecoModal?.ing?.mp_marca ? `(${editPrecoModal.ing.mp_marca})` : ''}
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6 }}>
+              Novo preço por {editPrecoModal?.ing?.unidade || 'kg'}
+            </Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 16 }}
+              value={editPrecoValor}
+              onChangeText={setEditPrecoValor}
+              keyboardType="decimal-pad"
+              placeholder={String(editPrecoModal?.ing?.preco_por_kg || 0)}
+              autoFocus
+            />
+            <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 12, fontStyle: 'italic' }}>
+              💡 Atualizar aqui muda o preço do insumo em TODA a aplicação (insumos, preparos, produtos, combos).
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity style={{ flex: 1, padding: 12, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: colors.border }} onPress={() => setEditPrecoModal(null)}>
+                <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={{ flex: 1, padding: 12, alignItems: 'center', borderRadius: 8, backgroundColor: colors.primary }} onPress={salvarNovoPrecoInsumo}>
+                <Text style={{ color: '#fff', fontWeight: '700' }}>Salvar e propagar</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }

@@ -17,8 +17,9 @@ const NAV_SECTIONS = [
       { key: 'preparos', label: 'Preparos', icon: 'pot-steam-outline', iconSet: 'material', tab: 'Preparos', screen: 'Preparos' },
       { key: 'embalagens', label: 'Embalagens', icon: 'package', iconSet: 'feather', tab: 'Embalagens', screen: 'Embalagens' },
       { key: 'produtos', label: 'Produtos', icon: 'tag', iconSet: 'feather', tab: 'Produtos', screen: 'ProdutosList' },
-      // Sessão 28.8 — Combos aparece se delivery OU recurso avançado de combos estiver on
-      { key: 'combos', label: 'Combos / Kits', icon: 'layers', iconSet: 'feather', tab: 'Produtos', screen: 'CombosScreen', flag: ['usa_delivery', 'modo_avancado_combos'] },
+      // D-05 — Combos depende APENAS da flag modo_avancado_combos (antes era OR com delivery,
+      // o que causava: ativar/desativar combos não tinha efeito quando delivery estava ON).
+      { key: 'combos', label: 'Combos / Kits', icon: 'layers', iconSet: 'feather', tab: 'Produtos', screen: 'CombosScreen', flag: 'modo_avancado_combos' },
     ],
   },
   {
