@@ -58,23 +58,25 @@ const BACKUP_TABLES = [
  */
 function FlagToggleRow({ icon, materialIcon, label, desc, value, onChange }) {
   const Icon = materialIcon ? MaterialCommunityIcons : Feather;
+  // Sessão 28.16: BUG FIX — antes a TouchableOpacity envolvendo o row chamava onChange(!value)
+  // junto com o Switch.onValueChange — no mobile o tap no switch dispara AMBOS, gerando
+  // duplo-toggle (volta pro estado anterior). Agora a row é só layout (View), e o
+  // toggle acontece SÓ pelo Switch (e pelo body Touchable que faz tap-na-label).
   return (
-    <TouchableOpacity
-      style={styles.flagRow}
-      activeOpacity={0.7}
-      onPress={() => onChange(!value)}
-      accessibilityRole="switch"
-      accessibilityLabel={label}
-      accessibilityState={{ checked: !!value }}
-      accessibilityHint={desc}
-    >
+    <View style={styles.flagRow} accessibilityRole="switch" accessibilityLabel={label} accessibilityState={{ checked: !!value }}>
       <View style={[styles.flagIconBox, { backgroundColor: (value ? colors.primary : colors.textSecondary) + '12' }]}>
         <Icon name={icon} size={18} color={value ? colors.primary : colors.textSecondary} />
       </View>
-      <View style={styles.rowBody}>
+      <TouchableOpacity
+        style={styles.rowBody}
+        activeOpacity={0.7}
+        onPress={() => onChange(!value)}
+        accessibilityRole="button"
+        accessibilityLabel={`Alternar ${label}`}
+      >
         <Text style={styles.rowLabel}>{label}</Text>
         <Text style={styles.rowDesc}>{desc}</Text>
-      </View>
+      </TouchableOpacity>
       <Switch
         value={!!value}
         onValueChange={onChange}
@@ -82,7 +84,7 @@ function FlagToggleRow({ icon, materialIcon, label, desc, value, onChange }) {
         thumbColor={Platform.OS === 'android' ? (value ? colors.primary : '#f4f3f4') : undefined}
         ios_backgroundColor={colors.border}
       />
-    </TouchableOpacity>
+    </View>
   );
 }
 
