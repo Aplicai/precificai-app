@@ -393,8 +393,34 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         clearQueryCache();
       } catch (e) { /* defensivo */ }
 
-      // Histórico de preço NÃO é registrado no auto-save
-      // Apenas no "Salvar e voltar" para evitar erros de digitação
+      // Sessão 28.26: histórico DE PREÇO no auto-save COM dedup defensivo.
+      // Antes: só "Salvar e voltar" registrava histórico → user editava preço,
+      // saía da tela direto e o relatório de insumos NÃO mostrava a mudança.
+      // Agora: gravamos histórico no auto-save MAS só se:
+      //   1. valor_pago > 0 (evita rastrear edições incompletas)
+      //   2. valor é DIFERENTE do último histórico (evita poluir a timeline com
+      //      uma entrada por keystroke)
+      //   3. última entrada tem >= 3min de idade OU preço difere significativamente
+      //      (evita N entradas em sequência conforme user digita)
+      if (vp > 0) {
+        try {
+          const lastHist = await db.getAllAsync(
+            'SELECT valor_pago, data FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC LIMIT 1',
+            [editId]
+          );
+          const prev = lastHist?.[0];
+          const prevValor = prev ? Number(prev.valor_pago) : NaN;
+          const isDifferent = !prev || !Number.isFinite(prevValor) || Math.abs(prevValor - vp) > 0.001;
+          const isOldEnough = !prev || (Date.now() - new Date(prev.data).getTime()) > 3 * 60 * 1000;
+          if (isDifferent && isOldEnough) {
+            await db.runAsync(
+              'INSERT INTO historico_precos (materia_prima_id, valor_pago, preco_por_kg) VALUES (?,?,?)',
+              [editId, vp, pb]
+            );
+          }
+        } catch (_) { /* tabela pode não existir em ambientes legados */ }
+      }
+      // Check margin erosion (P2: throttle — caro com N+1 queries por produto)
       // Check margin erosion (P2: throttle — caro com N+1 queries por produto)
       const now = Date.now();
       if (now - lastMarginCheckRef.current >= MARGIN_CHECK_MIN_INTERVAL_MS) {

@@ -11,11 +11,11 @@ import Chip from '../components/Chip';
 import EmptyState from '../components/EmptyState';
 import InviabilidadeModal from '../components/InviabilidadeModal';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, calcDespesasFixasPercentual } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem } from '../utils/calculations';
 // Sprint 2 S3 — fórmula canônica única em src/utils/deliveryPricing.js
 import { calcPrecoBreakEven, calcResultadoDelivery, calcSugestaoDeliveryCompleta, compararDeliveryVsBalcao } from '../utils/deliveryPricing';
 // APP-25: extrair imposto separado das demais variáveis (maquininha não entra no delivery)
-import { extrairImpostoPercentual } from '../utils/deliveryAdapter';
+import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
 import usePersistedState from '../hooks/usePersistedState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -118,20 +118,17 @@ export default function DeliveryPrecosScreen() {
       setPrecosSalvos(map);
     } catch (_) { /* tabela pode não existir ainda */ }
 
-    // APP-25: monta contexto financeiro
+    // Sessão 28.26: usa builder unificado em deliveryAdapter
     try {
-      const cfg = cfgRows?.[0] || {};
-      const totalFixas = (fixasRows || []).reduce((a, r) => a + (Number.isFinite(r.valor) ? r.valor : 0), 0);
-      const fatMedio = (fatRows || []).length > 0
-        ? (fatRows || []).reduce((a, r) => a + (Number.isFinite(r.valor) ? r.valor : 0), 0) / (fatRows || []).length
-        : 0;
-      const fixoPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
-      // No delivery, lucro pode ser específico (APP-26). Por enquanto usa o do balcão como default.
-      const lucroPerc = Number.isFinite(cfg.lucro_desejado_delivery) ? cfg.lucro_desejado_delivery
-                      : Number.isFinite(cfg.lucro_desejado) ? cfg.lucro_desejado : 0.15;
-      // Imposto: separado das demais variáveis (maquininha não entra no delivery — APP-25)
-      const impostoPerc = extrairImpostoPercentual(varsRows || []);
-      setContextoFinanceiro({ lucroPerc, fixoPerc, impostoPerc });
+      const ctx = buildContextoFinanceiro({
+        cfgRows, fixasRows, varsRows, fatRows,
+        options: { usarLucroDelivery: true },
+      });
+      setContextoFinanceiro({
+        lucroPerc: ctx.lucroPerc,
+        fixoPerc: ctx.fixoPerc,
+        impostoPerc: ctx.impostoPerc,
+      });
     } catch (e) {
       console.warn('[DeliveryPrecos.contextoFinanceiro] falha ao montar:', e);
     }

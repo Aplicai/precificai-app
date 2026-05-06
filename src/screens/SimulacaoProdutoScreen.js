@@ -22,10 +22,12 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import {
   formatCurrency, calcCustoIngrediente, calcCustoPreparo,
-  getDivisorRendimento, calcDespesasFixasPercentual,
+  getDivisorRendimento,
 } from '../utils/calculations';
 import { calcSugestaoDeliveryCompleta } from '../utils/deliveryPricing';
-import { extrairImpostoPercentual } from '../utils/deliveryAdapter';
+import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
+// Sessão 28.26: service unificado de upsert do preço delivery
+import { upsertPrecoDelivery } from '../services/precoDeliveryService';
 
 const safe = (v) => {
   const n = Number(v);
@@ -102,30 +104,36 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
       const custoEmb = (embsRows || []).reduce((a, e) => a + safe(e.preco_unitario) * safe(e.quantidade_utilizada), 0);
       const cmv = (custoIng + custoPr + custoEmb) / getDivisorRendimento(prod);
 
-      // Contexto financeiro
-      const cfg = cfgRows?.[0] || {};
-      const totalFixas = (fixasRows || []).reduce((a, r) => a + safe(r.valor), 0);
-      const fatMedio = (fatRows || []).length > 0
-        ? (fatRows || []).reduce((a, r) => a + safe(r.valor), 0) / (fatRows || []).length : 0;
-      const fixoPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
-      const lucroPerc = Number.isFinite(cfg.lucro_desejado_delivery) ? cfg.lucro_desejado_delivery
-                      : Number.isFinite(cfg.lucro_desejado) ? cfg.lucro_desejado : 0.15;
-      const impostoPerc = extrairImpostoPercentual(varsRows || []);
-
-      const contexto = { lucroPerc, fixoPerc, impostoPerc };
+      // Sessão 28.26: usa builder unificado (substitui ~10 linhas duplicadas)
+      const contexto = buildContextoFinanceiro({
+        cfgRows, fixasRows, varsRows, fatRows,
+        options: { usarLucroDelivery: true },
+      });
 
       // Sugestão pela margem do financeiro
       const sugFinanceiro = calcSugestaoDeliveryCompleta({ cmv, plat, contexto });
 
-      // Sugestão mantendo margem atual do produto
-      const margemAtual = safe(prod.preco_venda) > 0
-        ? Math.max(0, (safe(prod.preco_venda) - cmv) / safe(prod.preco_venda))
+      // Sessão 28.26 BUG FIX (mesmo do SimuladorLote 28.25): MARGEM IGUAL
+      // estava usando margemBruta como lucroPerc → custos contados 2x.
+      // Agora usa lucro líquido REAL do balcão.
+      const precoBalcao = safe(prod.preco_venda);
+      const margemBrutaBalcao = precoBalcao > 0
+        ? Math.max(0, (precoBalcao - cmv) / precoBalcao)
         : 0;
-      const sugMantemMargem = (margemAtual > 0)
-        ? calcSugestaoDeliveryCompleta({ cmv, plat, contexto: { ...contexto, lucroPerc: margemAtual } })
+      const lucroPercBalcaoReal = Math.max(
+        0,
+        margemBrutaBalcao - contexto.fixoPerc - contexto.variavelPerc
+      );
+      const sugMantemMargem = (precoBalcao > 0 && lucroPercBalcaoReal > 0)
+        ? calcSugestaoDeliveryCompleta({ cmv, plat, contexto: { ...contexto, lucroPerc: lucroPercBalcaoReal } })
         : null;
 
-      setData({ prod, plat, cmv, contexto, sugFinanceiro, sugMantemMargem, margemAtual });
+      setData({
+        prod, plat, cmv, contexto, sugFinanceiro, sugMantemMargem,
+        margemBrutaBalcao, lucroPercBalcaoReal,
+        // Mantém `margemAtual` por compat com código de UI a jusante
+        margemAtual: margemBrutaBalcao,
+      });
 
       // Preço atual salvo
       const ppdAtual = ppdRows?.[0];
@@ -147,23 +155,10 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
     if (!Number.isFinite(num) || num <= 0) return;
     setSaving(true);
     try {
+      // Sessão 28.26: delegado pro service unificado.
       const db = await getDatabase();
-      // Sessão 28.21 BUG FIX: SELECT-first (mesma fix do DeliveryHub.salvarPrecoDelivery)
-      const exists = await db.getAllAsync(
-        'SELECT id FROM produto_preco_delivery WHERE produto_id = ? AND plataforma_id = ? LIMIT 1',
-        [produtoId, plataformaId]
-      );
-      if (exists && exists.length > 0) {
-        await db.runAsync(
-          'UPDATE produto_preco_delivery SET preco_venda = ?, updated_at = CURRENT_TIMESTAMP WHERE produto_id = ? AND plataforma_id = ?',
-          [num, produtoId, plataformaId]
-        );
-      } else {
-        await db.runAsync(
-          'INSERT INTO produto_preco_delivery (produto_id, plataforma_id, preco_venda) VALUES (?,?,?)',
-          [produtoId, plataformaId, num]
-        );
-      }
+      const r = await upsertPrecoDelivery(db, { produtoId, plataformaId, precoVenda: num });
+      if (!r.ok) throw new Error(r.error || 'Falha ao salvar preço delivery');
       setPrecoSalvo(num);
       setSavedFlash(true);
       // Sessão 28.25: notifica o pai ANTES de fechar pra ele recarregar precosCadastrados.
