@@ -301,6 +301,9 @@ export default function PerfilScreen({ navigation, route }) {
         </View>
       </View>
 
+      {/* Sessão 28.22: Multi-loja — gerenciar lojas + selecionar a atual */}
+      {!isSetup && <LojasSection userId={user?.id} />}
+
       {isSetup && (
         <TouchableOpacity
           style={styles.continueBtn}
@@ -442,4 +445,192 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   continueBtnText: { color: '#fff', fontSize: 16, fontWeight: '600', fontFamily: fontFamily.semiBold },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sessão 28.22: Multi-loja — componente de gerenciamento + seleção da loja atual
+// ─────────────────────────────────────────────────────────────────────────────
+import useLojas from '../hooks/useLojas';
+
+function LojasSection({ userId }) {
+  const { lojas, currentId, current, adicionar, renomear, remover, selecionar } = useLojas(userId);
+  const [novaNome, setNovaNome] = React.useState('');
+  const [renameId, setRenameId] = React.useState(null);
+  const [renameVal, setRenameVal] = React.useState('');
+
+  return (
+    <View style={lojasStyles.section}>
+      <View style={lojasStyles.header}>
+        <View style={lojasStyles.headerIcon}>
+          <Feather name="home" size={18} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={lojasStyles.title}>Minhas Lojas</Text>
+          <Text style={lojasStyles.subtitle}>Cadastre suas unidades e escolha a que você está usando agora</Text>
+        </View>
+      </View>
+
+      {/* Loja atual em destaque */}
+      {current && (
+        <View style={lojasStyles.currentCard}>
+          <Feather name="check-circle" size={14} color={colors.success} />
+          <Text style={lojasStyles.currentText}>
+            Trabalhando na loja: <Text style={{ fontFamily: fontFamily.bold, color: colors.text }}>{current.nome}</Text>
+          </Text>
+        </View>
+      )}
+
+      {/* Lista de lojas */}
+      {lojas.length > 0 && (
+        <View style={{ marginTop: spacing.sm }}>
+          {lojas.map(loja => {
+            const isAtual = loja.id === currentId;
+            const isRenaming = renameId === loja.id;
+            return (
+              <View key={loja.id} style={[lojasStyles.lojaRow, isAtual && lojasStyles.lojaRowAtual]}>
+                {isRenaming ? (
+                  <>
+                    <TextInput
+                      style={lojasStyles.input}
+                      value={renameVal}
+                      onChangeText={setRenameVal}
+                      autoFocus
+                      placeholder="Nome da loja"
+                      onSubmitEditing={async () => {
+                        if (renameVal.trim()) await renomear(loja.id, renameVal.trim());
+                        setRenameId(null); setRenameVal('');
+                      }}
+                    />
+                    <TouchableOpacity onPress={async () => {
+                      if (renameVal.trim()) await renomear(loja.id, renameVal.trim());
+                      setRenameId(null); setRenameVal('');
+                    }}>
+                      <Feather name="check" size={18} color={colors.success} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => { setRenameId(null); setRenameVal(''); }}>
+                      <Feather name="x" size={18} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <TouchableOpacity
+                      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                      onPress={() => !isAtual && selecionar(loja.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[
+                        lojasStyles.radio,
+                        isAtual && { backgroundColor: colors.primary, borderColor: colors.primary },
+                      ]}>
+                        {isAtual && <View style={lojasStyles.radioInner} />}
+                      </View>
+                      <Text style={[lojasStyles.lojaName, isAtual && { fontFamily: fontFamily.bold }]} numberOfLines={1}>
+                        {loja.nome}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => { setRenameId(loja.id); setRenameVal(loja.nome); }} style={{ padding: 6 }}>
+                      <Feather name="edit-2" size={14} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => remover(loja.id)} style={{ padding: 6 }}>
+                      <Feather name="trash-2" size={14} color={colors.error} />
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {/* Adicionar loja */}
+      <View style={lojasStyles.addRow}>
+        <TextInput
+          style={lojasStyles.input}
+          placeholder="Nome da nova loja (ex: Filial Centro)"
+          placeholderTextColor={colors.disabled}
+          value={novaNome}
+          onChangeText={setNovaNome}
+          onSubmitEditing={async () => {
+            if (novaNome.trim()) {
+              await adicionar(novaNome.trim());
+              setNovaNome('');
+            }
+          }}
+        />
+        <TouchableOpacity
+          style={[lojasStyles.addBtn, !novaNome.trim() && { opacity: 0.5 }]}
+          onPress={async () => {
+            if (novaNome.trim()) {
+              await adicionar(novaNome.trim());
+              setNovaNome('');
+            }
+          }}
+          disabled={!novaNome.trim()}
+          activeOpacity={0.85}
+        >
+          <Feather name="plus" size={16} color="#fff" />
+          <Text style={{ color: '#fff', fontFamily: fontFamily.bold }}>Adicionar</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Aviso sobre roadmap */}
+      <View style={lojasStyles.note}>
+        <Feather name="info" size={12} color={colors.textSecondary} />
+        <Text style={lojasStyles.noteText}>
+          Por enquanto, a seleção de loja é apenas um marcador visual. A separação completa de dados (insumos, produtos etc) por loja vem na próxima atualização.
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const lojasStyles = StyleSheet.create({
+  section: {
+    backgroundColor: colors.surface, padding: spacing.md,
+    borderRadius: borderRadius.md, marginTop: spacing.lg,
+  },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: spacing.sm },
+  headerIcon: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: colors.primary + '14',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  title: { fontSize: fonts.regular, fontFamily: fontFamily.bold, color: colors.text },
+  subtitle: { fontSize: fonts.small, color: colors.textSecondary, marginTop: 2 },
+  currentCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: colors.success + '14', padding: 10,
+    borderRadius: borderRadius.sm, marginTop: spacing.sm,
+  },
+  currentText: { fontSize: fonts.small, color: '#065F46' },
+  lojaRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 10, paddingHorizontal: 8,
+    borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  lojaRowAtual: { backgroundColor: colors.primary + '06' },
+  radio: {
+    width: 18, height: 18, borderRadius: 9,
+    borderWidth: 2, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  radioInner: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' },
+  lojaName: { fontSize: fonts.regular, color: colors.text, flex: 1 },
+  input: {
+    flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: borderRadius.sm,
+    paddingHorizontal: 10, paddingVertical: 8, fontSize: fonts.regular, color: colors.text,
+    backgroundColor: '#fff',
+  },
+  addRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: spacing.md },
+  addBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: colors.primary, paddingVertical: 10, paddingHorizontal: 14,
+    borderRadius: borderRadius.sm,
+  },
+  note: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 6,
+    marginTop: spacing.sm, padding: 8,
+    backgroundColor: colors.background, borderRadius: borderRadius.sm,
+  },
+  noteText: { flex: 1, fontSize: 11, color: colors.textSecondary, lineHeight: 15 },
 });

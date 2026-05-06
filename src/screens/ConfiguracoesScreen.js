@@ -465,28 +465,112 @@ export default function ConfiguracoesScreen({ navigation }) {
                 return;
               }
               const db = await getDatabase();
-              const insumos = await db.getAllAsync('SELECT id, nome, marca, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg FROM materias_primas ORDER BY nome');
-              exportToCSV('precificai-insumos.csv', insumos || [], [
-                { key: 'id', label: 'ID' },
-                { key: 'nome', label: 'Nome' },
-                { key: 'marca', label: 'Marca' },
-                { key: 'quantidade_bruta', label: 'Qtd. Bruta' },
-                { key: 'quantidade_liquida', label: 'Qtd. Líquida' },
-                { key: 'fator_correcao', label: 'FC' },
-                { key: 'unidade_medida', label: 'Unidade' },
-                { key: 'valor_pago', label: 'Valor pago (R$)' },
-                { key: 'preco_por_kg', label: 'Preço base (R$)' },
-              ]);
-              const produtos = await db.getAllAsync('SELECT id, nome, preco_venda, margem_lucro_produto, rendimento_total, unidade_rendimento FROM produtos ORDER BY nome');
-              setTimeout(() => exportToCSV('precificai-produtos.csv', produtos || [], [
-                { key: 'id', label: 'ID' },
-                { key: 'nome', label: 'Nome' },
-                { key: 'preco_venda', label: 'Preço de venda (R$)' },
-                { key: 'margem_lucro_produto', label: 'Margem' },
-                { key: 'rendimento_total', label: 'Rendimento total' },
-                { key: 'unidade_rendimento', label: 'Unidade de venda' },
-              ]), 800);
-              Alert.alert('Exportado!', 'Os arquivos CSV de insumos e produtos foram baixados. Abra no Excel ou Google Sheets pro contador.');
+              // Sessão 28.22: exporta TODAS as categorias principais como CSVs separados
+              // (cada um vira um arquivo, abre como aba no Excel pelo Power Query)
+              const exports = [
+                {
+                  filename: 'precificai-insumos.csv',
+                  query: 'SELECT id, nome, marca, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg FROM materias_primas ORDER BY nome',
+                  cols: [
+                    { key: 'id', label: 'ID' },
+                    { key: 'nome', label: 'Nome' },
+                    { key: 'marca', label: 'Marca' },
+                    { key: 'quantidade_bruta', label: 'Qtd. Bruta' },
+                    { key: 'quantidade_liquida', label: 'Qtd. Líquida' },
+                    { key: 'fator_correcao', label: 'FC' },
+                    { key: 'unidade_medida', label: 'Unidade' },
+                    { key: 'valor_pago', label: 'Valor pago (R$)' },
+                    { key: 'preco_por_kg', label: 'Preço base (R$)' },
+                  ],
+                },
+                {
+                  filename: 'precificai-produtos.csv',
+                  query: 'SELECT id, nome, preco_venda, margem_lucro_produto, rendimento_total, unidade_rendimento, validade_dias, modo_preparo FROM produtos ORDER BY nome',
+                  cols: [
+                    { key: 'id', label: 'ID' },
+                    { key: 'nome', label: 'Nome' },
+                    { key: 'preco_venda', label: 'Preço de venda (R$)' },
+                    { key: 'margem_lucro_produto', label: 'Margem (%)' },
+                    { key: 'rendimento_total', label: 'Rendimento total' },
+                    { key: 'unidade_rendimento', label: 'Unidade de venda' },
+                    { key: 'validade_dias', label: 'Validade (dias)' },
+                    { key: 'modo_preparo', label: 'Modo de preparo' },
+                  ],
+                },
+                {
+                  filename: 'precificai-preparos.csv',
+                  query: 'SELECT id, nome, rendimento_total, unidade_medida, custo_total, custo_por_kg, validade_dias FROM preparos ORDER BY nome',
+                  cols: [
+                    { key: 'id', label: 'ID' },
+                    { key: 'nome', label: 'Nome' },
+                    { key: 'rendimento_total', label: 'Rendimento' },
+                    { key: 'unidade_medida', label: 'Unidade' },
+                    { key: 'custo_total', label: 'Custo total (R$)' },
+                    { key: 'custo_por_kg', label: 'Custo/kg (R$)' },
+                    { key: 'validade_dias', label: 'Validade (dias)' },
+                  ],
+                },
+                {
+                  filename: 'precificai-embalagens.csv',
+                  query: 'SELECT id, nome, quantidade, preco_total, preco_unitario FROM embalagens ORDER BY nome',
+                  cols: [
+                    { key: 'id', label: 'ID' },
+                    { key: 'nome', label: 'Nome' },
+                    { key: 'quantidade', label: 'Qtd. no pacote' },
+                    { key: 'preco_total', label: 'Preço total (R$)' },
+                    { key: 'preco_unitario', label: 'Preço unitário (R$)' },
+                  ],
+                },
+                {
+                  filename: 'precificai-vendas.csv',
+                  query: 'SELECT v.id, v.data, p.nome as produto_nome, v.quantidade FROM vendas v LEFT JOIN produtos p ON p.id = v.produto_id ORDER BY v.data DESC',
+                  cols: [
+                    { key: 'id', label: 'ID' },
+                    { key: 'data', label: 'Data' },
+                    { key: 'produto_nome', label: 'Produto' },
+                    { key: 'quantidade', label: 'Quantidade' },
+                  ],
+                },
+                {
+                  filename: 'precificai-despesas-fixas.csv',
+                  query: 'SELECT id, descricao, valor FROM despesas_fixas ORDER BY descricao',
+                  cols: [
+                    { key: 'id', label: 'ID' },
+                    { key: 'descricao', label: 'Descrição' },
+                    { key: 'valor', label: 'Valor (R$)' },
+                  ],
+                },
+                {
+                  filename: 'precificai-despesas-variaveis.csv',
+                  query: 'SELECT id, descricao, percentual FROM despesas_variaveis ORDER BY descricao',
+                  cols: [
+                    { key: 'id', label: 'ID' },
+                    { key: 'descricao', label: 'Descrição' },
+                    { key: 'percentual', label: '% do faturamento' },
+                  ],
+                },
+              ];
+              let baixados = 0;
+              for (let i = 0; i < exports.length; i++) {
+                const exp = exports[i];
+                try {
+                  const data = await db.getAllAsync(exp.query);
+                  if (data && data.length > 0) {
+                    // Delay entre downloads pra navegador não bloquear
+                    await new Promise(r => setTimeout(r, 600));
+                    exportToCSV(exp.filename, data, exp.cols);
+                    baixados++;
+                  }
+                } catch (e) {
+                  if (typeof console !== 'undefined') console.warn('[ConfiguracoesScreen.exportCSV]', exp.filename, e?.message || e);
+                }
+              }
+              Alert.alert(
+                'Exportado!',
+                `${baixados} arquivo(s) CSV baixados:\n\n` +
+                exports.map(e => `• ${e.filename.replace('precificai-', '').replace('.csv', '')}`).join('\n') +
+                `\n\nAbra no Excel ou Google Sheets. Pra abrir todos como abas, use Power Query no Excel.`,
+              );
             } catch (e) {
               console.error('[ConfiguracoesScreen.exportCSV]', e);
               Alert.alert('Erro', 'Não foi possível exportar CSV. Tente o backup JSON acima.');
