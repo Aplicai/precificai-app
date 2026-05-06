@@ -1,5 +1,54 @@
 import { getDatabase } from '../database/database';
 
+// ========== PARSER NUMÉRICO PT-BR ==========
+//
+// Sessão 28.27: helper canônico pra aceitar input do usuário em PT-BR.
+// Usuária digita "10,50" ou "10.50" — ambos devem virar 10.5.
+// parseFloat("10,50") === 10 → BUG silencioso. Sempre usar este helper
+// em onChangeText de TextInput numérico.
+//
+// Aceita:
+//   "10,5"  → 10.5
+//   "10.5"  → 10.5
+//   "1.000,50" → 1000.5  (separadores de milhar PT-BR)
+//   "1,000.50" → 1000.5  (separadores de milhar EN-US)
+//   "abc"   → NaN
+//   ""      → NaN
+//   null/undefined → NaN
+//   number  → returned as-is
+//
+// Para "0 ou número válido" use parseDecimalBROrZero.
+export function parseDecimalBR(input) {
+  if (input == null) return NaN;
+  if (typeof input === 'number') return input;
+  let s = String(input).trim();
+  if (!s) return NaN;
+  // Detecta se a vírgula é decimal ou milhar:
+  // - Se tem ambos . e ,, o último é decimal e o outro é milhar
+  // - Se só tem , → vírgula é decimal (PT-BR padrão)
+  // - Se só tem . → ponto é decimal (EN-US)
+  const lastComma = s.lastIndexOf(',');
+  const lastDot = s.lastIndexOf('.');
+  if (lastComma >= 0 && lastDot >= 0) {
+    if (lastComma > lastDot) {
+      // 1.000,50 — pontos são milhar, vírgula é decimal
+      s = s.replace(/\./g, '').replace(',', '.');
+    } else {
+      // 1,000.50 — vírgulas são milhar, ponto é decimal
+      s = s.replace(/,/g, '');
+    }
+  } else if (lastComma >= 0) {
+    s = s.replace(',', '.');
+  }
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+export function parseDecimalBROrZero(input) {
+  const n = parseDecimalBR(input);
+  return Number.isFinite(n) ? n : 0;
+}
+
 // ========== MARGEM DE SEGURANÇA ==========
 
 /**

@@ -11,7 +11,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 
 // ─── Numeric helpers (audit P0) ─────────────
 function safeNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(v);
+  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -25,12 +25,13 @@ function parseInputNumber(raw) {
 
 // Audit P0: SQL injection defense — whitelist permitted UPDATE fields
 const PLAT_NUMERIC_FIELDS = Object.freeze([
-  'taxa_plataforma', 'taxa_entrega', 'comissao_app', 'desconto_promocao', 'ativo',
+  'taxa_plataforma', 'taxa_entrega', 'comissao_app', 'desconto_promocao', 'outros_perc', 'ativo',
 ]);
 
 // Field-specific validation: percent fields capped at [0, 100]
 // APP-29: comissao_app agora é %; desconto_promocao agora é R$ (cupom recorrente)
-const PLAT_PERCENT_FIELDS = new Set(['taxa_plataforma', 'comissao_app']);
+// Sessão 28.27: outros_perc adicionado como % pra taxas embutidas
+const PLAT_PERCENT_FIELDS = new Set(['taxa_plataforma', 'comissao_app', 'outros_perc']);
 
 // Color cycling for platform avatars (same pattern as MateriasPrimasScreen)
 const PLATFORM_COLORS = [
@@ -370,6 +371,15 @@ export default function DeliveryPlataformasScreen() {
                       keyboardType="decimal-pad"
                       placeholder="Ex: 3,2"
                       accessibilityLabel={`Taxa de pagamento online da plataforma ${plat.plataforma}`}
+                    />
+                    {/* Sessão 28.27: novo campo "Outros %" pra taxas embutidas que não se encaixam acima */}
+                    <InputField
+                      label="Outras taxas embutidas (%)"
+                      value={safeNum(plat.outros_perc) > 0 ? String(plat.outros_perc) : ''}
+                      onChangeText={(val) => updatePlatform(plat.id, 'outros_perc', parseInputValue(val, { percent: true }))}
+                      keyboardType="decimal-pad"
+                      placeholder="Ex: 2 (fundo de propaganda, marketing, etc)"
+                      accessibilityLabel={`Outras taxas embutidas da plataforma ${plat.plataforma}`}
                     />
 
                     <View style={[styles.subSectionHeader, { marginTop: spacing.md }]}>

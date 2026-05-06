@@ -211,6 +211,7 @@ CREATE TABLE delivery_config (
   embalagem_extra REAL DEFAULT 0,
   comissao_app REAL DEFAULT 0,
   desconto_promocao REAL DEFAULT 0,
+  outros_perc REAL DEFAULT 0, -- 28.27: outras taxas embutidas em %
   ativo INTEGER DEFAULT 1
 );
 

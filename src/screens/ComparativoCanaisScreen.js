@@ -22,7 +22,7 @@ import { calcPrecoBreakEven, calcResultadoDelivery } from '../utils/deliveryPric
 
 // Defesa contra NaN/Infinity em precificação. Retorna 0 quando não-finito.
 function parseNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(v);
+  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
   return Number.isFinite(n) ? n : 0;
 }
 

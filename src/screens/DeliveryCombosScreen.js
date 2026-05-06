@@ -20,7 +20,7 @@ import usePersistedState from '../hooks/usePersistedState';
 
 // ─── Numeric helpers (audit P0 — defesa contra NaN/Infinity) ─────────────
 function safeNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(v);
+  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
   return Number.isFinite(n) ? n : 0;
 }
 

@@ -13,7 +13,7 @@ import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento,
 
 // Safe number helper: evita NaN/Infinity vazando para cálculos financeiros.
 function safeNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(v);
+  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -112,17 +112,36 @@ export default function MatrizBCGScreen({ navigation }) {
     if (qty > 0) {
       await db.runAsync('INSERT INTO vendas (produto_id, data, quantidade) VALUES (?,?,?)', [prodId, currentMonth, qty]);
     }
-    // Sessão 28.17 BUG FIX: reclassifica imediatamente após salvar venda.
-    // Antes: classificação só rolava em loadData (focus effect), então mudanças
-    // de venda no MESMO screen nunca atualizavam a categoria do produto.
-    try { await loadData(); } catch {}
+    // Sessão 28.27 BUG FIX: NÃO reclassifica enquanto o user está em modo "Vendas".
+    // Antes (28.17): salvava → loadData() rodava → matriz re-renderizava → form
+    // colapsava → user tinha que clicar em "Vendas" de novo a cada produto.
+    // Agora: persiste a venda, mas só reclassifica DEPOIS que o user fecha
+    // o modo Vendas (handleSairVendas). O state local (vendasMap) já reflete
+    // a digitação imediata, então UX continua responsiva.
+    if (!showVendas) {
+      try { await loadData(); } catch {}
+    }
   }
 
   function handleVendaChange(prodId, value) {
-    const qty = parseInt(value) || 0;
+    // Sessão 28.27: aceita "5", "5,5", "5.5" — parseInt antigo descartava decimais
+    const cleaned = String(value).replace(',', '.').replace(/[^0-9.]/g, '');
+    const qty = parseInt(cleaned) || 0;
     setVendasMap(prev => ({ ...prev, [prodId]: qty }));
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => saveVenda(prodId, qty), 800);
+  }
+
+  // Sessão 28.27: chamado quando user sai do modo Vendas → faz a reclassificação
+  // pendente UMA vez (em vez de a cada venda).
+  async function handleSairVendas() {
+    setShowVendas(false);
+    // Garante que último timer pendente seja flushado
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    try { await loadData(); } catch {}
   }
 
   async function loadData() {
@@ -409,7 +428,7 @@ export default function MatrizBCGScreen({ navigation }) {
               <Text style={styles.vendasMonthLabel}>{monthName}</Text>
             </View>
             <TouchableOpacity
-              onPress={() => setShowVendas(false)}
+              onPress={handleSairVendas}
               style={styles.collapseBtn}
               activeOpacity={0.7}
             >
@@ -460,7 +479,7 @@ export default function MatrizBCGScreen({ navigation }) {
           <TouchableOpacity
             style={styles.updateBtn}
             activeOpacity={0.7}
-            onPress={() => { setShowVendas(false); loadData(); }}
+            onPress={handleSairVendas}
           >
             <Feather name="refresh-cw" size={14} color="#fff" />
             <Text style={styles.updateBtnText}>Atualizar análise</Text>

@@ -12,7 +12,7 @@ import useListDensity from '../hooks/useListDensity';
 
 // Audit P1: helper defensivo para qualquer número vindo de DB.
 function safeNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(v);
+  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
   return Number.isFinite(n) ? n : 0;
 }
 
