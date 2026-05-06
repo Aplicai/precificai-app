@@ -221,6 +221,13 @@ export default function EntityCreateModal({
 
   async function loadPickerAndCategorias() {
     try {
+      // Sessão 28.20: clear cache do supabaseDb wrapper antes de ler — garante que
+      // edições recentes em insumos/preparos/embalagens (ex: usuário editou unidade
+      // do leite) sejam vistas pelo modal ao reabrir, não o cache stale de 2s.
+      try {
+        const { clearQueryCache } = await import('../database/supabaseDb');
+        clearQueryCache();
+      } catch (_) {}
       const db = await getDatabase();
       const materias = await db.getAllAsync('SELECT * FROM materias_primas ORDER BY nome');
       const preparos = await db.getAllAsync('SELECT * FROM preparos ORDER BY nome');
@@ -266,6 +273,32 @@ export default function EntityCreateModal({
   async function loadForEdit() {
     setLoading(true);
     try {
+      // Sessão 28.20: ANTES de carregar do DB, checa se tem draft em memória
+      // de uma navegação anterior pra editar item (insumo/preparo/embalagem).
+      // Se tem draft válido pra ESTE editId, usa ele em vez do DB pra preservar
+      // mudanças não-salvas (ex: novo item adicionado, qty alterada).
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const raw = await AsyncStorage.getItem('entityDraftToRestore');
+        if (raw) {
+          const info = JSON.parse(raw);
+          if (info?.mode === mode && info?.draft && info?.editId === editId && (Date.now() - info.ts) < 5 * 60 * 1000) {
+            await AsyncStorage.removeItem('entityDraftToRestore');
+            const d = info.draft;
+            setNome(d.nome || '');
+            setCategoriaId(d.categoriaId || null);
+            setPrecoVenda(d.precoVenda || '');
+            setTipoVenda(d.tipoVenda || 'unidade');
+            setRendimentoUnidades(d.rendimentoUnidades || '1');
+            setRendimentoTotalProd(d.rendimentoTotalProd || '');
+            setRendimentoTotalPrep(d.rendimentoTotalPrep || '');
+            setUnidadeMedidaPrep(d.unidadeMedidaPrep || 'g');
+            setItens(d.itens || []);
+            setLoading(false);
+            return; // pula DB load — usuário verá estado preservado
+          }
+        }
+      } catch {}
       const db = await getDatabase();
       if (isProduto) {
         const rows = await db.getAllAsync('SELECT * FROM produtos WHERE id = ?', [editId]);
@@ -868,15 +901,19 @@ export default function EntityCreateModal({
                           // reabria mas se o produto era NOVO (editId=null), os itens digitados
                           // se PERDIAM porque nada estava persistido. Agora também serializamos
                           // o estado completo (nome, categoria, itens, etc) e restauramos no abrir.
+                          // Sessão 28.20 BUG FIX: agora salva o DRAFT também pra produtos EXISTENTES (não só novos).
+                          // Antes, ao editar um produto existente e clicar em editar um insumo dentro,
+                          // ao voltar o loadForEdit recarregava do DB e PERDIA as alterações em memória
+                          // (novos itens adicionados, mudanças de quantidade, etc). Agora preserva tudo.
                           try {
                             const AsyncStorage = require('@react-native-async-storage/async-storage').default;
                             const reopenInfo = {
                               mode, editId, ts: Date.now(),
-                              draft: !editId ? {
+                              draft: {
                                 nome, categoriaId, precoVenda,
                                 tipoVenda, rendimentoUnidades, rendimentoTotalProd,
                                 rendimentoTotalPrep, unidadeMedidaPrep, itens,
-                              } : null,
+                              },
                             };
                             AsyncStorage.setItem('reopenEntityModalAfterEdit', JSON.stringify(reopenInfo));
                           } catch {}

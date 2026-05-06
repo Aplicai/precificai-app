@@ -124,9 +124,10 @@ export default function ProdutosListScreen({ navigation }) {
         await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
         if (info?.mode !== 'produto') return;
         if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) return;
-        // Sessão 28.19: se tem draft (produto era NOVO sem id), guarda pra restaurar
+        // Sessão 28.19 + 28.20: SEMPRE guarda draft (novo OU existente) pra
+        // o EntityCreateModal restaurar via loadForEdit ou via fluxo de criação.
         if (info.draft) {
-          try { await AsyncStorage.setItem('entityDraftToRestore', JSON.stringify({ mode: 'produto', draft: info.draft, ts: Date.now() })); } catch {}
+          try { await AsyncStorage.setItem('entityDraftToRestore', JSON.stringify({ mode: 'produto', editId: info.editId || null, draft: info.draft, ts: Date.now() })); } catch {}
         }
         setEditingId(info.editId || null);
         setShowCreateModal(true);

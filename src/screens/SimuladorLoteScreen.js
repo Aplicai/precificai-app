@@ -267,7 +267,7 @@ export default function SimuladorLoteScreen() {
                     <View key={plat.id} style={{ flexDirection: 'row', width: 184, borderRightWidth: 1, borderRightColor: colors.border }}>
                       <TouchableOpacity
                         style={{ width: 92, alignItems: 'center', justifyContent: 'center', padding: spacing.xs, borderRightWidth: 1, borderRightColor: colors.border }}
-                        onPress={() => setModalCalculo({ resultado: sugMantemMargem, titulo: `${linha.prod.nome} — ${plat.plataforma} (mantém ${(margemAtual*100).toFixed(1)}%)`, modo: 'delivery' })}
+                        onPress={() => navigation.navigate('SimulacaoProduto', { produtoId: linha.prod.id, plataformaId: plat.id })}
                         activeOpacity={0.6}
                         disabled={!okMantem}
                       >
@@ -286,7 +286,7 @@ export default function SimuladorLoteScreen() {
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={{ width: 92, alignItems: 'center', justifyContent: 'center', padding: spacing.xs }}
-                        onPress={() => setModalCalculo({ resultado: sugFinanceiro, titulo: `${linha.prod.nome} — ${plat.plataforma} (financeiro)`, modo: 'delivery' })}
+                        onPress={() => navigation.navigate('SimulacaoProduto', { produtoId: linha.prod.id, plataformaId: plat.id })}
                         activeOpacity={0.6}
                         disabled={!okFin}
                       >
