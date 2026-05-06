@@ -146,7 +146,12 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
       }
       setPrecoSalvo(num);
       setSavedFlash(true);
-      setTimeout(() => setSavedFlash(false), 2500);
+      // Sessão 28.23: se está em popup, fecha automaticamente após salvar (UX melhor)
+      if (isPopup && onClose) {
+        setTimeout(() => { onClose(); }, 800);
+      } else {
+        setTimeout(() => setSavedFlash(false), 2500);
+      }
     } catch (e) {
       console.error('[SimulacaoProduto.salvar]', e);
       Alert.alert?.('Erro', 'Não foi possível salvar o preço delivery: ' + (e?.message || 'erro desconhecido'));
@@ -173,7 +178,8 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
   // Composição com o preço escolhido (igual à do simulador)
   const valFixos = precoValido ? numEscolhido * (contexto.fixoPerc || 0) : 0;
   const valImposto = precoValido ? numEscolhido * (contexto.impostoPerc || 0) : 0;
-  const comissaoPct = safe(plat?.taxa_plataforma) / 100;
+  // Sessão 28.23: usa fallback comissao_app ?? taxa_plataforma (UI escreve em comissao_app)
+  const comissaoPct = safe(plat?.comissao_app ?? plat?.taxa_plataforma) / 100;
   const valComissao = precoValido ? numEscolhido * comissaoPct : 0;
   const cupomR = safe(plat?.embalagem_extra);
   const freteR = safe(plat?.taxa_entrega);
