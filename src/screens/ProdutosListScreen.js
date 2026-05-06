@@ -129,8 +129,21 @@ export default function ProdutosListScreen({ navigation }) {
         setShowCreateModal(true);
       } catch {}
     })();
+    // Sessão 28.17: deep-link de outras telas (Relatório etc) que querem abrir
+    // a edição do produto direto no modal — uso o param `openProductEdit`.
+    try {
+      const navState = navigation.getState && navigation.getState();
+      const route = navState?.routes?.[navState.index];
+      const productEditId = route?.params?.openProductEdit;
+      if (productEditId) {
+        setEditingId(productEditId);
+        setShowCreateModal(true);
+        // Limpa o param pra não reabrir em focos futuros
+        navigation.setParams({ openProductEdit: undefined });
+      }
+    } catch {}
     return () => setConfirmDelete(null);
-  }, [filtroCategoria, busca, sortBy]));
+  }, [filtroCategoria, busca, sortBy, navigation]));
 
   async function loadData() {
     setLoading(true);

@@ -147,6 +147,10 @@ export default function ProdutoFormScreen({ route, navigation }) {
       await db.runAsync('UPDATE materias_primas SET preco_por_kg = ? WHERE id = ?', [novoPreco, ing.materia_prima_id]);
       // Atualiza state local pra refletir imediato no form
       setIngredientes(prev => prev.map((it, i) => i === idx ? { ...it, preco_por_kg: novoPreco } : it));
+      // Sessão 28.17 BUG FIX: também atualiza materiasPrimas (cache em memória) pra
+      // que o helper custoIng() veja o valor novo. Antes só Ingredientes era atualizado
+      // mas custoIng lia de materiasPrimas, então o cost displayed ficava stale até reload.
+      setMateriasPrimas(prev => prev.map(m => m.id === ing.materia_prima_id ? { ...m, preco_por_kg: novoPreco } : m));
       // D-19 cascade: recalcula preparos+combos
       try {
         const { cascadeFromInsumo, recalcularTodosCombos } = await import('../services/cascadeRecalc');
@@ -681,9 +685,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
   }
 
   // Helper: custo de um ingrediente
+  // Sessão 28.17 BUG FIX: prefere ing.preco_por_kg (state local atualizado) sobre
+  // materiasPrimas.preco_por_kg (cache que pode estar stale após edição inline).
+  // Antes, ao editar preço pelo modal, o custo do produto não atualizava porque
+  // o lookup no array materiasPrimas retornava o valor antigo cacheado.
   function custoIng(ing) {
     const mp = materiasPrimas.find(m => m.id === ing.materia_prima_id);
-    const precoBase = mp?.preco_por_kg || ing.preco_por_kg || 0;
+    const precoBase = ing.preco_por_kg ?? mp?.preco_por_kg ?? 0;
     const unidade = ing.unidade || mp?.unidade_medida || 'g';
     return calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade);
   }

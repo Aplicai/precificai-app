@@ -130,13 +130,15 @@ export default function RegisterScreen({ navigation }) {
       setError(`A senha precisa de pelo menos ${MIN_PASSWORD_LENGTH} caracteres.`);
       return;
     }
-    // D-01: enforce os critérios mostrados no checklist visual (Daniele reclamou que validação não seguia parâmetros).
+    // D-01 + Sessão 28.17: validação reforçada — antes só MIN_PASSWORD_SCORE >= 1 e símbolo opcional.
+    // Daniele reclamou que validação ainda passava senhas fracas. Agora todos os 5 critérios visuais
+    // são OBRIGATÓRIOS (incluindo símbolo).
     if (!/[A-Z]/.test(password)) { setError('A senha precisa ter pelo menos 1 letra MAIÚSCULA.'); return; }
     if (!/[a-z]/.test(password)) { setError('A senha precisa ter pelo menos 1 letra minúscula.'); return; }
     if (!/[0-9]/.test(password)) { setError('A senha precisa ter pelo menos 1 número.'); return; }
-    // Símbolo continua sendo recomendação, não obrigatório
-    if (passwordStrength && passwordStrength.score < MIN_PASSWORD_SCORE) {
-      setError('Senha muito fraca — evite sequências óbvias (ex.: "abc123", "qwerty").');
+    if (!/[^A-Za-z0-9]/.test(password)) { setError('A senha precisa ter pelo menos 1 símbolo (ex.: !@#$%&*).'); return; }
+    if (passwordStrength && passwordStrength.score < 2) {
+      setError('Senha muito fraca — evite sequências óbvias (ex.: "abc123", "qwerty"). Use uma combinação imprevisível.');
       return;
     }
     setError('');

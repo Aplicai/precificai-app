@@ -437,22 +437,58 @@ export default function RelatorioSimplesScreen({ navigation }) {
       });
     }
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relatório Precificaí</title>
+    // Sessão 28.17: HTML enriquecido pra ficar mais próximo visualmente do que aparece na tela
+    // (KPIs em destaque, cards coloridos, melhores/atenção em listas, etc).
+    const formatBR = (v) => typeof v === 'number' ? v.toFixed(2).replace('.', ',') : v;
+    const melhoresHtml = (data.melhores || []).slice(0, 5).map((p, i) => `
+      <li style="margin: 6px 0; padding: 8px 12px; background: #ecfdf5; border-left: 3px solid #16a34a; border-radius: 4px;">
+        <strong>${i+1}. ${escapeHtml(p.nome || '')}</strong>
+        <span style="color: #16a34a; float: right;">+${formatCurrency(p.margemReais || 0)}/un</span>
+      </li>
+    `).join('');
+    const atencaoHtml = (data.atencao || []).slice(0, 5).map(p => `
+      <li style="margin: 6px 0; padding: 8px 12px; background: #fef2f2; border-left: 3px solid #dc2626; border-radius: 4px;">
+        <strong>⚠️ ${escapeHtml(p.nome || '')}</strong>
+        <span style="color: #6b7280; float: right;">${formatCurrency(p.precoVenda || 0)} (CMV ${formatCurrency(p.custoUn || 0)})</span>
+      </li>
+    `).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relatório Precificaí — ${escapeHtml(perfilNome)}</title>
     <style>
-      body { font-family: 'Segoe UI', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; color: #333; }
-      .header { background: #004d47; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-      .header h1 { margin: 0 0 8px 0; font-size: 24px; }
-      .header p { margin: 4px 0; opacity: 0.9; }
-      .card { border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-      .card h3 { margin: 0 0 8px 0; color: #004d47; font-size: 16px; }
-      .card p { margin: 0; line-height: 1.6; }
-      .highlight { font-size: 18px; font-weight: 700; color: #004d47; }
-      .footer { text-align: center; color: #888; margin-top: 30px; padding-top: 16px; border-top: 1px solid #e0e0e0; }
-      @media print { body { margin: 0; } .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+      * { box-sizing: border-box; }
+      body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; max-width: 820px; margin: 0 auto; padding: 24px; color: #1f2937; background: #f9fafb; }
+      .header { background: linear-gradient(135deg, #004d47 0%, #00695c 100%); color: white; padding: 28px 32px; border-radius: 12px; margin-bottom: 20px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .header h1 { margin: 0 0 6px 0; font-size: 32px; font-weight: 800; letter-spacing: -0.5px; }
+      .header .sub { margin: 0; opacity: 0.92; font-size: 15px; }
+      .header .date { margin: 8px 0 0 0; opacity: 0.78; font-size: 13px; }
+      .kpi-row { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+      .kpi { flex: 1 1 160px; background: white; padding: 16px; border-radius: 10px; border: 1px solid #e5e7eb; }
+      .kpi-label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+      .kpi-value { font-size: 22px; font-weight: 800; color: #004d47; }
+      .card { background: white; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 14px; page-break-inside: avoid; }
+      .card h3 { margin: 0 0 10px 0; color: #004d47; font-size: 17px; font-weight: 700; }
+      .card p { margin: 0; line-height: 1.65; color: #374151; font-size: 14px; }
+      ul.list { list-style: none; padding: 0; margin: 8px 0 0 0; }
+      .footer { text-align: center; color: #9ca3af; margin-top: 30px; padding-top: 18px; border-top: 1px solid #e5e7eb; font-size: 12px; }
+      @media print {
+        body { background: white; padding: 0; }
+        .header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .kpi, .card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      }
     </style></head><body>
-    <div class="header"><h1>Precificaí</h1><p>${escapeHtml(perfilNome)} - Relatório</p><p>${new Date().toLocaleDateString('pt-BR')}</p></div>
+    <div class="header">
+      <h1>Precificaí</h1>
+      <p class="sub">${escapeHtml(perfilNome)} — Relatório de gestão</p>
+      <p class="date">Gerado em ${new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+    </div>
+    ${data.resumo ? `<div class="kpi-row">
+      <div class="kpi"><div class="kpi-label">Faturamento</div><div class="kpi-value">${formatCurrency(data.resumo.faturamento || 0)}</div></div>
+      <div class="kpi"><div class="kpi-label">Lucro</div><div class="kpi-value" style="color: ${data.resumo.lucroPositivo ? '#16a34a' : '#dc2626'};">R$ ${formatBR(data.resumo.lucro)}</div></div>
+      <div class="kpi"><div class="kpi-label">Custos do mês</div><div class="kpi-value">R$ ${formatBR(data.resumo.fixas)}</div></div>
+    </div>` : ''}
     ${sections.map(s => `<div class="card"><h3>${escapeHtml(s.title)}</h3><p>${escapeHtml(s.text)}</p></div>`).join('')}
-    <p class="footer">Gerado por Precificaí - www.precificaiapp.com</p>
+    ${melhoresHtml ? `<div class="card"><h3>🏆 Top 5 — seus campeões</h3><ul class="list">${melhoresHtml}</ul></div>` : ''}
+    ${atencaoHtml ? `<div class="card"><h3>⚠️ Atenção — produtos com margem apertada</h3><ul class="list">${atencaoHtml}</ul></div>` : ''}
+    <p class="footer">Gerado por Precificaí · www.precificaiapp.com</p>
     </body></html>`;
 
     const win = window.open('', '_blank');
@@ -745,7 +781,7 @@ export default function RelatorioSimplesScreen({ navigation }) {
                   key={p.id}
                   style={[styles.precRow, idx % 2 === 0 && styles.precRowEven]}
                   activeOpacity={0.7}
-                  onPress={() => navigation.navigate('Produtos', { screen: 'ProdutoForm', params: { id: p.id } })}
+                  onPress={() => navigation.navigate('Produtos', { screen: 'ProdutosList', params: { openProductEdit: p.id } })}
                   accessibilityRole="button"
                   accessibilityLabel={`Editar ${p.nome}`}
                 >
@@ -763,7 +799,7 @@ export default function RelatorioSimplesScreen({ navigation }) {
                 key={p.id}
                 style={styles.precCardMobile}
                 activeOpacity={0.7}
-                onPress={() => navigation.navigate('Produtos', { screen: 'ProdutoForm', params: { id: p.id } })}
+                onPress={() => navigation.navigate('Produtos', { screen: 'ProdutosList', params: { openProductEdit: p.id } })}
                 accessibilityRole="button"
                 accessibilityLabel={`Editar ${p.nome}`}
               >

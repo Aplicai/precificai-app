@@ -685,16 +685,24 @@ export default function ConfiguracaoScreen() {
                 value: lucroDesejado,
                 suffix: '%',
                 placeholder: '15',
-                onConfirm: (val) => {
+                onConfirm: async (val) => {
                   setLucroDesejado(val);
                   setCurrencyModal(null);
                   const db_val = parseFloat(val.replace(',', '.')) / 100;
                   if (!isNaN(db_val) && db_val > 0) {
-                    getDatabase().then(db => {
-                      db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [db_val]);
+                    // Sessão 28.17 BUG FIX: ANTES o `db.runAsync` não era awaited,
+                    // então `loadData()` rodava ANTES do save completar e podia
+                    // sobrescrever o state com o valor antigo do DB. Por isso o
+                    // user precisava clicar 2x pra "atualizar". Agora await garante
+                    // ordem correta.
+                    try {
+                      const db = await getDatabase();
+                      await db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [db_val]);
                       showSaved('Margem salva');
-                      loadData();
-                    });
+                      await loadData();
+                    } catch (e) {
+                      console.error('[ConfiguracaoScreen.lucro.save]', e);
+                    }
                   }
                 },
               })}

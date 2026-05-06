@@ -615,12 +615,24 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                   } catch (e) {
                     console.warn('[Sugestao.usar] falha ao resolver categoria:', e);
                   }
+                  // Sessão 28.17: aplica FC de referência (TACO) ao adotar a sugestão
+                  // Antes: bruta == líquida (FC=1) → user precisava ajustar manualmente
+                  let qtdBruta = sugestao.qtd_tipica_compra ? String(sugestao.qtd_tipica_compra) : p.quantidade_bruta;
+                  let qtdLiquida = qtdBruta;
+                  try {
+                    const { estimarQuantidadeLiquida, getFatorCorrecaoReferencia } = await import('../data/fatoresCorrecao');
+                    const fc = getFatorCorrecaoReferencia(sugestao.nome_canonico);
+                    if (fc && fc !== 1 && sugestao.qtd_tipica_compra > 0) {
+                      const liquidaCalc = estimarQuantidadeLiquida(sugestao.qtd_tipica_compra, sugestao.nome_canonico);
+                      if (liquidaCalc > 0) qtdLiquida = String(Math.round(liquidaCalc));
+                    }
+                  } catch {}
                   setForm(p => ({
                     ...p,
                     nome: sugestao.nome_canonico,
                     unidade_medida: sugestao.unidade_padrao || p.unidade_medida,
-                    quantidade_bruta: sugestao.qtd_tipica_compra ? String(sugestao.qtd_tipica_compra) : p.quantidade_bruta,
-                    quantidade_liquida: sugestao.qtd_tipica_compra ? String(sugestao.qtd_tipica_compra) : p.quantidade_liquida,
+                    quantidade_bruta: qtdBruta,
+                    quantidade_liquida: qtdLiquida,
                     categoria_id: categoria_id || p.categoria_id,
                   }));
                   setSugestaoDispensadaPara(normalizeStr(sugestao.nome_canonico));
@@ -654,9 +666,12 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
               label="Marca (opcional)"
               value={form.marca}
               onChangeText={(v) => setForm(p => ({ ...p, marca: v }))}
-              placeholder="Ex: Dona Benta"
+              placeholder="Pode deixar em branco — só preenche se quiser distinguir várias marcas"
               style={styles.fieldCompact}
             />
+            <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 4, fontStyle: 'italic' }}>
+              💡 Não precisa preencher. Só use marca se você cadastra MAIS DE UMA versão do mesmo insumo (ex: 2 marcas de leite).
+            </Text>
           </View>
           <View style={{ flex: 1 }}>
             <View style={styles.pickerContainer}>
