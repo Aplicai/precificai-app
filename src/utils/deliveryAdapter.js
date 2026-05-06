@@ -1,18 +1,26 @@
 /**
- * Adapter delivery — APP-25/29
+ * Adapter delivery — APP-25/29 + sessão 28.30 (normalização legacy)
  *
- * Converte uma row de `delivery_config` (schema legado) para o formato
- * esperado pelo `calcularPrecoDelivery()` do precificacao.js engine.
+ * Converte uma row de `delivery_config` (schema legado) para um shape canônico
+ * usado pelo engine `calcularPrecoDelivery()` em precificacao.js.
  *
- * Schema delivery_config (REPURPOSED — sem migration):
- *   - taxa_plataforma  (REAL %)  → Comissão da plataforma
- *   - comissao_app     (REAL %)  → Taxa de pagamento online
- *   - desconto_promocao(REAL R$) → Cupom recorrente
- *   - taxa_entrega     (REAL R$) → Frete subsidiado recorrente
- *   - ativo            (INT 0/1)
+ * ─────────────────────────────────────────────────────────────────────────
+ * MAPA LEGACY → SEMÂNTICA REAL (origem de bugs em 28.14, 28.23, 28.27)
  *
- * Os campos de %  estão armazenados como 0-100 no DB (ex: 27 = 27%).
- * O engine espera DECIMAL (0.27 = 27%), então convertemos /100 aqui.
+ *   COLUNA NO DB              SEMÂNTICA REAL              UNIDADE
+ *   ────────────────────      ───────────────────────     ─────────
+ *   taxa_plataforma           Comissão da plataforma      % (0–100)
+ *   comissao_app              Taxa de pagamento online    % (0–100)
+ *   desconto_promocao         Cupom de desconto recorrente R$
+ *   taxa_entrega              Frete subsidiado recorrente R$
+ *   embalagem_extra           [DEPRECATED — não usar]      —
+ *   outros_perc               Outras taxas embutidas (28.27) % (0–100)
+ *   ativo                     Plataforma ativa             INT 0/1
+ *
+ * IMPORTANTE: nomes das colunas continuam legacy pra evitar migration
+ * destrutiva. Toda nova lógica deve passar por `normalizePlataforma()` que
+ * retorna shape com nomes claros (`comissaoPct`, `taxaOnlinePct`, etc).
+ * ─────────────────────────────────────────────────────────────────────────
  */
 
 import { calcularPrecoDelivery, compararDeliveryVsBalcao } from './precificacao';
@@ -74,6 +82,37 @@ export function extrairImpostoPercentual(despesasVariaveis) {
 }
 
 export { compararDeliveryVsBalcao };
+
+/**
+ * Sessão 28.30: normalizador canônico de plataforma.
+ *
+ * Recebe row do `delivery_config` (com nomes legacy confusos) e retorna shape
+ * com nomes semânticos. Use em código novo. Telas legadas que ainda lêem
+ * `plat.taxa_plataforma` etc continuam funcionando até serem migradas.
+ *
+ * @param {object} platRow
+ * @returns {{
+ *   id: number, nome: string, ativo: boolean,
+ *   comissaoPct: number,         // decimal 0-1 (era taxa_plataforma)
+ *   taxaOnlinePct: number,       // decimal 0-1 (era comissao_app)
+ *   outrosPct: number,           // decimal 0-1 (28.27 — outros_perc)
+ *   cupomR: number,              // R$ (era desconto_promocao)
+ *   freteSubsidiadoR: number,    // R$ (era taxa_entrega)
+ * }}
+ */
+export function normalizePlataforma(platRow) {
+  const safe = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  return {
+    id: platRow?.id,
+    nome: platRow?.plataforma || platRow?.nome || 'Plataforma',
+    ativo: !!platRow?.ativo,
+    comissaoPct: safe(platRow?.taxa_plataforma) / 100,
+    taxaOnlinePct: safe(platRow?.comissao_app) / 100,
+    outrosPct: safe(platRow?.outros_perc) / 100,
+    cupomR: safe(platRow?.desconto_promocao),
+    freteSubsidiadoR: safe(platRow?.taxa_entrega),
+  };
+}
 
 /**
  * Sessão 28.25 (refactor): builder canônico do "contexto financeiro" usado em

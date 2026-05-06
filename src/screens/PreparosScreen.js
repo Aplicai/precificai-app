@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { View, Text, FlatList, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform, RefreshControl } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
-import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useRoute } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import FAB from '../components/FAB';
 import SearchBar from '../components/SearchBar';
@@ -67,6 +67,12 @@ function formatRendimento(valor, unidade) {
 export default function PreparosScreen({ navigation }) {
   const { isDesktop } = useResponsiveLayout();
   const isFocused = useIsFocused();
+  // Sessão 28.30 BUG FIX: pra ler params do deep-link `openPreparoEdit`,
+  // precisamos do useRoute() que sempre retorna a rota DESTA tela. Antes
+  // usávamos navigation.getState() que pegava a rota do navigator pai
+  // (Tab "Preparos") em vez da rota interna (PreparosMain), então
+  // route.params ficava undefined e o modal de edição não abria.
+  const currentRoute = useRoute();
   const [sections, setSections] = useState([]);
   const [totalPreparos, setTotalPreparos] = useState(0);
   const [categorias, setCategorias] = useState([]);
@@ -125,19 +131,21 @@ export default function PreparosScreen({ navigation }) {
         setShowCreateModal(true);
       } catch {}
     })();
-    // Sessão 28.21: deep-link pra abrir edição direto do EntityCreateModal (vindo do produto)
-    try {
-      const navState = navigation.getState && navigation.getState();
-      const route = navState?.routes?.[navState.index];
-      const preparoEditId = route?.params?.openPreparoEdit;
-      if (preparoEditId) {
-        setEditingId(preparoEditId);
-        setShowCreateModal(true);
-        navigation.setParams({ openPreparoEdit: undefined });
-      }
-    } catch {}
     return () => setConfirmDelete(null);
   }, [filtroCategoria, busca, sortBy, navigation]));
+
+  // Sessão 28.30: deep-link `openPreparoEdit` em useEffect SEPARADO pra reagir
+  // a mudança de params (antes ficava dentro do useFocusEffect e a stale
+  // closure não via params atualizados).
+  useEffect(() => {
+    const preparoEditId = currentRoute?.params?.openPreparoEdit;
+    if (preparoEditId) {
+      setEditingId(preparoEditId);
+      setShowCreateModal(true);
+      // Limpa o param pra não reabrir em focus subsequentes
+      try { navigation.setParams({ openPreparoEdit: undefined }); } catch {}
+    }
+  }, [currentRoute?.params?.openPreparoEdit, navigation]);
 
   async function loadData() {
     setLoading(true);

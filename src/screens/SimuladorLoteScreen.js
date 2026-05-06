@@ -10,7 +10,7 @@
  *   "O simulador de preços no iFood eu tenho que buscar o produto.
  *    Eu tenho que buscar um produto por produto."
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Modal } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SimulacaoProdutoContent } from './SimulacaoProdutoScreen';
@@ -47,7 +47,31 @@ export default function SimuladorLoteScreen() {
 
   useFocusEffect(useCallback(() => { carregar(); }, []));
 
+  // Sessão 28.30: fallback explícito — useFocusEffect às vezes não dispara
+  // quando user edita produto em OUTRA aba do navegador e volta. Listener
+  // explícito + visibility change garante reload.
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', () => { carregar(); });
+    let onVis;
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      onVis = () => { if (!document.hidden) carregar(); };
+      document.addEventListener('visibilitychange', onVis);
+    }
+    return () => {
+      try { unsub(); } catch {}
+      if (onVis && typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVis);
+      }
+    };
+  }, [navigation]);
+
   async function carregar() {
+    // Sessão 28.30: limpa cache antes de carregar — garante que UPDATE em
+    // outra tela seja visto na hora.
+    try {
+      const { clearQueryCache } = await import('../database/supabaseDb');
+      clearQueryCache?.();
+    } catch {}
     setLoading(true);
     try {
       const db = await getDatabase();
@@ -229,8 +253,8 @@ export default function SimuladorLoteScreen() {
             <View style={styles.legendRow}>
               <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
               <Text style={styles.legendText}>
-                <Text style={{ fontFamily: fontFamily.bold }}>MARGEM IGUAL: </Text>
-                preço delivery que entrega o MESMO lucro líquido % que esse produto tem hoje no balcão. Use se o preço de balcão já está bom.
+                <Text style={{ fontFamily: fontFamily.bold }}>MESMO LUCRO: </Text>
+                preço delivery onde sobra exatamente o mesmo R$ de lucro líquido por venda que você tira hoje no balcão (depois de descontar custos fixos, impostos e a comissão da plataforma). Use quando o preço de balcão já está bem precificado.
               </Text>
             </View>
             <View style={styles.legendRow}>
@@ -293,7 +317,7 @@ export default function SimuladorLoteScreen() {
                         </Text>
                       </View>
                       <View style={{ alignItems: 'center', minWidth: 70 }}>
-                        <Text style={{ fontSize: 9, color: colors.primary, fontFamily: fontFamily.bold }}>MARGEM IGUAL</Text>
+                        <Text style={{ fontSize: 9, color: colors.primary, fontFamily: fontFamily.bold }}>MESMO LUCRO</Text>
                         <Text style={{ fontSize: 12, color: okMantem ? colors.primary : colors.disabled, fontFamily: fontFamily.medium }}>
                           {okMantem ? formatCurrency(sugMantemMargem.preco) : '—'}
                         </Text>
@@ -340,8 +364,8 @@ export default function SimuladorLoteScreen() {
                       <Text style={{ fontSize: 8, color: colors.textSecondary }}>cobrado hoje</Text>
                     </View>
                     <View style={{ width: 90, alignItems: 'center', padding: 4, borderRightWidth: 1, borderRightColor: colors.border }}>
-                      <Text style={{ fontSize: 9, color: colors.primary, fontFamily: fontFamily.bold }}>MARGEM IGUAL</Text>
-                      <Text style={{ fontSize: 8, color: colors.textSecondary }}>= lucro do balcão</Text>
+                      <Text style={{ fontSize: 9, color: colors.primary, fontFamily: fontFamily.bold }}>MESMO LUCRO</Text>
+                      <Text style={{ fontSize: 8, color: colors.textSecondary }}>R$ líq./un do balcão</Text>
                     </View>
                     <View style={{ width: 90, alignItems: 'center', padding: 4 }}>
                       <Text style={{ fontSize: 9, color: colors.success, fontFamily: fontFamily.bold }}>SUGERIDO</Text>
@@ -358,7 +382,7 @@ export default function SimuladorLoteScreen() {
                 <View style={[styles.cellProduto, { borderRightWidth: 1, borderRightColor: colors.border }]}>
                   <Text style={styles.produtoNome} numberOfLines={2}>{linha.prod.nome}</Text>
                   <Text style={{ fontSize: 9, color: colors.textSecondary, marginTop: 2 }}>
-                    Margem balcão: {(linha.margemBrutaBalcao * 100).toFixed(1)}% • Lucro líq.: {(linha.lucroPercBalcaoReal * 100).toFixed(1)}%
+                    Lucro líq./un balcão: {formatCurrency(linha.prod.precoVendaBalcao * linha.lucroPercBalcaoReal)} ({(linha.lucroPercBalcaoReal * 100).toFixed(1)}%)
                   </Text>
                 </View>
                 <View style={[styles.cellNumeric, { borderRightWidth: 1, borderRightColor: colors.border }]}>
@@ -399,6 +423,10 @@ export default function SimuladorLoteScreen() {
                           <View style={{ alignItems: 'center', gap: 2 }}>
                             <Text style={[styles.cellValuePrimary, { color: colors.primary, fontSize: 12 }]}>
                               {formatCurrency(sugMantemMargem.preco)}
+                            </Text>
+                            {/* Sessão 28.30: mostra lucro R$/un pra evidenciar que casa com o balcão */}
+                            <Text style={{ fontSize: 8, color: colors.textSecondary }}>
+                              lucro {formatCurrency(sugMantemMargem.preco * linha.lucroPercBalcaoReal)}
                             </Text>
                           </View>
                         ) : (

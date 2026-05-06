@@ -190,12 +190,38 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     };
   }, [form, loaded]);
 
-  // Cleanup timer on unmount
+  // Sessão 28.30 BUG FIX: cleanup ao DESMONTAR a tela.
+  // Antes: clearTimeout no unmount → autoSave pendente NUNCA disparava se user
+  // navegava de volta dentro dos 600ms do debounce. Resultado: preço não persistia
+  // e Relatório de Insumos mostrava valor velho.
+  // Agora: ao sair da tela, FLUSH o save pendente sincronicamente (best-effort).
   useEffect(() => {
     return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+        if (editId && loaded) {
+          // dispara autoSave imediatamente (best-effort — se promise não completar
+          // o app já está unmounting, mas o UPDATE chega no DB).
+          try { autoSave(); } catch {}
+        }
+      }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Sessão 28.30: também flush ao perder foco (navega pra outra tab/tela)
+  // — garante persistência mesmo em web onde unmount nem sempre acontece.
+  useEffect(() => {
+    if (isFocused) return;
+    if (!saveTimerRef.current) return;
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    if (editId && loaded) {
+      try { autoSave(); } catch {}
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFocused]);
 
   // Dedicated historico load — ensures history is fetched even if loadItem races
   useEffect(() => {
