@@ -457,28 +457,46 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
       return Alert.alert('Unidade inválida', 'Selecione uma unidade de medida válida antes de salvar.');
     }
     setErrors({});
-    allowExit.current = true;
-    const db = await getDatabase();
-    const params = [
-      form.nome, form.marca, form.categoria_id,
-      qtBruta, qtLiquida,
-      fatorCorrecao, form.unidade_medida,
-      valorPago, precoBase,
-    ];
-    const result = await db.runAsync(
-      'INSERT INTO materias_primas (nome, marca, categoria_id, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg) VALUES (?,?,?,?,?,?,?,?,?)',
-      params
-    );
-    // Registrar histórico de preço inicial
-    if (valorPago > 0 && result?.lastInsertRowId) {
+    // Sessão 28.18 BUG FIX: handle de erro com Alert claro pra o user.
+    // Antes: erros do DB silenciavam, dando a impressão "não salva".
+    try {
+      allowExit.current = true;
+      const db = await getDatabase();
+      const params = [
+        form.nome, form.marca, form.categoria_id,
+        qtBruta, qtLiquida,
+        fatorCorrecao, form.unidade_medida,
+        valorPago, precoBase,
+      ];
+      const result = await db.runAsync(
+        'INSERT INTO materias_primas (nome, marca, categoria_id, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg) VALUES (?,?,?,?,?,?,?,?,?)',
+        params
+      );
+      // Registrar histórico de preço inicial
+      if (valorPago > 0 && result?.lastInsertRowId) {
+        try {
+          await db.runAsync(
+            'INSERT INTO historico_precos (materia_prima_id, valor_pago, preco_por_kg) VALUES (?,?,?)',
+            [result.lastInsertRowId, valorPago, precoBase]
+          );
+        } catch (e) { /* ignora se tabela não existe ainda */ }
+      }
+      // Limpa cache do wrapper pra outras telas verem o insumo recém-criado
       try {
-        await db.runAsync(
-          'INSERT INTO historico_precos (materia_prima_id, valor_pago, preco_por_kg) VALUES (?,?,?)',
-          [result.lastInsertRowId, valorPago, precoBase]
-        );
-      } catch (e) { /* ignora se tabela não existe ainda */ }
+        const { clearQueryCache } = await import('../database/supabaseDb');
+        clearQueryCache();
+      } catch (_) {}
+      navigation.goBack();
+    } catch (e) {
+      allowExit.current = false;
+      console.error('[MateriaPrimaForm.salvarNovo]', e);
+      const msg = (e && e.message) ? e.message : 'Erro desconhecido';
+      Alert.alert(
+        'Erro ao salvar',
+        `Não foi possível salvar o insumo:\n\n${msg}\n\nVerifique sua conexão e tente novamente.`,
+        [{ text: 'OK' }]
+      );
     }
-    navigation.goBack();
   }
 
   // Ações do modal de campos incompletos
@@ -666,12 +684,9 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
               label="Marca (opcional)"
               value={form.marca}
               onChangeText={(v) => setForm(p => ({ ...p, marca: v }))}
-              placeholder="Pode deixar em branco — só preenche se quiser distinguir várias marcas"
+              placeholder="Pode deixar em branco"
               style={styles.fieldCompact}
             />
-            <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 4, fontStyle: 'italic' }}>
-              💡 Não precisa preencher. Só use marca se você cadastra MAIS DE UMA versão do mesmo insumo (ex: 2 marcas de leite).
-            </Text>
           </View>
           <View style={{ flex: 1 }}>
             <View style={styles.pickerContainer}>
