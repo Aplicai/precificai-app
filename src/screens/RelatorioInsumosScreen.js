@@ -33,6 +33,24 @@ export default function RelatorioInsumosScreen() {
 
   useFocusEffect(useCallback(() => { carregar(); }, []));
 
+  // Sessão 28.27: SEGURANÇA EXTRA — useFocusEffect às vezes não dispara em tab
+  // navigators no web (depende da versão do React Navigation). Adiciona listener
+  // explícito + recarrega quando aba do navegador volta a ficar visível.
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', () => { carregar(); });
+    let onVis;
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      onVis = () => { if (!document.hidden) carregar(); };
+      document.addEventListener('visibilitychange', onVis);
+    }
+    return () => {
+      unsub();
+      if (onVis && typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVis);
+      }
+    };
+  }, [navigation]);
+
   async function carregar() {
     setLoading(true);
     try {

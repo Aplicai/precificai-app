@@ -192,7 +192,12 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
     );
   }
 
-  const { prod, plat, cmv, contexto, sugFinanceiro, sugMantemMargem, margemAtual } = data;
+  const { prod, plat, cmv, contexto, sugFinanceiro, sugMantemMargem, margemAtual, lucroPercBalcaoReal } = data;
+  // Sessão 28.27: lucro LÍQUIDO em R$ no balcão (pra dar evidência concreta ao user)
+  const precoBalcaoNum = safe(prod.preco_venda);
+  const lucroLiqBalcaoR = precoBalcaoNum > 0
+    ? precoBalcaoNum * (lucroPercBalcaoReal || 0)
+    : 0;
   const numEscolhido = parseFloat(String(precoEscolhido).replace(',', '.'));
   const precoValido = Number.isFinite(numEscolhido) && numEscolhido > 0;
 
@@ -234,7 +239,10 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
           <View style={styles.kpiCard}>
             <Text style={styles.kpiLabel}>Preço balcão</Text>
             <Text style={styles.kpiValue}>{formatCurrency(safe(prod.preco_venda))}</Text>
-            <Text style={styles.kpiSub}>Margem: {(margemAtual * 100).toFixed(1)}%</Text>
+            {/* Sessão 28.27: clareza — mostra lucro LÍQUIDO em R$ + % (não margem bruta) */}
+            <Text style={styles.kpiSub}>
+              Lucro líq.: {formatCurrency(lucroLiqBalcaoR)} ({(lucroPercBalcaoReal * 100).toFixed(1)}%)
+            </Text>
           </View>
           {precoSalvo && (
             <View style={[styles.kpiCard, { backgroundColor: colors.primary + '12' }]}>
@@ -253,8 +261,13 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
             activeOpacity={0.7}
             disabled={!sugMantemMargem?.preco}
           >
-            <Text style={[styles.sugLabel, { color: colors.primary }]}>MESMA MARGEM DO BALCÃO</Text>
-            <Text style={styles.sugSub}>Pra ter {(margemAtual * 100).toFixed(1)}% de lucro (igual já tem no balcão)</Text>
+            {/* Sessão 28.27: rotulado por LUCRO LÍQUIDO real (não margem bruta).
+                Antes dizia "MESMA MARGEM DO BALCÃO" + "X% de lucro" usando margemAtual
+                (margem bruta) → user via 66.7% aqui mas 10.8% na composição → confusão. */}
+            <Text style={[styles.sugLabel, { color: colors.primary }]}>MESMO LUCRO LÍQUIDO</Text>
+            <Text style={styles.sugSub}>
+              Pra ter {formatCurrency(lucroLiqBalcaoR)} de lucro por venda ({(lucroPercBalcaoReal * 100).toFixed(1)}%) — mesmo do balcão
+            </Text>
             <Text style={[styles.sugPrice, { color: colors.primary }]}>
               {sugMantemMargem?.validacao?.ok ? formatCurrency(sugMantemMargem.preco) : '—'}
             </Text>
@@ -319,6 +332,15 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
                 {(margemLiquida * 100).toFixed(1)}%
               </Text>
             </View>
+            {/* Sessão 28.27: comparação direta com balcão pra dar evidência ao user */}
+            {precoBalcaoNum > 0 && (
+              <View style={[styles.compRow, { paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border, marginTop: 4 }]}>
+                <Text style={[styles.compLabel, { fontStyle: 'italic' }]}>vs balcão (lucro líq.)</Text>
+                <Text style={[styles.compVal, { fontStyle: 'italic', color: colors.textSecondary }]}>
+                  {formatCurrency(lucroLiqBalcaoR)} ({(lucroPercBalcaoReal * 100).toFixed(1)}%)
+                </Text>
+              </View>
+            )}
             {lucroLiquido < 0 && (
               <Text style={styles.alertText}>
                 ⚠️ Você teria PREJUÍZO cobrando este valor. Aumente o preço ou reduza custos.

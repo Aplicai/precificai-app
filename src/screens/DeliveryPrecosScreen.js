@@ -22,7 +22,7 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 // Numeric helpers (defesa contra NaN/Infinity em precificação)
 function safeNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(v);
+  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
   return Number.isFinite(n) ? n : 0;
 }
 

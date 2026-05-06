@@ -206,6 +206,10 @@ export function calcSugestaoDeliveryCompleta({ cmv, plat, contexto }) {
   const impostoComDesconto = safe(contexto?.impostoPerc) + descontoPct;
   // Comissão = qualquer um dos dois campos legacy (UI escreve em comissao_app; schema antigo usava taxa_plataforma)
   const comissaoPerc = safe(plat?.comissao_app ?? plat?.taxa_plataforma) / 100;
+  // Sessão 28.27: novo campo "Outros %" pra taxas embutidas (marketing, fundo
+  // de propaganda, etc) que o user contrata com a plataforma. Soma como mais
+  // um custo variável.
+  const outrosPerc = safe(plat?.outros_perc) / 100;
   return _engCalcDelivery({
     cmv,
     lucroPerc: safe(contexto?.lucroPerc),
@@ -214,7 +218,10 @@ export function calcSugestaoDeliveryCompleta({ cmv, plat, contexto }) {
     comissaoPerc,
     // Sessão 28.23: taxaPagamentoOnline desativada (não tem campo dedicado no schema atual,
     // o `comissao_app` virou o campo de "Comissão" na UI). Deixa em 0 pra não dobrar.
-    taxaPagamentoOnlinePerc: 0,
+    // Sessão 28.27: usamos esse slot pra "outros %" — engine só somava esse campo
+    // como variável, mesmo efeito final. Mantém compatibilidade pra simulações antigas
+    // (onde outros_perc não existe → fallback 0).
+    taxaPagamentoOnlinePerc: outrosPerc,
     cupomR: safe(plat?.embalagem_extra),
     freteSubsidiadoR: safe(plat?.taxa_entrega),
   });
