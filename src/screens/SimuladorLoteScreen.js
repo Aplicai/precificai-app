@@ -40,6 +40,8 @@ export default function SimuladorLoteScreen() {
   const [modalCalculo, setModalCalculo] = useState(null);
   // Sessão 28.21: simulação agora abre como POPUP (não nova tela)
   const [popupSimulacao, setPopupSimulacao] = useState(null); // { produtoId, plataformaId }
+  // Sessão 28.23: preços cadastrados pelo user em produto_preco_delivery
+  const [precosCadastrados, setPrecosCadastrados] = useState({}); // { `prodId-platId`: preco }
 
   useFocusEffect(useCallback(() => { carregar(); }, []));
 
@@ -47,7 +49,7 @@ export default function SimuladorLoteScreen() {
     setLoading(true);
     try {
       const db = await getDatabase();
-      const [prods, allIngs, allPreps, allEmbs, plats, cfgRows, fixasRows, varsRows, fatRows] = await Promise.all([
+      const [prods, allIngs, allPreps, allEmbs, plats, cfgRows, fixasRows, varsRows, fatRows, ppdRows] = await Promise.all([
         db.getAllAsync('SELECT * FROM produtos ORDER BY nome'),
         db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
         db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
@@ -57,7 +59,12 @@ export default function SimuladorLoteScreen() {
         db.getAllAsync('SELECT valor FROM despesas_fixas'),
         db.getAllAsync('SELECT descricao, percentual FROM despesas_variaveis'),
         db.getAllAsync('SELECT valor FROM faturamento_mensal WHERE valor > 0'),
+        // Sessão 28.23: carrega preços DELIVERY que o user cadastrou (produto_preco_delivery)
+        db.getAllAsync('SELECT produto_id, plataforma_id, preco_venda FROM produto_preco_delivery').catch(() => []),
       ]);
+      // Mapa { `produtoId-platformaId`: preco }
+      const ppdMap = {};
+      (ppdRows || []).forEach(r => { ppdMap[`${r.produto_id}-${r.plataforma_id}`] = safeNum(r.preco_venda); });
 
       // Contexto financeiro
       const cfg = cfgRows?.[0] || {};
@@ -94,6 +101,7 @@ export default function SimuladorLoteScreen() {
 
       setProdutos(linhas);
       setPlataformas(plats || []);
+      setPrecosCadastrados(ppdMap);
     } catch (e) {
       console.error('[SimuladorLote.carregar]', e);
     } finally {
@@ -193,31 +201,30 @@ export default function SimuladorLoteScreen() {
           <Text style={styles.legendTitle}>O que cada coluna significa:</Text>
           <View style={styles.legendGrid}>
             <View style={styles.legendRow}>
+              <View style={[styles.legendDot, { backgroundColor: '#F59E0B' }]} />
+              <Text style={styles.legendText}>
+                <Text style={{ fontFamily: fontFamily.bold }}>MEU PREÇO: </Text>
+                quanto VOCÊ está cobrando hoje nesta plataforma. Se está vazio, toque pra cadastrar.
+              </Text>
+            </View>
+            <View style={styles.legendRow}>
               <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
               <Text style={styles.legendText}>
-                <Text style={{ fontFamily: fontFamily.bold }}>Mantém margem do produto: </Text>
-                preço pra cobrar nesta plataforma e ter o MESMO % de lucro que o produto já tem hoje no balcão. Se o seu produto tem margem boa, esse preço vai ser justo.
+                <Text style={{ fontFamily: fontFamily.bold }}>MANTÉM margem balcão: </Text>
+                preço pra ter o mesmo lucro que tem hoje no balcão. Use se o produto já tá precificado bem.
               </Text>
             </View>
             <View style={styles.legendRow}>
               <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
               <Text style={styles.legendText}>
-                <Text style={{ fontFamily: fontFamily.bold }}>Margem do financeiro: </Text>
-                preço pra cobrar e atingir o LUCRO DESEJADO que você definiu em Configurações Financeiras. É o preço "ideal" segundo as suas metas.
-              </Text>
-            </View>
-            <View style={styles.legendRow}>
-              <Feather name="x-circle" size={11} color={colors.error} />
-              <Text style={styles.legendText}>
-                <Text style={{ fontFamily: fontFamily.bold }}>Inviável: </Text>
-                taxas + cupom + lucro somam mais que 100% do preço. Reduza comissão, cupom ou margem alvo.
+                <Text style={{ fontFamily: fontFamily.bold }}>SUGERIDO (financeiro): </Text>
+                preço pra atingir o lucro que você definiu nas Configurações Financeiras.
               </Text>
             </View>
             <View style={styles.legendRow}>
               <Feather name="info" size={11} color={colors.textSecondary} />
               <Text style={styles.legendText}>
-                <Text style={{ fontFamily: fontFamily.bold }}>Toque numa célula </Text>
-                pra abrir simulação completa e cadastrar seu preço real.
+                Toque em qualquer célula pra abrir simulação completa e cadastrar seu preço.
               </Text>
             </View>
           </View>
@@ -238,16 +245,20 @@ export default function SimuladorLoteScreen() {
                 <Text style={styles.headerText}>Preço{'\n'}Atual</Text>
               </View>
               {plataformas.map(plat => (
-                <View key={plat.id} style={{ width: 184, borderRightWidth: 1, borderRightColor: colors.border, borderBottomWidth: 2, borderBottomColor: colors.primary, alignItems: 'center', paddingTop: 6 }}>
+                <View key={plat.id} style={{ width: 270, borderRightWidth: 1, borderRightColor: colors.border, borderBottomWidth: 2, borderBottomColor: colors.primary, alignItems: 'center', paddingTop: 6 }}>
                   <Text style={[styles.headerText, { fontSize: 12 }]} numberOfLines={1}>{plat.plataforma}</Text>
                   <View style={{ flexDirection: 'row', width: '100%', marginTop: 4 }}>
-                    <View style={{ width: 92, alignItems: 'center', padding: 4, borderRightWidth: 1, borderRightColor: colors.border }}>
-                      <Text style={{ fontSize: 9, color: colors.primary, fontFamily: fontFamily.bold }}>MANTÉM</Text>
-                      <Text style={{ fontSize: 8, color: colors.textSecondary }}>margem atual</Text>
+                    <View style={{ width: 90, alignItems: 'center', padding: 4, borderRightWidth: 1, borderRightColor: colors.border }}>
+                      <Text style={{ fontSize: 9, color: '#92400E', fontFamily: fontFamily.bold }}>MEU PREÇO</Text>
+                      <Text style={{ fontSize: 8, color: colors.textSecondary }}>cobrado hoje</Text>
                     </View>
-                    <View style={{ width: 92, alignItems: 'center', padding: 4 }}>
-                      <Text style={{ fontSize: 9, color: colors.success, fontFamily: fontFamily.bold }}>FINANCEIRO</Text>
-                      <Text style={{ fontSize: 8, color: colors.textSecondary }}>margem fixa</Text>
+                    <View style={{ width: 90, alignItems: 'center', padding: 4, borderRightWidth: 1, borderRightColor: colors.border }}>
+                      <Text style={{ fontSize: 9, color: colors.primary, fontFamily: fontFamily.bold }}>MANTÉM</Text>
+                      <Text style={{ fontSize: 8, color: colors.textSecondary }}>margem balcão</Text>
+                    </View>
+                    <View style={{ width: 90, alignItems: 'center', padding: 4 }}>
+                      <Text style={{ fontSize: 9, color: colors.success, fontFamily: fontFamily.bold }}>SUGERIDO</Text>
+                      <Text style={{ fontSize: 8, color: colors.textSecondary }}>margem financ.</Text>
                     </View>
                   </View>
                 </View>
@@ -272,17 +283,30 @@ export default function SimuladorLoteScreen() {
                     {linha.prod.precoVendaBalcao > 0 ? formatCurrency(linha.prod.precoVendaBalcao) : '—'}
                   </Text>
                 </View>
-                {/* 2 sub-células por plataforma */}
+                {/* 3 sub-células por plataforma — Sessão 28.23 */}
                 {linha.plataformaCells.map(({ plat, sugFinanceiro, sugMantemMargem, margemAtual }) => {
                   const okMantem = sugMantemMargem?.validacao?.ok && Number.isFinite(sugMantemMargem?.preco) && sugMantemMargem.preco > 0;
                   const okFin = sugFinanceiro?.validacao?.ok && Number.isFinite(sugFinanceiro?.preco) && sugFinanceiro.preco > 0;
+                  const meuPreco = precosCadastrados[`${linha.prod.id}-${plat.id}`] || 0;
                   return (
-                    <View key={plat.id} style={{ flexDirection: 'row', width: 184, borderRightWidth: 1, borderRightColor: colors.border }}>
+                    <View key={plat.id} style={{ flexDirection: 'row', width: 270, borderRightWidth: 1, borderRightColor: colors.border }}>
                       <TouchableOpacity
-                        style={{ width: 92, alignItems: 'center', justifyContent: 'center', padding: spacing.xs, borderRightWidth: 1, borderRightColor: colors.border }}
+                        style={{ width: 90, alignItems: 'center', justifyContent: 'center', padding: spacing.xs, borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: meuPreco > 0 ? '#FEF3C7' : 'transparent' }}
                         onPress={() => setPopupSimulacao({ produtoId: linha.prod.id, plataformaId: plat.id })}
                         activeOpacity={0.6}
-                        disabled={!okMantem}
+                      >
+                        {meuPreco > 0 ? (
+                          <Text style={[styles.cellValuePrimary, { color: '#92400E', fontSize: 12 }]}>
+                            {formatCurrency(meuPreco)}
+                          </Text>
+                        ) : (
+                          <Text style={{ fontSize: 10, color: colors.textSecondary, fontStyle: 'italic' }}>cadastrar</Text>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ width: 90, alignItems: 'center', justifyContent: 'center', padding: spacing.xs, borderRightWidth: 1, borderRightColor: colors.border }}
+                        onPress={() => setPopupSimulacao({ produtoId: linha.prod.id, plataformaId: plat.id })}
+                        activeOpacity={0.6}
                       >
                         {okMantem ? (
                           <View style={{ alignItems: 'center', gap: 2 }}>
@@ -292,13 +316,13 @@ export default function SimuladorLoteScreen() {
                           </View>
                         ) : (
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                            <Feather name="x-circle" size={11} color={colors.error} />
-                            <Text style={{ fontSize: 11, color: colors.error }}>—</Text>
+                            <Feather name="info" size={11} color={colors.disabled} />
+                            <Text style={{ fontSize: 10, color: colors.disabled }}>—</Text>
                           </View>
                         )}
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={{ width: 92, alignItems: 'center', justifyContent: 'center', padding: spacing.xs }}
+                        style={{ width: 90, alignItems: 'center', justifyContent: 'center', padding: spacing.xs }}
                         onPress={() => setPopupSimulacao({ produtoId: linha.prod.id, plataformaId: plat.id })}
                         activeOpacity={0.6}
                         disabled={!okFin}

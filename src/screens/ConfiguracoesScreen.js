@@ -459,121 +459,115 @@ export default function ConfiguracoesScreen({ navigation }) {
           activeOpacity={0.7}
           onPress={async () => {
             try {
-              const { exportToCSV, isCsvExportSupported } = await import('../utils/exportCsv');
+              const { isCsvExportSupported } = await import('../utils/exportCsv');
               if (!isCsvExportSupported()) {
                 Alert.alert('Export CSV', 'Disponível só no navegador. Acesse pelo computador pra baixar.');
                 return;
               }
               const db = await getDatabase();
-              // Sessão 28.22: exporta TODAS as categorias principais como CSVs separados
-              // (cada um vira um arquivo, abre como aba no Excel pelo Power Query)
-              const exports = [
+              // Sessão 28.23 BUG FIX: ANTES tentava baixar 7 arquivos sequenciais,
+              // mas o navegador bloqueia downloads automáticos múltiplos. Solução:
+              // bundle TUDO em UM CSV com seções separadas por cabeçalho.
+              const sections = [
                 {
-                  filename: 'precificai-insumos.csv',
+                  titulo: 'INSUMOS',
                   query: 'SELECT id, nome, marca, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg FROM materias_primas ORDER BY nome',
-                  cols: [
-                    { key: 'id', label: 'ID' },
-                    { key: 'nome', label: 'Nome' },
-                    { key: 'marca', label: 'Marca' },
-                    { key: 'quantidade_bruta', label: 'Qtd. Bruta' },
-                    { key: 'quantidade_liquida', label: 'Qtd. Líquida' },
-                    { key: 'fator_correcao', label: 'FC' },
-                    { key: 'unidade_medida', label: 'Unidade' },
-                    { key: 'valor_pago', label: 'Valor pago (R$)' },
-                    { key: 'preco_por_kg', label: 'Preço base (R$)' },
-                  ],
+                  headers: ['ID','Nome','Marca','Qtd. Bruta','Qtd. Líquida','FC','Unidade','Valor pago (R$)','Preço base (R$)'],
+                  keys: ['id','nome','marca','quantidade_bruta','quantidade_liquida','fator_correcao','unidade_medida','valor_pago','preco_por_kg'],
                 },
                 {
-                  filename: 'precificai-produtos.csv',
+                  titulo: 'PRODUTOS',
                   query: 'SELECT id, nome, preco_venda, margem_lucro_produto, rendimento_total, unidade_rendimento, validade_dias, modo_preparo FROM produtos ORDER BY nome',
-                  cols: [
-                    { key: 'id', label: 'ID' },
-                    { key: 'nome', label: 'Nome' },
-                    { key: 'preco_venda', label: 'Preço de venda (R$)' },
-                    { key: 'margem_lucro_produto', label: 'Margem (%)' },
-                    { key: 'rendimento_total', label: 'Rendimento total' },
-                    { key: 'unidade_rendimento', label: 'Unidade de venda' },
-                    { key: 'validade_dias', label: 'Validade (dias)' },
-                    { key: 'modo_preparo', label: 'Modo de preparo' },
-                  ],
+                  headers: ['ID','Nome','Preço venda (R$)','Margem (%)','Rendimento','Unidade venda','Validade (dias)','Modo de preparo'],
+                  keys: ['id','nome','preco_venda','margem_lucro_produto','rendimento_total','unidade_rendimento','validade_dias','modo_preparo'],
                 },
                 {
-                  filename: 'precificai-preparos.csv',
+                  titulo: 'PREPAROS',
                   query: 'SELECT id, nome, rendimento_total, unidade_medida, custo_total, custo_por_kg, validade_dias FROM preparos ORDER BY nome',
-                  cols: [
-                    { key: 'id', label: 'ID' },
-                    { key: 'nome', label: 'Nome' },
-                    { key: 'rendimento_total', label: 'Rendimento' },
-                    { key: 'unidade_medida', label: 'Unidade' },
-                    { key: 'custo_total', label: 'Custo total (R$)' },
-                    { key: 'custo_por_kg', label: 'Custo/kg (R$)' },
-                    { key: 'validade_dias', label: 'Validade (dias)' },
-                  ],
+                  headers: ['ID','Nome','Rendimento','Unidade','Custo total (R$)','Custo/kg (R$)','Validade (dias)'],
+                  keys: ['id','nome','rendimento_total','unidade_medida','custo_total','custo_por_kg','validade_dias'],
                 },
                 {
-                  filename: 'precificai-embalagens.csv',
+                  titulo: 'EMBALAGENS',
                   query: 'SELECT id, nome, quantidade, preco_total, preco_unitario FROM embalagens ORDER BY nome',
-                  cols: [
-                    { key: 'id', label: 'ID' },
-                    { key: 'nome', label: 'Nome' },
-                    { key: 'quantidade', label: 'Qtd. no pacote' },
-                    { key: 'preco_total', label: 'Preço total (R$)' },
-                    { key: 'preco_unitario', label: 'Preço unitário (R$)' },
-                  ],
+                  headers: ['ID','Nome','Qtd. pacote','Preço total (R$)','Preço unitário (R$)'],
+                  keys: ['id','nome','quantidade','preco_total','preco_unitario'],
                 },
                 {
-                  filename: 'precificai-vendas.csv',
+                  titulo: 'VENDAS',
                   query: 'SELECT v.id, v.data, p.nome as produto_nome, v.quantidade FROM vendas v LEFT JOIN produtos p ON p.id = v.produto_id ORDER BY v.data DESC',
-                  cols: [
-                    { key: 'id', label: 'ID' },
-                    { key: 'data', label: 'Data' },
-                    { key: 'produto_nome', label: 'Produto' },
-                    { key: 'quantidade', label: 'Quantidade' },
-                  ],
+                  headers: ['ID','Data','Produto','Quantidade'],
+                  keys: ['id','data','produto_nome','quantidade'],
                 },
                 {
-                  filename: 'precificai-despesas-fixas.csv',
+                  titulo: 'DESPESAS FIXAS',
                   query: 'SELECT id, descricao, valor FROM despesas_fixas ORDER BY descricao',
-                  cols: [
-                    { key: 'id', label: 'ID' },
-                    { key: 'descricao', label: 'Descrição' },
-                    { key: 'valor', label: 'Valor (R$)' },
-                  ],
+                  headers: ['ID','Descrição','Valor (R$)'],
+                  keys: ['id','descricao','valor'],
                 },
                 {
-                  filename: 'precificai-despesas-variaveis.csv',
+                  titulo: 'DESPESAS VARIÁVEIS',
                   query: 'SELECT id, descricao, percentual FROM despesas_variaveis ORDER BY descricao',
-                  cols: [
-                    { key: 'id', label: 'ID' },
-                    { key: 'descricao', label: 'Descrição' },
-                    { key: 'percentual', label: '% do faturamento' },
-                  ],
+                  headers: ['ID','Descrição','% faturamento'],
+                  keys: ['id','descricao','percentual'],
+                },
+                {
+                  titulo: 'PRECOS POR PLATAFORMA DELIVERY',
+                  query: 'SELECT ppd.id, p.nome as produto, dc.plataforma, ppd.preco_venda FROM produto_preco_delivery ppd LEFT JOIN produtos p ON p.id = ppd.produto_id LEFT JOIN delivery_config dc ON dc.id = ppd.plataforma_id ORDER BY p.nome, dc.plataforma',
+                  headers: ['ID','Produto','Plataforma','Preço cobrado (R$)'],
+                  keys: ['id','produto','plataforma','preco_venda'],
                 },
               ];
-              let baixados = 0;
-              for (let i = 0; i < exports.length; i++) {
-                const exp = exports[i];
+              // Helper pra escapar célula CSV (separador ; pt-BR, BOM UTF-8)
+              const esc = (v) => {
+                if (v === null || v === undefined) return '';
+                let s;
+                if (typeof v === 'number') s = String(v).replace('.', ',');
+                else s = String(v);
+                if (/[;,"\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+                return s;
+              };
+              let csv = '﻿'; // BOM pra Excel BR detectar UTF-8
+              let secoesNaoVazias = 0;
+              for (const sec of sections) {
                 try {
-                  const data = await db.getAllAsync(exp.query);
-                  if (data && data.length > 0) {
-                    // Delay entre downloads pra navegador não bloquear
-                    await new Promise(r => setTimeout(r, 600));
-                    exportToCSV(exp.filename, data, exp.cols);
-                    baixados++;
+                  const data = await db.getAllAsync(sec.query);
+                  if (!data || data.length === 0) continue;
+                  secoesNaoVazias++;
+                  csv += `\n=== ${sec.titulo} ===\n`;
+                  csv += sec.headers.map(esc).join(';') + '\n';
+                  for (const row of data) {
+                    csv += sec.keys.map(k => esc(row[k])).join(';') + '\n';
                   }
+                  csv += '\n'; // linha vazia entre seções
                 } catch (e) {
-                  if (typeof console !== 'undefined') console.warn('[ConfiguracoesScreen.exportCSV]', exp.filename, e?.message || e);
+                  if (typeof console !== 'undefined') console.warn('[ConfiguracoesScreen.exportCSV]', sec.titulo, e?.message || e);
                 }
               }
+              if (secoesNaoVazias === 0) {
+                Alert.alert('Sem dados', 'Não há dados pra exportar ainda. Cadastre insumos e produtos primeiro.');
+                return;
+              }
+              // Download via blob URL
+              const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              const dataStr = new Date().toISOString().slice(0, 10);
+              link.href = url;
+              link.download = `precificai-completo-${dataStr}.csv`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
               Alert.alert(
                 'Exportado!',
-                `${baixados} arquivo(s) CSV baixados:\n\n` +
-                exports.map(e => `• ${e.filename.replace('precificai-', '').replace('.csv', '')}`).join('\n') +
-                `\n\nAbra no Excel ou Google Sheets. Pra abrir todos como abas, use Power Query no Excel.`,
+                `Arquivo "precificai-completo-${dataStr}.csv" baixado com ${secoesNaoVazias} seção(ões):\n\n` +
+                sections.map(s => `• ${s.titulo}`).join('\n') +
+                `\n\nAbra no Excel ou Google Sheets. As seções estão separadas por linhas "=== TITULO ===" pra fácil identificação.`,
               );
             } catch (e) {
               console.error('[ConfiguracoesScreen.exportCSV]', e);
-              Alert.alert('Erro', 'Não foi possível exportar CSV. Tente o backup JSON acima.');
+              Alert.alert('Erro', 'Não foi possível exportar CSV: ' + (e?.message || 'erro desconhecido'));
             }
           }}
           accessibilityRole="button"
