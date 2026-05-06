@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch,
-  ActivityIndicator, Platform, TextInput, Alert,
+  ActivityIndicator, Platform, TextInput, Alert, Modal,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
@@ -76,8 +76,71 @@ export default function DeliveryHubScreen({ navigation }) {
   const [margemDesejada, setMargemDesejada] = usePersistedState('deliveryHub.margemDesejada', '30');
   // Sessão 28.12 (D-22b): contexto financeiro — usa MESMA fórmula do balcão (lucro + custos fixos + variáveis + impostos)
   const [contextoFin, setContextoFin] = useState({ lucroPerc: 0.15, fixoPerc: 0, variavelPerc: 0, impostoPerc: 0, fatMedio: 0 });
+  // Sessão 28.20: popup de cadastro de preços por plataforma (substitui tela dedicada)
+  const [precosPopupPlat, setPrecosPopupPlat] = useState(null); // { id, nome }
+  const [precosProdutos, setPrecosProdutos] = useState([]); // produtos pra mostrar no popup
+  const [precosMap, setPrecosMap] = useState({}); // { produtoId: precoStr }
+  const [precosLoading, setPrecosLoading] = useState(false);
+  const precosSaveTimers = useRef({});
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
+
+  // Sessão 28.20: carrega produtos + preços salvos quando popup abre
+  useEffect(() => {
+    if (!precosPopupPlat) return;
+    let cancelled = false;
+    (async () => {
+      setPrecosLoading(true);
+      try {
+        const db = await getDatabase();
+        const [prods, ppds] = await Promise.all([
+          db.getAllAsync('SELECT id, nome, preco_venda FROM produtos ORDER BY nome'),
+          db.getAllAsync('SELECT produto_id, preco_venda FROM produto_preco_delivery WHERE plataforma_id = ?', [precosPopupPlat.id]).catch(() => []),
+        ]);
+        if (cancelled) return;
+        setPrecosProdutos(prods || []);
+        const map = {};
+        (ppds || []).forEach(r => {
+          const v = Number(r.preco_venda);
+          if (Number.isFinite(v) && v > 0) map[r.produto_id] = String(v.toFixed(2)).replace('.', ',');
+        });
+        setPrecosMap(map);
+      } catch (e) {
+        console.warn('[DeliveryHub.precosPopup.load]', e?.message || e);
+      } finally {
+        if (!cancelled) setPrecosLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [precosPopupPlat?.id]);
+
+  async function salvarPrecoDelivery(produtoId, valorStr) {
+    if (!precosPopupPlat) return;
+    const num = parseFloat(String(valorStr).replace(',', '.'));
+    try {
+      const db = await getDatabase();
+      if (Number.isFinite(num) && num > 0) {
+        const res = await db.runAsync(
+          'UPDATE produto_preco_delivery SET preco_venda = ?, updated_at = NOW() WHERE produto_id = ? AND plataforma_id = ?',
+          [num, produtoId, precosPopupPlat.id]
+        );
+        if (!res?.changes) {
+          await db.runAsync(
+            'INSERT INTO produto_preco_delivery (produto_id, plataforma_id, preco_venda) VALUES (?,?,?)',
+            [produtoId, precosPopupPlat.id, num]
+          );
+        }
+      } else {
+        await db.runAsync('DELETE FROM produto_preco_delivery WHERE produto_id = ? AND plataforma_id = ?', [produtoId, precosPopupPlat.id]);
+      }
+    } catch (e) { console.warn('[DeliveryHub.precosPopup.save]', e?.message || e); }
+  }
+
+  function handlePrecoChange(produtoId, valor) {
+    setPrecosMap(prev => ({ ...prev, [produtoId]: valor }));
+    if (precosSaveTimers.current[produtoId]) clearTimeout(precosSaveTimers.current[produtoId]);
+    precosSaveTimers.current[produtoId] = setTimeout(() => salvarPrecoDelivery(produtoId, valor), 800);
+  }
 
   async function loadData() {
     if (isLoadingRef.current) return;
@@ -495,13 +558,20 @@ export default function DeliveryHubScreen({ navigation }) {
                           />
                         </View>
                       </View>
-                      {/* Sessão 28.19: botão pra cadastrar preços DE VENDA por produto nesta plataforma */}
+                      {/* Sessão 28.20: botão MAIS VISÍVEL — abre POPUP em vez de tela dedicada */}
                       <TouchableOpacity
-                        style={[styles.deleteBtn, { backgroundColor: colors.primary + '14', borderColor: colors.primary + '40' }]}
-                        onPress={() => navigation.navigate('PrecosPlataforma', { plataformaId: plat.id, plataformaNome: plat.plataforma })}
+                        style={{
+                          backgroundColor: colors.primary, paddingVertical: 14, paddingHorizontal: spacing.md,
+                          borderRadius: borderRadius.md, marginTop: spacing.sm, marginBottom: spacing.xs,
+                          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        }}
+                        onPress={() => setPrecosPopupPlat({ id: plat.id, nome: plat.plataforma })}
+                        activeOpacity={0.85}
                       >
-                        <Feather name="dollar-sign" size={14} color={colors.primary} />
-                        <Text style={[styles.deleteBtnText, { color: colors.primary }]}>Cadastrar preços de venda dos produtos nesta plataforma</Text>
+                        <Feather name="dollar-sign" size={16} color="#fff" />
+                        <Text style={{ color: '#fff', fontFamily: fontFamily.bold, fontSize: fonts.regular }}>
+                          💰 Cadastrar meus preços de venda nesta plataforma
+                        </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.deleteBtn}
@@ -957,6 +1027,74 @@ export default function DeliveryHubScreen({ navigation }) {
         onConfirm={() => deleteModal && deletePlataforma(deleteModal.id)}
         itemName={deleteModal?.plataforma || ''}
       />
+
+      {/* Sessão 28.20: Popup de cadastro de preços de venda por plataforma */}
+      <Modal visible={!!precosPopupPlat} transparent animationType="fade" onRequestClose={() => setPrecosPopupPlat(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 12, width: '100%', maxWidth: 600, maxHeight: '85%', overflow: 'hidden' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: fonts.large, fontFamily: fontFamily.bold, color: colors.text }}>
+                  💰 Preços de venda — {precosPopupPlat?.nome}
+                </Text>
+                <Text style={{ fontSize: fonts.small, color: colors.textSecondary, marginTop: 2 }}>
+                  Quanto você cobra de cada produto nesta plataforma. Salvo automático.
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setPrecosPopupPlat(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Feather name="x" size={22} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            {precosLoading ? (
+              <View style={{ padding: spacing.lg, alignItems: 'center' }}>
+                <Text style={{ color: colors.textSecondary }}>Carregando...</Text>
+              </View>
+            ) : precosProdutos.length === 0 ? (
+              <View style={{ padding: spacing.lg, alignItems: 'center' }}>
+                <Feather name="package" size={32} color={colors.disabled} />
+                <Text style={{ color: colors.textSecondary, marginTop: 8 }}>Sem produtos cadastrados.</Text>
+              </View>
+            ) : (
+              <ScrollView style={{ maxHeight: 480 }}>
+                <View style={{ padding: spacing.md, gap: 8 }}>
+                  {precosProdutos.map(p => (
+                    <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: fonts.regular, color: colors.text }} numberOfLines={1}>{p.nome}</Text>
+                        <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                          Balcão: {(typeof p.preco_venda === 'number' ? p.preco_venda : 0).toFixed(2).replace('.', ',')}
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: fonts.small, color: colors.text, fontFamily: fontFamily.bold }}>R$</Text>
+                      <TextInput
+                        style={{
+                          width: 90, borderWidth: 1, borderColor: colors.border, borderRadius: 6,
+                          paddingHorizontal: 8, paddingVertical: 6, fontSize: fonts.regular,
+                          color: colors.text, backgroundColor: '#fff', textAlign: 'right',
+                        }}
+                        placeholder="0,00"
+                        placeholderTextColor={colors.disabled}
+                        keyboardType="numeric"
+                        value={precosMap[p.id] || ''}
+                        onChangeText={(v) => handlePrecoChange(p.id, v)}
+                      />
+                    </View>
+                  ))}
+                </View>
+              </ScrollView>
+            )}
+            <View style={{ padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border }}>
+              <TouchableOpacity
+                style={{ backgroundColor: colors.primary, paddingVertical: 12, borderRadius: 8, alignItems: 'center' }}
+                onPress={() => setPrecosPopupPlat(null)}
+                activeOpacity={0.85}
+              >
+                <Text style={{ color: '#fff', fontFamily: fontFamily.bold, fontSize: fonts.regular }}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

@@ -50,6 +50,7 @@ import RelatorioSimplesScreen from '../screens/RelatorioSimplesScreen';
 import FornecedoresScreen from '../screens/FornecedoresScreen';
 import RelatorioInsumosScreen from '../screens/RelatorioInsumosScreen';
 import PrecosPlataformaScreen from '../screens/PrecosPlataformaScreen';
+import SimulacaoProdutoScreen from '../screens/SimulacaoProdutoScreen';
 import ListaComprasScreen from '../screens/ListaComprasScreen';
 import KitInicioScreen from '../screens/KitInicioScreen';
 import WelcomeTourScreen from '../screens/WelcomeTourScreen';
@@ -321,6 +322,7 @@ function MaisStack() {
       <Stack.Screen name="Fornecedores" component={FornecedoresScreen} options={{ title: 'Comparar Fornecedores' }} />
       <Stack.Screen name="RelatorioInsumos" component={RelatorioInsumosScreen} options={{ title: 'Relatório de Insumos' }} />
       <Stack.Screen name="PrecosPlataforma" component={PrecosPlataformaScreen} options={{ title: 'Preços por Plataforma' }} />
+      <Stack.Screen name="SimulacaoProduto" component={SimulacaoProdutoScreen} options={{ title: 'Simulação de Preço' }} />
       <Stack.Screen name="ListaCompras" component={ListaComprasScreen} options={{ title: 'Lista de Compras' }} />
       <Stack.Screen name="KitInicio" component={KitInicioScreen} options={{ title: 'Kit de Início' }} />
       <Stack.Screen name="Sobre" component={SobreScreen} options={{ title: 'Sobre o App' }} />

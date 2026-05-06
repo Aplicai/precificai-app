@@ -452,6 +452,52 @@ export default function ConfiguracoesScreen({ navigation }) {
           <Feather name="upload" size={16} color={colors.primary} />
           <Text style={styles.backupBtnOutlineText}>Importar Dados</Text>
         </TouchableOpacity>
+
+        {/* Sessão 28.20: Export CSV pra contador */}
+        <TouchableOpacity
+          style={[styles.backupBtnOutline, { marginTop: 8 }]}
+          activeOpacity={0.7}
+          onPress={async () => {
+            try {
+              const { exportToCSV, isCsvExportSupported } = await import('../utils/exportCsv');
+              if (!isCsvExportSupported()) {
+                Alert.alert('Export CSV', 'Disponível só no navegador. Acesse pelo computador pra baixar.');
+                return;
+              }
+              const db = await getDatabase();
+              const insumos = await db.getAllAsync('SELECT id, nome, marca, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg FROM materias_primas ORDER BY nome');
+              exportToCSV('precificai-insumos.csv', insumos || [], [
+                { key: 'id', label: 'ID' },
+                { key: 'nome', label: 'Nome' },
+                { key: 'marca', label: 'Marca' },
+                { key: 'quantidade_bruta', label: 'Qtd. Bruta' },
+                { key: 'quantidade_liquida', label: 'Qtd. Líquida' },
+                { key: 'fator_correcao', label: 'FC' },
+                { key: 'unidade_medida', label: 'Unidade' },
+                { key: 'valor_pago', label: 'Valor pago (R$)' },
+                { key: 'preco_por_kg', label: 'Preço base (R$)' },
+              ]);
+              const produtos = await db.getAllAsync('SELECT id, nome, preco_venda, margem_lucro_produto, rendimento_total, unidade_rendimento FROM produtos ORDER BY nome');
+              setTimeout(() => exportToCSV('precificai-produtos.csv', produtos || [], [
+                { key: 'id', label: 'ID' },
+                { key: 'nome', label: 'Nome' },
+                { key: 'preco_venda', label: 'Preço de venda (R$)' },
+                { key: 'margem_lucro_produto', label: 'Margem' },
+                { key: 'rendimento_total', label: 'Rendimento total' },
+                { key: 'unidade_rendimento', label: 'Unidade de venda' },
+              ]), 800);
+              Alert.alert('Exportado!', 'Os arquivos CSV de insumos e produtos foram baixados. Abra no Excel ou Google Sheets pro contador.');
+            } catch (e) {
+              console.error('[ConfiguracoesScreen.exportCSV]', e);
+              Alert.alert('Erro', 'Não foi possível exportar CSV. Tente o backup JSON acima.');
+            }
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Exportar CSV para Excel"
+        >
+          <Feather name="file-text" size={16} color={colors.primary} />
+          <Text style={styles.backupBtnOutlineText}>Exportar CSV (Excel/contador)</Text>
+        </TouchableOpacity>
       </View>
 
       {/* D-02: botão sair da conta */}

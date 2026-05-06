@@ -1519,12 +1519,8 @@ const s = StyleSheet.create({
     paddingHorizontal: spacing.md,
     alignItems: 'center',
   },
-  // mantido por compat (pode ser removido em refactor futuro)
-  stickyFooter: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-  },
+  // Sessão 28.20: stickyFooter morto removido (não tem mais call site após o
+  // botão "Salvar e voltar" virar inline na sessão 28.15).
   stickyFooterBtn: {
     flexDirection: 'row',
     alignItems: 'center',
