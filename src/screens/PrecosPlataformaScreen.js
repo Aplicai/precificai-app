@@ -66,7 +66,7 @@ export default function PrecosPlataformaScreen({ route, navigation }) {
       if (Number.isFinite(num) && num > 0) {
         // Upsert: tenta UPDATE primeiro, se 0 rows, INSERT
         const res = await db.runAsync(
-          'UPDATE produto_preco_delivery SET preco_venda = ?, updated_at = NOW() WHERE produto_id = ? AND plataforma_id = ?',
+          'UPDATE produto_preco_delivery SET preco_venda = ?, updated_at = CURRENT_TIMESTAMP WHERE produto_id = ? AND plataforma_id = ?',
           [num, produtoId, plataformaId]
         );
         if (!res?.changes) {

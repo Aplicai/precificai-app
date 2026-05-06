@@ -14,6 +14,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Modal } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SimulacaoProdutoContent } from './SimulacaoProdutoScreen';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
@@ -21,7 +22,7 @@ import {
   formatCurrency, calcCustoIngrediente, calcCustoPreparo,
   getDivisorRendimento, calcDespesasFixasPercentual,
 } from '../utils/calculations';
-import { calcSugestaoDeliveryCompleta, compararDeliveryVsBalcao } from '../utils/deliveryPricing';
+import { calcSugestaoDeliveryCompleta } from '../utils/deliveryPricing';
 import { calcularPrecoBalcao } from '../utils/precificacao';
 import { extrairImpostoPercentual } from '../utils/deliveryAdapter';
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
@@ -33,6 +34,7 @@ const safeNum = (v) => {
 
 export default function SimuladorLoteScreen() {
   const navigation = useNavigation();
+  const { isMobile } = useResponsiveLayout();
   const [loading, setLoading] = useState(true);
   const [produtos, setProdutos] = useState([]);
   const [plataformas, setPlataformas] = useState([]);
@@ -230,7 +232,72 @@ export default function SimuladorLoteScreen() {
           </View>
         </View>
 
-        {/* Tabela horizontal scrollável — Sessão 28.16: 2 sub-colunas por plataforma */}
+        {/* Sessão 28.23: layout MOBILE-FIRST — cards verticais por produto */}
+        {isMobile ? (
+          <View style={{ gap: 12 }}>
+            {linhasCalculadas.map(linha => (
+              <View key={linha.prod.id} style={{ backgroundColor: colors.surface, borderRadius: borderRadius.md, padding: spacing.md, borderWidth: 1, borderColor: colors.border }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Text style={{ flex: 1, fontSize: 14, fontFamily: fontFamily.bold, color: colors.text }}>{linha.prod.nome}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 8 }}>
+                  <View>
+                    <Text style={{ fontSize: 10, color: colors.textSecondary }}>CMV</Text>
+                    <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>{formatCurrency(linha.prod.cmv)}</Text>
+                  </View>
+                  <View>
+                    <Text style={{ fontSize: 10, color: colors.textSecondary }}>Preço balcão</Text>
+                    <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>
+                      {linha.prod.precoVendaBalcao > 0 ? formatCurrency(linha.prod.precoVendaBalcao) : '—'}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text style={{ fontSize: 10, color: colors.textSecondary }}>Margem atual</Text>
+                    <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>{(linha.margemAtual * 100).toFixed(1)}%</Text>
+                  </View>
+                </View>
+                {/* Cada plataforma: 1 linha com 3 colunas */}
+                {linha.plataformaCells.map(({ plat, sugFinanceiro, sugMantemMargem }) => {
+                  const okMantem = sugMantemMargem?.validacao?.ok && Number.isFinite(sugMantemMargem?.preco) && sugMantemMargem.preco > 0;
+                  const okFin = sugFinanceiro?.validacao?.ok && Number.isFinite(sugFinanceiro?.preco) && sugFinanceiro.preco > 0;
+                  const meuPreco = precosCadastrados[`${linha.prod.id}-${plat.id}`] || 0;
+                  return (
+                    <TouchableOpacity
+                      key={plat.id}
+                      onPress={() => setPopupSimulacao({ produtoId: linha.prod.id, plataformaId: plat.id })}
+                      activeOpacity={0.7}
+                      style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8, marginTop: 8, alignItems: 'center', gap: 6 }}
+                    >
+                      <Text style={{ flex: 1, fontSize: 12, fontFamily: fontFamily.bold, color: colors.text }}>{plat.plataforma}</Text>
+                      <View style={{ alignItems: 'center', minWidth: 70 }}>
+                        <Text style={{ fontSize: 9, color: '#92400E', fontFamily: fontFamily.bold }}>MEU PREÇO</Text>
+                        <Text style={{ fontSize: 12, color: meuPreco > 0 ? '#92400E' : colors.disabled, fontFamily: fontFamily.medium }}>
+                          {meuPreco > 0 ? formatCurrency(meuPreco) : 'cadastrar'}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'center', minWidth: 70 }}>
+                        <Text style={{ fontSize: 9, color: colors.primary, fontFamily: fontFamily.bold }}>MANTÉM</Text>
+                        <Text style={{ fontSize: 12, color: okMantem ? colors.primary : colors.disabled, fontFamily: fontFamily.medium }}>
+                          {okMantem ? formatCurrency(sugMantemMargem.preco) : '—'}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'center', minWidth: 70 }}>
+                        <Text style={{ fontSize: 9, color: colors.success, fontFamily: fontFamily.bold }}>SUGERIDO</Text>
+                        <Text style={{ fontSize: 12, color: okFin ? colors.success : colors.error, fontFamily: fontFamily.medium }}>
+                          {okFin ? formatCurrency(sugFinanceiro.preco) : '—'}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+                <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 8, fontStyle: 'italic', textAlign: 'center' }}>
+                  Toque numa plataforma pra simular preço
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+        /* Desktop: tabela horizontal scrollável */
         <ScrollView horizontal showsHorizontalScrollIndicator>
           <View>
             {/* Header row 1 — plataforma agrupada */}
@@ -345,6 +412,7 @@ export default function SimuladorLoteScreen() {
             ))}
           </View>
         </ScrollView>
+        )}
 
       </ScrollView>
 
