@@ -115,16 +115,25 @@ export default function DeliveryHubScreen({ navigation }) {
   }, [precosPopupPlat?.id]);
 
   async function salvarPrecoDelivery(produtoId, valorStr) {
-    if (!precosPopupPlat) return;
+    if (!precosPopupPlat) return false;
     const num = parseFloat(String(valorStr).replace(',', '.'));
     try {
       const db = await getDatabase();
       if (Number.isFinite(num) && num > 0) {
-        const res = await db.runAsync(
-          'UPDATE produto_preco_delivery SET preco_venda = ?, updated_at = NOW() WHERE produto_id = ? AND plataforma_id = ?',
-          [num, produtoId, precosPopupPlat.id]
+        // Sessão 28.21 BUG FIX: SELECT-first em vez de checar res.changes — o wrapper
+        // supabaseDb nem sempre retorna `changes` confiável, então o INSERT rodava
+        // sempre e podia falhar com UNIQUE constraint (user_id, produto_id, plataforma_id).
+        // Agora: SELECT pra ver se existe → UPDATE OU INSERT.
+        const exists = await db.getAllAsync(
+          'SELECT id FROM produto_preco_delivery WHERE produto_id = ? AND plataforma_id = ? LIMIT 1',
+          [produtoId, precosPopupPlat.id]
         );
-        if (!res?.changes) {
+        if (exists && exists.length > 0) {
+          await db.runAsync(
+            'UPDATE produto_preco_delivery SET preco_venda = ?, updated_at = NOW() WHERE produto_id = ? AND plataforma_id = ?',
+            [num, produtoId, precosPopupPlat.id]
+          );
+        } else {
           await db.runAsync(
             'INSERT INTO produto_preco_delivery (produto_id, plataforma_id, preco_venda) VALUES (?,?,?)',
             [produtoId, precosPopupPlat.id, num]
@@ -133,7 +142,11 @@ export default function DeliveryHubScreen({ navigation }) {
       } else {
         await db.runAsync('DELETE FROM produto_preco_delivery WHERE produto_id = ? AND plataforma_id = ?', [produtoId, precosPopupPlat.id]);
       }
-    } catch (e) { console.warn('[DeliveryHub.precosPopup.save]', e?.message || e); }
+      return true;
+    } catch (e) {
+      console.warn('[DeliveryHub.precosPopup.save]', e?.message || e);
+      return false;
+    }
   }
 
   function handlePrecoChange(produtoId, valor) {
@@ -558,20 +571,30 @@ export default function DeliveryHubScreen({ navigation }) {
                           />
                         </View>
                       </View>
-                      {/* Sessão 28.20: botão MAIS VISÍVEL — abre POPUP em vez de tela dedicada */}
+                      {/* Sessão 28.21: botão minimalista alinhado à estética do app — sem emoji, ícone discreto */}
                       <TouchableOpacity
                         style={{
-                          backgroundColor: colors.primary, paddingVertical: 14, paddingHorizontal: spacing.md,
+                          backgroundColor: colors.surface,
+                          borderWidth: 1, borderColor: colors.primary,
+                          paddingVertical: 12, paddingHorizontal: spacing.md,
                           borderRadius: borderRadius.md, marginTop: spacing.sm, marginBottom: spacing.xs,
-                          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                          flexDirection: 'row', alignItems: 'center', gap: 10,
                         }}
                         onPress={() => setPrecosPopupPlat({ id: plat.id, nome: plat.plataforma })}
-                        activeOpacity={0.85}
+                        activeOpacity={0.7}
                       >
-                        <Feather name="dollar-sign" size={16} color="#fff" />
-                        <Text style={{ color: '#fff', fontFamily: fontFamily.bold, fontSize: fonts.regular }}>
-                          💰 Cadastrar meus preços de venda nesta plataforma
-                        </Text>
+                        <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primary + '14', alignItems: 'center', justifyContent: 'center' }}>
+                          <Feather name="dollar-sign" size={16} color={colors.primary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: colors.text, fontFamily: fontFamily.semiBold, fontSize: fonts.small }}>
+                            Meus preços nesta plataforma
+                          </Text>
+                          <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>
+                            Cadastre quanto você cobra de cada produto
+                          </Text>
+                        </View>
+                        <Feather name="chevron-right" size={16} color={colors.textSecondary} />
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.deleteBtn}
@@ -1028,68 +1051,119 @@ export default function DeliveryHubScreen({ navigation }) {
         itemName={deleteModal?.plataforma || ''}
       />
 
-      {/* Sessão 28.20: Popup de cadastro de preços de venda por plataforma */}
+      {/* Sessão 28.20 + 28.21: Popup de cadastro de preços — UX melhorada com botão salvar explícito */}
       <Modal visible={!!precosPopupPlat} transparent animationType="fade" onRequestClose={() => setPrecosPopupPlat(null)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
-          <View style={{ backgroundColor: colors.surface, borderRadius: 12, width: '100%', maxWidth: 600, maxHeight: '85%', overflow: 'hidden' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: fonts.large, fontFamily: fontFamily.bold, color: colors.text }}>
-                  💰 Preços de venda — {precosPopupPlat?.nome}
-                </Text>
-                <Text style={{ fontSize: fonts.small, color: colors.textSecondary, marginTop: 2 }}>
-                  Quanto você cobra de cada produto nesta plataforma. Salvo automático.
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 16, width: '100%', maxWidth: 640, maxHeight: '88%', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: 0, height: 6 }, elevation: 12 }}>
+            {/* Header com gradiente sutil */}
+            <View style={{ padding: spacing.md, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.primary + '08' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: fonts.large, fontFamily: fontFamily.bold, color: colors.text }}>
+                    {precosPopupPlat?.nome}
+                  </Text>
+                  <Text style={{ fontSize: fonts.tiny, color: colors.textSecondary, marginTop: 2 }}>
+                    Cadastre quanto você cobra de cada produto nesta plataforma
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setPrecosPopupPlat(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: 6 }}>
+                  <Feather name="x" size={22} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              {/* Indicador de auto-save */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, padding: 8, backgroundColor: '#ECFDF5', borderRadius: 6 }}>
+                <Feather name="check-circle" size={12} color={colors.success} />
+                <Text style={{ fontSize: 11, color: '#065F46', flex: 1 }}>
+                  Salvamento automático ao digitar (aguarda 800ms). Pode fechar quando quiser.
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setPrecosPopupPlat(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Feather name="x" size={22} color={colors.textSecondary} />
-              </TouchableOpacity>
             </View>
+            {/* Conteúdo */}
             {precosLoading ? (
               <View style={{ padding: spacing.lg, alignItems: 'center' }}>
-                <Text style={{ color: colors.textSecondary }}>Carregando...</Text>
+                <ActivityIndicator color={colors.primary} />
+                <Text style={{ color: colors.textSecondary, marginTop: 8 }}>Carregando produtos...</Text>
               </View>
             ) : precosProdutos.length === 0 ? (
               <View style={{ padding: spacing.lg, alignItems: 'center' }}>
-                <Feather name="package" size={32} color={colors.disabled} />
-                <Text style={{ color: colors.textSecondary, marginTop: 8 }}>Sem produtos cadastrados.</Text>
+                <Feather name="package" size={36} color={colors.disabled} />
+                <Text style={{ color: colors.text, fontFamily: fontFamily.bold, marginTop: 8 }}>Sem produtos cadastrados</Text>
+                <Text style={{ color: colors.textSecondary, marginTop: 4, textAlign: 'center', maxWidth: 280 }}>
+                  Cadastre produtos primeiro pra definir preços de venda em cada plataforma.
+                </Text>
               </View>
             ) : (
-              <ScrollView style={{ maxHeight: 480 }}>
-                <View style={{ padding: spacing.md, gap: 8 }}>
-                  {precosProdutos.map(p => (
-                    <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: fonts.regular, color: colors.text }} numberOfLines={1}>{p.nome}</Text>
-                        <Text style={{ fontSize: 11, color: colors.textSecondary }}>
-                          Balcão: {(typeof p.preco_venda === 'number' ? p.preco_venda : 0).toFixed(2).replace('.', ',')}
-                        </Text>
-                      </View>
-                      <Text style={{ fontSize: fonts.small, color: colors.text, fontFamily: fontFamily.bold }}>R$</Text>
-                      <TextInput
-                        style={{
-                          width: 90, borderWidth: 1, borderColor: colors.border, borderRadius: 6,
-                          paddingHorizontal: 8, paddingVertical: 6, fontSize: fonts.regular,
-                          color: colors.text, backgroundColor: '#fff', textAlign: 'right',
-                        }}
-                        placeholder="0,00"
-                        placeholderTextColor={colors.disabled}
-                        keyboardType="numeric"
-                        value={precosMap[p.id] || ''}
-                        onChangeText={(v) => handlePrecoChange(p.id, v)}
-                      />
-                    </View>
-                  ))}
+              <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ padding: spacing.md }}>
+                <View style={{ flexDirection: 'row', paddingHorizontal: 4, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 6 }}>
+                  <Text style={{ flex: 2, fontSize: 10, color: colors.textSecondary, fontFamily: fontFamily.bold, letterSpacing: 0.5 }}>PRODUTO</Text>
+                  <Text style={{ width: 80, fontSize: 10, color: colors.textSecondary, fontFamily: fontFamily.bold, letterSpacing: 0.5, textAlign: 'right' }}>BALCÃO</Text>
+                  <Text style={{ width: 110, fontSize: 10, color: colors.primary, fontFamily: fontFamily.bold, letterSpacing: 0.5, textAlign: 'right' }}>QUANTO COBRO</Text>
                 </View>
+                {precosProdutos.map((p, idx) => {
+                  const balcao = typeof p.preco_venda === 'number' ? p.preco_venda : Number(p.preco_venda) || 0;
+                  const valorAtual = precosMap[p.id] || '';
+                  const num = parseFloat(String(valorAtual).replace(',', '.'));
+                  const tem = Number.isFinite(num) && num > 0;
+                  return (
+                    <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4, borderRadius: 6, backgroundColor: idx % 2 === 0 ? 'transparent' : colors.background }}>
+                      <Text style={{ flex: 2, fontSize: fonts.small, color: colors.text }} numberOfLines={2}>{p.nome}</Text>
+                      <Text style={{ width: 80, fontSize: fonts.small, color: colors.textSecondary, textAlign: 'right' }}>
+                        R$ {balcao.toFixed(2).replace('.', ',')}
+                      </Text>
+                      <View style={{ width: 110, flexDirection: 'row', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                        <Text style={{ fontSize: fonts.small, color: colors.text }}>R$</Text>
+                        <TextInput
+                          style={{
+                            width: 70, borderWidth: 1.5,
+                            borderColor: tem ? colors.success : colors.border,
+                            borderRadius: 6, paddingHorizontal: 8, paddingVertical: 6,
+                            fontSize: fonts.regular, color: colors.text,
+                            backgroundColor: '#fff', textAlign: 'right',
+                            fontFamily: tem ? fontFamily.bold : fontFamily.regular,
+                          }}
+                          placeholder="0,00"
+                          placeholderTextColor={colors.disabled}
+                          keyboardType="numeric"
+                          value={valorAtual}
+                          onChangeText={(v) => handlePrecoChange(p.id, v)}
+                        />
+                      </View>
+                    </View>
+                  );
+                })}
               </ScrollView>
             )}
-            <View style={{ padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border }}>
+            {/* Footer com SALVAR + FECHAR */}
+            <View style={{ flexDirection: 'row', padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, gap: 8, backgroundColor: colors.background }}>
               <TouchableOpacity
-                style={{ backgroundColor: colors.primary, paddingVertical: 12, borderRadius: 8, alignItems: 'center' }}
+                style={{ flex: 1, backgroundColor: '#fff', paddingVertical: 12, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: colors.border }}
                 onPress={() => setPrecosPopupPlat(null)}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: colors.textSecondary, fontFamily: fontFamily.medium, fontSize: fonts.regular }}>Fechar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 2, backgroundColor: colors.primary, paddingVertical: 12, borderRadius: 8, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+                onPress={async () => {
+                  // Força flush de todos os timers pendentes ANTES de fechar
+                  const promises = [];
+                  Object.keys(precosSaveTimers.current).forEach(id => {
+                    if (precosSaveTimers.current[id]) {
+                      clearTimeout(precosSaveTimers.current[id]);
+                      delete precosSaveTimers.current[id];
+                    }
+                  });
+                  // Salva todos os valores no map
+                  for (const id of Object.keys(precosMap)) {
+                    promises.push(salvarPrecoDelivery(id, precosMap[id]));
+                  }
+                  await Promise.all(promises);
+                  setPrecosPopupPlat(null);
+                }}
                 activeOpacity={0.85}
               >
-                <Text style={{ color: '#fff', fontFamily: fontFamily.bold, fontSize: fonts.regular }}>Fechar</Text>
+                <Feather name="check" size={16} color="#fff" />
+                <Text style={{ color: '#fff', fontFamily: fontFamily.bold, fontSize: fonts.regular }}>Salvar todos e fechar</Text>
               </TouchableOpacity>
             </View>
           </View>

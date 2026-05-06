@@ -717,50 +717,78 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
               options={UNIDADES_MEDIDA.map(u => ({ label: u.label, value: u.value }))}
             />
           </View>
-          <View style={{ flex: 1 }}>
-            <InputField
-              label="Qtd. Bruta"
-              value={form.quantidade_bruta}
-              onChangeText={(v) => { setForm(p => ({ ...p, quantidade_bruta: v })); setErrors(p => ({ ...p, quantidade_bruta: undefined })); }}
-              keyboardType="decimal-pad"
-              placeholder="Ex: 1000 (use vírgula para decimais)"
-              error={errors.quantidade_bruta}
-              style={styles.fieldCompact}
-              rightLabel={
-                <InfoTooltip
-                  title="Quantidade Bruta (o que você paga)"
-                  text="É o peso ou volume TOTAL na hora da compra, incluindo o que será descartado. É por essa quantidade que a nota fiscal cobra."
-                  examples={[
-                    '1 kg de maracujá com casca = 1000 g',
-                    '500 g de camarão com cabeça = 500 g',
-                    '1 kg de cebola com casca = 1000 g',
-                  ]}
+          {/* Sessão 28.21: pra unidade 'un' não faz sentido bruta/líquida — só "Quantidade".
+              FC sempre 1, ambas iguais. UI mostra UM input só. */}
+          {form.unidade_medida === 'un' ? (
+            <View style={{ flex: 2 }}>
+              <InputField
+                label="Quantidade"
+                value={form.quantidade_bruta}
+                onChangeText={(v) => {
+                  setForm(p => ({ ...p, quantidade_bruta: v, quantidade_liquida: v }));
+                  setErrors(p => ({ ...p, quantidade_bruta: undefined, quantidade_liquida: undefined }));
+                }}
+                keyboardType="decimal-pad"
+                placeholder="Ex: 12 (quantas unidades você comprou)"
+                error={errors.quantidade_bruta}
+                style={styles.fieldCompact}
+                rightLabel={
+                  <InfoTooltip
+                    title="Quantidade comprada"
+                    text="Quantas unidades você comprou pelo valor pago. Pra insumos vendidos por unidade não tem perda de casca/osso, então é só esse valor."
+                    examples={['Ex: 12 ovos custaram R$ 18,00 → 12 unidades']}
+                  />
+                }
+              />
+            </View>
+          ) : (
+            <>
+              <View style={{ flex: 1 }}>
+                <InputField
+                  label="Qtd. Bruta"
+                  value={form.quantidade_bruta}
+                  onChangeText={(v) => { setForm(p => ({ ...p, quantidade_bruta: v })); setErrors(p => ({ ...p, quantidade_bruta: undefined })); }}
+                  keyboardType="decimal-pad"
+                  placeholder="Ex: 1000 (use vírgula para decimais)"
+                  error={errors.quantidade_bruta}
+                  style={styles.fieldCompact}
+                  rightLabel={
+                    <InfoTooltip
+                      title="Quantidade Bruta (o que você paga)"
+                      text="É o peso ou volume TOTAL na hora da compra, incluindo o que será descartado. É por essa quantidade que a nota fiscal cobra."
+                      examples={[
+                        '1 kg de maracujá com casca = 1000 g',
+                        '500 g de camarão com cabeça = 500 g',
+                        '1 kg de cebola com casca = 1000 g',
+                      ]}
+                    />
+                  }
                 />
-              }
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <InputField
-              label="Qtd. Líquida"
-              value={form.quantidade_liquida}
-              onChangeText={(v) => { setForm(p => ({ ...p, quantidade_liquida: v })); setErrors(p => ({ ...p, quantidade_liquida: undefined })); }}
-              keyboardType="decimal-pad"
-              placeholder="Ex: 800 (use vírgula para decimais)"
-              error={errors.quantidade_liquida}
-              style={styles.fieldCompact}
-              rightLabel={
-                <InfoTooltip
-                  title="Quantidade Líquida (o que você usa)"
-                  text="É o peso ou volume APROVEITÁVEL, depois de tirar casca, osso, semente, talo ou qualquer parte que vai pro lixo. É essa quantidade que entra de fato no produto."
-                  examples={[
-                    '1 kg de maracujá rende 350 g de polpa',
-                    '500 g de camarão limpo = 350 g',
-                    '1 kg de cebola descascada = 800 g',
-                  ]}
+              </View>
+              <View style={{ flex: 1 }}>
+                <InputField
+                  label="Qtd. Líquida"
+                  value={form.quantidade_liquida}
+                  onChangeText={(v) => { setForm(p => ({ ...p, quantidade_liquida: v })); setErrors(p => ({ ...p, quantidade_liquida: undefined })); }}
+                  keyboardType="decimal-pad"
+                  placeholder="Ex: 800 (use vírgula para decimais)"
+                  error={errors.quantidade_liquida}
+                  style={styles.fieldCompact}
+                  rightLabel={
+                    <InfoTooltip
+                      title="Quantidade Líquida (o que você usa)"
+                      text="É o peso ou volume APROVEITÁVEL, depois de tirar casca, osso, semente, talo ou qualquer parte que vai pro lixo. É essa quantidade que entra de fato no produto."
+                      examples={[
+                        '1 kg de maracujá rende 350 g de polpa',
+                        '500 g de camarão limpo = 350 g',
+                        '1 kg de cebola descascada = 800 g',
+                      ]}
+                    />
+                  }
                 />
-              }
-            />
-          </View>
+              </View>
+            </>
+          )}
         </View>
 
         {/* Valor Pago */}

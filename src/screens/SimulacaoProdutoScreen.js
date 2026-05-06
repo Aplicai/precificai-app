@@ -17,6 +17,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
+import { Alert } from 'react-native';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import {
@@ -31,10 +32,12 @@ const safe = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-export default function SimulacaoProdutoScreen({ route }) {
+// Sessão 28.21: também export como conteúdo pra ser usado em Modal/Popup.
+// Aceita props produtoId/plataformaId/onClose pra modo popup.
+export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: platProp, onClose, isPopup = false }) {
   const navigation = useNavigation();
-  const produtoId = route?.params?.produtoId;
-  const plataformaId = route?.params?.plataformaId;
+  const produtoId = pidProp;
+  const plataformaId = platProp;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -125,11 +128,17 @@ export default function SimulacaoProdutoScreen({ route }) {
     setSaving(true);
     try {
       const db = await getDatabase();
-      const res = await db.runAsync(
-        'UPDATE produto_preco_delivery SET preco_venda = ?, updated_at = NOW() WHERE produto_id = ? AND plataforma_id = ?',
-        [num, produtoId, plataformaId]
+      // Sessão 28.21 BUG FIX: SELECT-first (mesma fix do DeliveryHub.salvarPrecoDelivery)
+      const exists = await db.getAllAsync(
+        'SELECT id FROM produto_preco_delivery WHERE produto_id = ? AND plataforma_id = ? LIMIT 1',
+        [produtoId, plataformaId]
       );
-      if (!res?.changes) {
+      if (exists && exists.length > 0) {
+        await db.runAsync(
+          'UPDATE produto_preco_delivery SET preco_venda = ?, updated_at = NOW() WHERE produto_id = ? AND plataforma_id = ?',
+          [num, produtoId, plataformaId]
+        );
+      } else {
         await db.runAsync(
           'INSERT INTO produto_preco_delivery (produto_id, plataforma_id, preco_venda) VALUES (?,?,?)',
           [produtoId, plataformaId, num]
@@ -140,6 +149,7 @@ export default function SimulacaoProdutoScreen({ route }) {
       setTimeout(() => setSavedFlash(false), 2500);
     } catch (e) {
       console.error('[SimulacaoProduto.salvar]', e);
+      Alert.alert?.('Erro', 'Não foi possível salvar o preço delivery: ' + (e?.message || 'erro desconhecido'));
     } finally {
       setSaving(false);
     }
@@ -207,8 +217,8 @@ export default function SimulacaoProdutoScreen({ route }) {
           )}
         </View>
 
-        {/* Sugestões */}
-        <Text style={styles.sectionTitle}>2 sugestões pra esta plataforma</Text>
+        {/* Sugestões — Sessão 28.21: copy mais claro */}
+        <Text style={styles.sectionTitle}>Toque numa sugestão pra usar como base:</Text>
         <View style={styles.sugRow}>
           <TouchableOpacity
             style={[styles.sugCard, { borderColor: colors.primary }]}
@@ -216,8 +226,8 @@ export default function SimulacaoProdutoScreen({ route }) {
             activeOpacity={0.7}
             disabled={!sugMantemMargem?.preco}
           >
-            <Text style={[styles.sugLabel, { color: colors.primary }]}>MANTÉM MARGEM</Text>
-            <Text style={styles.sugSub}>{(margemAtual * 100).toFixed(1)}% (margem atual)</Text>
+            <Text style={[styles.sugLabel, { color: colors.primary }]}>MESMA MARGEM DO BALCÃO</Text>
+            <Text style={styles.sugSub}>Pra ter {(margemAtual * 100).toFixed(1)}% de lucro (igual já tem no balcão)</Text>
             <Text style={[styles.sugPrice, { color: colors.primary }]}>
               {sugMantemMargem?.validacao?.ok ? formatCurrency(sugMantemMargem.preco) : '—'}
             </Text>
@@ -228,8 +238,8 @@ export default function SimulacaoProdutoScreen({ route }) {
             activeOpacity={0.7}
             disabled={!sugFinanceiro?.preco}
           >
-            <Text style={[styles.sugLabel, { color: colors.success }]}>FINANCEIRO</Text>
-            <Text style={styles.sugSub}>{((contexto.lucroPerc || 0) * 100).toFixed(1)}% (do financeiro)</Text>
+            <Text style={[styles.sugLabel, { color: colors.success }]}>MARGEM DO FINANCEIRO</Text>
+            <Text style={styles.sugSub}>Pra atingir o lucro {((contexto.lucroPerc || 0) * 100).toFixed(1)}% que você definiu nas configurações</Text>
             <Text style={[styles.sugPrice, { color: colors.success }]}>
               {sugFinanceiro?.validacao?.ok ? formatCurrency(sugFinanceiro.preco) : '—'}
             </Text>
@@ -321,6 +331,17 @@ export default function SimulacaoProdutoScreen({ route }) {
         <View style={{ height: 60 }} />
       </ScrollView>
     </View>
+  );
+}
+
+// Wrapper pra rota antiga (continua funcionando se alguém navega via deep-link)
+export default function SimulacaoProdutoScreen({ route }) {
+  return (
+    <SimulacaoProdutoContent
+      produtoId={route?.params?.produtoId}
+      plataformaId={route?.params?.plataformaId}
+      isPopup={false}
+    />
   );
 }
 

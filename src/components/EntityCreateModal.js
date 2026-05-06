@@ -275,8 +275,9 @@ export default function EntityCreateModal({
     try {
       // Sessão 28.20: ANTES de carregar do DB, checa se tem draft em memória
       // de uma navegação anterior pra editar item (insumo/preparo/embalagem).
-      // Se tem draft válido pra ESTE editId, usa ele em vez do DB pra preservar
-      // mudanças não-salvas (ex: novo item adicionado, qty alterada).
+      // Sessão 28.21: ao restaurar, refresca custoUnit/unidade dos itens do DB
+      // (porque o user pode ter editado preço ou unidade do insumo enquanto fora,
+      // e o draft tem só snapshot stale).
       try {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         const raw = await AsyncStorage.getItem('entityDraftToRestore');
@@ -285,6 +286,47 @@ export default function EntityCreateModal({
           if (info?.mode === mode && info?.draft && info?.editId === editId && (Date.now() - info.ts) < 5 * 60 * 1000) {
             await AsyncStorage.removeItem('entityDraftToRestore');
             const d = info.draft;
+            // Refresh custos/unidades dos itens do draft com dados atualizados do DB
+            let refreshedItens = d.itens || [];
+            try {
+              const db = await getDatabase();
+              const itensIds = { mp: [], pr: [], em: [] };
+              refreshedItens.forEach(it => {
+                if (it.tipo === 'materia_prima') itensIds.mp.push(it.id);
+                else if (it.tipo === 'preparo') itensIds.pr.push(it.id);
+                else if (it.tipo === 'embalagem') itensIds.em.push(it.id);
+              });
+              const fresh = { mp: {}, pr: {}, em: {} };
+              if (itensIds.mp.length) {
+                const rows = await db.getAllAsync(`SELECT id, nome, preco_por_kg, unidade_medida FROM materias_primas WHERE id IN (${itensIds.mp.map(()=>'?').join(',')})`, itensIds.mp);
+                (rows || []).forEach(r => { fresh.mp[r.id] = r; });
+              }
+              if (itensIds.pr.length) {
+                const rows = await db.getAllAsync(`SELECT id, nome, custo_por_kg, custo_total, unidade_medida FROM preparos WHERE id IN (${itensIds.pr.map(()=>'?').join(',')})`, itensIds.pr);
+                (rows || []).forEach(r => { fresh.pr[r.id] = r; });
+              }
+              if (itensIds.em.length) {
+                const rows = await db.getAllAsync(`SELECT id, nome, preco_unitario, unidade_medida FROM embalagens WHERE id IN (${itensIds.em.map(()=>'?').join(',')})`, itensIds.em);
+                (rows || []).forEach(r => { fresh.em[r.id] = r; });
+              }
+              refreshedItens = refreshedItens.map(it => {
+                if (it.tipo === 'materia_prima' && fresh.mp[it.id]) {
+                  const r = fresh.mp[it.id];
+                  return { ...it, custoUnit: calcCustoUnit('materia_prima', { preco_por_kg: r.preco_por_kg, unidade_medida: r.unidade_medida }), unidade: shortUnidade(r.unidade_medida, 'materia_prima') };
+                }
+                if (it.tipo === 'preparo' && fresh.pr[it.id]) {
+                  const r = fresh.pr[it.id];
+                  return { ...it, custoUnit: calcCustoUnit('preparo', { custo_por_kg: r.custo_por_kg, custo_total: r.custo_total }), unidade: shortUnidade(r.unidade_medida, 'preparo') };
+                }
+                if (it.tipo === 'embalagem' && fresh.em[it.id]) {
+                  const r = fresh.em[it.id];
+                  return { ...it, custoUnit: calcCustoUnit('embalagem', { preco_unitario: r.preco_unitario }), unidade: shortUnidade(r.unidade_medida, 'embalagem') || 'un' };
+                }
+                return it;
+              });
+            } catch (e) {
+              if (typeof console !== 'undefined') console.warn('[EntityCreateModal.draftRefresh]', e?.message || e);
+            }
             setNome(d.nome || '');
             setCategoriaId(d.categoriaId || null);
             setPrecoVenda(d.precoVenda || '');
@@ -293,9 +335,9 @@ export default function EntityCreateModal({
             setRendimentoTotalProd(d.rendimentoTotalProd || '');
             setRendimentoTotalPrep(d.rendimentoTotalPrep || '');
             setUnidadeMedidaPrep(d.unidadeMedidaPrep || 'g');
-            setItens(d.itens || []);
+            setItens(refreshedItens);
             setLoading(false);
-            return; // pula DB load — usuário verá estado preservado
+            return;
           }
         }
       } catch {}
@@ -920,14 +962,17 @@ export default function EntityCreateModal({
                           // Fecha PRIMEIRO o EntityCreateModal pra a edição não abrir por trás
                           try { onClose && onClose(); } catch {}
                           // Pequeno delay pra modal terminar de fechar antes do navigate
+                          // Sessão 28.21: pra PREPARO, navega pra lista de preparos com flag pra
+                          // abrir o EntityCreateModal em modo preparo (mesma UI do produto, não a
+                          // tela antiga PreparoForm).
                           setTimeout(() => {
                             try {
-                              if (it.tipo === 'preparo') navigation.navigate('Preparos', { screen: 'PreparoForm', params: { id: it.id, returnToEntityModal: true } });
+                              if (it.tipo === 'preparo') navigation.navigate('Preparos', { screen: 'PreparosMain', params: { openPreparoEdit: it.id } });
                               else if (it.tipo === 'materia_prima') navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: it.id, returnToEntityModal: true } });
                               else if (it.tipo === 'embalagem') navigation.navigate('Embalagens', { screen: 'EmbalagemForm', params: { id: it.id, returnToEntityModal: true } });
                             } catch (e) {
                               try {
-                                if (it.tipo === 'preparo') navigation.navigate('PreparoForm', { id: it.id, returnToEntityModal: true });
+                                if (it.tipo === 'preparo') navigation.navigate('Preparos', { params: { openPreparoEdit: it.id } });
                                 else if (it.tipo === 'materia_prima') navigation.navigate('MateriaPrimaForm', { id: it.id, returnToEntityModal: true });
                                 else if (it.tipo === 'embalagem') navigation.navigate('EmbalagemForm', { id: it.id, returnToEntityModal: true });
                               } catch {}
