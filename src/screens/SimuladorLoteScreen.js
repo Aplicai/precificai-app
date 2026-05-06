@@ -11,8 +11,9 @@
  *    Eu tenho que buscar um produto por produto."
  */
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Modal } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { SimulacaoProdutoContent } from './SimulacaoProdutoScreen';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
@@ -37,6 +38,8 @@ export default function SimuladorLoteScreen() {
   const [plataformas, setPlataformas] = useState([]);
   const [contexto, setContexto] = useState({ lucroPerc: 0.15, fixoPerc: 0, impostoPerc: 0, variavelPerc: 0 });
   const [modalCalculo, setModalCalculo] = useState(null);
+  // Sessão 28.21: simulação agora abre como POPUP (não nova tela)
+  const [popupSimulacao, setPopupSimulacao] = useState(null); // { produtoId, plataformaId }
 
   useFocusEffect(useCallback(() => { carregar(); }, []));
 
@@ -187,25 +190,35 @@ export default function SimuladorLoteScreen() {
         </View>
 
         <View style={styles.legend}>
-          <Text style={styles.legendTitle}>Como ler — 2 cenários por plataforma:</Text>
+          <Text style={styles.legendTitle}>O que cada coluna significa:</Text>
           <View style={styles.legendGrid}>
             <View style={styles.legendRow}>
               <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
               <Text style={styles.legendText}>
-                <Text style={{ fontFamily: fontFamily.bold }}>Mantém: </Text>
-                preço pra preservar a margem ATUAL do produto no balcão
+                <Text style={{ fontFamily: fontFamily.bold }}>Mantém margem do produto: </Text>
+                preço pra cobrar nesta plataforma e ter o MESMO % de lucro que o produto já tem hoje no balcão. Se o seu produto tem margem boa, esse preço vai ser justo.
               </Text>
             </View>
             <View style={styles.legendRow}>
               <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
               <Text style={styles.legendText}>
-                <Text style={{ fontFamily: fontFamily.bold }}>Financeiro: </Text>
-                preço pra atingir a margem definida nas Configurações Financeiras
+                <Text style={{ fontFamily: fontFamily.bold }}>Margem do financeiro: </Text>
+                preço pra cobrar e atingir o LUCRO DESEJADO que você definiu em Configurações Financeiras. É o preço "ideal" segundo as suas metas.
               </Text>
             </View>
             <View style={styles.legendRow}>
               <Feather name="x-circle" size={11} color={colors.error} />
-              <Text style={styles.legendText}>Inviável (taxas + lucro &gt; 100%)</Text>
+              <Text style={styles.legendText}>
+                <Text style={{ fontFamily: fontFamily.bold }}>Inviável: </Text>
+                taxas + cupom + lucro somam mais que 100% do preço. Reduza comissão, cupom ou margem alvo.
+              </Text>
+            </View>
+            <View style={styles.legendRow}>
+              <Feather name="info" size={11} color={colors.textSecondary} />
+              <Text style={styles.legendText}>
+                <Text style={{ fontFamily: fontFamily.bold }}>Toque numa célula </Text>
+                pra abrir simulação completa e cadastrar seu preço real.
+              </Text>
             </View>
           </View>
         </View>
@@ -267,7 +280,7 @@ export default function SimuladorLoteScreen() {
                     <View key={plat.id} style={{ flexDirection: 'row', width: 184, borderRightWidth: 1, borderRightColor: colors.border }}>
                       <TouchableOpacity
                         style={{ width: 92, alignItems: 'center', justifyContent: 'center', padding: spacing.xs, borderRightWidth: 1, borderRightColor: colors.border }}
-                        onPress={() => navigation.navigate('SimulacaoProduto', { produtoId: linha.prod.id, plataformaId: plat.id })}
+                        onPress={() => setPopupSimulacao({ produtoId: linha.prod.id, plataformaId: plat.id })}
                         activeOpacity={0.6}
                         disabled={!okMantem}
                       >
@@ -286,7 +299,7 @@ export default function SimuladorLoteScreen() {
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={{ width: 92, alignItems: 'center', justifyContent: 'center', padding: spacing.xs }}
-                        onPress={() => navigation.navigate('SimulacaoProduto', { produtoId: linha.prod.id, plataformaId: plat.id })}
+                        onPress={() => setPopupSimulacao({ produtoId: linha.prod.id, plataformaId: plat.id })}
                         activeOpacity={0.6}
                         disabled={!okFin}
                       >
@@ -318,6 +331,31 @@ export default function SimuladorLoteScreen() {
         titulo={modalCalculo?.titulo}
         resultado={modalCalculo?.resultado}
       />
+
+      {/* Sessão 28.21: popup de simulação dedicada (substitui navigation pra tela) */}
+      <Modal visible={!!popupSimulacao} transparent animationType="fade" onRequestClose={() => setPopupSimulacao(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 16, width: '100%', maxWidth: 720, maxHeight: '92%', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: 0, height: 6 }, elevation: 12 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', padding: spacing.sm, position: 'absolute', top: 0, right: 0, zIndex: 10 }}>
+              <TouchableOpacity
+                onPress={() => setPopupSimulacao(null)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={{ padding: 8, backgroundColor: '#fff', borderRadius: 20, borderWidth: 1, borderColor: colors.border }}
+              >
+                <Feather name="x" size={20} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            {popupSimulacao && (
+              <SimulacaoProdutoContent
+                produtoId={popupSimulacao.produtoId}
+                plataformaId={popupSimulacao.plataformaId}
+                onClose={() => setPopupSimulacao(null)}
+                isPopup
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

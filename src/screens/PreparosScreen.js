@@ -125,8 +125,19 @@ export default function PreparosScreen({ navigation }) {
         setShowCreateModal(true);
       } catch {}
     })();
+    // Sessão 28.21: deep-link pra abrir edição direto do EntityCreateModal (vindo do produto)
+    try {
+      const navState = navigation.getState && navigation.getState();
+      const route = navState?.routes?.[navState.index];
+      const preparoEditId = route?.params?.openPreparoEdit;
+      if (preparoEditId) {
+        setEditingId(preparoEditId);
+        setShowCreateModal(true);
+        navigation.setParams({ openPreparoEdit: undefined });
+      }
+    } catch {}
     return () => setConfirmDelete(null);
-  }, [filtroCategoria, busca, sortBy]));
+  }, [filtroCategoria, busca, sortBy, navigation]));
 
   async function loadData() {
     setLoading(true);
