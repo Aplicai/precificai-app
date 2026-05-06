@@ -65,14 +65,16 @@ const MENU_GROUPS = [
         // D-05: combos controlado APENAS por modo_avancado_combos (antes era OR com delivery)
         flag: 'modo_avancado_combos',
       },
+      // Sessão 28.17: aba "Comparar Fornecedores" REMOVIDA — usuária reclamou que
+      // ficar cadastrando várias marcas/fornecedores virou complicação. Substituída
+      // pelo "Relatório de Insumos" com preços médios + histórico de preços.
       {
-        key: 'fornecedores',
-        title: 'Comparar Fornecedores',
-        desc: 'Compare preços e descubra onde economizar',
-        icon: 'users',
+        key: 'relatorio_insumos',
+        title: 'Relatório de Insumos',
+        desc: 'Preços médios por categoria + histórico de mudanças',
+        icon: 'trending-up',
         set: 'feather',
-        screen: 'Fornecedores',
-        flag: 'modo_avancado_analise',
+        screen: 'RelatorioInsumos',
       },
       {
         key: 'exportpdf',

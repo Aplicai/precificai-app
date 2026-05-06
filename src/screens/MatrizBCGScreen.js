@@ -112,6 +112,10 @@ export default function MatrizBCGScreen({ navigation }) {
     if (qty > 0) {
       await db.runAsync('INSERT INTO vendas (produto_id, data, quantidade) VALUES (?,?,?)', [prodId, currentMonth, qty]);
     }
+    // Sessão 28.17 BUG FIX: reclassifica imediatamente após salvar venda.
+    // Antes: classificação só rolava em loadData (focus effect), então mudanças
+    // de venda no MESMO screen nunca atualizavam a categoria do produto.
+    try { await loadData(); } catch {}
   }
 
   function handleVendaChange(prodId, value) {

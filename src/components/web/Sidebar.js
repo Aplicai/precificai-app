@@ -31,7 +31,8 @@ const NAV_SECTIONS = [
       { key: 'precos', label: 'Atualizar Preços', icon: 'refresh-cw', iconSet: 'feather', tab: 'Mais', screen: 'AtualizarPrecos' },
       // Sessão 26 — Simulador agora é CTA contextual dentro da Ficha Técnica
       { key: 'relatorio', label: 'Relatório', icon: 'file-text', iconSet: 'feather', tab: 'Mais', screen: 'RelatorioSimples' },
-      { key: 'fornecedores', label: 'Fornecedores', icon: 'users', iconSet: 'feather', tab: 'Mais', screen: 'Fornecedores', flag: 'modo_avancado_analise' },
+      // Sessão 28.17: Fornecedores substituída por Relatório de Insumos (sem flag)
+      { key: 'relatorio_insumos', label: 'Relatório de Insumos', icon: 'trending-up', iconSet: 'feather', tab: 'Mais', screen: 'RelatorioInsumos' },
       { key: 'listacompras', label: 'Lista de Compras', icon: 'shopping-cart', iconSet: 'feather', tab: 'Mais', screen: 'ListaCompras' },
       { key: 'exportpdf', label: 'Exportar PDF', icon: 'printer', iconSet: 'feather', tab: 'Mais', screen: 'ExportPDF' },
     ],
