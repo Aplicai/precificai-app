@@ -45,6 +45,30 @@ export function clearQueryCache() {
   queryCache.clear();
 }
 
+// Sessão 28.27: telemetria opcional via Sentry. Carregamento defensivo —
+// se errorReporter ainda não foi inicializado ou DSN ausente, vira no-op.
+let _captureException = null;
+function reportDbError(operation, sql, params, error) {
+  // SQL completo NÃO vai pro Sentry (pode vazar dados de produção via WHERE
+  // clauses). Mandamos só a operação + tabela + tipo de erro.
+  try {
+    if (!_captureException) {
+      const mod = require('../utils/errorReporter');
+      _captureException = mod?.captureException || null;
+    }
+    if (!_captureException) return;
+    const tblMatch = String(sql).match(/(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|FROM)\s+(\w+)/i);
+    const table = tblMatch ? tblMatch[1] : 'unknown';
+    _captureException(error, {
+      db_operation: operation,
+      db_table: table,
+      param_count: Array.isArray(params) ? params.length : 0,
+    });
+  } catch {
+    // Defensivo: nunca quebrar a query principal por causa de telemetria
+  }
+}
+
 export function createSupabaseDb(userId) {
   currentUserId = userId;
 
@@ -56,14 +80,23 @@ export function createSupabaseDb(userId) {
       return executeQuery(sql, params, 'all').then(result => {
         setCache(key, result);
         return result;
+      }).catch(err => {
+        reportDbError('getAllAsync', sql, params, err);
+        throw err;
       });
     },
-    getFirstAsync: (sql, params = []) => executeQuery(sql, params, 'first'),
+    getFirstAsync: (sql, params = []) => executeQuery(sql, params, 'first').catch(err => {
+      reportDbError('getFirstAsync', sql, params, err);
+      throw err;
+    }),
     runAsync: (sql, params = []) => {
       // Extract table name for targeted cache invalidation
       const tblMatch = sql.match(/(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(\w+)/i);
       invalidateCache(tblMatch ? tblMatch[1] : null);
-      return executeRun(sql, params);
+      return executeRun(sql, params).catch(err => {
+        reportDbError('runAsync', sql, params, err);
+        throw err;
+      });
     },
     execAsync: (sql) => Promise.resolve(),
   };
