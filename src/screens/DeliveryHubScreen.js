@@ -495,6 +495,14 @@ export default function DeliveryHubScreen({ navigation }) {
                           />
                         </View>
                       </View>
+                      {/* Sessão 28.19: botão pra cadastrar preços DE VENDA por produto nesta plataforma */}
+                      <TouchableOpacity
+                        style={[styles.deleteBtn, { backgroundColor: colors.primary + '14', borderColor: colors.primary + '40' }]}
+                        onPress={() => navigation.navigate('PrecosPlataforma', { plataformaId: plat.id, plataformaNome: plat.plataforma })}
+                      >
+                        <Feather name="dollar-sign" size={14} color={colors.primary} />
+                        <Text style={[styles.deleteBtnText, { color: colors.primary }]}>Cadastrar preços de venda dos produtos nesta plataforma</Text>
+                      </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.deleteBtn}
                         onPress={() => setDeleteModal(plat)}

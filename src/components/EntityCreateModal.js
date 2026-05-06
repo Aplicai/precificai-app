@@ -169,7 +169,43 @@ export default function EntityCreateModal({
     if (isEditing) {
       loadForEdit();
     } else {
-      // criar
+      // Sessão 28.19: restaura draft do AsyncStorage (se voltou de editar item)
+      // — antes os itens digitados eram perdidos quando user clicava em editar
+      // um insumo/preparo durante a CRIAÇÃO de um novo produto.
+      (async () => {
+        try {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const raw = await AsyncStorage.getItem('entityDraftToRestore');
+          if (raw) {
+            const info = JSON.parse(raw);
+            await AsyncStorage.removeItem('entityDraftToRestore');
+            if (info?.mode === mode && info?.draft && info?.ts && (Date.now() - info.ts) < 5 * 60 * 1000) {
+              const d = info.draft;
+              setNome(d.nome || '');
+              setCategoriaId(d.categoriaId || defaultCategoriaId);
+              setPrecoVenda(d.precoVenda || '');
+              setTipoVenda(d.tipoVenda || 'unidade');
+              setRendimentoUnidades(d.rendimentoUnidades || '1');
+              setRendimentoTotalProd(d.rendimentoTotalProd || '');
+              setRendimentoTotalPrep(d.rendimentoTotalPrep || '');
+              setUnidadeMedidaPrep(d.unidadeMedidaPrep || 'g');
+              setItens(d.itens || []);
+              return; // não reseta abaixo
+            }
+          }
+        } catch {}
+        // Reset normal se não achou draft
+        setNome('');
+        setCategoriaId(defaultCategoriaId);
+        setPrecoVenda('');
+        setTipoVenda('unidade');
+        setRendimentoUnidades('1');
+        setRendimentoTotalProd('');
+        setRendimentoTotalPrep('');
+        setUnidadeMedidaPrep('g');
+        setItens([]);
+      })();
+      // valor inicial síncrono pra evitar flash de form com lixo
       setNome('');
       setCategoriaId(defaultCategoriaId);
       setPrecoVenda('');
@@ -556,12 +592,14 @@ export default function EntityCreateModal({
   }
 
   // Picker filter
-  const termo = busca.trim().toLowerCase();
+  // Sessão 28.19: normaliza busca pra ignorar acentos e cedilha (açaí ↔ acai, ç ↔ c, etc)
+  const _normalize = (s) => String(s || '').replace(/[çÇ]/g, (c) => (c === 'Ç' ? 'C' : 'c')).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+  const termo = _normalize(busca);
   const tipoOn = (t) => !filtroTipo || filtroTipo === t;
-  const filteredMaterias = tipoOn('materia_prima') ? allMaterias.filter(m => !termo || (m.nome || '').toLowerCase().includes(termo)) : [];
-  const filteredPreparos = (isProduto && tipoOn('preparo')) ? allPreparos.filter(p => !termo || (p.nome || '').toLowerCase().includes(termo)) : [];
+  const filteredMaterias = tipoOn('materia_prima') ? allMaterias.filter(m => !termo || _normalize(m.nome).includes(termo) || _normalize(m.marca || '').includes(termo)) : [];
+  const filteredPreparos = (isProduto && tipoOn('preparo')) ? allPreparos.filter(p => !termo || _normalize(p.nome).includes(termo)) : [];
   // D-20 (sessão 28.13): embalagens disponíveis em produto E preparo (preparos que precisam armazenar — pote, saco, etc)
-  const filteredEmbalagens = (tipoOn('embalagem')) ? allEmbalagens.filter(e => !termo || (e.nome || '').toLowerCase().includes(termo)) : [];
+  const filteredEmbalagens = (tipoOn('embalagem')) ? allEmbalagens.filter(e => !termo || _normalize(e.nome).includes(termo)) : [];
 
   function renderRow(item, key, tipo, custoFn) {
     const badge = TIPO_BADGE[tipo];
@@ -825,10 +863,21 @@ export default function EntityCreateModal({
                         style={{ flex: 1 }}
                         onPress={() => {
                           if (!navigation) return;
-                          // Sessão 28.14: salva flag pra reabrir o produto/preparo após salvar o item editado
+                          // Sessão 28.14 + 28.19: salva flag + DRAFT do produto pra reabrir
+                          // ANTES (28.14) só salvava { mode, editId } — então ao voltar, o modal
+                          // reabria mas se o produto era NOVO (editId=null), os itens digitados
+                          // se PERDIAM porque nada estava persistido. Agora também serializamos
+                          // o estado completo (nome, categoria, itens, etc) e restauramos no abrir.
                           try {
                             const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-                            const reopenInfo = { mode, editId, ts: Date.now() };
+                            const reopenInfo = {
+                              mode, editId, ts: Date.now(),
+                              draft: !editId ? {
+                                nome, categoriaId, precoVenda,
+                                tipoVenda, rendimentoUnidades, rendimentoTotalProd,
+                                rendimentoTotalPrep, unidadeMedidaPrep, itens,
+                              } : null,
+                            };
                             AsyncStorage.setItem('reopenEntityModalAfterEdit', JSON.stringify(reopenInfo));
                           } catch {}
                           // Fecha PRIMEIRO o EntityCreateModal pra a edição não abrir por trás

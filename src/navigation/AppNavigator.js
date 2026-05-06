@@ -49,6 +49,7 @@ import SimuladorLoteScreen from '../screens/SimuladorLoteScreen';
 import RelatorioSimplesScreen from '../screens/RelatorioSimplesScreen';
 import FornecedoresScreen from '../screens/FornecedoresScreen';
 import RelatorioInsumosScreen from '../screens/RelatorioInsumosScreen';
+import PrecosPlataformaScreen from '../screens/PrecosPlataformaScreen';
 import ListaComprasScreen from '../screens/ListaComprasScreen';
 import KitInicioScreen from '../screens/KitInicioScreen';
 import WelcomeTourScreen from '../screens/WelcomeTourScreen';
@@ -319,6 +320,7 @@ function MaisStack() {
       <Stack.Screen name="RelatorioSimples" component={RelatorioSimplesScreen} options={{ title: 'Relatório' }} />
       <Stack.Screen name="Fornecedores" component={FornecedoresScreen} options={{ title: 'Comparar Fornecedores' }} />
       <Stack.Screen name="RelatorioInsumos" component={RelatorioInsumosScreen} options={{ title: 'Relatório de Insumos' }} />
+      <Stack.Screen name="PrecosPlataforma" component={PrecosPlataformaScreen} options={{ title: 'Preços por Plataforma' }} />
       <Stack.Screen name="ListaCompras" component={ListaComprasScreen} options={{ title: 'Lista de Compras' }} />
       <Stack.Screen name="KitInicio" component={KitInicioScreen} options={{ title: 'Kit de Início' }} />
       <Stack.Screen name="Sobre" component={SobreScreen} options={{ title: 'Sobre o App' }} />

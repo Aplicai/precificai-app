@@ -317,7 +317,15 @@ export function classificarBCG(participacaoMercado, crescimentoVendas) {
 
 // Normaliza string removendo acentos/diacríticos para busca
 export function normalizeSearch(str) {
-  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  // Sess\u00e3o 28.19: ANTES o NFD n\u00e3o decompunha \u00e7 (n\u00e3o tem diacr\u00edtico Unicode separado),
+  // ent\u00e3o busca "acai" n\u00e3o achava "a\u00e7a\u00ed". Agora `\u00e7`/`\u00c7` viram `c`/`C` antes do NFD.
+  if (str == null) return '';
+  return String(str)
+    .replace(/[\u00e7\u00c7]/g, (c) => (c === '\u00c7' ? 'C' : 'c'))
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }
 
 // Formata valor em R$

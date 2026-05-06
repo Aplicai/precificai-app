@@ -114,7 +114,7 @@ export default function ProdutosListScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => {
     loadData();
-    // Sessão 28.14: se voltou de uma edição feita PELO modal de produto, reabre o modal automaticamente
+    // Sessão 28.14 + 28.19: reabre o modal e RESTAURA O DRAFT (28.19 fix)
     (async () => {
       try {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
@@ -122,9 +122,12 @@ export default function ProdutosListScreen({ navigation }) {
         if (!raw) return;
         const info = JSON.parse(raw);
         await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
-        // Só reabre se o modal era de produto E foi recente (< 5 min)
         if (info?.mode !== 'produto') return;
         if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) return;
+        // Sessão 28.19: se tem draft (produto era NOVO sem id), guarda pra restaurar
+        if (info.draft) {
+          try { await AsyncStorage.setItem('entityDraftToRestore', JSON.stringify({ mode: 'produto', draft: info.draft, ts: Date.now() })); } catch {}
+        }
         setEditingId(info.editId || null);
         setShowCreateModal(true);
       } catch {}
