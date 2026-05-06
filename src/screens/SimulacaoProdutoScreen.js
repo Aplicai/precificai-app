@@ -135,7 +135,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
       );
       if (exists && exists.length > 0) {
         await db.runAsync(
-          'UPDATE produto_preco_delivery SET preco_venda = ?, updated_at = NOW() WHERE produto_id = ? AND plataforma_id = ?',
+          'UPDATE produto_preco_delivery SET preco_venda = ?, updated_at = CURRENT_TIMESTAMP WHERE produto_id = ? AND plataforma_id = ?',
           [num, produtoId, plataformaId]
         );
       } else {
