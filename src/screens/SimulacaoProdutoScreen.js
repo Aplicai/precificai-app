@@ -33,8 +33,9 @@ const safe = (v) => {
 };
 
 // Sessão 28.21: também export como conteúdo pra ser usado em Modal/Popup.
-// Aceita props produtoId/plataformaId/onClose pra modo popup.
-export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: platProp, onClose, isPopup = false }) {
+// Aceita props produtoId/plataformaId/onClose/onSaved pra modo popup.
+// Sessão 28.25: onSaved é invocado APÓS persistir no DB → parent reload sem reabrir popup.
+export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: platProp, onClose, onSaved, isPopup = false }) {
   const navigation = useNavigation();
   const produtoId = pidProp;
   const plataformaId = platProp;
@@ -46,7 +47,26 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
   const [precoEscolhido, setPrecoEscolhido] = useState('');
   const [precoSalvo, setPrecoSalvo] = useState(null);
 
-  useFocusEffect(useCallback(() => { carregar(); }, [produtoId, plataformaId]));
+  // Sessão 28.25: em modo popup usamos useEffect (não useFocusEffect) — o popup
+  // não desfocaliza/refocaliza ao trocar produtoId/plataformaId; o parent só
+  // remonta o componente quando o usuário toca em outra célula. useFocusEffect
+  // gera race condition: ao trocar o par produto/plataforma, a chamada antiga
+  // continua rodando e pode sobrescrever o data novo com data antigo.
+  useEffect(() => {
+    if (isPopup) {
+      let cancelled = false;
+      (async () => {
+        await carregar();
+        if (cancelled) return; // reentrância: descarta resultado se trocou de produto/plataforma
+      })();
+      return () => { cancelled = true; };
+    }
+  }, [produtoId, plataformaId, isPopup]);
+
+  // Modo navegação tradicional (não-popup) usa useFocusEffect padrão.
+  useFocusEffect(useCallback(() => {
+    if (!isPopup) carregar();
+  }, [produtoId, plataformaId, isPopup]));
 
   async function carregar() {
     if (!produtoId || !plataformaId) {
@@ -146,6 +166,12 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
       }
       setPrecoSalvo(num);
       setSavedFlash(true);
+      // Sessão 28.25: notifica o pai ANTES de fechar pra ele recarregar precosCadastrados.
+      // Antes: parent só reagia a useFocusEffect — o que NÃO dispara em popup, então
+      // a coluna "MEU PREÇO" só atualizava se o usuário recarregasse a página.
+      if (onSaved) {
+        try { onSaved({ produtoId, plataformaId, precoVenda: num }); } catch {}
+      }
       // Sessão 28.23: se está em popup, fecha automaticamente após salvar (UX melhor)
       if (isPopup && onClose) {
         setTimeout(() => { onClose(); }, 800);

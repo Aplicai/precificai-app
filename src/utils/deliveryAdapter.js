@@ -74,3 +74,45 @@ export function extrairImpostoPercentual(despesasVariaveis) {
 }
 
 export { compararDeliveryVsBalcao };
+
+/**
+ * Sessão 28.25 (refactor): builder canônico do "contexto financeiro" usado em
+ * SimuladorLoteScreen, SimulacaoProdutoScreen, DeliveryHubScreen, DeliveryPrecosScreen
+ * e DeliveryCombosScreen. Antes, cada tela replicava ~10 linhas de cálculo
+ * idêntico — risco de drift quando uma é mudada.
+ *
+ * @param {object} input
+ * @param {Array}  input.cfgRows     - rows de `configuracao` (geralmente [{lucro_desejado, lucro_desejado_delivery, ...}])
+ * @param {Array}  input.fixasRows   - rows de `despesas_fixas` (cada uma com `valor`)
+ * @param {Array}  input.varsRows    - rows de `despesas_variaveis` ({descricao, percentual em decimal})
+ * @param {Array}  input.fatRows     - rows de `faturamento_mensal` ({valor})
+ * @param {object} [input.options]
+ * @param {boolean}[input.options.usarLucroDelivery] - true → usa lucro_desejado_delivery; false → lucro_desejado balcão
+ * @returns {{ lucroPerc:number, fixoPerc:number, impostoPerc:number, variavelPerc:number }}
+ */
+export function buildContextoFinanceiro({ cfgRows, fixasRows, varsRows, fatRows, options = {} }) {
+  const safe = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const cfg = (cfgRows && cfgRows[0]) || {};
+
+  // Soma fixas e divide por faturamento médio pra obter %
+  const totalFixas = (fixasRows || []).reduce((a, r) => a + safe(r.valor), 0);
+  const fatLista = (fatRows || []).filter((r) => safe(r.valor) > 0);
+  const fatMedio = fatLista.length > 0
+    ? fatLista.reduce((a, r) => a + safe(r.valor), 0) / fatLista.length
+    : 0;
+  const fixoPerc = fatMedio > 0 ? totalFixas / fatMedio : 0;
+
+  // Lucro desejado (delivery tem campo separado opcional)
+  const lucroPerc = options.usarLucroDelivery
+    ? (Number.isFinite(cfg.lucro_desejado_delivery) ? cfg.lucro_desejado_delivery
+       : Number.isFinite(cfg.lucro_desejado) ? cfg.lucro_desejado : 0.15)
+    : (Number.isFinite(cfg.lucro_desejado) ? cfg.lucro_desejado : 0.15);
+
+  const impostoPerc = extrairImpostoPercentual(varsRows || []);
+  const variavelPerc = (varsRows || []).reduce(
+    (a, d) => a + (Number.isFinite(d.percentual) ? d.percentual : 0),
+    0
+  );
+
+  return { lucroPerc, fixoPerc, impostoPerc, variavelPerc };
+}

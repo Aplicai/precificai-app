@@ -169,16 +169,35 @@ export default function EntityCreateModal({
     if (isEditing) {
       loadForEdit();
     } else {
+      // Sessão 28.25 BUG FIX (B3 do auditor): antes resetava SYNC (linhas 209-217)
+      // e DEPOIS o async tentava restaurar draft → flash visual de form vazio
+      // antes do draft aparecer, e race condition se a tab era trocada rápido.
+      // Agora: reset síncrono UMA vez (preenche imediato pra evitar flash de
+      // valores antigos do render anterior), e o async APENAS restaura se houver
+      // draft válido — se não houver, mantém o reset que já foi aplicado.
+      setNome('');
+      setCategoriaId(defaultCategoriaId);
+      setPrecoVenda('');
+      setTipoVenda('unidade');
+      setRendimentoUnidades('1');
+      setRendimentoTotalProd('');
+      setRendimentoTotalPrep('');
+      setUnidadeMedidaPrep('g');
+      setItens([]);
+
       // Sessão 28.19: restaura draft do AsyncStorage (se voltou de editar item)
       // — antes os itens digitados eram perdidos quando user clicava em editar
       // um insumo/preparo durante a CRIAÇÃO de um novo produto.
+      let cancelled = false;
       (async () => {
         try {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const raw = await AsyncStorage.getItem('entityDraftToRestore');
+          if (cancelled) return; // user fechou o modal antes do read
           if (raw) {
             const info = JSON.parse(raw);
             await AsyncStorage.removeItem('entityDraftToRestore');
+            if (cancelled) return;
             if (info?.mode === mode && info?.draft && info?.ts && (Date.now() - info.ts) < 5 * 60 * 1000) {
               const d = info.draft;
               setNome(d.nome || '');
@@ -190,31 +209,12 @@ export default function EntityCreateModal({
               setRendimentoTotalPrep(d.rendimentoTotalPrep || '');
               setUnidadeMedidaPrep(d.unidadeMedidaPrep || 'g');
               setItens(d.itens || []);
-              return; // não reseta abaixo
             }
           }
         } catch {}
-        // Reset normal se não achou draft
-        setNome('');
-        setCategoriaId(defaultCategoriaId);
-        setPrecoVenda('');
-        setTipoVenda('unidade');
-        setRendimentoUnidades('1');
-        setRendimentoTotalProd('');
-        setRendimentoTotalPrep('');
-        setUnidadeMedidaPrep('g');
-        setItens([]);
       })();
-      // valor inicial síncrono pra evitar flash de form com lixo
-      setNome('');
-      setCategoriaId(defaultCategoriaId);
-      setPrecoVenda('');
-      setTipoVenda('unidade');
-      setRendimentoUnidades('1');
-      setRendimentoTotalProd('');
-      setRendimentoTotalPrep('');
-      setUnidadeMedidaPrep('g');
-      setItens([]);
+      loadPickerAndCategorias();
+      return () => { cancelled = true; };
     }
     loadPickerAndCategorias();
   }, [visible, editId]);

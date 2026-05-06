@@ -20,11 +20,11 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import {
   formatCurrency, calcCustoIngrediente, calcCustoPreparo,
-  getDivisorRendimento, calcDespesasFixasPercentual,
+  getDivisorRendimento,
 } from '../utils/calculations';
 import { calcSugestaoDeliveryCompleta } from '../utils/deliveryPricing';
 import { calcularPrecoBalcao } from '../utils/precificacao';
-import { extrairImpostoPercentual } from '../utils/deliveryAdapter';
+import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
 
 const safeNum = (v) => {
@@ -68,17 +68,13 @@ export default function SimuladorLoteScreen() {
       const ppdMap = {};
       (ppdRows || []).forEach(r => { ppdMap[`${r.produto_id}-${r.plataforma_id}`] = safeNum(r.preco_venda); });
 
-      // Contexto financeiro
-      const cfg = cfgRows?.[0] || {};
-      const totalFixas = (fixasRows || []).reduce((a, r) => a + safeNum(r.valor), 0);
-      const fatMedio = (fatRows || []).length > 0
-        ? (fatRows || []).reduce((a, r) => a + safeNum(r.valor), 0) / (fatRows || []).length : 0;
-      const fixoPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
-      const lucroPerc = Number.isFinite(cfg.lucro_desejado_delivery) ? cfg.lucro_desejado_delivery
-                      : Number.isFinite(cfg.lucro_desejado) ? cfg.lucro_desejado : 0.15;
-      const impostoPerc = extrairImpostoPercentual(varsRows || []);
-      const variavelPerc = (varsRows || []).reduce((a, d) => a + (Number.isFinite(d.percentual) ? d.percentual : 0), 0);
-      setContexto({ lucroPerc, fixoPerc, impostoPerc, variavelPerc });
+      // Sessão 28.25: usa builder unificado do contexto (deliveryAdapter)
+      // — antes, cada tela replicava esse cálculo. Agora é canonical em 1 lugar.
+      const ctx = buildContextoFinanceiro({
+        cfgRows, fixasRows, varsRows, fatRows,
+        options: { usarLucroDelivery: true },
+      });
+      setContexto(ctx);
 
       // Maps de custo por produto
       const ingsByProd = {}; (allIngs || []).forEach(i => (ingsByProd[i.produto_id] = ingsByProd[i.produto_id] || []).push(i));
@@ -111,9 +107,21 @@ export default function SimuladorLoteScreen() {
     }
   }
 
-  // Sessão 28.16: refeito pra mostrar 2 versões por plataforma
-  // - "Margem do financeiro" (lucroPerc do contexto)
-  // - "Mantém margem atual" (margem real do produto baseado no preço de venda do balcão)
+  // Sessão 28.16/28.25: 3 valores por plataforma
+  // - "MEU PREÇO" (preço atual cadastrado em produto_preco_delivery)
+  // - "MARGEM IGUAL" (preço delivery que entrega o MESMO LUCRO LÍQUIDO % do balcão)
+  // - "SUGERIDO" (preço pra atingir o lucroPerc do financeiro)
+  //
+  // SESSÃO 28.25 BUG FIX (formula audit): "MARGEM IGUAL" estava dobrando custos.
+  // Antes: passava `lucroPerc = (precoBalcao - cmv) / precoBalcao` (margem BRUTA)
+  //        para o engine de delivery — que adiciona fixo+imposto+comissão por cima.
+  //        Resultado: divisor virava (1 - margemBruta - fixo - imposto - comissao - ...)
+  //        → preço inflado em 100%+ (custos contados 2x: já estavam embutidos na
+  //        margemBruta + reaplicados pelo engine).
+  // Agora: lucroPercReal_balcao = margemBruta - fixoPerc - variavelPerc.
+  //        Esse é o LUCRO LÍQUIDO % de fato do balcão. Engine adiciona fixo + imposto
+  //        + comissão + taxa online por cima → preço delivery dá o MESMO % de lucro
+  //        líquido que o produto tem hoje no balcão.
   const linhasCalculadas = useMemo(() => {
     return produtos.map(prod => {
       const balcao = calcularPrecoBalcao({
@@ -123,20 +131,29 @@ export default function SimuladorLoteScreen() {
         variavelPerc: contexto.variavelPerc,
       });
       const sugBalcao = balcao.preco;
-      // Margem ATUAL do produto (baseada no preço que o usuário cadastrou no balcão)
-      const margemAtual = prod.precoVendaBalcao > 0
+      // Margem BRUTA do produto no balcão (preço - CMV) / preço — só pra exibir
+      const margemBrutaBalcao = prod.precoVendaBalcao > 0
         ? Math.max(0, (prod.precoVendaBalcao - prod.cmv) / prod.precoVendaBalcao)
         : 0;
+      // LUCRO LÍQUIDO % real do balcão (subtraindo custos fixos e variáveis)
+      const lucroPercBalcaoReal = Math.max(
+        0,
+        margemBrutaBalcao - contexto.fixoPerc - contexto.variavelPerc
+      );
       const plataformaCells = plataformas.map(plat => {
-        // V1: usando a margem do FINANCEIRO
+        // V1: usando o lucroPerc do FINANCEIRO (configuração)
         const sugFinanceiro = calcSugestaoDeliveryCompleta({ cmv: prod.cmv, plat, contexto });
-        // V2: usando a margem ATUAL do produto
-        const sugMantemMargem = (margemAtual > 0)
-          ? calcSugestaoDeliveryCompleta({ cmv: prod.cmv, plat, contexto: { ...contexto, lucroPerc: margemAtual } })
+        // V2: usando o lucro líquido REAL do balcão (mantém mesma rentabilidade)
+        const sugMantemMargem = (prod.precoVendaBalcao > 0 && lucroPercBalcaoReal > 0)
+          ? calcSugestaoDeliveryCompleta({
+              cmv: prod.cmv,
+              plat,
+              contexto: { ...contexto, lucroPerc: lucroPercBalcaoReal },
+            })
           : null;
-        return { plat, sugFinanceiro, sugMantemMargem, margemAtual };
+        return { plat, sugFinanceiro, sugMantemMargem };
       });
-      return { prod, balcao, sugBalcao, margemAtual, plataformaCells };
+      return { prod, balcao, sugBalcao, margemBrutaBalcao, lucroPercBalcaoReal, plataformaCells };
     });
   }, [produtos, plataformas, contexto]);
 
@@ -212,8 +229,8 @@ export default function SimuladorLoteScreen() {
             <View style={styles.legendRow}>
               <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
               <Text style={styles.legendText}>
-                <Text style={{ fontFamily: fontFamily.bold }}>MANTÉM margem balcão: </Text>
-                preço pra ter o mesmo lucro que tem hoje no balcão. Use se o produto já tá precificado bem.
+                <Text style={{ fontFamily: fontFamily.bold }}>MARGEM IGUAL: </Text>
+                preço delivery que entrega o MESMO lucro líquido % que esse produto tem hoje no balcão. Use se o preço de balcão já está bom.
               </Text>
             </View>
             <View style={styles.legendRow}>
@@ -253,7 +270,7 @@ export default function SimuladorLoteScreen() {
                   </View>
                   <View>
                     <Text style={{ fontSize: 10, color: colors.textSecondary }}>Margem atual</Text>
-                    <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>{(linha.margemAtual * 100).toFixed(1)}%</Text>
+                    <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>{(linha.margemBrutaBalcao * 100).toFixed(1)}%</Text>
                   </View>
                 </View>
                 {/* Cada plataforma: 1 linha com 3 colunas */}
@@ -276,7 +293,7 @@ export default function SimuladorLoteScreen() {
                         </Text>
                       </View>
                       <View style={{ alignItems: 'center', minWidth: 70 }}>
-                        <Text style={{ fontSize: 9, color: colors.primary, fontFamily: fontFamily.bold }}>MANTÉM</Text>
+                        <Text style={{ fontSize: 9, color: colors.primary, fontFamily: fontFamily.bold }}>MARGEM IGUAL</Text>
                         <Text style={{ fontSize: 12, color: okMantem ? colors.primary : colors.disabled, fontFamily: fontFamily.medium }}>
                           {okMantem ? formatCurrency(sugMantemMargem.preco) : '—'}
                         </Text>
@@ -312,16 +329,19 @@ export default function SimuladorLoteScreen() {
                 <Text style={styles.headerText}>Preço{'\n'}Atual</Text>
               </View>
               {plataformas.map(plat => (
-                <View key={plat.id} style={{ width: 270, borderRightWidth: 1, borderRightColor: colors.border, borderBottomWidth: 2, borderBottomColor: colors.primary, alignItems: 'center', paddingTop: 6 }}>
-                  <Text style={[styles.headerText, { fontSize: 12 }]} numberOfLines={1}>{plat.plataforma}</Text>
-                  <View style={{ flexDirection: 'row', width: '100%', marginTop: 4 }}>
+                <View key={plat.id} style={{ width: 270, borderRightWidth: 1, borderRightColor: colors.border, borderBottomWidth: 2, borderBottomColor: colors.primary, paddingTop: 0 }}>
+                  {/* Sessão 28.25: header da plataforma com fundo destacado, centralizado SOBRE as 3 sub-colunas */}
+                  <View style={{ width: '100%', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, backgroundColor: colors.primary + '22', borderBottomWidth: 1, borderBottomColor: colors.primary }}>
+                    <Text style={[styles.headerText, { fontSize: 13, color: colors.primary }]} numberOfLines={1}>{plat.plataforma}</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', width: '100%' }}>
                     <View style={{ width: 90, alignItems: 'center', padding: 4, borderRightWidth: 1, borderRightColor: colors.border }}>
                       <Text style={{ fontSize: 9, color: '#92400E', fontFamily: fontFamily.bold }}>MEU PREÇO</Text>
                       <Text style={{ fontSize: 8, color: colors.textSecondary }}>cobrado hoje</Text>
                     </View>
                     <View style={{ width: 90, alignItems: 'center', padding: 4, borderRightWidth: 1, borderRightColor: colors.border }}>
-                      <Text style={{ fontSize: 9, color: colors.primary, fontFamily: fontFamily.bold }}>MANTÉM</Text>
-                      <Text style={{ fontSize: 8, color: colors.textSecondary }}>margem balcão</Text>
+                      <Text style={{ fontSize: 9, color: colors.primary, fontFamily: fontFamily.bold }}>MARGEM IGUAL</Text>
+                      <Text style={{ fontSize: 8, color: colors.textSecondary }}>= lucro do balcão</Text>
                     </View>
                     <View style={{ width: 90, alignItems: 'center', padding: 4 }}>
                       <Text style={{ fontSize: 9, color: colors.success, fontFamily: fontFamily.bold }}>SUGERIDO</Text>
@@ -338,7 +358,7 @@ export default function SimuladorLoteScreen() {
                 <View style={[styles.cellProduto, { borderRightWidth: 1, borderRightColor: colors.border }]}>
                   <Text style={styles.produtoNome} numberOfLines={2}>{linha.prod.nome}</Text>
                   <Text style={{ fontSize: 9, color: colors.textSecondary, marginTop: 2 }}>
-                    Margem atual: {(linha.margemAtual * 100).toFixed(1)}%
+                    Margem balcão: {(linha.margemBrutaBalcao * 100).toFixed(1)}% • Lucro líq.: {(linha.lucroPercBalcaoReal * 100).toFixed(1)}%
                   </Text>
                 </View>
                 <View style={[styles.cellNumeric, { borderRightWidth: 1, borderRightColor: colors.border }]}>
@@ -351,7 +371,7 @@ export default function SimuladorLoteScreen() {
                   </Text>
                 </View>
                 {/* 3 sub-células por plataforma — Sessão 28.23 */}
-                {linha.plataformaCells.map(({ plat, sugFinanceiro, sugMantemMargem, margemAtual }) => {
+                {linha.plataformaCells.map(({ plat, sugFinanceiro, sugMantemMargem }) => {
                   const okMantem = sugMantemMargem?.validacao?.ok && Number.isFinite(sugMantemMargem?.preco) && sugMantemMargem.preco > 0;
                   const okFin = sugFinanceiro?.validacao?.ok && Number.isFinite(sugFinanceiro?.preco) && sugFinanceiro.preco > 0;
                   const meuPreco = precosCadastrados[`${linha.prod.id}-${plat.id}`] || 0;
@@ -442,6 +462,10 @@ export default function SimuladorLoteScreen() {
                 produtoId={popupSimulacao.produtoId}
                 plataformaId={popupSimulacao.plataformaId}
                 onClose={() => setPopupSimulacao(null)}
+                // Sessão 28.25: atualiza coluna "MEU PREÇO" sem precisar recarregar a tela.
+                onSaved={({ produtoId: pid, plataformaId: plid, precoVenda }) => {
+                  setPrecosCadastrados(prev => ({ ...prev, [`${pid}-${plid}`]: safeNum(precoVenda) }));
+                }}
                 isPopup
               />
             )}

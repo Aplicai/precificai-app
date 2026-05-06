@@ -155,6 +155,32 @@ export default function DeliveryHubScreen({ navigation }) {
     precosSaveTimers.current[produtoId] = setTimeout(() => salvarPrecoDelivery(produtoId, valor), 800);
   }
 
+  // Sessão 28.25: garante que toda última digitação seja persistida quando o
+  // popup fecha — independente do botão usado (X, "Fechar", "Salvar todos",
+  // ou clique fora). Antes (B6 do auditor): se o user fechasse via X dentro
+  // da janela de debounce, o setTimeout disparava com `precosPopupPlat = null`
+  // e abortava silenciosamente em `salvarPrecoDelivery`. Resultado: última
+  // edição perdida.
+  async function flushPrecosPopup() {
+    const ids = Object.keys(precosSaveTimers.current);
+    if (ids.length === 0) return;
+    const promises = [];
+    ids.forEach(id => {
+      if (precosSaveTimers.current[id]) {
+        clearTimeout(precosSaveTimers.current[id]);
+        delete precosSaveTimers.current[id];
+        // Pega o valor atual do map (captura no momento do flush, não do timer)
+        if (precosMap[id] != null) promises.push(salvarPrecoDelivery(id, precosMap[id]));
+      }
+    });
+    await Promise.all(promises);
+  }
+
+  async function fecharPrecosPopup() {
+    await flushPrecosPopup();
+    setPrecosPopupPlat(null);
+  }
+
   async function loadData() {
     if (isLoadingRef.current) return;
     isLoadingRef.current = true;
@@ -1052,7 +1078,7 @@ export default function DeliveryHubScreen({ navigation }) {
       />
 
       {/* Sessão 28.20 + 28.21: Popup de cadastro de preços — UX melhorada com botão salvar explícito */}
-      <Modal visible={!!precosPopupPlat} transparent animationType="fade" onRequestClose={() => setPrecosPopupPlat(null)}>
+      <Modal visible={!!precosPopupPlat} transparent animationType="fade" onRequestClose={fecharPrecosPopup}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
           <View style={{ backgroundColor: colors.surface, borderRadius: 16, width: '100%', maxWidth: 640, maxHeight: '88%', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: 0, height: 6 }, elevation: 12 }}>
             {/* Header com gradiente sutil */}
@@ -1066,7 +1092,7 @@ export default function DeliveryHubScreen({ navigation }) {
                     Cadastre quanto você cobra de cada produto nesta plataforma
                   </Text>
                 </View>
-                <TouchableOpacity onPress={() => setPrecosPopupPlat(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: 6 }}>
+                <TouchableOpacity onPress={fecharPrecosPopup} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={{ padding: 6 }}>
                   <Feather name="x" size={22} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
@@ -1137,29 +1163,14 @@ export default function DeliveryHubScreen({ navigation }) {
             <View style={{ flexDirection: 'row', padding: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, gap: 8, backgroundColor: colors.background }}>
               <TouchableOpacity
                 style={{ flex: 1, backgroundColor: '#fff', paddingVertical: 12, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: colors.border }}
-                onPress={() => setPrecosPopupPlat(null)}
+                onPress={fecharPrecosPopup}
                 activeOpacity={0.7}
               >
                 <Text style={{ color: colors.textSecondary, fontFamily: fontFamily.medium, fontSize: fonts.regular }}>Fechar</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={{ flex: 2, backgroundColor: colors.primary, paddingVertical: 12, borderRadius: 8, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
-                onPress={async () => {
-                  // Força flush de todos os timers pendentes ANTES de fechar
-                  const promises = [];
-                  Object.keys(precosSaveTimers.current).forEach(id => {
-                    if (precosSaveTimers.current[id]) {
-                      clearTimeout(precosSaveTimers.current[id]);
-                      delete precosSaveTimers.current[id];
-                    }
-                  });
-                  // Salva todos os valores no map
-                  for (const id of Object.keys(precosMap)) {
-                    promises.push(salvarPrecoDelivery(id, precosMap[id]));
-                  }
-                  await Promise.all(promises);
-                  setPrecosPopupPlat(null);
-                }}
+                onPress={fecharPrecosPopup}
                 activeOpacity={0.85}
               >
                 <Feather name="check" size={16} color="#fff" />

@@ -198,6 +198,11 @@ export default function MatrizBCGScreen({ navigation }) {
       }
 
       // Classify using median
+      // Sessão 28.25 BUG FIX: produto SEM venda no mês NÃO pode virar Estrela/Cavalo de Batalha.
+      // Antes: mediana de vendas podia ser 0 quando ninguém cadastrou venda → todos viravam
+      // "altaVenda" pelo `>= 0` → produtos zerados eram classificados como Estrela.
+      // Agora: só entram na mediana produtos COM venda > 0; produtos com venda zero
+      // recebem classificação base por margem (Quebra-Cabeça se margem alta, Abacaxi se baixa).
       const validItems = result.filter(p => p.precoVenda > 0);
       if (validItems.length < 2) {
         setProdutos(result.map(p => ({ ...p, classificacao: 'Quebra-Cabeça' })));
@@ -205,12 +210,14 @@ export default function MatrizBCGScreen({ navigation }) {
       }
       const sorted = (arr) => [...arr].sort((a, b) => a - b);
       const median = (arr) => { const s = sorted(arr); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
-      const medianaVendas = median(validItems.map(p => p.qtdVendida));
+      const itensComVenda = validItems.filter(p => p.qtdVendida > 0);
+      const medianaVendas = itensComVenda.length > 0 ? median(itensComVenda.map(p => p.qtdVendida)) : 0;
       const medianaMargem = median(validItems.map(p => p.margemPerc));
 
       const classified = result.map(p => {
         const altaMargem = p.margemPerc >= medianaMargem;
-        const altaVenda = p.qtdVendida >= medianaVendas;
+        // Produto sem venda no mês NUNCA é "alta venda" — independente da mediana.
+        const altaVenda = p.qtdVendida > 0 && p.qtdVendida >= medianaVendas;
         let classificacao;
         if (altaMargem && altaVenda) classificacao = 'Estrela';
         else if (!altaMargem && altaVenda) classificacao = 'Cavalo de Batalha';

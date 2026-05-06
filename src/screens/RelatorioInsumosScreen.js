@@ -36,6 +36,14 @@ export default function RelatorioInsumosScreen() {
   async function carregar() {
     setLoading(true);
     try {
+      // Sessão 28.25 BUG FIX: Relatório de Insumos não refletia edição de preço.
+      // O wrapper supabaseDb tem cache de 2s com invalidação por tabela, mas em
+      // SQLite local + alguns paths o cache pode ainda devolver dados velhos.
+      // Limpa explicitamente antes de carregar pra garantir leitura fresca.
+      try {
+        const { clearQueryCache } = await import('../database/supabaseDb');
+        clearQueryCache?.();
+      } catch {}
       const db = await getDatabase();
       const [mps, cats] = await Promise.all([
         db.getAllAsync('SELECT mp.*, c.nome as categoria_nome FROM materias_primas mp LEFT JOIN categorias_insumos c ON c.id = mp.categoria_id ORDER BY mp.nome'),
@@ -95,11 +103,21 @@ export default function RelatorioInsumosScreen() {
   return (
     <View style={styles.container}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Relatório de Insumos</Text>
-          <Text style={styles.subtitle}>
-            Visão geral dos preços médios por categoria + histórico de mudanças. Sem necessidade de cadastrar marcas ou fornecedores.
-          </Text>
+        <View style={[styles.header, { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>Relatório de Insumos</Text>
+            <Text style={styles.subtitle}>
+              Visão geral dos preços médios por categoria + histórico de mudanças. Sem necessidade de cadastrar marcas ou fornecedores.
+            </Text>
+          </View>
+          {/* Sessão 28.25: botão de refresh manual — fallback caso useFocusEffect não dispare */}
+          <TouchableOpacity
+            onPress={carregar}
+            style={{ padding: 8, marginLeft: 8, borderRadius: 6, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}
+            accessibilityLabel="Atualizar relatório"
+          >
+            <Feather name="refresh-cw" size={16} color={colors.primary} />
+          </TouchableOpacity>
         </View>
 
         {insumos.length === 0 ? (
