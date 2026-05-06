@@ -11,7 +11,8 @@ import InputField from '../components/InputField';
 import SaveStatus from '../components/SaveStatus';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, calcDespesasFixasPercentual } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem } from '../utils/calculations';
+import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
 // APP-22: usar engine unificada também para combos (antes era markup fixo 35% sem contar fixos/variáveis)
 import { calcularPrecoCombo } from '../utils/precificacao';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -179,16 +180,18 @@ export default function DeliveryCombosScreen() {
       db.getAllAsync('SELECT valor FROM faturamento_mensal WHERE valor > 0'),
     ]);
 
-    // APP-22: monta contexto financeiro
+    // Sessão 28.26: usa builder unificado em deliveryAdapter
+    // Combos são precificados pelo modelo BALCÃO (lucro_desejado, sem comissão)
     try {
-      const cfg = cfgRows?.[0] || {};
-      const totalFixas = (fixasRows || []).reduce((a, r) => a + (Number.isFinite(r.valor) ? r.valor : 0), 0);
-      const fatMedio = (fatRows || []).length > 0
-        ? (fatRows || []).reduce((a, r) => a + (Number.isFinite(r.valor) ? r.valor : 0), 0) / (fatRows || []).length : 0;
-      const fixoPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
-      const lucroPerc = Number.isFinite(cfg.lucro_desejado) ? cfg.lucro_desejado : 0.15;
-      const variavelPerc = (varsRows || []).reduce((a, r) => a + (Number.isFinite(r.percentual) ? r.percentual : 0), 0);
-      setContextoFin({ lucroPerc, fixoPerc, variavelPerc });
+      const ctx = buildContextoFinanceiro({
+        cfgRows, fixasRows, varsRows, fatRows,
+        options: { usarLucroDelivery: false },
+      });
+      setContextoFin({
+        lucroPerc: ctx.lucroPerc,
+        fixoPerc: ctx.fixoPerc,
+        variavelPerc: ctx.variavelPerc,
+      });
     } catch (e) { console.warn('[DeliveryCombos.contextoFin] falha ao montar:', e); }
 
     // Build lookup maps

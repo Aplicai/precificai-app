@@ -18,6 +18,8 @@ import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, normalizeSearch } from '../utils/calculations';
+// Sessão 28.26: service unificado de upsert
+import { upsertPrecoDelivery } from '../services/precoDeliveryService';
 
 const safe = (v) => {
   const n = Number(v);
@@ -60,27 +62,12 @@ export default function PrecosPlataformaScreen({ route, navigation }) {
 
   async function salvarPreco(produtoId, valor) {
     setSavingId(produtoId);
-    const num = parseFloat(String(valor).replace(',', '.'));
     try {
+      // Sessão 28.26: delegado pro service unificado.
+      // Bonus fix: a versão antiga aqui dependia de `res?.changes` (nem sempre
+      // confiável no wrapper supabaseDb) — service usa SELECT-first.
       const db = await getDatabase();
-      if (Number.isFinite(num) && num > 0) {
-        // Upsert: tenta UPDATE primeiro, se 0 rows, INSERT
-        const res = await db.runAsync(
-          'UPDATE produto_preco_delivery SET preco_venda = ?, updated_at = CURRENT_TIMESTAMP WHERE produto_id = ? AND plataforma_id = ?',
-          [num, produtoId, plataformaId]
-        );
-        if (!res?.changes) {
-          await db.runAsync(
-            'INSERT INTO produto_preco_delivery (produto_id, plataforma_id, preco_venda) VALUES (?,?,?)',
-            [produtoId, plataformaId, num]
-          );
-        }
-      } else {
-        // Apaga se valor zerado/inválido
-        await db.runAsync('DELETE FROM produto_preco_delivery WHERE produto_id = ? AND plataforma_id = ?', [produtoId, plataformaId]);
-      }
-    } catch (e) {
-      if (typeof console !== 'undefined') console.warn('[PrecosPlataforma.salvarPreco]', e?.message || e);
+      await upsertPrecoDelivery(db, { produtoId, plataformaId, precoVenda: valor });
     } finally {
       setTimeout(() => setSavingId((x) => (x === produtoId ? null : x)), 600);
     }

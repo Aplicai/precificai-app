@@ -15,11 +15,13 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import SearchBar from '../components/SearchBar';
-import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, calcDespesasFixasPercentual } from '../utils/calculations';
+import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem } from '../utils/calculations';
 // Sprint 2 S3 — fonte única da verdade para precificação delivery (substitui fórmula inline duplicada).
 import { calcResultadoDelivery, sugerirPrecoDelivery, calcSugestaoDeliveryCompleta } from '../utils/deliveryPricing';
 // Sessão 28.12 (D-22b): adapter pra extrair imposto% das despesas variáveis
-import { extrairImpostoPercentual } from '../utils/deliveryAdapter';
+import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
+// Sessão 28.26: service unificado de upsert do "preço delivery cobrado pelo user"
+import { upsertPrecoDelivery } from '../services/precoDeliveryService';
 // D-24: simulador em lote renderiza inline dentro do hub
 import SimuladorLoteScreen from './SimuladorLoteScreen';
 
@@ -116,37 +118,14 @@ export default function DeliveryHubScreen({ navigation }) {
 
   async function salvarPrecoDelivery(produtoId, valorStr) {
     if (!precosPopupPlat) return false;
-    const num = parseFloat(String(valorStr).replace(',', '.'));
-    try {
-      const db = await getDatabase();
-      if (Number.isFinite(num) && num > 0) {
-        // Sessão 28.21 BUG FIX: SELECT-first em vez de checar res.changes — o wrapper
-        // supabaseDb nem sempre retorna `changes` confiável, então o INSERT rodava
-        // sempre e podia falhar com UNIQUE constraint (user_id, produto_id, plataforma_id).
-        // Agora: SELECT pra ver se existe → UPDATE OU INSERT.
-        const exists = await db.getAllAsync(
-          'SELECT id FROM produto_preco_delivery WHERE produto_id = ? AND plataforma_id = ? LIMIT 1',
-          [produtoId, precosPopupPlat.id]
-        );
-        if (exists && exists.length > 0) {
-          await db.runAsync(
-            'UPDATE produto_preco_delivery SET preco_venda = ?, updated_at = CURRENT_TIMESTAMP WHERE produto_id = ? AND plataforma_id = ?',
-            [num, produtoId, precosPopupPlat.id]
-          );
-        } else {
-          await db.runAsync(
-            'INSERT INTO produto_preco_delivery (produto_id, plataforma_id, preco_venda) VALUES (?,?,?)',
-            [produtoId, precosPopupPlat.id, num]
-          );
-        }
-      } else {
-        await db.runAsync('DELETE FROM produto_preco_delivery WHERE produto_id = ? AND plataforma_id = ?', [produtoId, precosPopupPlat.id]);
-      }
-      return true;
-    } catch (e) {
-      console.warn('[DeliveryHub.precosPopup.save]', e?.message || e);
-      return false;
-    }
+    // Sessão 28.26: delegado pro service unificado em precoDeliveryService.
+    const db = await getDatabase();
+    const r = await upsertPrecoDelivery(db, {
+      produtoId,
+      plataformaId: precosPopupPlat.id,
+      precoVenda: valorStr,
+    });
+    return r.ok;
   }
 
   function handlePrecoChange(produtoId, valor) {
@@ -205,18 +184,17 @@ export default function DeliveryHubScreen({ navigation }) {
 
     setPlataformas(plats);
 
-    // D-22b: monta contexto financeiro pra simulador delivery (lucro + custos fixos + variáveis + imposto)
+    // Sessão 28.26: usa builder unificado em deliveryAdapter (substitui ~10 linhas)
     try {
-      const cfg = (cfgRows && cfgRows[0]) || {};
-      const totalFixas = (fixasRows || []).reduce((a, r) => a + safeNum(r.valor), 0);
-      const fatMedio = (fatRows || []).length > 0
-        ? (fatRows || []).reduce((a, r) => a + safeNum(r.valor), 0) / (fatRows || []).length : 0;
-      const fixoPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
-      const lucroPerc = Number.isFinite(cfg.lucro_desejado_delivery) ? cfg.lucro_desejado_delivery
-                      : Number.isFinite(cfg.lucro_desejado) ? cfg.lucro_desejado : 0.15;
-      const impostoPerc = extrairImpostoPercentual(varsRows || []);
-      const variavelPerc = (varsRows || []).reduce((a, d) => a + (Number.isFinite(d.percentual) ? d.percentual : 0), 0);
-      setContextoFin({ lucroPerc, fixoPerc, variavelPerc, impostoPerc, fatMedio });
+      const ctx = buildContextoFinanceiro({
+        cfgRows, fixasRows, varsRows, fatRows,
+        options: { usarLucroDelivery: true },
+      });
+      // fatMedio extra pra UI legada — calcula localmente sem replicar o helper
+      const fatLista = (fatRows || []).filter((r) => safeNum(r.valor) > 0);
+      const fatMedio = fatLista.length > 0
+        ? fatLista.reduce((a, r) => a + safeNum(r.valor), 0) / fatLista.length : 0;
+      setContextoFin({ ...ctx, fatMedio });
     } catch (e) {
       console.warn('[DeliveryHubScreen.contextoFin]', e?.message || e);
     }
