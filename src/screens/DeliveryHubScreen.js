@@ -37,9 +37,9 @@ function safeNum(v) {
 
 const TABS = [
   { key: 'plataformas', label: 'Plataformas', icon: 'smartphone' },
-  { key: 'simulador', label: 'Simulador de Preço', icon: 'trending-up' },
-  // D-24 + sessão 28.12: simulador em lote (inline) absorveu a tela "Visão Geral" — eram a mesma coisa.
-  { key: 'lote', label: 'Visão Geral / Lote', icon: 'grid' },
+  // Sessão 28.16: tab "Simulador de Preço" REMOVIDA — toque na célula da Visão Geral
+  // pra ver detalhes da simulação (modal "Como calculado")
+  { key: 'lote', label: 'Visão Geral', icon: 'grid' },
 ];
 
 const KNOWN_PLATFORMS = [
@@ -267,13 +267,20 @@ export default function DeliveryHubScreen({ navigation }) {
     const precoMinimo = sug.precoMinimo;
     const divisorMin = (1 - descontoPct) * (1 - comissaoPct);
 
-    // D-22b (sessão 28.12): preço sugerido COMPLETO usa MESMA fórmula do balcão
-    // (CMV + lucro + custos fixos + variáveis + imposto + comissão + taxa pgto + cupom + frete subsidiado)
+    // D-22b (sessão 28.12): preço sugerido COMPLETO usa MARGEM DO FINANCEIRO
     const sugCompleta = calcSugestaoDeliveryCompleta({
       cmv: custoUnit,
       plat,
       contexto: contextoFin,
     });
+
+    // Sessão 28.16: SEGUNDA simulação — mantém a margem ATUAL do produto (do balcão)
+    // Override do contexto financeiro substituindo lucroPerc pela margem real do produto
+    const sugMantemMargem = (margemBalcao > 0 && precoBalcao > 0) ? calcSugestaoDeliveryCompleta({
+      cmv: custoUnit,
+      plat,
+      contexto: { ...contextoFin, lucroPerc: margemBalcao },
+    }) : null;
 
     setSimResult({
       prodNome: isComboSel ? prod.nome + ' (Combo)' : prod.nome,
@@ -305,6 +312,8 @@ export default function DeliveryHubScreen({ navigation }) {
       _taxaEntrega: taxaEntregaR$,
       // D-22b: sugestão completa (mesma fórmula balcão + extras delivery)
       sugCompleta,
+      // Sessão 28.16: sugestão mantendo a margem atual do produto
+      sugMantemMargem,
       contextoFin,
     });
     setPrecoCustom('');
@@ -628,74 +637,30 @@ export default function DeliveryHubScreen({ navigation }) {
                   <View style={styles.resultCard}>
                     <Text style={styles.resultTitle}>{simResult.prodNome} no {simResult.platNome}</Text>
 
-                    {/* Comparison */}
-                    <View style={styles.compareRow}>
-                      <View style={styles.compareCol}>
-                        <Text style={styles.compareLabel}>Preço Balcão</Text>
-                        <Text style={styles.compareValue}>{formatCurrency(simResult.precoBalcao)}</Text>
-                        <Text style={styles.compareSub}>Margem: {(simResult.margemBalcao * 100).toFixed(1)}%</Text>
-                      </View>
-                      <Feather name="arrow-right" size={20} color={colors.disabled} />
-                      <View style={styles.compareCol}>
-                        <Text style={styles.compareLabel}>Se vender a {formatCurrency(simResult.precoBalcao)}</Text>
-                        <Text style={[styles.compareValue, { color: simResult.margemDelivery < 0.05 ? colors.error : simResult.margemDelivery < 0.15 ? colors.warning : colors.success }]}>
-                          Margem: {(simResult.margemDelivery * 100).toFixed(1)}%
-                        </Text>
-                        <Text style={styles.compareSub}>Lucro: {formatCurrency(simResult.lucroDelivery)}/un</Text>
-                      </View>
+                    {/* Sessão 28.16: tooltip de estratégia */}
+                    <View style={{ flexDirection: 'row', backgroundColor: '#FEF3C7', borderRadius: 8, padding: 10, marginBottom: spacing.md, gap: 8, borderLeftWidth: 3, borderLeftColor: '#F59E0B' }}>
+                      <Feather name="info" size={14} color="#92400E" style={{ marginTop: 2 }} />
+                      <Text style={{ flex: 1, fontSize: 11, color: '#92400E', lineHeight: 16 }}>
+                        <Text style={{ fontFamily: fontFamily.bold }}>Estratégia: </Text>
+                        nem todo produto precisa ter lucro alto no delivery. Itens com alta visibilidade (fotos atrativas, posição de destaque) podem ter margem menor pra atrair pedido. Avalie a precificação como ESTRATÉGIA DO NEGÓCIO COMO UM TODO, não item por item.
+                      </Text>
                     </View>
 
-                    {/* Breakdown */}
-                    <View style={styles.breakdownCard}>
-                      <Text style={styles.breakdownTitle}>Composição no Delivery</Text>
-                      <View style={styles.breakdownRow}>
-                        <Text style={styles.breakdownLabel}>Preço no delivery</Text>
-                        <Text style={styles.breakdownValue}>{formatCurrency(simResult.precoBalcao)}</Text>
-                      </View>
-                      {simResult.descontoPct > 0 && (
-                        <View style={styles.breakdownRow}>
-                          <Text style={styles.breakdownLabel}>1. Desconto promo ({simResult.descontoPct.toFixed(1)}%)</Text>
-                          <Text style={[styles.breakdownValue, { color: colors.error }]}>-{formatCurrency(simResult.valorDesconto)}</Text>
-                        </View>
-                      )}
-                      {simResult.cupomReais > 0 && (
-                        <View style={styles.breakdownRow}>
-                          <Text style={styles.breakdownLabel}>2. Cupom (R$)</Text>
-                          <Text style={[styles.breakdownValue, { color: colors.error }]}>-{formatCurrency(simResult.cupomReais)}</Text>
-                        </View>
-                      )}
-                      <View style={styles.breakdownRow}>
-                        <Text style={styles.breakdownLabel}>3. Comissão ({simResult.comissaoPct.toFixed(1)}% s/ {formatCurrency(simResult.baseComissao)})</Text>
-                        <Text style={[styles.breakdownValue, { color: colors.error }]}>-{formatCurrency(simResult.valorComissao)}</Text>
-                      </View>
-                      {simResult.taxaEntrega > 0 && (
-                        <View style={styles.breakdownRow}>
-                          <Text style={styles.breakdownLabel}>4. Taxa de entrega</Text>
-                          <Text style={[styles.breakdownValue, { color: colors.error }]}>-{formatCurrency(simResult.taxaEntrega)}</Text>
-                        </View>
-                      )}
-                      <View style={styles.breakdownRow}>
-                        <Text style={styles.breakdownLabel}>Custo do produto (CMV)</Text>
-                        <Text style={[styles.breakdownValue, { color: colors.error }]}>-{formatCurrency(simResult.custoUnit)}</Text>
-                      </View>
-                      <View style={[styles.breakdownRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8, marginTop: 4 }]}>
-                        <Text style={[styles.breakdownLabel, { fontFamily: fontFamily.bold }]}>Receita líquida</Text>
-                        <Text style={[styles.breakdownValue, { fontFamily: fontFamily.bold }]}>{formatCurrency(simResult.receitaLiqDelivery)}</Text>
-                      </View>
-                    </View>
+                    {/* Sessão 28.16: bloco "Composição no Delivery" REMOVIDO (usuário pediu — confuso)
+                        e bloco "Comparison se vender a R$X" REMOVIDO. Agora só o preço sugerido. */}
 
-                    {/* D-22b (sessão 28.12): preço sugerido COMPLETO + composição transparente */}
+                    {/* Sessão 28.16: preço sugerido COM A SUA MARGEM DO FINANCEIRO (não a do balcão) */}
                     <View style={styles.suggestedCard}>
-                      <Text style={styles.suggestedTitle}>Preço sugerido (mesma margem do balcão)</Text>
+                      <Text style={styles.suggestedTitle}>Preço sugerido (sua margem de lucro do financeiro)</Text>
                       <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 15 }}>
-                        Calculado com TODOS os custos do seu negócio: CMV + lucro + custos fixos + variáveis + imposto + comissão da plataforma + taxa pgto online + cupom + frete subsidiado.
+                        Usa a margem de lucro definida nas Configurações Financeiras + TODOS os custos do seu negócio (CMV + custos fixos + variáveis + imposto + comissão + taxa pgto + cupom + frete).
                       </Text>
                       {simResult.sugCompleta?.validacao?.ok && Number.isFinite(simResult.sugCompleta?.preco) && simResult.sugCompleta.preco > 0 ? (
                         <>
                           <View style={[styles.suggestedRow, { borderTopWidth: 0, alignItems: 'center' }]}>
-                            <View>
-                              <Text style={styles.suggestedLabel}>Cobre tudo + lucro do balcão</Text>
-                              <Text style={styles.suggestedSub}>Mantém a mesma margem que você teria no balcão</Text>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.suggestedLabel}>Pra atingir {((contextoFin.lucroPerc || 0) * 100).toFixed(1)}% de lucro</Text>
+                              <Text style={styles.suggestedSub}>Cobre todos os custos + a margem que você definiu</Text>
                             </View>
                             <Text style={[styles.suggestedPrice, { color: colors.success, fontSize: 20 }]}>
                               {formatCurrency(simResult.sugCompleta.preco)}
@@ -721,6 +686,23 @@ export default function DeliveryHubScreen({ navigation }) {
                               </View>
                             ))}
                           </View>
+                          {/* Sessão 28.16: SEGUNDA simulação — mantém margem atual do produto */}
+                          {simResult.sugMantemMargem?.validacao?.ok && Number.isFinite(simResult.sugMantemMargem?.preco) && simResult.sugMantemMargem.preco > 0 && (
+                            <View style={{ marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border }}>
+                              <View style={[styles.suggestedRow, { borderTopWidth: 0, alignItems: 'center', paddingHorizontal: 0 }]}>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={[styles.suggestedLabel, { fontSize: 13 }]}>Pra MANTER a margem atual do produto</Text>
+                                  <Text style={styles.suggestedSub}>
+                                    Margem atual no balcão: {(simResult.margemBalcao * 100).toFixed(1)}%
+                                    {simResult.margemBalcao !== (contextoFin.lucroPerc || 0) && ' (diferente da margem do financeiro)'}
+                                  </Text>
+                                </View>
+                                <Text style={[styles.suggestedPrice, { color: colors.primary, fontSize: 18 }]}>
+                                  {formatCurrency(simResult.sugMantemMargem.preco)}
+                                </Text>
+                              </View>
+                            </View>
+                          )}
                         </>
                       ) : (
                         <View style={{ padding: 10, backgroundColor: colors.error + '15', borderRadius: 8 }}>

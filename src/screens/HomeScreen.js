@@ -906,11 +906,11 @@ export default function HomeScreen({ navigation }) {
       <View style={{ height: 20 }} />
     </ScrollView>
 
-    {/* Notification Panel Modal */}
-    <Modal visible={showNotif} transparent animationType="slide">
-      <View style={styles.notifOverlay}>
+    {/* Notification Panel Modal — Sessão 28.16: layout responsivo (centered modal no desktop, bottom sheet no mobile) */}
+    <Modal visible={showNotif} transparent animationType="fade">
+      <View style={Platform.OS === 'web' ? styles.notifOverlayWeb : styles.notifOverlay}>
         <TouchableOpacity style={styles.notifBackdrop} activeOpacity={1} onPress={() => setShowNotif(false)} />
-        <View style={styles.notifPanel}>
+        <View style={Platform.OS === 'web' ? styles.notifPanelWeb : styles.notifPanel}>
           <View style={styles.notifHandle} />
           <View style={styles.notifHeader}>
             <View style={styles.notifHeaderLeft}>
@@ -1334,7 +1334,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
 
-  // Notification panel
+  // Notification panel — mobile (bottom sheet)
   notifOverlay: {
     flex: 1, justifyContent: 'flex-end',
   },
@@ -1346,6 +1346,19 @@ const styles = StyleSheet.create({
     maxHeight: '70%', paddingBottom: 20,
     shadowColor: '#000', shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.15, shadowRadius: 12, elevation: 10,
+  },
+  // Sessão 28.16: web/desktop — modal centralizado com largura limitada (não mais barra full-width feia)
+  notifOverlayWeb: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20,
+  },
+  notifPanelWeb: {
+    backgroundColor: colors.surface, borderRadius: 16,
+    width: '100%', maxWidth: 480, maxHeight: '80%',
+    paddingBottom: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18, shadowRadius: 24, elevation: 14,
+    overflow: 'hidden',
+    position: 'absolute', top: '10%', alignSelf: 'center',
   },
   notifHandle: {
     width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border,

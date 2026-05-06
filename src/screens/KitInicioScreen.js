@@ -62,6 +62,8 @@ export default function KitInicioScreen({ navigation, route }) {
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  // Sessão 28.16: checkbox único pra sobrescrever (substitui fluxo confuso de 2-botões)
+  const [sobrescrever, setSobrescrever] = useState(false);
   // Sessão 28.9 — feedback de progresso do kit (modal overlay)
   const [progressStep, setProgressStep] = useState(null);
   const [progressMsg, setProgressMsg] = useState('');
@@ -132,54 +134,29 @@ export default function KitInicioScreen({ navigation, route }) {
       return;
     }
 
-    // D-29: Fluxo de aplicação fora do setup oferece DUAS opções:
-    //   1. Adicionar aos existentes (sem apagar)
-    //   2. Substituir tudo (apaga e recria)
-    if (!isSetup) {
-      if (Platform.OS === 'web') {
-        // Web: window.confirm só permite 2 botões. Vamos usar um confirm com a escolha invertida:
-        // OK = adicionar, Cancelar = abrir 2º confirm pra substituir
-        const adicionar = window.confirm(
-          'Como você quer aplicar este kit?\n\n' +
-          '✅ OK = Adicionar aos meus dados existentes (mantém tudo que já cadastrei)\n' +
-          '❌ Cancelar = quero APAGAR tudo e começar do zero com este kit'
-        );
-        if (adicionar) {
-          await executarKit(false);
-          return;
-        }
-        // User cancelou = quer substituir
-        const substituir = window.confirm(
-          '⚠️ ATENÇÃO\n\nVocê escolheu APAGAR todos os dados atuais (insumos, embalagens, preparos, produtos) e aplicar o kit limpo.\n\nEssa ação NÃO pode ser desfeita. Confirma?'
-        );
-        if (!substituir) return;
-        await executarKit(true);
-        return;
-      } else {
-        // Mobile: 3 botões reais via Alert
-        Alert.alert(
-          'Como aplicar este kit?',
-          'Você pode adicionar os itens do kit aos seus dados existentes (recomendado) OU apagar tudo e começar limpo.',
-          [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Adicionar aos existentes', onPress: () => executarKit(false) },
-            { text: 'Substituir tudo', style: 'destructive', onPress: () => {
-              Alert.alert(
-                '⚠️ Confirmação',
-                'Vai APAGAR seus insumos, embalagens, preparos e produtos atuais. Tem certeza?',
-                [
-                  { text: 'Cancelar', style: 'cancel' },
-                  { text: 'Sim, apagar e aplicar', style: 'destructive', onPress: () => executarKit(true) },
-                ]
-              );
-            } },
-          ]
-        );
-        return;
-      }
+    // Sessão 28.16: UX simplificada — checkbox `sobrescrever` decide o comportamento.
+    // Substitui o fluxo confuso de "Adicionar/Substituir tudo" + dupla confirmação.
+    // Setup (primeiro uso) sempre adiciona — banco vazio.
+    if (isSetup) {
+      await executarKit(false);
+      return;
     }
 
-    // Fluxo setup (primeiro uso) — sem confirmação
+    if (sobrescrever) {
+      const msg = 'Sobrescrever vai APAGAR todos os insumos, preparos, produtos, embalagens e categorias atuais antes de aplicar o kit. Esta ação não pode ser desfeita. Deseja continuar?';
+      if (Platform.OS === 'web') {
+        if (!window.confirm(msg)) return;
+        await executarKit(true);
+      } else {
+        Alert.alert('Sobrescrever dados', msg, [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Apagar e aplicar', style: 'destructive', onPress: () => executarKit(true) },
+        ]);
+      }
+      return;
+    }
+
+    // Padrão: ADICIONA aos existentes (preservando)
     await executarKit(false);
   }
 
@@ -737,6 +714,42 @@ export default function KitInicioScreen({ navigation, route }) {
       {/* Sticky bottom CTA */}
       {selected && (
         <View style={[styles.stickyFooter, { bottom: bottomOffset }]} pointerEvents="box-none">
+          {/* Sessão 28.16: checkbox sobrescrever (apenas fora do setup inicial) */}
+          {selected !== 'outro' && !isSetup && (
+            <TouchableOpacity
+              onPress={() => setSobrescrever(s => !s)}
+              activeOpacity={0.7}
+              style={{
+                flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+                padding: 12, marginBottom: 10,
+                backgroundColor: sobrescrever ? '#FEF2F2' : '#F9FAFB',
+                borderWidth: 1.5,
+                borderColor: sobrescrever ? '#DC2626' : '#E5E7EB',
+                borderRadius: 10,
+              }}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: sobrescrever }}
+            >
+              <View style={{
+                width: 22, height: 22, borderRadius: 4,
+                borderWidth: 2, borderColor: sobrescrever ? '#DC2626' : '#9CA3AF',
+                backgroundColor: sobrescrever ? '#DC2626' : '#fff',
+                alignItems: 'center', justifyContent: 'center', marginTop: 2,
+              }}>
+                {sobrescrever && <Feather name="check" size={14} color="#fff" />}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontFamily: fontFamily.bold, color: sobrescrever ? '#991B1B' : '#111827' }}>
+                  Sobrescrever dados existentes
+                </Text>
+                <Text style={{ fontSize: 12, color: sobrescrever ? '#991B1B' : '#6B7280', marginTop: 2 }}>
+                  {sobrescrever
+                    ? '⚠️ APAGA todos os insumos, preparos, produtos, embalagens e categorias antes de aplicar.'
+                    : 'O kit será adicionado AOS dados existentes (nada é apagado).'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={[styles.aplicarBtn, loading && { opacity: 0.6 }]}
             onPress={aplicarKit}

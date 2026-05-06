@@ -98,6 +98,9 @@ export default function SimuladorLoteScreen() {
     }
   }
 
+  // Sessão 28.16: refeito pra mostrar 2 versões por plataforma
+  // - "Margem do financeiro" (lucroPerc do contexto)
+  // - "Mantém margem atual" (margem real do produto baseado no preço de venda do balcão)
   const linhasCalculadas = useMemo(() => {
     return produtos.map(prod => {
       const balcao = calcularPrecoBalcao({
@@ -107,14 +110,20 @@ export default function SimuladorLoteScreen() {
         variavelPerc: contexto.variavelPerc,
       });
       const sugBalcao = balcao.preco;
+      // Margem ATUAL do produto (baseada no preço que o usuário cadastrou no balcão)
+      const margemAtual = prod.precoVendaBalcao > 0
+        ? Math.max(0, (prod.precoVendaBalcao - prod.cmv) / prod.precoVendaBalcao)
+        : 0;
       const plataformaCells = plataformas.map(plat => {
-        const sug = calcSugestaoDeliveryCompleta({ cmv: prod.cmv, plat, contexto });
-        const cmp = sugBalcao > 0 && sug?.preco > 0
-          ? compararDeliveryVsBalcao(sug.preco, sugBalcao)
-          : { ok: true, nivel: 'ok', mensagem: '' };
-        return { plat, resultado: sug, comparacao: cmp };
+        // V1: usando a margem do FINANCEIRO
+        const sugFinanceiro = calcSugestaoDeliveryCompleta({ cmv: prod.cmv, plat, contexto });
+        // V2: usando a margem ATUAL do produto
+        const sugMantemMargem = (margemAtual > 0)
+          ? calcSugestaoDeliveryCompleta({ cmv: prod.cmv, plat, contexto: { ...contexto, lucroPerc: margemAtual } })
+          : null;
+        return { plat, sugFinanceiro, sugMantemMargem, margemAtual };
       });
-      return { prod, balcao, sugBalcao, plataformaCells };
+      return { prod, balcao, sugBalcao, margemAtual, plataformaCells };
     });
   }, [produtos, plataformas, contexto]);
 
@@ -168,46 +177,66 @@ export default function SimuladorLoteScreen() {
           </Text>
         </View>
 
-        {/* Legenda — sessão 28.12: subiu pra antes da tabela (mais visível com muitos itens) */}
+        {/* Sessão 28.16: tooltip de estratégia + Como ler reformulado */}
+        <View style={{ flexDirection: 'row', backgroundColor: '#FEF3C7', borderRadius: 8, padding: 10, marginBottom: spacing.sm, gap: 8, borderLeftWidth: 3, borderLeftColor: '#F59E0B' }}>
+          <Feather name="info" size={14} color="#92400E" style={{ marginTop: 2 }} />
+          <Text style={{ flex: 1, fontSize: 11, color: '#92400E', lineHeight: 16 }}>
+            <Text style={{ fontFamily: fontFamily.bold }}>Estratégia: </Text>
+            nem todo produto precisa ter lucro alto no delivery. Itens com alta visibilidade (fotos atrativas, posição de destaque) podem ter margem menor pra atrair pedidos. Avalie a precificação como ESTRATÉGIA DO NEGÓCIO COMO UM TODO. Toque numa célula da plataforma pra ver detalhes.
+          </Text>
+        </View>
+
         <View style={styles.legend}>
-          <Text style={styles.legendTitle}>Como ler:</Text>
+          <Text style={styles.legendTitle}>Como ler — 2 cenários por plataforma:</Text>
           <View style={styles.legendGrid}>
             <View style={styles.legendRow}>
-              <Feather name="check-circle" size={11} color={colors.success} />
-              <Text style={styles.legendText}>Viável (preço &gt; balcão)</Text>
+              <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
+              <Text style={styles.legendText}>
+                <Text style={{ fontFamily: fontFamily.bold }}>Mantém: </Text>
+                preço pra preservar a margem ATUAL do produto no balcão
+              </Text>
             </View>
             <View style={styles.legendRow}>
-              <Feather name="alert-triangle" size={11} color={colors.warning} />
-              <Text style={styles.legendText}>Próximo do balcão</Text>
-            </View>
-            <View style={styles.legendRow}>
-              <Feather name="alert-octagon" size={11} color={colors.error} />
-              <Text style={styles.legendText}>Menor que balcão</Text>
+              <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+              <Text style={styles.legendText}>
+                <Text style={{ fontFamily: fontFamily.bold }}>Financeiro: </Text>
+                preço pra atingir a margem definida nas Configurações Financeiras
+              </Text>
             </View>
             <View style={styles.legendRow}>
               <Feather name="x-circle" size={11} color={colors.error} />
-              <Text style={styles.legendText}>Inviável (taxas &gt; 100%)</Text>
+              <Text style={styles.legendText}>Inviável (taxas + lucro &gt; 100%)</Text>
             </View>
           </View>
         </View>
 
-        {/* Tabela horizontal scrollável */}
+        {/* Tabela horizontal scrollável — Sessão 28.16: 2 sub-colunas por plataforma */}
         <ScrollView horizontal showsHorizontalScrollIndicator>
           <View>
-            {/* Header row */}
+            {/* Header row 1 — plataforma agrupada */}
             <View style={[styles.row, styles.headerRow]}>
-              <View style={[styles.cellProduto, styles.headerCell]}>
+              <View style={[styles.cellProduto, styles.headerCell, { borderRightWidth: 1, borderRightColor: colors.border }]}>
                 <Text style={styles.headerText}>Produto</Text>
               </View>
-              <View style={[styles.cellNumeric, styles.headerCell]}>
+              <View style={[styles.cellNumeric, styles.headerCell, { borderRightWidth: 1, borderRightColor: colors.border }]}>
                 <Text style={styles.headerText}>CMV</Text>
               </View>
-              <View style={[styles.cellNumeric, styles.headerCell]}>
-                <Text style={styles.headerText}>Balcão</Text>
+              <View style={[styles.cellNumeric, styles.headerCell, { borderRightWidth: 1, borderRightColor: colors.border }]}>
+                <Text style={styles.headerText}>Preço{'\n'}Atual</Text>
               </View>
               {plataformas.map(plat => (
-                <View key={plat.id} style={[styles.cellNumeric, styles.headerCell]}>
-                  <Text style={styles.headerText} numberOfLines={1}>{plat.plataforma}</Text>
+                <View key={plat.id} style={{ width: 184, borderRightWidth: 1, borderRightColor: colors.border, borderBottomWidth: 2, borderBottomColor: colors.primary, alignItems: 'center', paddingTop: 6 }}>
+                  <Text style={[styles.headerText, { fontSize: 12 }]} numberOfLines={1}>{plat.plataforma}</Text>
+                  <View style={{ flexDirection: 'row', width: '100%', marginTop: 4 }}>
+                    <View style={{ width: 92, alignItems: 'center', padding: 4, borderRightWidth: 1, borderRightColor: colors.border }}>
+                      <Text style={{ fontSize: 9, color: colors.primary, fontFamily: fontFamily.bold }}>MANTÉM</Text>
+                      <Text style={{ fontSize: 8, color: colors.textSecondary }}>margem atual</Text>
+                    </View>
+                    <View style={{ width: 92, alignItems: 'center', padding: 4 }}>
+                      <Text style={{ fontSize: 9, color: colors.success, fontFamily: fontFamily.bold }}>FINANCEIRO</Text>
+                      <Text style={{ fontSize: 8, color: colors.textSecondary }}>margem fixa</Text>
+                    </View>
+                  </View>
                 </View>
               ))}
             </View>
@@ -215,47 +244,64 @@ export default function SimuladorLoteScreen() {
             {/* Data rows */}
             {linhasCalculadas.map(linha => (
               <View key={linha.prod.id} style={styles.row}>
-                <View style={styles.cellProduto}>
+                <View style={[styles.cellProduto, { borderRightWidth: 1, borderRightColor: colors.border }]}>
                   <Text style={styles.produtoNome} numberOfLines={2}>{linha.prod.nome}</Text>
+                  <Text style={{ fontSize: 9, color: colors.textSecondary, marginTop: 2 }}>
+                    Margem atual: {(linha.margemAtual * 100).toFixed(1)}%
+                  </Text>
                 </View>
-                <View style={styles.cellNumeric}>
+                <View style={[styles.cellNumeric, { borderRightWidth: 1, borderRightColor: colors.border }]}>
                   <Text style={styles.cellValueDim}>{formatCurrency(linha.prod.cmv)}</Text>
                 </View>
-                <TouchableOpacity
-                  style={styles.cellNumeric}
-                  onPress={() => setModalCalculo({ resultado: linha.balcao, titulo: `${linha.prod.nome} — Balcão`, modo: 'balcao' })}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.cellValuePrimary}>
-                    {linha.balcao.validacao.ok ? formatCurrency(linha.sugBalcao) : '—'}
+                {/* Coluna "Preço Atual" — preço de venda DO PRODUTO no balcão (sessão 28.16) */}
+                <View style={[styles.cellNumeric, { borderRightWidth: 1, borderRightColor: colors.border }]}>
+                  <Text style={[styles.cellValuePrimary, { color: colors.text }]}>
+                    {linha.prod.precoVendaBalcao > 0 ? formatCurrency(linha.prod.precoVendaBalcao) : '—'}
                   </Text>
-                  <Feather name="info" size={9} color={colors.primary} />
-                </TouchableOpacity>
-                {linha.plataformaCells.map(({ plat, resultado, comparacao }) => {
-                  const cor =
-                    !resultado.validacao.ok ? colors.error :
-                    comparacao?.nivel === 'critico' ? colors.error :
-                    comparacao?.nivel === 'aviso' ? colors.warning :
-                    colors.success;
-                  const icone =
-                    !resultado.validacao.ok ? 'x-circle' :
-                    comparacao?.nivel === 'critico' ? 'alert-octagon' :
-                    comparacao?.nivel === 'aviso' ? 'alert-triangle' :
-                    'check-circle';
+                </View>
+                {/* 2 sub-células por plataforma */}
+                {linha.plataformaCells.map(({ plat, sugFinanceiro, sugMantemMargem, margemAtual }) => {
+                  const okMantem = sugMantemMargem?.validacao?.ok && Number.isFinite(sugMantemMargem?.preco) && sugMantemMargem.preco > 0;
+                  const okFin = sugFinanceiro?.validacao?.ok && Number.isFinite(sugFinanceiro?.preco) && sugFinanceiro.preco > 0;
                   return (
-                    <TouchableOpacity
-                      key={plat.id}
-                      style={styles.cellNumeric}
-                      onPress={() => setModalCalculo({ resultado, titulo: `${linha.prod.nome} — ${plat.plataforma}`, modo: 'delivery' })}
-                      activeOpacity={0.7}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Feather name={icone} size={11} color={cor} />
-                        <Text style={[styles.cellValuePrimary, { color: cor }]}>
-                          {resultado.validacao.ok ? formatCurrency(resultado.preco) : '—'}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
+                    <View key={plat.id} style={{ flexDirection: 'row', width: 184, borderRightWidth: 1, borderRightColor: colors.border }}>
+                      <TouchableOpacity
+                        style={{ width: 92, alignItems: 'center', justifyContent: 'center', padding: spacing.xs, borderRightWidth: 1, borderRightColor: colors.border }}
+                        onPress={() => setModalCalculo({ resultado: sugMantemMargem, titulo: `${linha.prod.nome} — ${plat.plataforma} (mantém ${(margemAtual*100).toFixed(1)}%)`, modo: 'delivery' })}
+                        activeOpacity={0.6}
+                        disabled={!okMantem}
+                      >
+                        {okMantem ? (
+                          <View style={{ alignItems: 'center', gap: 2 }}>
+                            <Text style={[styles.cellValuePrimary, { color: colors.primary, fontSize: 12 }]}>
+                              {formatCurrency(sugMantemMargem.preco)}
+                            </Text>
+                          </View>
+                        ) : (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                            <Feather name="x-circle" size={11} color={colors.error} />
+                            <Text style={{ fontSize: 11, color: colors.error }}>—</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ width: 92, alignItems: 'center', justifyContent: 'center', padding: spacing.xs }}
+                        onPress={() => setModalCalculo({ resultado: sugFinanceiro, titulo: `${linha.prod.nome} — ${plat.plataforma} (financeiro)`, modo: 'delivery' })}
+                        activeOpacity={0.6}
+                        disabled={!okFin}
+                      >
+                        {okFin ? (
+                          <Text style={[styles.cellValuePrimary, { color: colors.success, fontSize: 12 }]}>
+                            {formatCurrency(sugFinanceiro.preco)}
+                          </Text>
+                        ) : (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                            <Feather name="x-circle" size={11} color={colors.error} />
+                            <Text style={{ fontSize: 11, color: colors.error }}>—</Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    </View>
                   );
                 })}
               </View>
@@ -307,7 +353,9 @@ const styles = StyleSheet.create({
   legendTitle: { fontSize: fonts.small, fontFamily: fontFamily.bold, color: colors.text, marginBottom: 8 },
   legendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 200 },
-  legendText: { fontSize: fonts.small, color: colors.textSecondary },
+  legendText: { fontSize: fonts.small, color: colors.textSecondary, flex: 1 },
+  // Sessão 28.16: indicador colorido pra legenda das 2 colunas (mantém vs financeiro)
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
   emptyTitle: { fontSize: fonts.large, fontFamily: fontFamily.bold, color: colors.text, marginTop: spacing.md, textAlign: 'center' },
   emptyDesc: { fontSize: fonts.small, color: colors.textSecondary, marginTop: spacing.sm, textAlign: 'center', lineHeight: 18, maxWidth: 320 },
   btnPrimary: {
