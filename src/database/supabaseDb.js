@@ -278,13 +278,20 @@ async function executeRun(sql, params = []) {
 
 async function executeJoinQuery(sql, params, mode) {
   // Extract main table and join info
-  // Pattern: SELECT cols FROM table1 alias1 JOIN table2 alias2 ON condition WHERE condition
+  // Pattern: SELECT cols FROM table1 alias1 [LEFT|INNER] JOIN table2 alias2 ON condition WHERE condition
 
   // Strategy: Use Supabase's embedded select for foreign key relationships
   // For complex joins, use RPC or manual fetching
 
+  // Sessão 28.31 BUG FIX: detecta LEFT JOIN explicitamente.
+  // Antes o parser tratava tudo como INNER JOIN — qualquer linha do mainTable
+  // sem match era removida. RelatorioInsumos usa LEFT JOIN materias_primas →
+  // categorias_insumos: insumos sem categoria (FK NULL ou categoria deletada)
+  // sumiam → tela mostrava "Sem insumos cadastrados".
+  const isLeftJoin = /LEFT\s+(?:OUTER\s+)?JOIN/i.test(sql);
+
   // Parse the join query structure
-  const fromMatch = sql.match(/FROM\s+(\w+)\s+(\w+)?\s+(?:INNER\s+)?JOIN\s+(\w+)\s+(\w+)?\s+ON\s+(\w+)\.(\w+)\s*=\s*(\w+)\.(\w+)/i);
+  const fromMatch = sql.match(/FROM\s+(\w+)\s+(\w+)?\s+(?:LEFT\s+(?:OUTER\s+)?|INNER\s+)?JOIN\s+(\w+)\s+(\w+)?\s+ON\s+(\w+)\.(\w+)\s*=\s*(\w+)\.(\w+)/i);
 
   if (!fromMatch) {
     // Fallback: execute two separate queries and merge
@@ -329,31 +336,41 @@ async function executeJoinQuery(sql, params, mode) {
   const { data: mainRows, error: mainErr } = await mainQuery;
   if (mainErr || !mainRows?.length) return mode === 'first' ? null : [];
 
-  // Fetch join table rows
+  // Sessão 28.31 BUG FIX: se o mainTable tem rows mas NENHUMA tem FK válido
+  // (ex: insumos sem categoria_id), o LEFT JOIN deve retornar essas rows
+  // mesmo assim — sem dados da tabela joined.
   const fkValues = [...new Set(mainRows.map(r => r[fkCol]).filter(Boolean))];
-  if (!fkValues.length) return mode === 'first' ? null : [];
 
-  const { data: joinRows, error: joinErr } = await supabase
-    .from(joinTable)
-    .select('*')
-    .in(refCol, fkValues);
-
-  if (joinErr) return mode === 'first' ? null : [];
-
-  // Create lookup map
-  const joinMap = {};
-  (joinRows || []).forEach(r => { joinMap[r[refCol]] = r; });
+  let joinMap = {};
+  if (fkValues.length > 0) {
+    const { data: joinRows, error: joinErr } = await supabase
+      .from(joinTable)
+      .select('*')
+      .in(refCol, fkValues);
+    if (joinErr) {
+      // No LEFT JOIN, falha do join não invalida mainRows; INNER JOIN sim.
+      if (!isLeftJoin) return mode === 'first' ? null : [];
+    } else {
+      (joinRows || []).forEach(r => { joinMap[r[refCol]] = r; });
+    }
+  } else if (!isLeftJoin) {
+    // INNER JOIN com FK vazio = sem matches possíveis = vazio
+    return mode === 'first' ? null : [];
+  }
 
   // Merge results - flatten columns with alias prefixes removed
-  const merged = mainRows.map(main => {
+  let merged = mainRows.map(main => {
     const joined = joinMap[main[fkCol]] || {};
-    // Prefix join table columns to avoid conflicts
     const result = { ...main };
     Object.keys(joined).forEach(k => {
       if (!(k in result)) result[k] = joined[k];
     });
     return result;
-  }).filter(r => joinMap[r[fkCol]]); // INNER JOIN: only rows with match
+  });
+  // INNER JOIN filtra rows sem match. LEFT JOIN preserva todas.
+  if (!isLeftJoin) {
+    merged = merged.filter(r => joinMap[r[fkCol]]);
+  }
 
   // Parse ORDER BY
   const orderMatch = sql.match(/ORDER\s+BY\s+(?:\w+\.)?(\w+)(?:\s+(ASC|DESC))?/i);
