@@ -359,8 +359,12 @@ export default function EmbalagensScreen({ navigation }) {
       const oldPreco = Number(item.preco_embalagem) || 0;
       let novoPreco = mode === 'percent' ? oldPreco * factor : oldPreco + sign * value;
       if (novoPreco < 0) novoPreco = 0;
-      const qtd = Number(item.quantidade) || 1;
-      const novoUnit = qtd > 0 ? novoPreco / qtd : 0;
+      const qtd = Number(item.quantidade) || 0;
+      // Sessão 28.44 — bug #10: se qtd<=0 (legado/corrompido), MANTÉM o
+      // preco_unitario antigo em vez de zerar. Antes: zerava silenciosamente,
+      // sobrescrevendo valor legítimo anterior.
+      const oldUnit = Number(item.preco_unitario) || 0;
+      const novoUnit = qtd > 0 ? novoPreco / qtd : oldUnit;
       return db.runAsync(
         'UPDATE embalagens SET preco_embalagem = ?, preco_unitario = ? WHERE id = ?',
         [novoPreco, novoUnit, item.id]

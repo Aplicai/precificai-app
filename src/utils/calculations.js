@@ -388,3 +388,24 @@ export function formatPercent(value) {
   if (value === null || value === undefined || isNaN(value)) return '0,00%';
   return (Number(value) * 100).toFixed(2).replace('.', ',') + '%';
 }
+
+// Sessão 28.44: helpers numéricos centralizados pra remover duplicação
+// (antes: 18 cópias inline de safeNum em screens/services).
+
+/**
+ * Coerce defensivo pra número finito. Aceita number, string com vírgula
+ * ou ponto, null, undefined. Retorna 0 se inválido.
+ * Alias semântico de parseDecimalBROrZero pra códigos pre-existentes.
+ */
+export function safeNum(v) {
+  return parseDecimalBROrZero(v);
+}
+
+/**
+ * Formata número com separadores BR (sem prefixo R$). Útil pra quantidades,
+ * estoque, contadores que não são moeda.
+ */
+export function formatNumber(value, maxDecimals = 2) {
+  if (value === null || value === undefined || isNaN(value)) return '0';
+  return Number(value).toLocaleString('pt-BR', { maximumFractionDigits: maxDecimals });
+}

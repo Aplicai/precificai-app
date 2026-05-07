@@ -26,24 +26,58 @@ export function AuthProvider({ children }) {
     }
   }, [user]);
 
-  // Track app state for inactivity timeout (native only — web uses Supabase's built-in session persistence)
+  // Track app state for inactivity timeout
+  // Mobile: usa AppState (background/active)
+  // Web: usa eventos de mouse/teclado/visibilidade (Sessão 28.44 — security H3)
   useEffect(() => {
-    if (Platform.OS === 'web') return; // Supabase handles web session via autoRefreshToken + persistSession
-
-    const handleAppStateChange = (nextState) => {
-      if (nextState === 'active') {
-        const elapsed = Date.now() - lastActiveRef.current;
-        if (elapsed >= INACTIVITY_TIMEOUT_MS && user) {
-          handleInactivityLogout();
+    if (Platform.OS !== 'web') {
+      // Native: AppState transitions
+      const handleAppStateChange = (nextState) => {
+        if (nextState === 'active') {
+          const elapsed = Date.now() - lastActiveRef.current;
+          if (elapsed >= INACTIVITY_TIMEOUT_MS && user) {
+            handleInactivityLogout();
+          }
+          lastActiveRef.current = Date.now();
+        } else if (nextState === 'background') {
+          lastActiveRef.current = Date.now();
         }
-        lastActiveRef.current = Date.now();
-      } else if (nextState === 'background') {
-        lastActiveRef.current = Date.now();
+      };
+      const sub = AppState.addEventListener('change', handleAppStateChange);
+      return () => sub.remove();
+    }
+
+    // Web: registra listeners de atividade + heartbeat de checagem.
+    // Sem isso, máquinas compartilhadas (escritório, lan house) ficam logadas
+    // indefinidamente até user fechar a aba.
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+
+    const bumpActivity = () => { lastActiveRef.current = Date.now(); };
+    const checkInactivity = () => {
+      if (!user) return;
+      const elapsed = Date.now() - lastActiveRef.current;
+      if (elapsed >= INACTIVITY_TIMEOUT_MS) {
+        handleInactivityLogout();
       }
     };
 
-    const sub = AppState.addEventListener('change', handleAppStateChange);
-    return () => sub.remove();
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'];
+    events.forEach(ev => document.addEventListener(ev, bumpActivity, { passive: true }));
+
+    const onVisibility = () => {
+      if (!document.hidden) checkInactivity();
+      bumpActivity();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    // Heartbeat: checa a cada 60s (mais barato do que checar a cada evento)
+    const heartbeat = setInterval(checkInactivity, 60 * 1000);
+
+    return () => {
+      events.forEach(ev => document.removeEventListener(ev, bumpActivity));
+      document.removeEventListener('visibilitychange', onVisibility);
+      clearInterval(heartbeat);
+    };
   }, [user, handleInactivityLogout]);
 
   useEffect(() => {
@@ -121,13 +155,25 @@ export function AuthProvider({ children }) {
 
   const signOut = async () => {
     addBreadcrumb({ category: 'auth', message: 'signOut' });
-    resetDatabase(); // Clear cached data to prevent cross-user leakage
+    // Sessão 28.44 — security H2: invalida sessão Supabase ANTES do reset local.
+    // Antes: resetDatabase rodava primeiro → se signOut falhasse (rede), token
+    // ficava em storage e onAuthStateChange repopulava o user → estado zumbi.
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       reportSetUser(null);
+      // Só limpa local APÓS Supabase confirmar o signOut.
+      resetDatabase();
+      // Limpa também o cache do wrapper supabaseDb pra próxima sessão começar limpa.
+      try {
+        const { clearQueryCache } = await import('../database/supabaseDb');
+        clearQueryCache?.();
+      } catch {}
     } catch (err) {
       captureException(err, { action: 'signOut' });
+      // Mesmo com erro, força limpeza local pra não deixar dados de outro user visíveis.
+      // O onAuthStateChange resolve a sessão depois.
+      try { resetDatabase(); } catch {}
       throw err;
     }
   };

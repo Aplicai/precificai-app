@@ -41,7 +41,16 @@ export async function recalcularPreparo(db, preparoId) {
   );
   const custoTotal = (ings || []).reduce((a, i) => a + calcCustoIngrediente(i.preco_por_kg, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida), 0);
   const rendimento = safe(p.rendimento_total);
-  const custoPorKg = rendimento > 0 ? custoTotal / rendimento : custoTotal;
+  // Sessão 28.44 — bug #1: PreparoFormScreen e MateriaPrimaFormScreen calculam
+  // `custo_por_kg = (custoTotal / rendimento) * 1000` (rendimento em gramas → R$/kg).
+  // Antes: cascade usava `custoTotal / rendimento` (sem * 1000) → quando o user
+  // atualizava preço de insumo, todos os preparos ficavam 1000x menores.
+  // Agora: alinhado com a fórmula canônica.
+  const unidade = (p.unidade_medida || 'g');
+  const usaMultiplicadorPorKg = unidade === 'g' || unidade === 'mL';
+  const custoPorKg = rendimento > 0
+    ? (custoTotal / rendimento) * (usaMultiplicadorPorKg ? 1000 : 1)
+    : custoTotal;
   await db.runAsync('UPDATE preparos SET custo_por_kg = ? WHERE id = ?', [custoPorKg, preparoId]);
   return { id: preparoId, custoTotal, custoPorKg };
 }
@@ -103,7 +112,10 @@ export async function recalcularCombo(db, comboId) {
       custo += safe(e?.preco_unitario) * qt;
     }
   }
-  await db.runAsync('UPDATE delivery_combos SET custo = ? WHERE id = ?', [custo, comboId]);
+  // Sessão 28.44 — bug #4: schema delivery_combos não tem coluna `custo`.
+  // Antes: UPDATE falhava silenciosamente (catch warns) toda vez. Agora:
+  // não persistimos. DeliveryCombosScreen sempre re-deriva client-side.
+  // (Se um dia for útil cachear, adicionar coluna em migration primeiro.)
   return { id: comboId, custo };
 }
 
