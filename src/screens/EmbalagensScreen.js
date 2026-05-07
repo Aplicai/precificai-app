@@ -92,16 +92,45 @@ export default function EmbalagensScreen({ navigation }) {
     try { await loadData(); } finally { setRefreshing(false); }
   }
 
-  // Sessão 28.43: subscribe pra mudanças em embalagens (ex.: AtualizarPrecos
-  // salvou novo preço) + focus listener fallback (RN useFocusEffect flaky no web).
+  // Sessão 28.46: lógica de redirect pro Produto/Preparo quando user voltou
+  // de uma edição via modal. Extraída pra função pra rodar via useFocusEffect
+  // E via focus listener (useFocusEffect flaky no web — Sessão 28.27/28.43).
+  // Antes: ficava só dentro do useFocusEffect → user terminava de criar
+  // embalagem e ficava em EmbalagensScreen ao invés de voltar pro produto.
+  const checkReopenFlag = useCallback(async () => {
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+      if (!raw) return;
+      const info = JSON.parse(raw);
+      if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) {
+        await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
+        return;
+      }
+      if (info.mode === 'produto') navigation.navigate('Produtos', { screen: 'ProdutosList' });
+      else if (info.mode === 'preparo') navigation.navigate('Preparos', { screen: 'PreparosMain' });
+    } catch {}
+  }, [navigation]);
+
+  // Sessão 28.43/28.46: subscribe pra mudanças em embalagens (AtualizarPrecos)
+  // + focus listener fallback (RN useFocusEffect flaky no web) + reopen flag check.
   useEffect(() => {
     const unsub = subscribeDataChanged((table) => {
       if (table === 'embalagens') loadData();
     });
-    const unsubFocus = navigation.addListener('focus', () => { loadData(); });
+    const unsubFocus = navigation.addListener('focus', () => {
+      loadData();
+      // Sessão 28.46: também checa flag aqui (web)
+      checkReopenFlag();
+    });
     let onVis;
     if (typeof document !== 'undefined' && document.addEventListener) {
-      onVis = () => { if (!document.hidden) loadData(); };
+      onVis = () => {
+        if (!document.hidden) {
+          loadData();
+          checkReopenFlag();
+        }
+      };
       document.addEventListener('visibilitychange', onVis);
     }
     return () => {
@@ -111,27 +140,13 @@ export default function EmbalagensScreen({ navigation }) {
         document.removeEventListener('visibilitychange', onVis);
       }
     };
-  }, [navigation]);
+  }, [navigation, checkReopenFlag]);
 
   useFocusEffect(useCallback(() => {
     loadData();
-    // Sessão 28.14: redireciona pro Produtos/Preparos se veio de uma edição via modal
-    (async () => {
-      try {
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
-        if (!raw) return;
-        const info = JSON.parse(raw);
-        if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) {
-          await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
-          return;
-        }
-        if (info.mode === 'produto') navigation.navigate('Produtos', { screen: 'ProdutosList' });
-        else if (info.mode === 'preparo') navigation.navigate('Preparos', { screen: 'PreparosMain' });
-      } catch {}
-    })();
+    checkReopenFlag();
     return () => setConfirmDelete(null);
-  }, [filtroCategoria, busca, sortBy]));
+  }, [filtroCategoria, busca, sortBy, checkReopenFlag]));
 
   async function loadData() {
     setLoading(true);

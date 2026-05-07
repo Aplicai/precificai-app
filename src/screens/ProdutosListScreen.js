@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform, RefreshControl } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -32,6 +32,7 @@ import useBulkSelection from '../hooks/useBulkSelection';
 // Para produtos, o blocker crítico é "vendas registradas" — aviso de soft-delete recomendado.
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 import { t } from '../i18n/pt-BR';
+import { subscribeDataChanged } from '../utils/dataSync';
 
 // Cores para categorias
 const CATEGORY_COLORS = [
@@ -112,27 +113,58 @@ export default function ProdutosListScreen({ navigation }) {
     try { await loadData(); } finally { setRefreshing(false); }
   }
 
+  // Sessão 28.46: extraído pra rodar via useFocusEffect E via focus listener
+  // (useFocusEffect flaky no web). Antes user voltava de criar embalagem/insumo
+  // dentro do modal e a aba ficava na list (Embalagens/Insumos) ao invés de
+  // reabrir o modal aqui.
+  const checkReopenAndOpen = useCallback(async () => {
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+      if (!raw) return;
+      const info = JSON.parse(raw);
+      await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
+      if (info?.mode !== 'produto') return;
+      if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) return;
+      if (info.draft) {
+        try { await AsyncStorage.setItem('entityDraftToRestore', JSON.stringify({ mode: 'produto', editId: info.editId || null, draft: info.draft, ts: Date.now() })); } catch {}
+      }
+      setEditingId(info.editId || null);
+      setShowCreateModal(true);
+    } catch {}
+  }, []);
+
+  // Sessão 28.46: focus listener fallback + dataSync subscribe + visibilitychange
+  useEffect(() => {
+    const unsub = subscribeDataChanged((table) => {
+      if (table === 'produtos') loadData();
+    });
+    const unsubFocus = navigation.addListener('focus', () => {
+      loadData();
+      checkReopenAndOpen();
+    });
+    let onVis;
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      onVis = () => {
+        if (!document.hidden) {
+          loadData();
+          checkReopenAndOpen();
+        }
+      };
+      document.addEventListener('visibilitychange', onVis);
+    }
+    return () => {
+      unsub();
+      unsubFocus();
+      if (onVis && typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVis);
+      }
+    };
+  }, [navigation, checkReopenAndOpen]);
+
   useFocusEffect(useCallback(() => {
     loadData();
-    // Sessão 28.14 + 28.19: reabre o modal e RESTAURA O DRAFT (28.19 fix)
-    (async () => {
-      try {
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
-        if (!raw) return;
-        const info = JSON.parse(raw);
-        await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
-        if (info?.mode !== 'produto') return;
-        if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) return;
-        // Sessão 28.19 + 28.20: SEMPRE guarda draft (novo OU existente) pra
-        // o EntityCreateModal restaurar via loadForEdit ou via fluxo de criação.
-        if (info.draft) {
-          try { await AsyncStorage.setItem('entityDraftToRestore', JSON.stringify({ mode: 'produto', editId: info.editId || null, draft: info.draft, ts: Date.now() })); } catch {}
-        }
-        setEditingId(info.editId || null);
-        setShowCreateModal(true);
-      } catch {}
-    })();
+    checkReopenAndOpen();
     // Sessão 28.17: deep-link de outras telas (Relatório etc) que querem abrir
     // a edição do produto direto no modal — uso o param `openProductEdit`.
     try {
@@ -147,7 +179,7 @@ export default function ProdutosListScreen({ navigation }) {
       }
     } catch {}
     return () => setConfirmDelete(null);
-  }, [filtroCategoria, busca, sortBy, navigation]));
+  }, [filtroCategoria, busca, sortBy, navigation, checkReopenAndOpen]));
 
   async function loadData() {
     setLoading(true);
