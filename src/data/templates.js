@@ -15,7 +15,7 @@ export const SEGMENTOS = [
   { key: 'sorveteria', label: 'Sorveteria', icon: 'ice-cream', desc: 'Sorvetes, picolés, sundaes' },
   { key: 'salgaderia', label: 'Salgaderia', icon: 'cookie', desc: 'Salgados, frituras, espetinhos' },
   { key: 'japonesa', label: 'Culinária Japonesa', icon: 'fish', desc: 'Sushi, temaki, yakisoba' },
-  { key: 'outro', label: 'Outro', icon: 'grid', desc: 'Personalizar do zero' },
+  { key: 'outro', label: 'Começar do zero', icon: 'grid', desc: 'Apaga insumos/produtos atuais e mantém o financeiro' },
 ];
 
 export const INSUMOS_POR_SEGMENTO = {

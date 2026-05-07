@@ -699,6 +699,14 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                       if (liquidaCalc > 0) qtdLiquida = String(Math.round(liquidaCalc));
                     }
                   } catch {}
+                  // Sessão 28.34: também sugere PREÇO DE MERCADO se houver match
+                  // na base curada de marketPrices.js. User pode editar antes de salvar.
+                  let valorPagoMercado = null;
+                  try {
+                    const { getMarketPrice } = await import('../data/marketPrices');
+                    const unidadeFinal = sugestao.unidade_padrao || form.unidade_medida;
+                    valorPagoMercado = getMarketPrice(sugestao.nome_canonico, parseFloat(qtdBruta) || 0, unidadeFinal);
+                  } catch {}
                   setForm(p => ({
                     ...p,
                     nome: sugestao.nome_canonico,
@@ -706,7 +714,15 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                     quantidade_bruta: qtdBruta,
                     quantidade_liquida: qtdLiquida,
                     categoria_id: categoria_id || p.categoria_id,
+                    // só preenche se user ainda não digitou um valor manual
+                    valor_pago: (valorPagoMercado != null && (!p.valor_pago || parseFloat(String(p.valor_pago).replace(',', '.')) === 0))
+                      ? String(valorPagoMercado).replace('.', ',')
+                      : p.valor_pago,
                   }));
+                  // Marca como "estimado" pra UI mostrar badge amarelo
+                  if (valorPagoMercado != null) {
+                    try { setEhValorEstimado(true); } catch {}
+                  }
                   setSugestaoDispensadaPara(normalizeStr(sugestao.nome_canonico));
                   setSugestao(null);
                 }}

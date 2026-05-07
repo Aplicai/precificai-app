@@ -77,14 +77,29 @@ export function AuthProvider({ children }) {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      // Sessão 28.32: ao fazer login, limpa o "última tab visitada" pra usuário
-      // SEMPRE entrar no Painel Geral (Início). Antes: sessão restaurava a
-      // última tab visitada da sessão anterior → usuário caía em "Produtos" ou
-      // "Mais" aleatoriamente, esperando o Painel Geral.
+      // Sessão 28.32: limpa "última tab visitada" pra login sempre cair em Painel Geral.
       try {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         await AsyncStorage.removeItem('precificai_last_tab');
       } catch {}
+      // Sessão 28.34: HARD RELOAD no web logo após login.
+      // Motivos:
+      //  1. Garante que o usuário sempre carregue a versão mais recente do bundle
+      //     (deploys novos no Vercel). Sem isso, browsers com SW/cache podiam
+      //     mostrar versão antiga durante minutos.
+      //  2. Resolve race condition do redirect: às vezes a navegação pra MainTabs
+      //     acontecia ANTES do removeItem(LAST_TAB_KEY) propagar → usuário caía
+      //     em tab aleatória. Reload elimina toda a state stale.
+      //  3. Limpa qualquer cache em memória (supabaseDb, contextos React) que
+      //     pudessem reter dados do login anterior.
+      //
+      // Supabase persiste a sessão em localStorage SÍNCRONO antes do
+      // signInWithPassword resolver, então o reload preserva a autenticação.
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.reload) {
+        // Pequeno delay pra deixar o React render do state de loading do LoginScreen
+        // antes de matar o frame.
+        setTimeout(() => { try { window.location.reload(); } catch {} }, 80);
+      }
       return data;
     } catch (err) {
       captureException(err, { screen: 'Login', action: 'signIn' });

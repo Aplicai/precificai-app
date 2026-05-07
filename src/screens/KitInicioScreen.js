@@ -130,11 +130,88 @@ export default function KitInicioScreen({ navigation, route }) {
     }
   }
 
+  // Sessão 28.34: helper de wipe extraído pra reutilizar em "Começar do zero".
+  // Mesma sequência de fases FK-safe que executarKit usa.
+  async function wipeAllData() {
+    setLoading(true);
+    setProgressStep('limpando');
+    setProgressMsg('Apagando dados...');
+    try {
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr) throw new Error('Erro de autenticação: ' + authErr.message);
+      const userId = authData?.user?.id;
+      if (!userId) throw new Error('Usuário não autenticado');
+
+      const collectErrors = async (tables) => {
+        await Promise.all(tables.map(async t => {
+          try { await supabase.from(t).delete().eq('user_id', userId); } catch {}
+        }));
+      };
+      // Fase 1: junctions (sem deps)
+      await collectErrors([
+        'produto_ingredientes', 'produto_preparos', 'produto_embalagens',
+        'preparo_ingredientes', 'delivery_combo_itens', 'delivery_produto_itens',
+        'produto_preco_delivery', 'historico_precos',
+      ]);
+      // Fase 2: entidades principais
+      await collectErrors([
+        'delivery_combos', 'delivery_produtos', 'delivery_adicionais',
+        'delivery_config', 'produtos', 'preparos', 'embalagens',
+      ]);
+      // Fase 3: materias_primas (FK alvo de outras tabelas)
+      const { error: mpErr } = await supabase.from('materias_primas').delete().eq('user_id', userId);
+      if (mpErr) throw new Error('Erro ao apagar insumos: ' + mpErr.message);
+      // Fase 4: categorias
+      await collectErrors([
+        'categorias_produtos', 'categorias_preparos',
+        'categorias_embalagens', 'categorias_insumos',
+      ]);
+      // Limpa cache do wrapper pra outras telas relerem
+      try {
+        const { clearQueryCache } = await import('../database/supabaseDb');
+        clearQueryCache?.();
+      } catch {}
+    } finally {
+      setProgressStep(null);
+      setLoading(false);
+    }
+  }
+
   async function aplicarKit() {
     if (!selected) return;
 
     if (selected === 'outro') {
-      navegarAposKit();
+      // Sessão 28.34: "Começar do zero" agora APAGA insumos/preparos/produtos/
+      // embalagens/categorias e mantém só o financeiro. Antes apenas navegava
+      // sem fazer nada → user reportou "não funciona".
+      // Setup (primeiro uso): banco já está vazio, só navega.
+      if (isSetup) {
+        navegarAposKit();
+        return;
+      }
+      const msgOutro = 'Começar do zero vai APAGAR todos os insumos, preparos, produtos, embalagens e categorias atuais. Os dados financeiros (lucro, custos fixos, faturamento) serão MANTIDOS. Esta ação não pode ser desfeita. Deseja continuar?';
+      const exec = async () => {
+        try {
+          await wipeAllData();
+          navegarAposKit();
+        } catch (e) {
+          console.error('[KitInicio.outroFromZero]', e);
+          if (Platform.OS === 'web') {
+            window.alert('Erro ao apagar dados: ' + (e?.message || 'desconhecido'));
+          } else {
+            Alert.alert('Erro', 'Não foi possível apagar os dados: ' + (e?.message || 'desconhecido'));
+          }
+        }
+      };
+      if (Platform.OS === 'web') {
+        if (!window.confirm(msgOutro)) return;
+        await exec();
+      } else {
+        Alert.alert('Começar do zero', msgOutro, [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Apagar tudo', style: 'destructive', onPress: exec },
+        ]);
+      }
       return;
     }
 
@@ -175,7 +252,10 @@ export default function KitInicioScreen({ navigation, route }) {
       const userId = authData?.user?.id;
       if (!userId) throw new Error('Usuário não autenticado');
 
-      const insumosTemplate = INSUMOS_POR_SEGMENTO[selected] || [];
+      // Sessão 28.34: aplica preços de mercado curados ao template antes de inserir.
+      // Itens sem preço na base ficam com valor_pago=0 (user vê e pode preencher).
+      const { aplicarPrecosMercado } = await import('../data/marketPrices');
+      const insumosTemplate = aplicarPrecosMercado(INSUMOS_POR_SEGMENTO[selected] || []);
       const categoriasTemplate = CATEGORIAS_POR_SEGMENTO[selected] || [];
 
       // Step 1: Clean existing data — sequential in FK-safe order
