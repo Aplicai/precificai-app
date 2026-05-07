@@ -17,6 +17,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { getDatabase } from '../database/database';
 import { baixarEstoque, registrarEntrada } from '../services/estoque';
+import { formatInsumoNomeDash } from '../utils/insumoDisplay';
 import PickerSelect from '../components/PickerSelect';
 import ModalFormWrapper from '../components/ModalFormWrapper';
 import useListDensity from '../hooks/useListDensity';
@@ -84,7 +85,7 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
   const opcoesItens = (tipo === 'materia_prima' ? insumos : embalagens).map((i) => ({
     value: i.id,
     // Sessão 25: marca incluída para diferenciar SKUs com nomes parecidos
-    label: `${i.nome}${i.marca ? ` — ${i.marca}` : ''}  (saldo ${Number(i.quantidade_estoque || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 })})`,
+    label: `${formatInsumoNomeDash(i.nome, i.marca)}  (saldo ${Number(i.quantidade_estoque || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 })})`,
   }));
   const itemSelecionado = (tipo === 'materia_prima' ? insumos : embalagens).find((i) => i.id === itemId);
   const unidade = tipo === 'embalagem' ? 'un' : (itemSelecionado?.unidade_medida || 'un');

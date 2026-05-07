@@ -11,13 +11,14 @@
  * Pra quê: empreendedora quer ver "como meus custos estão evoluindo" sem
  * precisar pensar em marcas/fornecedores específicos.
  */
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency } from '../utils/calculations';
+import { isMarcaEstimada, formatInsumoNome } from '../utils/insumoDisplay';
 
 const safe = (v) => {
   const n = Number(v);
@@ -59,16 +60,32 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
   const [categoriaStats, setCategoriaStats] = useState([]);
   const [historico, setHistorico] = useState([]);
 
-  useFocusEffect(useCallback(() => { carregar(); }, []));
+  // Sessão 28.42: dedup — guarda timestamp do último carregar() pra evitar
+  // re-fetch redundante. Antes useFocusEffect + addListener('focus') +
+  // visibilitychange disparavam carregar() 2-3x consecutivos no mesmo evento.
+  const lastLoadRef = useRef(0);
+  const loadingRef = useRef(false);
+  const MIN_RELOAD_MS = 3000;
+
+  const carregarSafe = useCallback(() => {
+    const now = Date.now();
+    if (loadingRef.current) return; // já tem um em andamento
+    if (now - lastLoadRef.current < MIN_RELOAD_MS) return; // muito recente
+    lastLoadRef.current = now;
+    carregar();
+  }, []);
+
+  useFocusEffect(useCallback(() => { carregarSafe(); }, [carregarSafe]));
 
   // Sessão 28.27: SEGURANÇA EXTRA — useFocusEffect às vezes não dispara em tab
-  // navigators no web (depende da versão do React Navigation). Adiciona listener
-  // explícito + recarrega quando aba do navegador volta a ficar visível.
+  // navigators no web. Adiciona listener explícito + recarrega quando aba
+  // do navegador volta a ficar visível. Sessão 28.42: usa carregarSafe pra
+  // dedup de chamadas concorrentes.
   useEffect(() => {
-    const unsub = navigation.addListener('focus', () => { carregar(); });
+    const unsub = navigation.addListener('focus', () => { carregarSafe(); });
     let onVis;
     if (typeof document !== 'undefined' && document.addEventListener) {
-      onVis = () => { if (!document.hidden) carregar(); };
+      onVis = () => { if (!document.hidden) carregarSafe(); };
       document.addEventListener('visibilitychange', onVis);
     }
     return () => {
@@ -77,9 +94,10 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
         document.removeEventListener('visibilitychange', onVis);
       }
     };
-  }, [navigation]);
+  }, [navigation, carregarSafe]);
 
   async function carregar() {
+    loadingRef.current = true;
     setLoading(true);
     try {
       // Sessão 28.25 BUG FIX: Relatório de Insumos não refletia edição de preço.
@@ -135,6 +153,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
       console.error('[RelatorioInsumos.carregar]', e);
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
   }
 
@@ -150,7 +169,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
     // Sessão 28.39: insumos com preço SÓ do kit (marca = __VALOR_ESTIMADO_KIT__)
     // são EXCLUÍDOS dos alertas de variação/desatualizado/top — não foi user
     // que cadastrou esse preço, então tratar como dado autêntico polui o relatório.
-    const ehKitOnly = (i) => i?.marca === '__VALOR_ESTIMADO_KIT__';
+    const ehKitOnly = (i) => isMarcaEstimada(i?.marca);
 
     const semPreco = insumos.filter(i => safe(i.preco_por_kg) <= 0);
     // "ComPreco" = só items com preço REAL inserido pelo user
@@ -336,7 +355,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                   <Text style={styles.kpiTileSub}>por kg/un</Text>
                 </View>
                 <View style={styles.kpiTile}>
-                  <Text style={styles.kpiTileLabel}>Cat. mais cara</Text>
+                  <Text style={styles.kpiTileLabel}>Categoria mais cara</Text>
                   <Text style={[styles.kpiTileValue, { fontSize: 14 }]} numberOfLines={1}>
                     {insights.catMaisCara?.nome || '—'}
                   </Text>
@@ -553,7 +572,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                   <View key={i} style={styles.histRow}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.histNome}>
-                        {h.nome}{h.marca ? ` (${h.marca})` : ''}
+                        {formatInsumoNome(h.nome, h.marca)}
                       </Text>
                       <Text style={styles.histData}>
                         {h.criado_em ? new Date(h.criado_em).toLocaleDateString('pt-BR') : '—'}
