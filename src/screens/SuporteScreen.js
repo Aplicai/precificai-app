@@ -89,7 +89,7 @@ const FAQ_ITEMS = [
   },
   {
     question: 'Meus dados estão seguros?',
-    answer: 'Seus dados são armazenados em servidores seguros (Supabase/AWS). Cada usuário só acessa seus próprios dados. Você pode exportar um backup completo em Configurações > Backup e Restauração.',
+    answer: 'Seus dados são armazenados em servidores seguros (Supabase/AWS). Cada usuário só acessa seus próprios dados. Você pode baixar um CSV com tudo em Configurações > Exportar Dados.',
   },
 ];
 
