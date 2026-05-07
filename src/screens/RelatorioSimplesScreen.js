@@ -452,6 +452,51 @@ export default function RelatorioSimplesScreen({ navigation }) {
         <span style="color: #6b7280; float: right;">${formatCurrency(p.precoVenda || 0)} (CMV ${formatCurrency(p.custoUn || 0)})</span>
       </li>
     `).join('');
+
+    // Sessão 28.39: GRÁFICO DE BARRAS CSS — top 8 produtos por margem.
+    // Sem libs externas (CSS puro funciona em window.print). Cada barra é um
+    // div com width proporcional ao maior valor.
+    const todosProdutosOrdenados = [...(data.produtosTodos || data.melhores || [])]
+      .filter(p => Number(p.margemReais) > 0)
+      .sort((a, b) => Number(b.margemReais) - Number(a.margemReais))
+      .slice(0, 10);
+    const maxMargem = todosProdutosOrdenados.length > 0
+      ? Math.max(...todosProdutosOrdenados.map(p => Number(p.margemReais) || 0))
+      : 1;
+    const graficoMargemHtml = todosProdutosOrdenados.length > 0 ? `
+      <div class="card">
+        <h3>📊 Margem por produto (top 10)</h3>
+        <p style="color: #6b7280; margin: 0 0 12px 0; font-size: 13px;">
+          Visualização do lucro líquido por unidade vendida.
+        </p>
+        ${todosProdutosOrdenados.map(p => {
+          const valor = Number(p.margemReais) || 0;
+          const percent = maxMargem > 0 ? (valor / maxMargem) * 100 : 0;
+          return `
+            <div style="margin: 8px 0;">
+              <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px;">
+                <span style="color: #1f2937; font-weight: 500;">${escapeHtml(p.nome || '')}</span>
+                <span style="color: #16a34a; font-weight: 700;">${formatCurrency(valor)}</span>
+              </div>
+              <div style="background: #f3f4f6; border-radius: 4px; height: 14px; overflow: hidden;">
+                <div style="width: ${percent.toFixed(1)}%; height: 100%; background: linear-gradient(90deg, #004d47, #00897b); -webkit-print-color-adjust: exact; print-color-adjust: exact;"></div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    ` : '';
+
+    // Filtro de categoria — destaque visual no topo do PDF se aplicável.
+    const _categoriaAtivaNomeNoPdf = filtroCategoria === 'todas'
+      ? null
+      : (categorias.find(c => c.id === filtroCategoria)?.nome || null);
+    const filtroCatHtml = _categoriaAtivaNomeNoPdf
+      ? `<div style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 10px 14px; border-radius: 4px; margin-bottom: 14px; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+          <strong style="color: #92400e;">📌 Filtrado por categoria:</strong>
+          <span style="color: #78350f;"> ${escapeHtml(_categoriaAtivaNomeNoPdf)}</span>
+        </div>`
+      : '';
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Relatório Precificaí — ${escapeHtml(perfilNome)}</title>
     <style>
       * { box-sizing: border-box; }
@@ -480,6 +525,7 @@ export default function RelatorioSimplesScreen({ navigation }) {
       <p class="sub">${escapeHtml(perfilNome)} — Relatório de gestão</p>
       <p class="date">Gerado em ${new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
     </div>
+    ${filtroCatHtml}
     ${data.resumo ? `<div class="kpi-row">
       <div class="kpi"><div class="kpi-label">Faturamento</div><div class="kpi-value">${formatCurrency(data.resumo.faturamento || 0)}</div></div>
       <div class="kpi"><div class="kpi-label">Lucro</div><div class="kpi-value" style="color: ${data.resumo.lucroPositivo ? '#16a34a' : '#dc2626'};">R$ ${formatBR(data.resumo.lucro)}</div></div>
@@ -488,6 +534,7 @@ export default function RelatorioSimplesScreen({ navigation }) {
     ${sections.map(s => `<div class="card"><h3>${escapeHtml(s.title)}</h3><p>${escapeHtml(s.text)}</p></div>`).join('')}
     ${melhoresHtml ? `<div class="card"><h3>🏆 Top 5 — seus campeões</h3><ul class="list">${melhoresHtml}</ul></div>` : ''}
     ${atencaoHtml ? `<div class="card"><h3>⚠️ Atenção — produtos com margem apertada</h3><ul class="list">${atencaoHtml}</ul></div>` : ''}
+    ${graficoMargemHtml}
     <p class="footer">Gerado por Precificaí · www.precificaiapp.com</p>
     </body></html>`;
 

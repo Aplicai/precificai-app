@@ -61,6 +61,8 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     'DeliveryHub': 'Mais',
     'Fornecedores': 'Mais',
     'AtualizarPrecos': 'Mais',
+    // Sessão 28.39: relatório de insumos vive na tab "Mais"
+    'RelatorioInsumos': 'Mais',
   };
 
   function goBackSafe() {

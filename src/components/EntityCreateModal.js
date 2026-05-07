@@ -31,6 +31,7 @@ import { getDatabase } from '../database/database';
 import InputField from './InputField';
 import SearchBar from './SearchBar';
 import EmptyState from './EmptyState';
+import QuickInsumoForm from './QuickInsumoForm';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import {
   formatCurrency, formatPercent,
@@ -191,6 +192,10 @@ export default function EntityCreateModal({
   // Sessão 28.38: cascata de popups — produto pode abrir modal de preparo
   // empilhado em cima sem fechar nem perder estado.
   const [nestedPreparoVisible, setNestedPreparoVisible] = useState(false);
+  // Sessão 28.39: cascata também pra "+ Insumo" e "+ Embalagem" — abre
+  // QuickInsumoForm popup empilhado sem fechar este modal nem perder o draft.
+  const [quickInsumoVisible, setQuickInsumoVisible] = useState(false);
+  const [quickInsumoTipo, setQuickInsumoTipo] = useState('materia_prima'); // ou 'embalagem'
 
   // Config de markup/precificação (carregado do banco — só relevante pra Produto)
   const [pricingConfig, setPricingConfig] = useState({
@@ -1308,7 +1313,9 @@ export default function EntityCreateModal({
                   <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
                     <TouchableOpacity
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '10' }}
-                      onPress={() => saveDraftAndNavigate('MateriaPrimaForm')}
+                      // Sessão 28.39: cascata — abre QuickInsumoForm empilhado
+                      // (sem fechar este modal). Antes navegava pra MateriaPrimaForm.
+                      onPress={() => { setQuickInsumoTipo('materia_prima'); setQuickInsumoVisible(true); }}
                       accessibilityLabel="Cadastrar novo insumo"
                     >
                       <Feather name="plus" size={11} color={colors.primary} />
@@ -1330,7 +1337,9 @@ export default function EntityCreateModal({
                     )}
                     <TouchableOpacity
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '10' }}
-                      onPress={() => saveDraftAndNavigate('EmbalagemForm')}
+                      // Sessão 28.39: cascata — abre QuickInsumoForm empilhado
+                      // (sem fechar este modal). Antes navegava pra EmbalagemForm.
+                      onPress={() => { setQuickInsumoTipo('embalagem'); setQuickInsumoVisible(true); }}
                       accessibilityLabel="Cadastrar nova embalagem"
                     >
                       <Feather name="plus" size={11} color={colors.primary} />
@@ -1533,6 +1542,31 @@ export default function EntityCreateModal({
           }}
         />
       )}
+
+      {/* Sessão 28.39: cascata pra "+ Insumo" e "+ Embalagem" — popup empilhado.
+          Quando salva, adiciona o item recém-criado direto aos itens do produto/preparo
+          pai (com custoUnit já calculado). Se cancela, só fecha. */}
+      <QuickInsumoForm
+        visible={quickInsumoVisible}
+        tipo={quickInsumoTipo}
+        onClose={() => setQuickInsumoVisible(false)}
+        onSaved={(novoId, nomeNovo, custoUnit, unidadeNova) => {
+          if (!novoId) return;
+          const tipoItem = quickInsumoTipo === 'embalagem' ? 'embalagem' : 'materia_prima';
+          setItens(prev => {
+            // Evita duplicar se já estava no draft
+            if (prev.some(i => i.tipo === tipoItem && i.id === novoId)) return prev;
+            return [...prev, {
+              tipo: tipoItem,
+              id: novoId,
+              nome: nomeNovo,
+              quantidade: tipoItem === 'embalagem' ? 1 : 0,
+              custoUnit: safeNum(custoUnit),
+              unidade: shortUnidade(unidadeNova, tipoItem),
+            }];
+          });
+        }}
+      />
     </Modal>
   );
 }
