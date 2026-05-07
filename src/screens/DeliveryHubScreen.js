@@ -21,7 +21,7 @@ import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendiment
 // Sprint 2 S3 — fonte única da verdade para precificação delivery (substitui fórmula inline duplicada).
 import { calcResultadoDelivery, sugerirPrecoDelivery, calcSugestaoDeliveryCompleta } from '../utils/deliveryPricing';
 // Sessão 28.12 (D-22b): adapter pra extrair imposto% das despesas variáveis
-import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
+import { buildContextoFinanceiro, normalizePlataforma } from '../utils/deliveryAdapter';
 // Sessão 28.26: service unificado de upsert do "preço delivery cobrado pelo user"
 import { upsertPrecoDelivery } from '../services/precoDeliveryService';
 // D-24: simulador em lote renderiza inline dentro do hub
@@ -939,10 +939,14 @@ export default function DeliveryHubScreen({ navigation }) {
               <EmptyState icon="smartphone" title="Nenhuma plataforma ativa" description="Ative pelo menos uma plataforma para ver a visão geral." />
             ) : (
               ativas.map(plat => {
-                const comissao = (plat.comissao_app || plat.taxa_plataforma || 0) / 100;
+                // Sessão 28.33: usa normalizePlataforma (nomes semânticos)
+                const platN = normalizePlataforma(plat);
+                const comissao = platN.comissaoPct;
+                const cupom = platN.cupomR;
+                const taxaEnt = platN.freteSubsidiadoR;
+                // Engine legacy lê desconto_promocao como % — preserva comportamento.
+                // (Inconsistência conhecida: UI rotula como R$, engine como %. Não-bloqueante hoje.)
                 const descPct = (plat.desconto_promocao || 0) / 100;
-                const cupom = plat.embalagem_extra || 0;
-                const taxaEnt = plat.taxa_entrega || 0;
                 const fixos = cupom + taxaEnt;
                 const cor = getPlatColor(plat.plataforma);
 

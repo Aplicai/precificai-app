@@ -25,7 +25,7 @@ import {
   getDivisorRendimento,
 } from '../utils/calculations';
 import { calcSugestaoDeliveryCompleta } from '../utils/deliveryPricing';
-import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
+import { buildContextoFinanceiro, normalizePlataforma } from '../utils/deliveryAdapter';
 // Sessão 28.26: service unificado de upsert do preço delivery
 import { upsertPrecoDelivery } from '../services/precoDeliveryService';
 
@@ -201,15 +201,24 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
   const numEscolhido = parseFloat(String(precoEscolhido).replace(',', '.'));
   const precoValido = Number.isFinite(numEscolhido) && numEscolhido > 0;
 
+  // Sessão 28.33: migrado pra normalizePlataforma — antes lia campos legacy direto
+  // (`plat.comissao_app`, `plat.embalagem_extra`, `plat.taxa_entrega`) com fallback
+  // pra `plat.taxa_plataforma`. Origem dos bugs em 28.14, 28.23, 28.27. Agora todo
+  // o componente usa shape semântico canônico.
+  // Bonus: composição agora inclui "outros %" (28.27) que estava faltando antes.
+  const platN = normalizePlataforma(plat);
+  const comissaoPct = platN.comissaoPct;
+  const taxaOnlinePct = platN.taxaOnlinePct;
+  const outrosPct = platN.outrosPct;
+  const cupomR = platN.cupomR;
+  const freteR = platN.freteSubsidiadoR;
   // Composição com o preço escolhido (igual à do simulador)
   const valFixos = precoValido ? numEscolhido * (contexto.fixoPerc || 0) : 0;
   const valImposto = precoValido ? numEscolhido * (contexto.impostoPerc || 0) : 0;
-  // Sessão 28.23: usa fallback comissao_app ?? taxa_plataforma (UI escreve em comissao_app)
-  const comissaoPct = safe(plat?.comissao_app ?? plat?.taxa_plataforma) / 100;
   const valComissao = precoValido ? numEscolhido * comissaoPct : 0;
-  const cupomR = safe(plat?.embalagem_extra);
-  const freteR = safe(plat?.taxa_entrega);
-  const totalGastos = cmv + valFixos + valImposto + valComissao + cupomR + freteR;
+  const valTaxaOnline = precoValido ? numEscolhido * taxaOnlinePct : 0;
+  const valOutros = precoValido ? numEscolhido * outrosPct : 0;
+  const totalGastos = cmv + valFixos + valImposto + valComissao + valTaxaOnline + valOutros + cupomR + freteR;
   const lucroLiquido = precoValido ? numEscolhido - totalGastos : 0;
   const margemLiquida = precoValido && numEscolhido > 0 ? lucroLiquido / numEscolhido : 0;
 
@@ -310,6 +319,8 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
               { label: `Custos fixos (${((contexto.fixoPerc || 0) * 100).toFixed(1)}%)`, val: -valFixos, color: colors.error },
               { label: `Imposto (${((contexto.impostoPerc || 0) * 100).toFixed(1)}%)`, val: -valImposto, color: colors.error },
               { label: `Comissão plataforma (${(comissaoPct * 100).toFixed(1)}%)`, val: -valComissao, color: colors.error },
+              ...(taxaOnlinePct > 0 ? [{ label: `Taxa pagamento online (${(taxaOnlinePct * 100).toFixed(1)}%)`, val: -valTaxaOnline, color: colors.error }] : []),
+              ...(outrosPct > 0 ? [{ label: `Outras taxas embutidas (${(outrosPct * 100).toFixed(1)}%)`, val: -valOutros, color: colors.error }] : []),
               ...(cupomR > 0 ? [{ label: 'Cupom recorrente', val: -cupomR, color: colors.error }] : []),
               ...(freteR > 0 ? [{ label: 'Frete subsidiado', val: -freteR, color: colors.error }] : []),
             ].map((row, i) => (
