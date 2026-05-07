@@ -76,9 +76,11 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
       const db = await getDatabase();
 
       // Load ALL data in a single parallel batch
-      // Load profile name
+      // Sessão 28.47 — bug #13: nome_negocio vive na tabela `perfil`, não em
+      // `configuracao`. Antes lia de configuracao (campo inexistente) → caía
+      // sempre no fallback "Meu Negócio" no PDF, mesmo com perfil cadastrado.
       try {
-        const perfil = await db.getAllAsync('SELECT * FROM configuracao');
+        const perfil = await db.getAllAsync('SELECT * FROM perfil');
         if (perfil && perfil[0] && perfil[0].nome_negocio) setPerfilNome(perfil[0].nome_negocio);
         else setPerfilNome('Meu Negócio');
       } catch (e) {
@@ -852,7 +854,14 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
                   accessibilityRole="button"
                   accessibilityLabel={`Editar ${p.nome}`}
                 >
-                  <Text style={[styles.precCell, { flex: 2 }]} numberOfLines={1}>{p.nome}</Text>
+                  {/* Sessão 28.47 — bug #7: title=p.nome pra mostrar nome completo no hover (web). */}
+                  <Text
+                    style={[styles.precCell, { flex: 2 }]}
+                    numberOfLines={1}
+                    {...(Platform.OS === 'web' ? { dataSet: { tooltip: p.nome }, title: p.nome } : {})}
+                  >
+                    {p.nome}
+                  </Text>
                   <Text style={[styles.precCell, { flex: 1, textAlign: 'right' }]}>{formatCurrency(p.cmv)}</Text>
                   <Text style={[styles.precCell, { flex: 1, textAlign: 'right', fontWeight: '600' }]}>{formatCurrency(p.precoVenda)}</Text>
                   <Text style={[styles.precCell, { flex: 1, textAlign: 'right', color: p.lucro >= 0 ? colors.success : colors.error }]}>{formatCurrency(p.lucro)}</Text>
@@ -871,7 +880,11 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
                 accessibilityLabel={`Editar ${p.nome}`}
               >
                 <View style={styles.precCardHeader}>
-                  <Text style={styles.precCardTitle} numberOfLines={1}>{p.nome}</Text>
+                  <Text
+                    style={styles.precCardTitle}
+                    numberOfLines={1}
+                    {...(Platform.OS === 'web' ? { title: p.nome } : {})}
+                  >{p.nome}</Text>
                   <View style={[styles.precMargemBadge, { backgroundColor: corMargem + '15' }]}>
                     <Text style={[styles.precMargemBadgeText, { color: corMargem }]}>{formatPercent(p.margem)}</Text>
                   </View>
@@ -1067,7 +1080,11 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
                 const pct = (p.lucro / maxL) * 100;
                 return (
                   <View key={i} style={styles.hbarRow}>
-                    <Text style={styles.hbarName} numberOfLines={1}>{p.nome}</Text>
+                    <Text
+                      style={styles.hbarName}
+                      numberOfLines={1}
+                      {...(Platform.OS === 'web' ? { title: p.nome } : {})}
+                    >{p.nome}</Text>
                     <View style={styles.hbarTrack}>
                       <View style={[styles.hbarFill, { width: `${pct}%`, backgroundColor: colors.success }]} />
                     </View>

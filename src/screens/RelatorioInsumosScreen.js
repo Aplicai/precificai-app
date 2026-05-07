@@ -115,9 +115,12 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
       ]);
       setInsumos(mps || []);
 
-      // Stats por categoria
+      // Stats por categoria — Sessão 28.47 (bug #9): exclui itens kit-only.
+      // Antes: kit-only entrava no cálculo da categoria mais cara, distorcendo
+      // o resultado quando o user ainda não tinha revisado os preços do kit.
       const byCat = {};
       (mps || []).forEach(m => {
+        if (isMarcaEstimada(m.marca)) return; // pula kit-only
         const cat = m.categoria_nome || 'Sem categoria';
         if (!byCat[cat]) byCat[cat] = { nome: cat, items: [], total: 0, count: 0 };
         const preco = safe(m.preco_por_kg);
@@ -366,7 +369,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                 <View style={[styles.kpiTile, insights.variacoesCount > 0 && styles.kpiTileInfo]}>
                   <Text style={styles.kpiTileLabel}>Variações ≥5%</Text>
                   <Text style={[styles.kpiTileValue, insights.variacoesCount > 0 && { color: colors.info }]}>{insights.variacoesCount}</Text>
-                  <Text style={styles.kpiTileSub}>preço mexeu</Text>
+                  <Text style={styles.kpiTileSub}>preço alterado</Text>
                 </View>
               </View>
             </SectionBlock>
@@ -466,12 +469,12 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
               </SectionBlock>
             )}
 
-            {/* ─────────── TENDÊNCIAS DE PREÇO ─────────── */}
+            {/* ─────────── ÚLTIMAS MUDANÇAS DE PREÇO ─────────── */}
             {insights.variacoesCount > 0 && (
               <SectionBlock
                 icon="trending-up"
                 color={colors.info}
-                title="Tendências de preço"
+                title="Últimas mudanças de preço"
                 subtitle="Variações ≥5% na última atualização — reveja preços de venda afetados"
               >
                 {insights.variacoes.slice(0, 8).map((v, i) => {
@@ -560,36 +563,9 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
               </SectionBlock>
             )}
 
-            {/* ─────────── HISTÓRICO ─────────── */}
-            <SectionBlock
-              icon="clock"
-              color={colors.textSecondary}
-              title="Últimas mudanças de preço"
-              subtitle={historico.length > 0 ? `Últimas ${Math.min(historico.length, 15)} alterações` : null}
-            >
-              {historico.length > 0 ? (
-                historico.slice(0, 15).map((h, i) => (
-                  <View key={i} style={styles.histRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.histNome}>
-                        {formatInsumoNome(h.nome, h.marca)}
-                      </Text>
-                      <Text style={styles.histData}>
-                        {h.criado_em ? new Date(h.criado_em).toLocaleDateString('pt-BR') : '—'}
-                      </Text>
-                    </View>
-                    <Text style={styles.histPreco}>{formatCurrency(safe(h.preco_por_kg))}/{h.unidade_medida || 'kg'}</Text>
-                  </View>
-                ))
-              ) : (
-                <View style={styles.histEmpty}>
-                  <Feather name="clock" size={20} color={colors.disabled} />
-                  <Text style={styles.histEmptyText}>
-                    Sem histórico ainda. Edite o preço de algum insumo pra começar a registrar.
-                  </Text>
-                </View>
-              )}
-            </SectionBlock>
+            {/* Sessão 28.47 — bloco "Histórico (Últimas mudanças de preço)"
+                removido. A informação agora vive no bloco "Últimas mudanças
+                de preço" (antes "Tendências de preço") logo acima. */}
           </>
         )}
 

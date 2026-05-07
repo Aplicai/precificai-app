@@ -54,7 +54,7 @@ const ROUTE_TITLES = {
   'PrecosPlataforma': 'Preços por Plataforma',
   'SimulacaoProduto': 'Simulação de Preço',
   'ListaCompras': 'Lista de Compras',
-  'ExportPDF': 'Exportar PDF',
+  'ExportPDF': 'Fichas Técnicas',
   'KitInicio': 'Kit de Início',
   'Sobre': 'Sobre o App',
   'Suporte': 'Suporte',

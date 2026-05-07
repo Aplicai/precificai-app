@@ -108,9 +108,22 @@ export default function MatrizBCGScreen({ navigation }) {
 
   async function saveVenda(prodId, qty) {
     const db = await getDatabase();
-    await db.runAsync('DELETE FROM vendas WHERE produto_id = ? AND data = ?', [prodId, currentMonth]);
-    if (qty > 0) {
-      await db.runAsync('INSERT INTO vendas (produto_id, data, quantidade) VALUES (?,?,?)', [prodId, currentMonth, qty]);
+    // Sessão 28.47 — bug #5: combos têm prodId negativo (sentinel) e não
+    // podem ir pra `vendas` (FK constraint produtos.id). Roteamos pra tabela
+    // dedicada `vendas_combos`. Antes: INSERT silenciosamente falhava por FK.
+    if (prodId < 0) {
+      const comboId = -prodId;
+      await db.runAsync('DELETE FROM vendas_combos WHERE combo_id = ? AND data = ?', [comboId, currentMonth]);
+      if (qty > 0) {
+        try {
+          await db.runAsync('INSERT INTO vendas_combos (combo_id, data, quantidade) VALUES (?,?,?)', [comboId, currentMonth, qty]);
+        } catch (e) { console.warn('[BCG.saveVenda.combo]', e); }
+      }
+    } else {
+      await db.runAsync('DELETE FROM vendas WHERE produto_id = ? AND data = ?', [prodId, currentMonth]);
+      if (qty > 0) {
+        await db.runAsync('INSERT INTO vendas (produto_id, data, quantidade) VALUES (?,?,?)', [prodId, currentMonth, qty]);
+      }
     }
     // Sessão 28.27 BUG FIX: NÃO reclassifica enquanto o user está em modo "Vendas".
     // Antes (28.17): salvava → loadData() rodava → matriz re-renderizava → form
@@ -149,7 +162,7 @@ export default function MatrizBCGScreen({ navigation }) {
     setLoadError(null);
     try {
       const db = await getDatabase();
-      const [prods, allIngs, allPreps, allEmbs, vendas, prevVendas, cats, comboRows, comboItensRows] = await Promise.all([
+      const [prods, allIngs, allPreps, allEmbs, vendas, prevVendas, cats, comboRows, comboItensRows, vendasCombos, prevVendasCombos] = await Promise.all([
         db.getAllAsync('SELECT * FROM produtos ORDER BY nome'),
         db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
         db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
@@ -160,6 +173,9 @@ export default function MatrizBCGScreen({ navigation }) {
         db.getAllAsync('SELECT * FROM categorias_produtos ORDER BY nome'),
         db.getAllAsync('SELECT * FROM delivery_combos ORDER BY nome'),
         db.getAllAsync('SELECT * FROM delivery_combo_itens'),
+        // Sessão 28.47 — bug #5: vendas de combos vêm de tabela dedicada
+        db.getAllAsync('SELECT * FROM vendas_combos WHERE data = ?', [currentMonth]).catch(() => []),
+        db.getAllAsync('SELECT * FROM vendas_combos WHERE data = ?', [prevMonthStr]).catch(() => []),
       ]);
       setCategorias(cats || []);
 
@@ -170,10 +186,13 @@ export default function MatrizBCGScreen({ navigation }) {
 
       const vMap = {};
       (vendas || []).forEach(v => { vMap[v.produto_id] = safeNum(v.quantidade); });
+      // Sessão 28.47 — bug #5: combos têm key negativa (-combo_id) no vMap
+      (vendasCombos || []).forEach(v => { vMap[-v.combo_id] = safeNum(v.quantidade); });
       setVendasMap(vMap);
 
       const pvMap = {};
       (prevVendas || []).forEach(v => { pvMap[v.produto_id] = safeNum(v.quantidade); });
+      (prevVendasCombos || []).forEach(v => { pvMap[-v.combo_id] = safeNum(v.quantidade); });
       setPrevVendasMap(pvMap);
 
       const hasCurrentMonth = vendas && vendas.length > 0;
@@ -193,7 +212,10 @@ export default function MatrizBCGScreen({ navigation }) {
         const precoVenda = safeNum(p.preco_venda);
         const margemPerc = precoVenda > 0 ? safeNum(((precoVenda - custoUnitario) / precoVenda) * 100) : 0;
         const qtdVendida = safeNum(vMap[p.id]);
-        result.push({ ...p, custoUnitario, margemPerc, precoVenda, qtdVendida, isCombo: false });
+        // Sessão 28.47 — bug #6: classificação BCG usa vendas do MÊS ANTERIOR
+        // (mais estável; mês corrente está incompleto).
+        const qtdVendidaRanking = safeNum(pvMap[p.id]);
+        result.push({ ...p, custoUnitario, margemPerc, precoVenda, qtdVendida, qtdVendidaRanking, isCombo: false });
       }
 
       // Add combos
@@ -211,9 +233,10 @@ export default function MatrizBCGScreen({ navigation }) {
         // Use negative ID for combo vendas to avoid collision with product IDs
         const comboVendaKey = -c.id;
         const qtdVendida = safeNum(vMap[comboVendaKey]);
+        const qtdVendidaRanking = safeNum(pvMap[comboVendaKey]);
         result.push({
           ...c, id: comboVendaKey, nome: c.nome + ' (Combo)', custoUnitario, margemPerc,
-          precoVenda, qtdVendida, isCombo: true, comboId: c.id,
+          precoVenda, qtdVendida, qtdVendidaRanking, isCombo: true, comboId: c.id,
         });
       }
 
@@ -230,14 +253,15 @@ export default function MatrizBCGScreen({ navigation }) {
       }
       const sorted = (arr) => [...arr].sort((a, b) => a - b);
       const median = (arr) => { const s = sorted(arr); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
-      const itensComVenda = validItems.filter(p => p.qtdVendida > 0);
-      const medianaVendas = itensComVenda.length > 0 ? median(itensComVenda.map(p => p.qtdVendida)) : 0;
+      // Sessão 28.47 — bug #6: classificação usa qtdVendidaRanking (mês anterior).
+      const itensComVenda = validItems.filter(p => p.qtdVendidaRanking > 0);
+      const medianaVendas = itensComVenda.length > 0 ? median(itensComVenda.map(p => p.qtdVendidaRanking)) : 0;
       const medianaMargem = median(validItems.map(p => p.margemPerc));
 
       const classified = result.map(p => {
         const altaMargem = p.margemPerc >= medianaMargem;
-        // Produto sem venda no mês NUNCA é "alta venda" — independente da mediana.
-        const altaVenda = p.qtdVendida > 0 && p.qtdVendida >= medianaVendas;
+        // Produto sem venda no mês anterior NUNCA é "alta venda".
+        const altaVenda = p.qtdVendidaRanking > 0 && p.qtdVendidaRanking >= medianaVendas;
         let classificacao;
         if (altaMargem && altaVenda) classificacao = 'Estrela';
         else if (!altaMargem && altaVenda) classificacao = 'Cavalo de Batalha';
@@ -376,10 +400,10 @@ export default function MatrizBCGScreen({ navigation }) {
           <Text style={styles.title}>Ranking de Produtos</Text>
           <InfoTooltip
             title="Como funciona?"
-            text="Classifica cada produto pela margem de contribuição × popularidade (vendas/mês). A mediana divide os produtos em 4 quadrantes (também conhecido como Engenharia do Cardápio)."
+            text="Classifica cada produto pela margem de contribuição × popularidade (vendas do MÊS ANTERIOR — mais estável que o mês corrente, que ainda não fechou). A mediana divide os produtos em 4 quadrantes (também conhecido como Engenharia do Cardápio)."
           />
         </View>
-        <Text style={styles.subtitle}>Descubra quais produtos vendem mais e dão mais lucro — e quais você deveria parar de vender.</Text>
+        <Text style={styles.subtitle}>Classificação baseada nas vendas do mês anterior (mais estável que o mês corrente). Você ainda registra as vendas do mês atual abaixo.</Text>
       </View>
 
       {/* Sales CTA - always visible when not editing */}

@@ -329,7 +329,7 @@ function MaisStack() {
       <Stack.Screen name="KitInicio" component={KitInicioScreen} options={{ title: 'Kit de Início' }} />
       <Stack.Screen name="Sobre" component={SobreScreen} options={{ title: 'Sobre o App' }} />
       <Stack.Screen name="ContaSeguranca" component={ContaSegurancaScreen} options={{ title: 'Conta e Segurança' }} />
-      <Stack.Screen name="ExportPDF" component={ExportPDFScreen} options={{ title: 'Exportar PDF' }} />
+      <Stack.Screen name="ExportPDF" component={ExportPDFScreen} options={{ title: 'Fichas Técnicas' }} />
       <Stack.Screen name="Suporte" component={SuporteScreen} options={{ title: 'Suporte' }} />
       <Stack.Screen name="EntradaEstoque" component={EntradaEstoqueScreen} options={{ title: 'Entrada de Estoque', presentation: 'transparentModal', headerShown: false }} />
       <Stack.Screen name="AjusteEstoque" component={AjusteEstoqueScreen} options={{ title: 'Ajuste de Estoque', presentation: 'transparentModal', headerShown: false }} />

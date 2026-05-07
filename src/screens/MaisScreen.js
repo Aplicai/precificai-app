@@ -69,9 +69,9 @@ const MENU_GROUPS = [
       // num único item "Relatórios" no grupo Análise (mais abaixo).
       {
         key: 'exportpdf',
-        title: 'Exportar PDF',
+        title: 'Fichas Técnicas',
         desc: 'Gere fichas técnicas em PDF para impressão',
-        icon: 'printer',
+        icon: 'file-text',
         set: 'feather',
         screen: 'ExportPDF',
       },
