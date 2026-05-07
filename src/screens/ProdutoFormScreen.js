@@ -156,6 +156,18 @@ export default function ProdutoFormScreen({ route, navigation }) {
         const { cascadeFromInsumo, recalcularTodosCombos } = await import('../services/cascadeRecalc');
         await cascadeFromInsumo(db);
         await recalcularTodosCombos(db);
+      } catch (e) { console.warn('[ProdutoForm.cascade]', e); }
+      // Sessão 28.44 — bug #17: invalida cache + notifica list screens
+      try {
+        const { clearQueryCache } = await import('../database/supabaseDb');
+        clearQueryCache?.();
+      } catch (_) {}
+      try {
+        const { notifyDataChanged } = await import('../utils/dataSync');
+        notifyDataChanged('materias_primas');
+        notifyDataChanged('preparos');
+        notifyDataChanged('produtos');
+        notifyDataChanged('delivery_combos');
       } catch (_) {}
       setEditPrecoModal(null);
       setEditPrecoValor('');
@@ -809,6 +821,19 @@ export default function ProdutoFormScreen({ route, navigation }) {
       try {
         const { recalcularTodosCombos } = await import('../services/cascadeRecalc');
         await recalcularTodosCombos(db);
+      } catch (e) { console.warn('[ProdutoForm.salvar.cascade]', e); }
+
+      // Sessão 28.44 — bug #17: invalida cache + notifica list screens
+      // pra que ProdutosList e DeliveryCombos vejam mudanças sem precisar
+      // reabrir o produto manualmente.
+      try {
+        const { clearQueryCache } = await import('../database/supabaseDb');
+        clearQueryCache?.();
+      } catch (_) {}
+      try {
+        const { notifyDataChanged } = await import('../utils/dataSync');
+        notifyDataChanged('produtos');
+        notifyDataChanged('delivery_combos');
       } catch (_) {}
 
       const returnTo = route.params?.returnTo;

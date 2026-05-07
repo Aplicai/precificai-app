@@ -343,7 +343,7 @@ export default function KitInicioScreen({ navigation, route }) {
         }
         (catData || []).forEach(cat => { catMap[cat.nome] = cat.id; });
         setProgressCount(p => ({ ...p, categorias: catData?.length || 0 }));
-        console.log(`[KitInicio] ${catData?.length || 0} categorias cadastradas`);
+        if (typeof __DEV__ !== 'undefined' && __DEV__) console.log(`[KitInicio] ${catData?.length || 0} categorias cadastradas`);
       }
 
       // Step 3: Insert insumos with correct category mapping
@@ -423,7 +423,7 @@ export default function KitInicioScreen({ navigation, route }) {
         const pulados = insumoRowsRaw.length - insumoRows.length;
         totalPulados += pulados;
         if (pulados > 0) {
-          console.log(`[KitInicio] ${pulados} insumos já existiam — não duplicados (APP-52)`);
+          if (typeof __DEV__ !== 'undefined' && __DEV__) console.log(`[KitInicio] ${pulados} insumos já existiam — não duplicados (APP-52)`);
         }
         if (insumoRows.length > 0) {
           const { data: insData, error: insErr } = await supabase
@@ -437,7 +437,7 @@ export default function KitInicioScreen({ navigation, route }) {
           criados = insData?.length || 0;
         }
         setProgressCount(p => ({ ...p, insumos: criados }));
-        console.log(`[KitInicio] ${criados} insumos cadastrados (${pulados} pulados por já existirem)`);
+        if (typeof __DEV__ !== 'undefined' && __DEV__) console.log(`[KitInicio] ${criados} insumos cadastrados (${pulados} pulados por já existirem)`);
       }
 
       // Build map: nome insumo → id (pra usar nos preparos depois)
@@ -488,7 +488,7 @@ export default function KitInicioScreen({ navigation, route }) {
         (embData || []).forEach(e => { embalagensMap[e.nome] = e.id; });
         embsCriadas = embData?.length || 0;
         setProgressCount(p => ({ ...p, embalagens: embsCriadas }));
-        console.log(`[KitInicio] ${embsCriadas} embalagens cadastradas`);
+        if (typeof __DEV__ !== 'undefined' && __DEV__) console.log(`[KitInicio] ${embsCriadas} embalagens cadastradas`);
       }
 
       // ===== Step 5: Preparos =====
@@ -568,7 +568,7 @@ export default function KitInicioScreen({ navigation, route }) {
           }
         }
         setProgressCount(p => ({ ...p, preparos: prepsCriados }));
-        console.log(`[KitInicio] ${prepsCriados} preparos cadastrados`);
+        if (typeof __DEV__ !== 'undefined' && __DEV__) console.log(`[KitInicio] ${prepsCriados} preparos cadastrados`);
       }
 
       // ===== Step 6: Produtos =====
@@ -648,7 +648,7 @@ export default function KitInicioScreen({ navigation, route }) {
           }
         }
         setProgressCount(p => ({ ...p, produtos: prodsCriados }));
-        console.log(`[KitInicio] ${prodsCriados} produtos cadastrados`);
+        if (typeof __DEV__ !== 'undefined' && __DEV__) console.log(`[KitInicio] ${prodsCriados} produtos cadastrados`);
       }
 
       // Sessão 28.9 — invalidar cache do wrapper supabaseDb pra que outras telas

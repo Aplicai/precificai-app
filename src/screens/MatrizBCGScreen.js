@@ -154,8 +154,9 @@ export default function MatrizBCGScreen({ navigation }) {
         db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
         db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
         db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
-        db.getAllAsync(`SELECT * FROM vendas WHERE data = '${currentMonth}'`),
-        db.getAllAsync(`SELECT * FROM vendas WHERE data = '${prevMonthStr}'`),
+        // Sessão 28.44 — security: placeholder ao invés de interpolar string em SQL
+        db.getAllAsync('SELECT * FROM vendas WHERE data = ?', [currentMonth]),
+        db.getAllAsync('SELECT * FROM vendas WHERE data = ?', [prevMonthStr]),
         db.getAllAsync('SELECT * FROM categorias_produtos ORDER BY nome'),
         db.getAllAsync('SELECT * FROM delivery_combos ORDER BY nome'),
         db.getAllAsync('SELECT * FROM delivery_combo_itens'),

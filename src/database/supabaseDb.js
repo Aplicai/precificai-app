@@ -181,7 +181,12 @@ async function executeRun(sql, params = []) {
 
     const { data, error } = await supabase.from(table).insert(row).select('id').single();
     if (error) {
-      console.error('[SupabaseDb] Insert error:', error.message, table, JSON.stringify(row));
+      // Sessão 28.44 — security L5: não logar payload completo em prod
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[SupabaseDb] Insert error:', error.message, table, JSON.stringify(row));
+      } else {
+        console.error('[SupabaseDb] Insert error:', error.message, table);
+      }
       throw new Error(`Erro ao salvar em ${table}: ${error.message}`);
     }
     return { lastInsertRowId: data?.id, changes: 1 };
@@ -217,10 +222,19 @@ async function executeRun(sql, params = []) {
       else if (w.op === '>=') query = query.gte(w.col, w.val);
       else if (w.op === '<=') query = query.lte(w.col, w.val);
     }
+    // Sessão 28.44 — defense-in-depth: força filtro user_id no UPDATE.
+    // RLS no Postgres já barra cross-user, mas se RLS for desativado por
+    // engano, isso é a 2ª camada. Custo zero. (Auditoria security M1)
+    if (currentUserId) query = query.eq('user_id', currentUserId);
 
     const { error } = await query;
     if (error) {
-      console.error('[SupabaseDb] Update error:', error.message, table, JSON.stringify(updates));
+      // Sessão 28.44 — security L5: não logar payload em prod (vazamento via console)
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[SupabaseDb] Update error:', error.message, table, JSON.stringify(updates));
+      } else {
+        console.error('[SupabaseDb] Update error:', error.message, table);
+      }
       throw new Error(`Erro ao atualizar ${table}: ${error.message}`);
     }
     return { changes: 1 };
@@ -242,6 +256,8 @@ async function executeRun(sql, params = []) {
       else if (w.op === '>=') query = query.gte(w.col, w.val);
       else if (w.op === '<=') query = query.lte(w.col, w.val);
     }
+    // Sessão 28.44 — defense-in-depth: força filtro user_id no DELETE
+    if (currentUserId) query = query.eq('user_id', currentUserId);
 
     const { error } = await query;
     if (error) {

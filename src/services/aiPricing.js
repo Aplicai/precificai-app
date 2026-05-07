@@ -30,7 +30,10 @@ export async function gatherFinancialContext(db) {
 
     const margem_alvo = Number(config?.lucro_desejado) || 0.3;
     const totalFixas = (fixas || []).reduce((s, f) => s + (Number(f.valor) || 0), 0);
-    const faturamento = Number(config?.faturamento_estimado) || 0;
+    // Sessão 28.44 — Contracts #2: coluna correta é `faturamento_mensal`
+    // (não `faturamento_estimado`). Antes: lia undefined → faturamento=0 →
+    // despesas_fixas_pct=0 → markup degradava → preços sugeridos errados.
+    const faturamento = Number(config?.faturamento_mensal) || 0;
     const despesas_fixas_pct = faturamento > 0 ? totalFixas / faturamento : 0;
     const despesas_variaveis_pct = (variaveis || []).reduce(
       (s, v) => s + (Number(v.percentual) || 0),

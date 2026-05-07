@@ -770,12 +770,17 @@ export default function HomeScreen({ navigation }) {
       </View>
       <View style={[styles.kpiRow, isDesktop && styles.kpiRowDesktop]}>
         {(() => {
-          const cmvTarget = parseFloat(cmvMetaValue) / 100 || 0.35;
+          // Sessão 28.44 — bug #9: usa Number.isFinite ao invés de `||` pra
+          // distinguir "valor 0 válido" (user desligou o benchmark) de "input
+          // inválido" (string vazia, NaN, etc). Antes: meta=0 caía pra default.
+          const cmvParsed = parseFloat(cmvMetaValue);
+          const cmvTarget = Number.isFinite(cmvParsed) ? cmvParsed / 100 : 0.35;
           const cmvBench = d.cmvPercent < cmvTarget ? 'green' : d.cmvPercent <= (cmvTarget + 0.05) ? 'yellow' : 'red';
           const resBench = d.resultadoFinanceiro > 0
             ? (d.fatMedio > 0 && d.resultadoFinanceiro / d.fatMedio < 0.10 ? 'yellow' : 'green')
             : 'red';
-          const margTarget = parseFloat(margemMetaValue) / 100 || 0.15;
+          const margParsed = parseFloat(margemMetaValue);
+          const margTarget = Number.isFinite(margParsed) ? margParsed / 100 : 0.15;
           const margBench = d.margemMedia >= margTarget ? 'green' : d.margemMedia >= (margTarget - 0.10) ? 'yellow' : 'red';
           const benchColors = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
           return [

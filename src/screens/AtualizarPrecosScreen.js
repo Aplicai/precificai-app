@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, calcPrecoBase } from '../utils/calculations';
 import { formatInsumoNome } from '../utils/insumoDisplay';
 import { notifyDataChanged } from '../utils/dataSync';
 import SearchBar from '../components/SearchBar';
@@ -142,9 +142,12 @@ export default function AtualizarPrecosScreen({ navigation }) {
       if (activeTab === 'insumos') {
         const row = await db.getFirstAsync('SELECT * FROM materias_primas WHERE id = ?', [item.id]);
         if (row) {
-          // Audit P1: safeNum + division-by-zero guard reforçado.
+          // Sessão 28.44 — bug #2: usa calcPrecoBase pra converter unidade.
+          // Antes: numericValue / qtdLiquida (sem unidade) — pra insumo em gramas
+          // (1000g = R$10) gravava preco_por_kg = 0.01 (1000x errado).
+          // Agora: calcPrecoBase respeita unidade_medida e devolve R$/kg correto.
           const qtdLiquida = safeNum(row.quantidade_liquida) || safeNum(row.quantidade_bruta) || 1;
-          const precoPorKg = qtdLiquida > 0 ? safeNum(numericValue / qtdLiquida) : 0;
+          const precoPorKg = calcPrecoBase(numericValue, qtdLiquida, row.unidade_medida || 'g');
           await db.runAsync('UPDATE materias_primas SET valor_pago = ?, preco_por_kg = ? WHERE id = ?', [numericValue, precoPorKg, item.id]);
         }
       } else {
