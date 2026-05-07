@@ -58,7 +58,11 @@ const SEGMENT_ICONS = {
 export default function KitInicioScreen({ navigation, route }) {
   const isSetup = route?.params?.setup === true;
   const { isMobile } = useResponsiveLayout();
-  const bottomOffset = isMobile ? 86 : 16; // BottomTab clearance on mobile
+  // Sessão 28.32: KitInicio é pushed sobre RootStack — o tabBar do MainTabs
+  // não aparece nesta tela, então NÃO precisa de offset pra limpar tab bar.
+  // Sticky CTA agora cola no rodapé do viewport (bottom: 0). Isso elimina o
+  // gap que o user reportou ("deslocado pra cima, dando pra ver itens atrás").
+  const bottomOffset = 0;
   const [selected, setSelected] = useState(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -87,10 +91,13 @@ export default function KitInicioScreen({ navigation, route }) {
   }, []);
 
   async function navegarAposKit() {
+    // Sessão 28.32: feedback visual imediato + reset SEMPRE pra MainTabs
+    // quando user escolheu "Começar do zero" fora do setup. Antes:
+    // navigation.goBack() podia voltar pra Mais menu (parecendo que nada
+    // aconteceu) → usuário reportou "não funcionou".
+    setLoading(true);
     try {
       await AsyncStorage.setItem('onboarding_done', 'true');
-      // Audit P1: persistir o segmento escolhido para futura referência (relatórios,
-      // sugestões de templates, recomendações). Falha não bloqueia navegação.
       if (selected) {
         try {
           await AsyncStorage.setItem('segmento_negocio', selected);
@@ -101,18 +108,15 @@ export default function KitInicioScreen({ navigation, route }) {
       if (isSetup) {
         navigation.replace('Onboarding');
       } else {
-        if (navigation.canGoBack()) {
-          navigation.goBack();
-        } else {
-          // F1-J1-02 (P0): reset completo do stack ao cair em MainTabs sem
-          // histórico válido — evita rotas residuais do fluxo de setup.
-          navigation.dispatch(
-            CommonActions.reset({
-              index: 0,
-              routes: [{ name: 'MainTabs' }],
-            })
-          );
-        }
+        // Para "Outro / Começar do zero" + conta existente: reseta SEMPRE pro
+        // MainTabs/Painel Geral. Fluxo claro: usuário escolheu começar fresh,
+        // mostra a tela principal vazia com call-to-action pra cadastrar.
+        navigation.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [{ name: 'MainTabs', params: { initialTab: 'Início' } }],
+          })
+        );
       }
     } catch (e) {
       console.error('[KitInicio.navegarAposKit]', e);

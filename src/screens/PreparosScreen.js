@@ -147,6 +147,17 @@ export default function PreparosScreen({ navigation }) {
     }
   }, [currentRoute?.params?.openPreparoEdit, navigation]);
 
+  // Sessão 28.32: deep-link `abrirNovoPreparo` (vindo do EntityCreateModal de produto
+  // → "+ Preparo") abre o modal de criação de preparo direto.
+  useEffect(() => {
+    const novo = currentRoute?.params?.abrirNovoPreparo;
+    if (novo) {
+      setEditingId(null);
+      setShowCreateModal(true);
+      try { navigation.setParams({ abrirNovoPreparo: undefined }); } catch {}
+    }
+  }, [currentRoute?.params?.abrirNovoPreparo, navigation]);
+
   async function loadData() {
     setLoading(true);
     setLoadError(false);

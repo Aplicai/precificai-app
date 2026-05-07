@@ -77,6 +77,14 @@ export function AuthProvider({ children }) {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
+      // Sessão 28.32: ao fazer login, limpa o "última tab visitada" pra usuário
+      // SEMPRE entrar no Painel Geral (Início). Antes: sessão restaurava a
+      // última tab visitada da sessão anterior → usuário caía em "Produtos" ou
+      // "Mais" aleatoriamente, esperando o Painel Geral.
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        await AsyncStorage.removeItem('precificai_last_tab');
+      } catch {}
       return data;
     } catch (err) {
       captureException(err, { screen: 'Login', action: 'signIn' });
