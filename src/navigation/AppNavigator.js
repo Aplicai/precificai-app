@@ -46,9 +46,10 @@ import AtualizarPrecosScreen from '../screens/AtualizarPrecosScreen';
 import SimuladorScreen from '../screens/SimuladorScreen';
 // APP-28: simulador em lote (todos produtos × todas plataformas em uma tela)
 import SimuladorLoteScreen from '../screens/SimuladorLoteScreen';
-import RelatorioSimplesScreen from '../screens/RelatorioSimplesScreen';
+// Sessão 28.40: RelatorioSimples e RelatorioInsumos foram unificados em RelatoriosHub.
+// Imports legados removidos — RelatoriosHubScreen importa os dois internamente.
+import RelatoriosHubScreen from '../screens/RelatoriosHubScreen';
 import FornecedoresScreen from '../screens/FornecedoresScreen';
-import RelatorioInsumosScreen from '../screens/RelatorioInsumosScreen';
 import PrecosPlataformaScreen from '../screens/PrecosPlataformaScreen';
 import SimulacaoProdutoScreen from '../screens/SimulacaoProdutoScreen';
 import ListaComprasScreen from '../screens/ListaComprasScreen';
@@ -318,9 +319,10 @@ function MaisStack() {
       <Stack.Screen name="Perfil" component={PerfilScreen} options={{ title: 'Meu Perfil' }} />
       <Stack.Screen name="AtualizarPrecos" component={AtualizarPrecosScreen} options={{ title: 'Atualizar Preços' }} />
       <Stack.Screen name="Simulador" component={SimuladorScreen} options={{ title: 'Simulador E se?' }} />
-      <Stack.Screen name="RelatorioSimples" component={RelatorioSimplesScreen} options={{ title: 'Relatório' }} />
+      {/* Sessão 28.40: Relatórios unificados em uma única página com tabs internas (Geral / Insumos).
+          Rotas legadas (RelatorioSimples / RelatorioInsumos) removidas — usar `Relatorios` com param `aba`. */}
+      <Stack.Screen name="Relatorios" component={RelatoriosHubScreen} options={{ title: 'Relatórios' }} />
       <Stack.Screen name="Fornecedores" component={FornecedoresScreen} options={{ title: 'Comparar Fornecedores' }} />
-      <Stack.Screen name="RelatorioInsumos" component={RelatorioInsumosScreen} options={{ title: 'Relatório de Insumos' }} />
       <Stack.Screen name="PrecosPlataforma" component={PrecosPlataformaScreen} options={{ title: 'Preços por Plataforma' }} />
       <Stack.Screen name="SimulacaoProduto" component={SimulacaoProdutoScreen} options={{ title: 'Simulação de Preço' }} />
       <Stack.Screen name="ListaCompras" component={ListaComprasScreen} options={{ title: 'Lista de Compras' }} />

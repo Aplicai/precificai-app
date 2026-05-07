@@ -37,7 +37,9 @@ function escapeHtml(text) {
     .replace(/'/g, '&#039;');
 }
 
-export default function RelatorioSimplesScreen({ navigation }) {
+// Sessão 28.40: prop `embedded` — quando true, renderizado dentro do
+// RelatoriosHubScreen (sem header próprio).
+export default function RelatorioSimplesScreen({ navigation, embedded = false }) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [perfilNome, setPerfilNome] = useState('');
@@ -590,12 +592,14 @@ export default function RelatorioSimplesScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       )}
-      {/* Header */}
-      <View style={styles.header}>
-        <Feather name="book-open" size={24} color={colors.primary} />
-        <Text style={styles.headerTitle}>Relatório</Text>
-        <Text style={styles.headerSub}>Seus números traduzidos em linguagem simples</Text>
-      </View>
+      {/* Header — escondido em embedded (RelatoriosHub já tem header global) */}
+      {!embedded && (
+        <View style={styles.header}>
+          <Feather name="book-open" size={24} color={colors.primary} />
+          <Text style={styles.headerTitle}>Relatório</Text>
+          <Text style={styles.headerSub}>Seus números traduzidos em linguagem simples</Text>
+        </View>
+      )}
 
       {/* Filtro por categoria — chips horizontais. 'Todas' é o estado neutro
           (sem filtro). Selecionar a categoria já ativa volta para 'Todas'. */}

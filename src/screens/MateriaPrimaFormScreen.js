@@ -43,6 +43,8 @@ function getCategoryColor(index) {
 export default function MateriaPrimaFormScreen({ route, navigation }) {
   const editId = route.params?.id;
   const returnTo = route.params?.returnTo;
+  // Sessão 28.40: returnToParams pra propagar params (ex.: aba do RelatoriosHub)
+  const returnToParams = route.params?.returnToParams;
   const { isDesktop, isMobile } = useResponsiveLayout();
   const { isCompact, buttonHeight } = useListDensity();
   // Sessão Forms-Mobile — agrupamentos 2/3-col viram coluna no mobile p/ não
@@ -61,8 +63,9 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     'DeliveryHub': 'Mais',
     'Fornecedores': 'Mais',
     'AtualizarPrecos': 'Mais',
-    // Sessão 28.39: relatório de insumos vive na tab "Mais"
-    'RelatorioInsumos': 'Mais',
+    // Sessão 28.40: Relatórios unificado (Geral + Insumos via tabs internas)
+    'Relatorios': 'Mais',
+    'RelatorioInsumos': 'Mais', // legado — fallback
   };
 
   function goBackSafe() {
@@ -73,7 +76,8 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         try {
           const parent = navigation.getParent();
           if (parent) {
-            parent.navigate(parentTab, { screen: returnTo });
+            // Sessão 28.40: propaga returnToParams (ex.: aba do RelatoriosHub)
+            parent.navigate(parentTab, { screen: returnTo, params: returnToParams });
             return;
           }
         } catch (e) {
@@ -82,7 +86,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
       }
       // Fallback: navegar direto (pode resolver se rota está no stack atual)
       try {
-        navigation.navigate(returnTo);
+        navigation.navigate(returnTo, returnToParams);
       } catch (e) {
         if (typeof console !== 'undefined' && console.error) console.error('[MateriaPrimaForm.goBackSafe.navigate]', e);
         navigation.goBack();

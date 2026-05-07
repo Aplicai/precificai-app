@@ -30,9 +30,8 @@ const NAV_SECTIONS = [
       { key: 'bcg', label: 'Ranking de Produtos', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Mais', screen: 'MatrizBCG', flag: 'modo_avancado_analise' },
       { key: 'precos', label: 'Atualizar Preços', icon: 'refresh-cw', iconSet: 'feather', tab: 'Mais', screen: 'AtualizarPrecos' },
       // Sessão 26 — Simulador agora é CTA contextual dentro da Ficha Técnica
-      { key: 'relatorio', label: 'Relatório', icon: 'file-text', iconSet: 'feather', tab: 'Mais', screen: 'RelatorioSimples' },
-      // Sessão 28.17: Fornecedores substituída por Relatório de Insumos (sem flag)
-      { key: 'relatorio_insumos', label: 'Relatório de Insumos', icon: 'trending-up', iconSet: 'feather', tab: 'Mais', screen: 'RelatorioInsumos' },
+      // Sessão 28.40: relatórios unificados em uma única página com tabs internas
+      { key: 'relatorio', label: 'Relatórios', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Mais', screen: 'Relatorios' },
       { key: 'listacompras', label: 'Lista de Compras', icon: 'shopping-cart', iconSet: 'feather', tab: 'Mais', screen: 'ListaCompras' },
       { key: 'exportpdf', label: 'Exportar PDF', icon: 'printer', iconSet: 'feather', tab: 'Mais', screen: 'ExportPDF' },
     ],
@@ -81,7 +80,7 @@ function getActiveKey(navState) {
     if (screenName === 'MatrizBCG' || screenName === 'BCGProdutoForm') return 'bcg';
     if (screenName === 'AtualizarPrecos') return 'precos';
     if (screenName === 'Simulador') return 'simulador';
-    if (screenName === 'RelatorioSimples') return 'relatorio';
+    if (screenName === 'RelatorioSimples' || screenName === 'RelatorioInsumos' || screenName === 'Relatorios') return 'relatorio';
     if (screenName === 'Fornecedores') return 'fornecedores';
     if (screenName === 'ListaCompras') return 'listacompras';
     if (screenName === 'KitInicio') return 'kitinicio';

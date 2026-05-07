@@ -24,7 +24,10 @@ const safe = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-export default function RelatorioInsumosScreen() {
+// Sessão 28.40: prop `embedded` indica que estamos sendo renderizados dentro
+// do RelatoriosHubScreen. Quando true: esconde header próprio (o hub já tem
+// header global "Relatórios") e ajusta paddings.
+export default function RelatorioInsumosScreen({ embedded = false } = {}) {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
   const [insumos, setInsumos] = useState([]);
@@ -225,26 +228,42 @@ export default function RelatorioInsumosScreen() {
   return (
     <View style={styles.container}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
-        {/* Sessão 28.39: header polido no estilo Precificaí — ícone em círculo
-            colorido + título + subtitle estruturados, ação de refresh com ícone redondo. */}
-        <View style={styles.heroHeader}>
-          <View style={styles.heroIcon}>
-            <Feather name="bar-chart-2" size={22} color={colors.primary} />
+        {/* Sessão 28.39/28.40: header polido — quando embedded no RelatoriosHub,
+            mostra apenas subtitle + refresh (header principal está no hub). */}
+        {!embedded && (
+          <View style={styles.heroHeader}>
+            <View style={styles.heroIcon}>
+              <Feather name="bar-chart-2" size={22} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>Relatório de Insumos</Text>
+              <Text style={styles.subtitle}>
+                Saúde do seu cadastro: pendências, variações e oportunidades de redução de custo.
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={carregar}
+              style={styles.refreshBtn}
+              accessibilityLabel="Atualizar relatório"
+            >
+              <Feather name="refresh-cw" size={16} color={colors.primary} />
+            </TouchableOpacity>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>Relatório de Insumos</Text>
+        )}
+        {embedded && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
             <Text style={styles.subtitle}>
-              Saúde do seu cadastro: pendências, variações e oportunidades de redução de custo.
+              Saúde do cadastro: pendências, variações e oportunidades.
             </Text>
+            <TouchableOpacity
+              onPress={carregar}
+              style={styles.refreshBtn}
+              accessibilityLabel="Atualizar relatório"
+            >
+              <Feather name="refresh-cw" size={16} color={colors.primary} />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            onPress={carregar}
-            style={styles.refreshBtn}
-            accessibilityLabel="Atualizar relatório"
-          >
-            <Feather name="refresh-cw" size={16} color={colors.primary} />
-          </TouchableOpacity>
-        </View>
+        )}
 
         {insumos.length === 0 ? (
           <View style={styles.empty}>
@@ -330,7 +349,7 @@ export default function RelatorioInsumosScreen() {
                   <TouchableOpacity
                     key={i.id || idx}
                     style={styles.alertItem}
-                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'RelatorioInsumos' } })}
+                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
                   >
                     <Text style={styles.alertItemNome} numberOfLines={1}>{i.nome}</Text>
                     <Text style={styles.alertItemValor}>R$ {Number(i.preco_por_kg).toFixed(2)}/kg</Text>
@@ -359,7 +378,7 @@ export default function RelatorioInsumosScreen() {
                   <TouchableOpacity
                     key={i.id || idx}
                     style={styles.alertItem}
-                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'RelatorioInsumos' } })}
+                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
                   >
                     <Text style={styles.alertItemNome} numberOfLines={1}>{i.nome}</Text>
                     <Feather name="chevron-right" size={14} color={colors.textSecondary} />
@@ -387,7 +406,7 @@ export default function RelatorioInsumosScreen() {
                   <TouchableOpacity
                     key={i.id || idx}
                     style={styles.alertItem}
-                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'RelatorioInsumos' } })}
+                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
                   >
                     <Text style={styles.alertItemNome} numberOfLines={1}>{i.nome}</Text>
                     <Text style={styles.alertItemValor}>
@@ -427,7 +446,7 @@ export default function RelatorioInsumosScreen() {
                     <TouchableOpacity
                       key={i}
                       style={styles.variacaoRow}
-                      onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: v.materia_prima_id, returnTo: 'RelatorioInsumos' } })}
+                      onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: v.materia_prima_id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
                     >
                       <View style={{ flex: 1 }}>
                         <Text style={styles.variacaoNome} numberOfLines={1}>{v.nome}</Text>
@@ -470,7 +489,7 @@ export default function RelatorioInsumosScreen() {
                   <TouchableOpacity
                     key={i.id || idx}
                     style={styles.topRow}
-                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'RelatorioInsumos' } })}
+                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
                   >
                     <View style={[styles.topRank, { backgroundColor: colors.error + '20' }]}>
                       <Text style={[styles.topRankText, { color: colors.error }]}>{idx + 1}</Text>

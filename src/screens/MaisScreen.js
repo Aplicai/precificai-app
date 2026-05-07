@@ -65,17 +65,8 @@ const MENU_GROUPS = [
         // D-05: combos controlado APENAS por modo_avancado_combos (antes era OR com delivery)
         flag: 'modo_avancado_combos',
       },
-      // Sessão 28.17: aba "Comparar Fornecedores" REMOVIDA — usuária reclamou que
-      // ficar cadastrando várias marcas/fornecedores virou complicação. Substituída
-      // pelo "Relatório de Insumos" com preços médios + histórico de preços.
-      {
-        key: 'relatorio_insumos',
-        title: 'Relatório de Insumos',
-        desc: 'Preços médios por categoria + histórico de mudanças',
-        icon: 'trending-up',
-        set: 'feather',
-        screen: 'RelatorioInsumos',
-      },
+      // Sessão 28.40: "Relatório de Insumos" unificado com "Relatório" geral
+      // num único item "Relatórios" no grupo Análise (mais abaixo).
       {
         key: 'exportpdf',
         title: 'Exportar PDF',
@@ -100,13 +91,16 @@ const MENU_GROUPS = [
         screen: 'MatrizBCG',
         flag: 'modo_avancado_analise',
       },
+      // Sessão 28.40: Relatório geral + Relatório de Insumos unificados em
+      // uma única página "Relatórios" com tabs internas (Geral / Insumos),
+      // estilo do DeliveryHub.
       {
         key: 'relatorio',
-        title: 'Relatório',
-        desc: 'Seus números traduzidos em linguagem simples',
-        icon: 'file-text',
+        title: 'Relatórios',
+        desc: 'Visão geral do negócio e saúde do cadastro de insumos',
+        icon: 'bar-chart-2',
         set: 'feather',
-        screen: 'RelatorioSimples',
+        screen: 'Relatorios',
       },
     ],
   },
