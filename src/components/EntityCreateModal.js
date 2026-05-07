@@ -79,6 +79,13 @@ const TIPO_BADGE = {
 };
 
 // Mapas para "Como você vende" no produto
+// Sessão 28.37: alinhado com CATEGORY_COLORS de MateriaPrimaFormScreen pra
+// padronizar visual de categoria entre os formulários (insumo / preparo / produto).
+const CATEGORY_COLORS = [
+  colors.primary, colors.accent, colors.coral, colors.purple,
+  colors.yellow, colors.success, colors.info, colors.red,
+];
+
 const TIPO_VENDA_MAP_TO_DB = { unidade: 'por_unidade', kg: 'por_kg', litro: 'por_litro' };
 const TIPO_VENDA_MAP_FROM_DB = (db) => {
   if (db === 'por_kg' || db === 'kg') return 'kg';
@@ -823,7 +830,7 @@ export default function EntityCreateModal({
                 placeholder={isProduto ? 'Ex: Bolo de chocolate' : 'Ex: Massa de pizza'}
               />
 
-              {/* Categoria */}
+              {/* Categoria — Sessão 28.37: mostra dot colorido pra padronizar com MateriaPrimaForm */}
               <Text style={styles.fieldLabel}>Categoria</Text>
               <TouchableOpacity
                 style={styles.catSelect}
@@ -831,7 +838,13 @@ export default function EntityCreateModal({
                 accessibilityRole="button"
                 accessibilityLabel="Selecionar categoria"
               >
-                <Text style={[styles.catSelectText, !catObj && { color: colors.textSecondary }]}>
+                {(() => {
+                  if (!catObj) return null;
+                  const idx = categorias.findIndex(c => c.id === catObj.id);
+                  const dotColor = idx >= 0 ? CATEGORY_COLORS[idx % CATEGORY_COLORS.length] : colors.disabled;
+                  return <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: dotColor, marginRight: 8 }} />;
+                })()}
+                <Text style={[styles.catSelectText, !catObj && { color: colors.textSecondary }, { flex: 1 }]}>
                   {catLabel}
                 </Text>
                 <Feather name="chevron-down" size={16} color={colors.textSecondary} />
@@ -1385,19 +1398,26 @@ export default function EntityCreateModal({
                     style={[styles.catRow, !categoriaId && styles.catRowActive]}
                     onPress={() => { setCategoriaId(null); setShowCatPicker(false); }}
                   >
-                    <Feather name="x" size={14} color={colors.textSecondary} />
-                    <Text style={styles.catRowText}>Sem categoria</Text>
+                    {/* Sessão 28.37: padroniza com layout colorido do MateriaPrimaForm */}
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.disabled, marginRight: 4 }} />
+                    <Text style={[styles.catRowText, !categoriaId && { color: colors.primary, fontFamily: fontFamily.bold }]}>Sem categoria</Text>
+                    {!categoriaId && <Feather name="check" size={14} color={colors.primary} style={{ marginLeft: 'auto' }} />}
                   </TouchableOpacity>
-                  {categorias.map(c => (
-                    <TouchableOpacity
-                      key={c.id}
-                      style={[styles.catRow, categoriaId === c.id && styles.catRowActive]}
-                      onPress={() => { setCategoriaId(c.id); setShowCatPicker(false); }}
-                    >
-                      <Feather name="folder" size={14} color={colors.primary} />
-                      <Text style={styles.catRowText}>{c.nome}</Text>
-                    </TouchableOpacity>
-                  ))}
+                  {categorias.map((c, idx) => {
+                    const dotColor = CATEGORY_COLORS[idx % CATEGORY_COLORS.length];
+                    const isActive = categoriaId === c.id;
+                    return (
+                      <TouchableOpacity
+                        key={c.id}
+                        style={[styles.catRow, isActive && styles.catRowActive]}
+                        onPress={() => { setCategoriaId(c.id); setShowCatPicker(false); }}
+                      >
+                        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: dotColor, marginRight: 4 }} />
+                        <Text style={[styles.catRowText, { flex: 1 }, isActive && { color: colors.primary, fontFamily: fontFamily.bold }]}>{c.nome}</Text>
+                        {isActive && <Feather name="check" size={14} color={colors.primary} />}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </ScrollView>
                 <TouchableOpacity style={styles.catNovaBtn} onPress={() => setNovaCatMode(true)}>
                   <Feather name="plus" size={14} color={colors.primary} />
