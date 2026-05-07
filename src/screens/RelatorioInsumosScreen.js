@@ -11,7 +11,7 @@
  * Pra quê: empreendedora quer ver "como meus custos estão evoluindo" sem
  * precisar pensar em marcas/fornecedores específicos.
  */
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -92,11 +92,11 @@ export default function RelatorioInsumosScreen() {
       // Histórico (defensivo — tabela pode não existir)
       try {
         const hist = await db.getAllAsync(`
-          SELECT h.materia_prima_id, h.preco_por_kg, h.criado_em, mp.nome, mp.marca, mp.unidade_medida
+          SELECT h.materia_prima_id, h.preco_por_kg, h.criado_em, h.data, mp.nome, mp.marca, mp.unidade_medida
           FROM historico_precos h
           LEFT JOIN materias_primas mp ON mp.id = h.materia_prima_id
-          ORDER BY h.criado_em DESC
-          LIMIT 30
+          ORDER BY COALESCE(h.criado_em, h.data) DESC
+          LIMIT 100
         `);
         setHistorico(hist || []);
       } catch (e) {
@@ -109,6 +109,98 @@ export default function RelatorioInsumosScreen() {
       setLoading(false);
     }
   }
+
+  // Sessão 28.37: insights baseados em melhores práticas de relatórios de
+  // gestão de insumos (CMV, variação de preços, alertas de cadastro
+  // incompleto, idade do dado, concentração de custo). Inspirado em:
+  // food cost management dashboards, Cayena, SEBRAE, Crunchtime AvT reports.
+  const insights = useMemo(() => {
+    const safe = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
+    const now = Date.now();
+    const dia = 24 * 60 * 60 * 1000;
+
+    const semPreco = insumos.filter(i => safe(i.preco_por_kg) <= 0);
+    const comPreco = insumos.filter(i => safe(i.preco_por_kg) > 0);
+
+    // Idade do preço (dias desde última atualização registrada em historico_precos)
+    const ultimaAtualizacaoPorInsumo = {};
+    for (const h of historico) {
+      const ts = h.criado_em || h.data;
+      if (!ts) continue;
+      const t = new Date(ts).getTime();
+      if (!Number.isFinite(t)) continue;
+      const cur = ultimaAtualizacaoPorInsumo[h.materia_prima_id];
+      if (!cur || t > cur) ultimaAtualizacaoPorInsumo[h.materia_prima_id] = t;
+    }
+    const desatualizados = comPreco
+      .map(i => {
+        const t = ultimaAtualizacaoPorInsumo[i.id];
+        const idadeDias = t ? (now - t) / dia : null;
+        return { ...i, idadeDias };
+      })
+      .filter(i => i.idadeDias == null || i.idadeDias > 60)
+      .sort((a, b) => (b.idadeDias || 999) - (a.idadeDias || 999));
+
+    // Variação de preço — compara último vs penúltimo histórico por insumo
+    const variacoes = [];
+    const histPorInsumo = {};
+    for (const h of historico) {
+      if (!h.materia_prima_id) continue;
+      (histPorInsumo[h.materia_prima_id] = histPorInsumo[h.materia_prima_id] || []).push(h);
+    }
+    Object.keys(histPorInsumo).forEach(id => {
+      const arr = histPorInsumo[id].sort((a, b) => {
+        const ta = new Date(a.criado_em || a.data || 0).getTime();
+        const tb = new Date(b.criado_em || b.data || 0).getTime();
+        return tb - ta; // mais recente primeiro
+      });
+      if (arr.length < 2) return;
+      const atual = safe(arr[0].preco_por_kg);
+      const anterior = safe(arr[1].preco_por_kg);
+      if (atual <= 0 || anterior <= 0) return;
+      const delta = (atual - anterior) / anterior;
+      if (Math.abs(delta) >= 0.05) { // só lista variações ≥ 5%
+        variacoes.push({
+          materia_prima_id: arr[0].materia_prima_id,
+          nome: arr[0].nome,
+          atual, anterior, delta,
+          quando: arr[0].criado_em || arr[0].data,
+        });
+      }
+    });
+    variacoes.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+    // Top 5 mais caros (por preço/kg pra comparação justa) e mais baratos
+    const top5Caros = [...comPreco]
+      .sort((a, b) => safe(b.preco_por_kg) - safe(a.preco_por_kg))
+      .slice(0, 5);
+    const top5Baratos = [...comPreco]
+      .sort((a, b) => safe(a.preco_por_kg) - safe(b.preco_por_kg))
+      .slice(0, 5);
+
+    // Concentração de custo: categoria que tem MAIOR preço médio
+    const catMaisCara = [...categoriaStats].sort((a, b) => b.media - a.media)[0] || null;
+
+    // Custo médio geral por kg
+    const custoMedio = comPreco.length > 0
+      ? comPreco.reduce((a, i) => a + safe(i.preco_por_kg), 0) / comPreco.length
+      : 0;
+
+    return {
+      semPrecoCount: semPreco.length,
+      semPreco: semPreco.slice(0, 10),
+      desatualizadosCount: desatualizados.length,
+      desatualizados: desatualizados.slice(0, 10),
+      variacoes,
+      variacoesCount: variacoes.length,
+      top5Caros,
+      top5Baratos,
+      custoMedio,
+      catMaisCara,
+      totalCadastrados: insumos.length,
+      comPrecoCount: comPreco.length,
+    };
+  }, [insumos, historico, categoriaStats]);
 
   if (loading) {
     return (
@@ -125,7 +217,7 @@ export default function RelatorioInsumosScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>Relatório de Insumos</Text>
             <Text style={styles.subtitle}>
-              Visão geral dos preços médios por categoria + histórico de mudanças. Sem necessidade de cadastrar marcas ou fornecedores.
+              Saúde do seu cadastro: o que precisa atenção, top mais caros, variações de preço e custo médio por categoria.
             </Text>
           </View>
           {/* Sessão 28.25: botão de refresh manual — fallback caso useFocusEffect não dispare */}
@@ -155,48 +247,203 @@ export default function RelatorioInsumosScreen() {
           </View>
         ) : (
           <>
-            {/* KPIs gerais */}
+            {/* KPIs principais — Sessão 28.37 */}
             <View style={styles.kpiRow}>
               <View style={styles.kpiCard}>
-                <Text style={styles.kpiLabel}>Total de insumos</Text>
-                <Text style={styles.kpiValue}>{insumos.length}</Text>
+                <Text style={styles.kpiLabel}>Insumos cadastrados</Text>
+                <Text style={styles.kpiValue}>{insights.totalCadastrados}</Text>
+                <Text style={styles.kpiSub}>{insights.comPrecoCount} com preço</Text>
               </View>
-              <View style={styles.kpiCard}>
-                <Text style={styles.kpiLabel}>Categorias</Text>
-                <Text style={styles.kpiValue}>{categoriaStats.length}</Text>
+              <View style={[styles.kpiCard, insights.semPrecoCount > 0 && { borderLeftWidth: 3, borderLeftColor: colors.error }]}>
+                <Text style={styles.kpiLabel}>Sem preço</Text>
+                <Text style={[styles.kpiValue, insights.semPrecoCount > 0 && { color: colors.error }]}>{insights.semPrecoCount}</Text>
+                <Text style={styles.kpiSub}>bloqueiam precificação</Text>
               </View>
-              <View style={styles.kpiCard}>
-                <Text style={styles.kpiLabel}>Mudanças registradas</Text>
-                <Text style={styles.kpiValue}>{historico.length}</Text>
+              <View style={[styles.kpiCard, insights.desatualizadosCount > 0 && { borderLeftWidth: 3, borderLeftColor: colors.warning }]}>
+                <Text style={styles.kpiLabel}>Desatualizados</Text>
+                <Text style={[styles.kpiValue, insights.desatualizadosCount > 0 && { color: colors.warning }]}>{insights.desatualizadosCount}</Text>
+                <Text style={styles.kpiSub}>>60 dias sem update</Text>
               </View>
             </View>
 
-            {/* Stats por categoria */}
-            <Text style={styles.sectionTitle}>Preços médios por categoria</Text>
-            {categoriaStats.map((cat, i) => (
-              <View key={i} style={styles.catCard}>
-                <View style={styles.catHeader}>
-                  <Text style={styles.catNome}>{cat.nome}</Text>
-                  <Text style={styles.catCount}>{cat.count} insumo{cat.count !== 1 ? 's' : ''}</Text>
-                </View>
-                <View style={styles.catStatsRow}>
-                  <View style={styles.catStat}>
-                    <Text style={styles.catStatLabel}>Média</Text>
-                    <Text style={styles.catStatValue}>{formatCurrency(cat.media)}</Text>
-                  </View>
-                  <View style={styles.catStat}>
-                    <Text style={styles.catStatLabel}>Mínimo</Text>
-                    <Text style={[styles.catStatValue, { color: colors.success }]}>{formatCurrency(cat.min)}</Text>
-                  </View>
-                  <View style={styles.catStat}>
-                    <Text style={styles.catStatLabel}>Máximo</Text>
-                    <Text style={[styles.catStatValue, { color: colors.error }]}>{formatCurrency(cat.max)}</Text>
-                  </View>
-                </View>
+            <View style={styles.kpiRow}>
+              <View style={styles.kpiCard}>
+                <Text style={styles.kpiLabel}>Custo médio/kg</Text>
+                <Text style={styles.kpiValue}>{formatCurrency(insights.custoMedio)}</Text>
+                <Text style={styles.kpiSub}>entre insumos cadastrados</Text>
               </View>
-            ))}
+              <View style={styles.kpiCard}>
+                <Text style={styles.kpiLabel}>Categoria mais cara</Text>
+                <Text style={[styles.kpiValue, { fontSize: 14 }]} numberOfLines={1}>
+                  {insights.catMaisCara?.nome || '—'}
+                </Text>
+                <Text style={styles.kpiSub}>
+                  {insights.catMaisCara ? formatCurrency(insights.catMaisCara.media) + ' média' : ''}
+                </Text>
+              </View>
+              <View style={[styles.kpiCard, insights.variacoesCount > 0 && { borderLeftWidth: 3, borderLeftColor: colors.info }]}>
+                <Text style={styles.kpiLabel}>Variações ≥ 5%</Text>
+                <Text style={[styles.kpiValue, insights.variacoesCount > 0 && { color: colors.info }]}>{insights.variacoesCount}</Text>
+                <Text style={styles.kpiSub}>preço subiu ou caiu</Text>
+              </View>
+            </View>
 
-            {/* Histórico */}
+            {/* AÇÕES URGENTES: insumos sem preço */}
+            {insights.semPrecoCount > 0 && (
+              <View style={[styles.alertCard, { borderLeftColor: colors.error }]}>
+                <View style={styles.alertHeader}>
+                  <Feather name="alert-triangle" size={18} color={colors.error} />
+                  <Text style={[styles.alertTitle, { color: colors.error }]}>
+                    Pendentes — sem preço cadastrado
+                  </Text>
+                </View>
+                <Text style={styles.alertDesc}>
+                  Esses insumos NÃO entram no cálculo dos seus produtos. Atualize agora.
+                </Text>
+                {insights.semPreco.map((i, idx) => (
+                  <TouchableOpacity
+                    key={i.id || idx}
+                    style={styles.alertItem}
+                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id } })}
+                  >
+                    <Text style={styles.alertItemNome} numberOfLines={1}>{i.nome}</Text>
+                    <Feather name="chevron-right" size={14} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                ))}
+                {insights.semPrecoCount > insights.semPreco.length && (
+                  <Text style={styles.alertMore}>+ {insights.semPrecoCount - insights.semPreco.length} outros</Text>
+                )}
+              </View>
+            )}
+
+            {/* AÇÕES URGENTES: desatualizados */}
+            {insights.desatualizadosCount > 0 && (
+              <View style={[styles.alertCard, { borderLeftColor: colors.warning }]}>
+                <View style={styles.alertHeader}>
+                  <Feather name="clock" size={18} color={colors.warning} />
+                  <Text style={[styles.alertTitle, { color: colors.warning }]}>
+                    Preços desatualizados (>60 dias)
+                  </Text>
+                </View>
+                <Text style={styles.alertDesc}>
+                  Preço pode ter mudado no mercado. Confirme com seu fornecedor.
+                </Text>
+                {insights.desatualizados.map((i, idx) => (
+                  <TouchableOpacity
+                    key={i.id || idx}
+                    style={styles.alertItem}
+                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id } })}
+                  >
+                    <Text style={styles.alertItemNome} numberOfLines={1}>{i.nome}</Text>
+                    <Text style={styles.alertItemValor}>
+                      {i.idadeDias == null ? 'sem histórico' : `há ${Math.round(i.idadeDias)}d`}
+                    </Text>
+                    <Feather name="chevron-right" size={14} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                ))}
+                {insights.desatualizadosCount > insights.desatualizados.length && (
+                  <Text style={styles.alertMore}>+ {insights.desatualizadosCount - insights.desatualizados.length} outros</Text>
+                )}
+              </View>
+            )}
+
+            {/* VARIAÇÕES RECENTES */}
+            {insights.variacoesCount > 0 && (
+              <>
+                <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>
+                  Variações de preço ≥ 5%
+                </Text>
+                <Text style={styles.sectionDesc}>
+                  Insumos com mudança significativa de custo na última atualização. Reveja os preços de venda dos produtos que usam esses insumos.
+                </Text>
+                {insights.variacoes.slice(0, 8).map((v, i) => {
+                  const subiu = v.delta > 0;
+                  return (
+                    <TouchableOpacity
+                      key={i}
+                      style={styles.variacaoRow}
+                      onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: v.materia_prima_id } })}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.variacaoNome} numberOfLines={1}>{v.nome}</Text>
+                        <Text style={styles.variacaoSub}>
+                          {formatCurrency(v.anterior)} → {formatCurrency(v.atual)}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Feather name={subiu ? 'trending-up' : 'trending-down'} size={14} color={subiu ? colors.error : colors.success} />
+                        <Text style={{ fontSize: fonts.regular, fontFamily: fontFamily.bold, color: subiu ? colors.error : colors.success }}>
+                          {subiu ? '+' : ''}{(v.delta * 100).toFixed(1)}%
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </>
+            )}
+
+            {/* TOP 5 MAIS CAROS — pra ataque de custos */}
+            {insights.top5Caros.length > 0 && (
+              <>
+                <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>
+                  Top 5 mais caros (por kg)
+                </Text>
+                <Text style={styles.sectionDesc}>
+                  Esses são os insumos que mais pesam por unidade. Vale renegociar com fornecedor ou buscar alternativa.
+                </Text>
+                {insights.top5Caros.map((i, idx) => (
+                  <TouchableOpacity
+                    key={i.id || idx}
+                    style={styles.topRow}
+                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id } })}
+                  >
+                    <View style={[styles.topRank, { backgroundColor: colors.error + '20' }]}>
+                      <Text style={[styles.topRankText, { color: colors.error }]}>{idx + 1}</Text>
+                    </View>
+                    <Text style={styles.topNome} numberOfLines={1}>{i.nome}</Text>
+                    <Text style={[styles.topPreco, { color: colors.error }]}>
+                      {formatCurrency(safe(i.preco_por_kg))}/kg
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </>
+            )}
+
+            {/* PREÇO MÉDIO POR CATEGORIA — visão analítica */}
+            {categoriaStats.length > 0 && (
+              <>
+                <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>
+                  Preço médio por categoria
+                </Text>
+                <Text style={styles.sectionDesc}>
+                  Use pra comparar a faixa de preços. Categorias com grande dispersão (mín vs máx) podem indicar oportunidade de padronização.
+                </Text>
+                {categoriaStats.map((cat, i) => (
+                  <View key={i} style={styles.catCard}>
+                    <View style={styles.catHeader}>
+                      <Text style={styles.catNome}>{cat.nome}</Text>
+                      <Text style={styles.catCount}>{cat.count} insumo{cat.count !== 1 ? 's' : ''}</Text>
+                    </View>
+                    <View style={styles.catStatsRow}>
+                      <View style={styles.catStat}>
+                        <Text style={styles.catStatLabel}>Média</Text>
+                        <Text style={styles.catStatValue}>{formatCurrency(cat.media)}</Text>
+                      </View>
+                      <View style={styles.catStat}>
+                        <Text style={styles.catStatLabel}>Mínimo</Text>
+                        <Text style={[styles.catStatValue, { color: colors.success }]}>{formatCurrency(cat.min)}</Text>
+                      </View>
+                      <View style={styles.catStat}>
+                        <Text style={styles.catStatLabel}>Máximo</Text>
+                        <Text style={[styles.catStatValue, { color: colors.error }]}>{formatCurrency(cat.max)}</Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </>
+            )}
+
+            {/* Histórico (mantido — útil pra ver evolução) */}
             {historico.length > 0 && (
               <>
                 <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>
@@ -274,4 +521,59 @@ const styles = StyleSheet.create({
   histNome: { fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.text },
   histData: { fontSize: fonts.tiny, color: colors.textSecondary, marginTop: 2 },
   histPreco: { fontSize: fonts.regular, fontFamily: fontFamily.bold, color: colors.primary },
+
+  // Sessão 28.37: novas styles pra reformulação do relatório
+  kpiSub: { fontSize: 10, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
+  sectionDesc: { fontSize: fonts.small, color: colors.textSecondary, marginBottom: spacing.sm, marginTop: -spacing.xs, lineHeight: 18 },
+  alertCard: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderLeftWidth: 4,
+  },
+  alertHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4,
+  },
+  alertTitle: {
+    fontSize: fonts.regular, fontFamily: fontFamily.bold,
+  },
+  alertDesc: {
+    fontSize: fonts.small, color: colors.textSecondary,
+    marginBottom: spacing.sm, lineHeight: 18,
+  },
+  alertItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border,
+  },
+  alertItemNome: {
+    flex: 1, fontSize: fonts.small, fontFamily: fontFamily.medium,
+    color: colors.text,
+  },
+  alertItemValor: {
+    fontSize: fonts.tiny, color: colors.textSecondary, fontFamily: fontFamily.medium,
+  },
+  alertMore: {
+    fontSize: fonts.tiny, color: colors.textSecondary, fontStyle: 'italic',
+    marginTop: 6, textAlign: 'center',
+  },
+  variacaoRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: colors.surface, padding: spacing.sm + 2,
+    borderRadius: borderRadius.sm, marginBottom: 4,
+  },
+  variacaoNome: { fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.text },
+  variacaoSub: { fontSize: fonts.tiny, color: colors.textSecondary, marginTop: 2 },
+  topRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.surface, padding: spacing.sm + 2,
+    borderRadius: borderRadius.sm, marginBottom: 4,
+  },
+  topRank: {
+    width: 24, height: 24, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  topRankText: { fontSize: fonts.tiny, fontFamily: fontFamily.bold, fontWeight: '700' },
+  topNome: { flex: 1, fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.text },
+  topPreco: { fontSize: fonts.regular, fontFamily: fontFamily.bold },
 });
