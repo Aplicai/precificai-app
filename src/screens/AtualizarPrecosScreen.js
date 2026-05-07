@@ -6,6 +6,7 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, normalizeSearch } from '../utils/calculations';
 import { formatInsumoNome } from '../utils/insumoDisplay';
+import { notifyDataChanged } from '../utils/dataSync';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -169,6 +170,29 @@ export default function AtualizarPrecosScreen({ navigation }) {
           await recalcularTodosCombos(db);
         }
       } catch (e) { console.warn('[AtualizarPrecos.cascade]', e); }
+
+      // Sessão 28.43: notifica todas as telas que listam essa tabela pra
+      // recarregarem. Antes a list de Insumos mostrava preço velho até o
+      // user clicar no item de novo (useFocusEffect do RN era flaky no web).
+      try {
+        const tableMap = {
+          insumos: 'materias_primas',
+          embalagens: 'embalagens',
+          preparos: 'preparos',
+          produtos: 'produtos',
+          combos: 'delivery_combos',
+        };
+        const tableName = tableMap[activeTab];
+        if (tableName) notifyDataChanged(tableName);
+        // Cascade afetou preparos/combos também — notifica essas tabs
+        if (activeTab === 'insumos' || activeTab === 'embalagens') {
+          notifyDataChanged('preparos');
+          notifyDataChanged('produtos');
+          notifyDataChanged('delivery_combos');
+        } else if (activeTab === 'preparos') {
+          notifyDataChanged('delivery_combos');
+        }
+      } catch (e) { console.warn('[AtualizarPrecos.notifyDataChanged]', e); }
 
       // Update local state
       setItems(prev => prev.map(i => i.id === item.id ? { ...i, price: numericValue } : i));

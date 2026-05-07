@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, FlatList, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform, RefreshControl } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -7,6 +7,7 @@ import FAB from '../components/FAB';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, getTipoUnidade, normalizeSearch } from '../utils/calculations';
+import { subscribeDataChanged } from '../utils/dataSync';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
 import Skeleton from '../components/Skeleton';
@@ -90,6 +91,27 @@ export default function EmbalagensScreen({ navigation }) {
     setRefreshing(true);
     try { await loadData(); } finally { setRefreshing(false); }
   }
+
+  // Sessão 28.43: subscribe pra mudanças em embalagens (ex.: AtualizarPrecos
+  // salvou novo preço) + focus listener fallback (RN useFocusEffect flaky no web).
+  useEffect(() => {
+    const unsub = subscribeDataChanged((table) => {
+      if (table === 'embalagens') loadData();
+    });
+    const unsubFocus = navigation.addListener('focus', () => { loadData(); });
+    let onVis;
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      onVis = () => { if (!document.hidden) loadData(); };
+      document.addEventListener('visibilitychange', onVis);
+    }
+    return () => {
+      unsub();
+      unsubFocus();
+      if (onVis && typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVis);
+      }
+    };
+  }, [navigation]);
 
   useFocusEffect(useCallback(() => {
     loadData();

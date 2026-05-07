@@ -196,6 +196,12 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         const { setCategoriasPadraoDaEmbalagem } = await import('../services/embalagemPadrao');
         await setCategoriasPadraoDaEmbalagem(db, editId, categoriasPadraoSel, 'balcao');
       } catch (_) {}
+      // Sessão 28.43: notifica list screens
+      try {
+        const { notifyDataChanged } = await import('../utils/dataSync');
+        notifyDataChanged('embalagens');
+        notifyDataChanged('produtos'); // produtos referenciam embalagens
+      } catch (_) {}
       setSaveStatus('saved');
     } catch (e) {
       console.error('[EmbalagemForm.autoSave]', e);
@@ -252,6 +258,11 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         }
       } catch (e) { console.warn('[EmbalagemForm.autoAddToDraft]', e); }
     }
+    // Sessão 28.43: notifica list screens (após criar nova embalagem)
+    try {
+      const { notifyDataChanged } = await import('../utils/dataSync');
+      notifyDataChanged('embalagens');
+    } catch (_) {}
     navigation.goBack();
   }
 
