@@ -265,10 +265,17 @@ export default function KitInicioScreen({ navigation, route }) {
       if (!userId) throw new Error('Usuário não autenticado');
 
       // Sessão 28.34: aplica preços de mercado curados ao template antes de inserir.
-      // Itens sem preço na base ficam com valor_pago=0 (user vê e pode preencher).
+      // 28.38 BUG FIX: filtra EMBALAGENS dos INSUMOS — antes itens com categoria
+      // 'Embalagens', 'Descartáveis' ou 'Limpeza' do template de INSUMOS eram
+      // cadastrados na tabela materias_primas (errado, devem estar em embalagens).
+      // User reportou "tem embalagens dentro de Insumos". As embalagens reais
+      // já vêm de EMBALAGENS_POR_SEGMENTO num passo separado mais abaixo.
       const { aplicarPrecosMercado } = await import('../data/marketPrices');
-      const insumosTemplate = aplicarPrecosMercado(INSUMOS_POR_SEGMENTO[selected] || []);
-      const categoriasTemplate = CATEGORIAS_POR_SEGMENTO[selected] || [];
+      const _todosTemplateInsumos = aplicarPrecosMercado(INSUMOS_POR_SEGMENTO[selected] || []);
+      const CATEGORIAS_NAO_INSUMO = new Set(['Embalagens', 'Descartáveis', 'Limpeza']);
+      const insumosTemplate = _todosTemplateInsumos.filter(i => !CATEGORIAS_NAO_INSUMO.has(i.categoria));
+      const categoriasTemplate = (CATEGORIAS_POR_SEGMENTO[selected] || [])
+        .filter(c => !CATEGORIAS_NAO_INSUMO.has(c));
 
       // Step 1: Clean existing data — sequential in FK-safe order
       // Sessão 28.9 (revisão Kit): erros das fases agora são LOGADOS em vez de

@@ -540,9 +540,13 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         const { clearQueryCache } = await import('../database/supabaseDb');
         clearQueryCache();
       } catch (_) {}
-      // Sessão 28.36: se o user veio de "+ Insumo" dentro do EntityCreateModal,
-      // adiciona o insumo recém-criado à lista de itens do draft. Assim quando
-      // o modal reabrir, o item já está adicionado no produto/preparo.
+      // Sessão 28.36/28.38: se o user veio de "+ Insumo" dentro do EntityCreateModal,
+      // adiciona o insumo recém-criado à lista de itens do draft.
+      // 28.38 BUG FIX: custoUnit precisa ser CUSTO PARA 1 UNIDADE da unidade_medida,
+      // não preco_por_kg direto. Antes: preço R$4 por 1000g virava custoUnit=4 →
+      // ao multiplicar por quantidade=10g dava R$40 (errado). Agora calculamos
+      // custoUnit = calcCustoIngrediente(preco_por_kg, 1, unidade, unidade) que
+      // dá o cost-per-1-unit correto.
       if (result?.lastInsertRowId) {
         try {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
@@ -551,18 +555,24 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             const info = JSON.parse(raw);
             if (info?.draft && info?.pendingAddType === 'materia_prima') {
               const existingItens = info.draft.itens || [];
+              const custoUnit = calcCustoIngrediente(
+                precoBase || 0,
+                1,
+                form.unidade_medida || 'g',
+                form.unidade_medida || 'g'
+              );
               const novoItem = {
                 tipo: 'materia_prima',
                 id: result.lastInsertRowId,
                 nome: form.nome,
-                quantidade: 0, // user vai ajustar — começa em 0 pra nao gerar custo zero erroneo
-                custoUnit: precoBase || 0,
+                quantidade: 0,
+                custoUnit,
                 unidade: form.unidade_medida,
               };
               const updated = {
                 ...info,
                 draft: { ...info.draft, itens: [...existingItens, novoItem] },
-                pendingAddType: undefined, // consumiu
+                pendingAddType: undefined,
               };
               await AsyncStorage.setItem('reopenEntityModalAfterEdit', JSON.stringify(updated));
             }
