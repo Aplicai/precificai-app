@@ -117,7 +117,9 @@ export default function PreparosScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => {
     loadData();
-    // Sessão 28.14: se voltou de uma edição feita PELO modal de preparo, reabre o modal automaticamente
+    // Sessão 28.14 + 28.35: se voltou de uma edição feita PELO modal de preparo,
+    // reabre o modal automaticamente E preserva DRAFT (28.35 fix — antes só
+    // restaurava editId, perdendo todas as mudanças em memória).
     (async () => {
       try {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
@@ -127,6 +129,18 @@ export default function PreparosScreen({ navigation }) {
         await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
         if (info?.mode !== 'preparo') return;
         if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) return;
+        // 28.35: salva entityDraftToRestore pra EntityCreateModal recuperar
+        // o estado em memória (itens adicionados, qty digitada, nome em edição).
+        if (info.draft) {
+          try {
+            await AsyncStorage.setItem('entityDraftToRestore', JSON.stringify({
+              mode: 'preparo',
+              editId: info.editId || null,
+              draft: info.draft,
+              ts: Date.now(),
+            }));
+          } catch {}
+        }
         setEditingId(info.editId || null);
         setShowCreateModal(true);
       } catch {}
