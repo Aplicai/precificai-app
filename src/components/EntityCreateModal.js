@@ -1169,6 +1169,79 @@ export default function EntityCreateModal({
             {/* Coluna direita — Picker */}
             <View style={isDesktop ? styles.colRight : null}>
               <Text style={styles.subtitle}>Adicionar</Text>
+              {/* Sessão 28.32: botões pra CADASTRAR novo item (insumo, preparo, embalagem)
+                  diretamente daqui. Antes user só podia escolher itens já cadastrados;
+                  pra criar um novo precisava sair do modal, perder o draft e voltar.
+                  Agora salva draft no AsyncStorage e navega — `reopenEntityModalAfterEdit`
+                  já existe e o modal restaura automaticamente quando volta (Sessão 28.19). */}
+              {(() => {
+                const saveDraftAndNavigate = (target, params = {}) => {
+                  try {
+                    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                    const reopenInfo = {
+                      mode, editId: editId || null, ts: Date.now(),
+                      draft: {
+                        nome, categoriaId, precoVenda,
+                        tipoVenda, rendimentoUnidades, rendimentoTotalProd,
+                        rendimentoTotalPrep, unidadeMedidaPrep, itens,
+                      },
+                    };
+                    AsyncStorage.setItem('reopenEntityModalAfterEdit', JSON.stringify(reopenInfo));
+                  } catch {}
+                  try { onClose && onClose(); } catch {}
+                  setTimeout(() => {
+                    try {
+                      if (target === 'MateriaPrimaForm') {
+                        navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { ...params, returnToEntityModal: true } });
+                      } else if (target === 'EmbalagemForm') {
+                        navigation.navigate('Embalagens', { screen: 'EmbalagemForm', params: { ...params, returnToEntityModal: true } });
+                      } else if (target === 'NovoPreparo') {
+                        // Reabre EntityCreateModal em mode="preparo" pra criar novo preparo
+                        navigation.navigate('Preparos', { screen: 'PreparosMain', params: { abrirNovoPreparo: true } });
+                      }
+                    } catch (e) {
+                      // Fallback sem nested screen
+                      try {
+                        if (target === 'MateriaPrimaForm') navigation.navigate('MateriaPrimaForm', { ...params, returnToEntityModal: true });
+                        else if (target === 'EmbalagemForm') navigation.navigate('EmbalagemForm', { ...params, returnToEntityModal: true });
+                      } catch {}
+                    }
+                  }, 120);
+                };
+                return (
+                  <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '10' }}
+                      onPress={() => saveDraftAndNavigate('MateriaPrimaForm')}
+                      accessibilityLabel="Cadastrar novo insumo"
+                    >
+                      <Feather name="plus" size={11} color={colors.primary} />
+                      <Feather name="shopping-bag" size={11} color={colors.primary} />
+                      <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.primary }}>Insumo</Text>
+                    </TouchableOpacity>
+                    {isProduto && (
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '10' }}
+                        onPress={() => saveDraftAndNavigate('NovoPreparo')}
+                        accessibilityLabel="Cadastrar novo preparo"
+                      >
+                        <Feather name="plus" size={11} color={colors.primary} />
+                        <MaterialCommunityIcons name="pot-steam-outline" size={11} color={colors.primary} />
+                        <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.primary }}>Preparo</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '10' }}
+                      onPress={() => saveDraftAndNavigate('EmbalagemForm')}
+                      accessibilityLabel="Cadastrar nova embalagem"
+                    >
+                      <Feather name="plus" size={11} color={colors.primary} />
+                      <Feather name="package" size={11} color={colors.primary} />
+                      <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.primary }}>Embalagem</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })()}
               <SearchBar
                 value={busca}
                 onChangeText={setBusca}
