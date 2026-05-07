@@ -225,6 +225,33 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         await setCategoriasPadraoDaEmbalagem(db, result.lastInsertRowId, categoriasPadraoSel, 'balcao');
       } catch (_) {}
     }
+    // Sessão 28.36: auto-add da embalagem recém-criada ao draft do EntityCreateModal pai.
+    if (result?.lastInsertRowId) {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+        if (raw) {
+          const info = JSON.parse(raw);
+          if (info?.draft && info?.pendingAddType === 'embalagem') {
+            const existingItens = info.draft.itens || [];
+            const novoItem = {
+              tipo: 'embalagem',
+              id: result.lastInsertRowId,
+              nome: form.nome,
+              quantidade: 1,
+              custoUnit: precoUn || 0,
+              unidade: form.unidade_medida,
+            };
+            const updated = {
+              ...info,
+              draft: { ...info.draft, itens: [...existingItens, novoItem] },
+              pendingAddType: undefined,
+            };
+            await AsyncStorage.setItem('reopenEntityModalAfterEdit', JSON.stringify(updated));
+          }
+        }
+      } catch (e) { console.warn('[EmbalagemForm.autoAddToDraft]', e); }
+    }
     navigation.goBack();
   }
 

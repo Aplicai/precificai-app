@@ -540,6 +540,35 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         const { clearQueryCache } = await import('../database/supabaseDb');
         clearQueryCache();
       } catch (_) {}
+      // Sessão 28.36: se o user veio de "+ Insumo" dentro do EntityCreateModal,
+      // adiciona o insumo recém-criado à lista de itens do draft. Assim quando
+      // o modal reabrir, o item já está adicionado no produto/preparo.
+      if (result?.lastInsertRowId) {
+        try {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+          if (raw) {
+            const info = JSON.parse(raw);
+            if (info?.draft && info?.pendingAddType === 'materia_prima') {
+              const existingItens = info.draft.itens || [];
+              const novoItem = {
+                tipo: 'materia_prima',
+                id: result.lastInsertRowId,
+                nome: form.nome,
+                quantidade: 0, // user vai ajustar — começa em 0 pra nao gerar custo zero erroneo
+                custoUnit: precoBase || 0,
+                unidade: form.unidade_medida,
+              };
+              const updated = {
+                ...info,
+                draft: { ...info.draft, itens: [...existingItens, novoItem] },
+                pendingAddType: undefined, // consumiu
+              };
+              await AsyncStorage.setItem('reopenEntityModalAfterEdit', JSON.stringify(updated));
+            }
+          }
+        } catch (e) { console.warn('[MateriaPrimaForm.autoAddToDraft]', e); }
+      }
       navigation.goBack();
     } catch (e) {
       allowExit.current = false;
