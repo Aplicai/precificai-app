@@ -8,6 +8,7 @@ import SearchBar from '../components/SearchBar';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, getTipoUnidade, normalizeSearch } from '../utils/calculations';
+import { subscribeDataChanged } from '../utils/dataSync';
 import EmptyState from '../components/EmptyState';
 import Skeleton from '../components/Skeleton';
 import UndoToast from '../components/UndoToast';
@@ -115,38 +116,65 @@ export default function PreparosScreen({ navigation }) {
     try { await loadData(); } finally { setRefreshing(false); }
   }
 
+  // Sessão 28.46: extraído pra rodar via useFocusEffect E focus listener
+  // (useFocusEffect flaky no web). Preserva DRAFT igual 28.35 fix.
+  const checkReopenAndOpen = useCallback(async () => {
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+      if (!raw) return;
+      const info = JSON.parse(raw);
+      await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
+      if (info?.mode !== 'preparo') return;
+      if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) return;
+      if (info.draft) {
+        try {
+          await AsyncStorage.setItem('entityDraftToRestore', JSON.stringify({
+            mode: 'preparo',
+            editId: info.editId || null,
+            draft: info.draft,
+            ts: Date.now(),
+          }));
+        } catch {}
+      }
+      setEditingId(info.editId || null);
+      setShowCreateModal(true);
+    } catch {}
+  }, []);
+
+  // Sessão 28.46: focus listener fallback + dataSync subscribe + visibilitychange
+  useEffect(() => {
+    const unsub = subscribeDataChanged((table) => {
+      if (table === 'preparos') loadData();
+    });
+    const unsubFocus = navigation.addListener('focus', () => {
+      loadData();
+      checkReopenAndOpen();
+    });
+    let onVis;
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      onVis = () => {
+        if (!document.hidden) {
+          loadData();
+          checkReopenAndOpen();
+        }
+      };
+      document.addEventListener('visibilitychange', onVis);
+    }
+    return () => {
+      unsub();
+      unsubFocus();
+      if (onVis && typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVis);
+      }
+    };
+  }, [navigation, checkReopenAndOpen]);
+
   useFocusEffect(useCallback(() => {
     loadData();
-    // Sessão 28.14 + 28.35: se voltou de uma edição feita PELO modal de preparo,
-    // reabre o modal automaticamente E preserva DRAFT (28.35 fix — antes só
-    // restaurava editId, perdendo todas as mudanças em memória).
-    (async () => {
-      try {
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
-        if (!raw) return;
-        const info = JSON.parse(raw);
-        await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
-        if (info?.mode !== 'preparo') return;
-        if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) return;
-        // 28.35: salva entityDraftToRestore pra EntityCreateModal recuperar
-        // o estado em memória (itens adicionados, qty digitada, nome em edição).
-        if (info.draft) {
-          try {
-            await AsyncStorage.setItem('entityDraftToRestore', JSON.stringify({
-              mode: 'preparo',
-              editId: info.editId || null,
-              draft: info.draft,
-              ts: Date.now(),
-            }));
-          } catch {}
-        }
-        setEditingId(info.editId || null);
-        setShowCreateModal(true);
-      } catch {}
-    })();
+    checkReopenAndOpen();
     return () => setConfirmDelete(null);
-  }, [filtroCategoria, busca, sortBy, navigation]));
+  }, [filtroCategoria, busca, sortBy, navigation, checkReopenAndOpen]));
 
   // Sessão 28.30: deep-link `openPreparoEdit` em useEffect SEPARADO pra reagir
   // a mudança de params (antes ficava dentro do useFocusEffect e a stale

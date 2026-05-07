@@ -159,19 +159,42 @@ export default function MateriasPrimasScreen({ navigation }) {
     try { await loadData(); } finally { setRefreshing(false); }
   }
 
-  // Sessão 28.43: subscribe pra mudanças em materias_primas (ex.: AtualizarPrecos
-  // salvou novo preço). Antes, useFocusEffect do RN era flaky no web ao trocar
-  // de tab principal — list ficava com preço velho. Agora é uma notificação
-  // explícita após o save, complementar ao useFocusEffect.
+  // Sessão 28.46: extraído pra função pra rodar via useFocusEffect E via focus listener
+  // (useFocusEffect flaky no web). Antes: user terminava de cadastrar insumo
+  // de dentro de um produto e ficava em MateriasPrimasScreen ao invés de voltar.
+  const checkReopenFlag = useCallback(async () => {
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+      if (!raw) return;
+      const info = JSON.parse(raw);
+      if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) {
+        await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
+        return;
+      }
+      if (info.mode === 'produto') navigation.navigate('Produtos', { screen: 'ProdutosList' });
+      else if (info.mode === 'preparo') navigation.navigate('Preparos', { screen: 'PreparosMain' });
+    } catch {}
+  }, [navigation]);
+
+  // Sessão 28.43/28.46: dataSync subscribe + focus listener + visibilitychange
+  // + reopen flag check (em todos os caminhos pra cobrir RN focus flake).
   useEffect(() => {
     const unsub = subscribeDataChanged((table) => {
       if (table === 'materias_primas') loadData();
     });
-    // Fallback adicional: focus listener + visibilitychange (Sessão 28.27 pattern)
-    const unsubFocus = navigation.addListener('focus', () => { loadData(); });
+    const unsubFocus = navigation.addListener('focus', () => {
+      loadData();
+      checkReopenFlag();
+    });
     let onVis;
     if (typeof document !== 'undefined' && document.addEventListener) {
-      onVis = () => { if (!document.hidden) loadData(); };
+      onVis = () => {
+        if (!document.hidden) {
+          loadData();
+          checkReopenFlag();
+        }
+      };
       document.addEventListener('visibilitychange', onVis);
     }
     return () => {
@@ -181,29 +204,13 @@ export default function MateriasPrimasScreen({ navigation }) {
         document.removeEventListener('visibilitychange', onVis);
       }
     };
-  }, [navigation]);
+  }, [navigation, checkReopenFlag]);
 
   useFocusEffect(useCallback(() => {
     loadData();
-    // Sessão 28.14: se voltou de uma edição feita PELO modal de produto/preparo,
-    // redireciona pra tab certa (a list lá vai reabrir o modal automaticamente)
-    (async () => {
-      try {
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
-        if (!raw) return;
-        const info = JSON.parse(raw);
-        if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) {
-          await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
-          return;
-        }
-        // Mantém a flag pra lista alvo consumir; só redireciona
-        if (info.mode === 'produto') navigation.navigate('Produtos', { screen: 'ProdutosList' });
-        else if (info.mode === 'preparo') navigation.navigate('Preparos', { screen: 'PreparosMain' });
-      } catch {}
-    })();
+    checkReopenFlag();
     return () => setConfirmDelete(null);
-  }, [filtroCategoria, busca, sortBy]));
+  }, [filtroCategoria, busca, sortBy, checkReopenFlag]));
 
   async function loadData() {
     setLoading(true);
