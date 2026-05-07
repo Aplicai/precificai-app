@@ -24,6 +24,31 @@ const safe = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+// Sessão 28.41: SectionBlock — wrapper visual pra cada seção do relatório.
+// Cada bloco vira um card distinto (fundo branco, bordas arredondadas, padding
+// generoso) com header colorido. Resolve o problema de "tudo grudado" — agora
+// há separação visual clara entre Precisa atenção / Tendências / Oportunidades /
+// Análise / Histórico.
+function SectionBlock({ icon, color, title, subtitle, children }) {
+  return (
+    <View style={sectionBlockStyles.card}>
+      <View style={sectionBlockStyles.headerRow}>
+        <View style={[sectionBlockStyles.iconCircle, { backgroundColor: color + '18' }]}>
+          <Feather name={icon} size={16} color={color} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={sectionBlockStyles.title}>{title}</Text>
+          {subtitle ? <Text style={sectionBlockStyles.subtitle}>{subtitle}</Text> : null}
+        </View>
+      </View>
+      <View style={sectionBlockStyles.divider} />
+      <View style={sectionBlockStyles.body}>
+        {children}
+      </View>
+    </View>
+  );
+}
+
 // Sessão 28.40: prop `embedded` indica que estamos sendo renderizados dentro
 // do RelatoriosHubScreen. Quando true: esconde header próprio (o hub já tem
 // header global "Relatórios") e ajusta paddings.
@@ -282,278 +307,249 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
           </View>
         ) : (
           <>
-            {/* KPIs principais — Sessão 28.37 */}
-            <View style={styles.kpiRow}>
-              <View style={styles.kpiCard}>
-                <Text style={styles.kpiLabel}>Insumos cadastrados</Text>
-                <Text style={styles.kpiValue}>{insights.totalCadastrados}</Text>
-                <Text style={styles.kpiSub}>{insights.comPrecoCount} com preço</Text>
+            {/* ─────────── PANORAMA (KPIs em grid 3x2) ─────────── */}
+            <SectionBlock
+              icon="grid"
+              color={colors.primary}
+              title="Panorama"
+              subtitle="Números-chave do seu cadastro de insumos"
+            >
+              <View style={styles.kpiGrid}>
+                <View style={styles.kpiTile}>
+                  <Text style={styles.kpiTileLabel}>Cadastrados</Text>
+                  <Text style={styles.kpiTileValue}>{insights.totalCadastrados}</Text>
+                  <Text style={styles.kpiTileSub}>{insights.comPrecoCount} com preço</Text>
+                </View>
+                <View style={[styles.kpiTile, insights.semPrecoCount > 0 && styles.kpiTileError]}>
+                  <Text style={styles.kpiTileLabel}>Sem preço</Text>
+                  <Text style={[styles.kpiTileValue, insights.semPrecoCount > 0 && { color: colors.error }]}>{insights.semPrecoCount}</Text>
+                  <Text style={styles.kpiTileSub}>bloqueiam cálculo</Text>
+                </View>
+                <View style={[styles.kpiTile, insights.desatualizadosCount > 0 && styles.kpiTileWarn]}>
+                  <Text style={styles.kpiTileLabel}>Desatualizados</Text>
+                  <Text style={[styles.kpiTileValue, insights.desatualizadosCount > 0 && { color: colors.warning }]}>{insights.desatualizadosCount}</Text>
+                  <Text style={styles.kpiTileSub}>>60 dias</Text>
+                </View>
+                <View style={styles.kpiTile}>
+                  <Text style={styles.kpiTileLabel}>Custo médio</Text>
+                  <Text style={styles.kpiTileValue}>{formatCurrency(insights.custoMedio)}</Text>
+                  <Text style={styles.kpiTileSub}>por kg/un</Text>
+                </View>
+                <View style={styles.kpiTile}>
+                  <Text style={styles.kpiTileLabel}>Cat. mais cara</Text>
+                  <Text style={[styles.kpiTileValue, { fontSize: 14 }]} numberOfLines={1}>
+                    {insights.catMaisCara?.nome || '—'}
+                  </Text>
+                  <Text style={styles.kpiTileSub}>
+                    {insights.catMaisCara ? formatCurrency(insights.catMaisCara.media) : '—'}
+                  </Text>
+                </View>
+                <View style={[styles.kpiTile, insights.variacoesCount > 0 && styles.kpiTileInfo]}>
+                  <Text style={styles.kpiTileLabel}>Variações ≥5%</Text>
+                  <Text style={[styles.kpiTileValue, insights.variacoesCount > 0 && { color: colors.info }]}>{insights.variacoesCount}</Text>
+                  <Text style={styles.kpiTileSub}>preço mexeu</Text>
+                </View>
               </View>
-              <View style={[styles.kpiCard, insights.semPrecoCount > 0 && { borderLeftWidth: 3, borderLeftColor: colors.error }]}>
-                <Text style={styles.kpiLabel}>Sem preço</Text>
-                <Text style={[styles.kpiValue, insights.semPrecoCount > 0 && { color: colors.error }]}>{insights.semPrecoCount}</Text>
-                <Text style={styles.kpiSub}>bloqueiam precificação</Text>
-              </View>
-              <View style={[styles.kpiCard, insights.desatualizadosCount > 0 && { borderLeftWidth: 3, borderLeftColor: colors.warning }]}>
-                <Text style={styles.kpiLabel}>Desatualizados</Text>
-                <Text style={[styles.kpiValue, insights.desatualizadosCount > 0 && { color: colors.warning }]}>{insights.desatualizadosCount}</Text>
-                <Text style={styles.kpiSub}>>60 dias sem update</Text>
-              </View>
-            </View>
+            </SectionBlock>
 
-            <View style={styles.kpiRow}>
-              <View style={styles.kpiCard}>
-                <Text style={styles.kpiLabel}>Custo médio/kg</Text>
-                <Text style={styles.kpiValue}>{formatCurrency(insights.custoMedio)}</Text>
-                <Text style={styles.kpiSub}>entre insumos cadastrados</Text>
-              </View>
-              <View style={styles.kpiCard}>
-                <Text style={styles.kpiLabel}>Categoria mais cara</Text>
-                <Text style={[styles.kpiValue, { fontSize: 14 }]} numberOfLines={1}>
-                  {insights.catMaisCara?.nome || '—'}
-                </Text>
-                <Text style={styles.kpiSub}>
-                  {insights.catMaisCara ? formatCurrency(insights.catMaisCara.media) + ' média' : ''}
-                </Text>
-              </View>
-              <View style={[styles.kpiCard, insights.variacoesCount > 0 && { borderLeftWidth: 3, borderLeftColor: colors.info }]}>
-                <Text style={styles.kpiLabel}>Variações ≥ 5%</Text>
-                <Text style={[styles.kpiValue, insights.variacoesCount > 0 && { color: colors.info }]}>{insights.variacoesCount}</Text>
-                <Text style={styles.kpiSub}>preço subiu ou caiu</Text>
-              </View>
-            </View>
-
-            {/* SEÇÃO 1 — AÇÕES URGENTES (icon header) */}
+            {/* ─────────── PRECISA ATENÇÃO ─────────── */}
             {(insights.semPrecoCount > 0 || insights.desatualizadosCount > 0 || insights.kitOnlyCount > 0) && (
-              <View style={styles.sectionHeader}>
-                <View style={[styles.sectionIcon, { backgroundColor: colors.error + '15' }]}>
-                  <Feather name="zap" size={14} color={colors.error} />
-                </View>
-                <Text style={styles.sectionHeaderText}>Precisa atenção</Text>
-              </View>
-            )}
-
-            {/* Insumos com preço só do kit */}
-            {insights.kitOnlyCount > 0 && (
-              <View style={[styles.alertCard, { borderLeftColor: colors.warning }]}>
-                <View style={styles.alertHeader}>
-                  <Feather name="info" size={18} color={colors.warning} />
-                  <Text style={[styles.alertTitle, { color: colors.warning }]}>
-                    Preços ainda do Kit de Início ({insights.kitOnlyCount})
-                  </Text>
-                </View>
-                <Text style={styles.alertDesc}>
-                  Esses insumos têm o valor de mercado pré-preenchido pelo Kit. Não foram revisados por você ainda — atualize com o preço REAL que você paga pra ter o relatório fiel.
-                </Text>
-                {insights.kitOnly.map((i, idx) => (
-                  <TouchableOpacity
-                    key={i.id || idx}
-                    style={styles.alertItem}
-                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
-                  >
-                    <Text style={styles.alertItemNome} numberOfLines={1}>{i.nome}</Text>
-                    <Text style={styles.alertItemValor}>R$ {Number(i.preco_por_kg).toFixed(2)}/kg</Text>
-                    <Feather name="chevron-right" size={14} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                ))}
-                {insights.kitOnlyCount > insights.kitOnly.length && (
-                  <Text style={styles.alertMore}>+ {insights.kitOnlyCount - insights.kitOnly.length} outros</Text>
-                )}
-              </View>
-            )}
-
-            {/* AÇÕES URGENTES: insumos sem preço */}
-            {insights.semPrecoCount > 0 && (
-              <View style={[styles.alertCard, { borderLeftColor: colors.error }]}>
-                <View style={styles.alertHeader}>
-                  <Feather name="alert-triangle" size={18} color={colors.error} />
-                  <Text style={[styles.alertTitle, { color: colors.error }]}>
-                    Pendentes — sem preço cadastrado
-                  </Text>
-                </View>
-                <Text style={styles.alertDesc}>
-                  Esses insumos NÃO entram no cálculo dos seus produtos. Atualize agora.
-                </Text>
-                {insights.semPreco.map((i, idx) => (
-                  <TouchableOpacity
-                    key={i.id || idx}
-                    style={styles.alertItem}
-                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
-                  >
-                    <Text style={styles.alertItemNome} numberOfLines={1}>{i.nome}</Text>
-                    <Feather name="chevron-right" size={14} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                ))}
-                {insights.semPrecoCount > insights.semPreco.length && (
-                  <Text style={styles.alertMore}>+ {insights.semPrecoCount - insights.semPreco.length} outros</Text>
-                )}
-              </View>
-            )}
-
-            {/* AÇÕES URGENTES: desatualizados */}
-            {insights.desatualizadosCount > 0 && (
-              <View style={[styles.alertCard, { borderLeftColor: colors.warning }]}>
-                <View style={styles.alertHeader}>
-                  <Feather name="clock" size={18} color={colors.warning} />
-                  <Text style={[styles.alertTitle, { color: colors.warning }]}>
-                    Preços desatualizados (>60 dias)
-                  </Text>
-                </View>
-                <Text style={styles.alertDesc}>
-                  Preço pode ter mudado no mercado. Confirme com seu fornecedor.
-                </Text>
-                {insights.desatualizados.map((i, idx) => (
-                  <TouchableOpacity
-                    key={i.id || idx}
-                    style={styles.alertItem}
-                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
-                  >
-                    <Text style={styles.alertItemNome} numberOfLines={1}>{i.nome}</Text>
-                    <Text style={styles.alertItemValor}>
-                      {i.idadeDias == null ? 'sem histórico' : `há ${Math.round(i.idadeDias)}d`}
+              <SectionBlock
+                icon="zap"
+                color={colors.error}
+                title="Precisa atenção"
+                subtitle="Pendências que afetam o cálculo dos seus produtos"
+              >
+                {insights.kitOnlyCount > 0 && (
+                  <View style={[styles.alertPanel, { borderLeftColor: colors.warning, backgroundColor: colors.warning + '0a' }]}>
+                    <View style={styles.alertPanelHead}>
+                      <Feather name="info" size={16} color={colors.warning} />
+                      <Text style={[styles.alertPanelTitle, { color: colors.warning }]}>
+                        Preços ainda do Kit de Início ({insights.kitOnlyCount})
+                      </Text>
+                    </View>
+                    <Text style={styles.alertPanelDesc}>
+                      Valores foram pré-preenchidos pelo Kit. Atualize com o preço real que você paga pra o relatório ficar fiel.
                     </Text>
-                    <Feather name="chevron-right" size={14} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                ))}
-                {insights.desatualizadosCount > insights.desatualizados.length && (
-                  <Text style={styles.alertMore}>+ {insights.desatualizadosCount - insights.desatualizados.length} outros</Text>
+                    {insights.kitOnly.map((i, idx) => (
+                      <TouchableOpacity
+                        key={i.id || idx}
+                        style={styles.listRow}
+                        onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
+                      >
+                        <Text style={styles.listRowNome} numberOfLines={1}>{i.nome}</Text>
+                        <Text style={styles.listRowValor}>R$ {Number(i.preco_por_kg).toFixed(2)}/kg</Text>
+                        <Feather name="chevron-right" size={14} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    ))}
+                    {insights.kitOnlyCount > insights.kitOnly.length && (
+                      <Text style={styles.listMore}>+ {insights.kitOnlyCount - insights.kitOnly.length} outros</Text>
+                    )}
+                  </View>
                 )}
-              </View>
+
+                {insights.semPrecoCount > 0 && (
+                  <View style={[styles.alertPanel, { borderLeftColor: colors.error, backgroundColor: colors.error + '0a' }]}>
+                    <View style={styles.alertPanelHead}>
+                      <Feather name="alert-triangle" size={16} color={colors.error} />
+                      <Text style={[styles.alertPanelTitle, { color: colors.error }]}>
+                        Pendentes — sem preço cadastrado
+                      </Text>
+                    </View>
+                    <Text style={styles.alertPanelDesc}>
+                      Esses insumos NÃO entram no cálculo dos seus produtos. Atualize agora.
+                    </Text>
+                    {insights.semPreco.map((i, idx) => (
+                      <TouchableOpacity
+                        key={i.id || idx}
+                        style={styles.listRow}
+                        onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
+                      >
+                        <Text style={styles.listRowNome} numberOfLines={1}>{i.nome}</Text>
+                        <Feather name="chevron-right" size={14} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    ))}
+                    {insights.semPrecoCount > insights.semPreco.length && (
+                      <Text style={styles.listMore}>+ {insights.semPrecoCount - insights.semPreco.length} outros</Text>
+                    )}
+                  </View>
+                )}
+
+                {insights.desatualizadosCount > 0 && (
+                  <View style={[styles.alertPanel, { borderLeftColor: colors.warning, backgroundColor: colors.warning + '0a' }]}>
+                    <View style={styles.alertPanelHead}>
+                      <Feather name="clock" size={16} color={colors.warning} />
+                      <Text style={[styles.alertPanelTitle, { color: colors.warning }]}>
+                        Preços desatualizados (&gt;60 dias)
+                      </Text>
+                    </View>
+                    <Text style={styles.alertPanelDesc}>
+                      Preço pode ter mudado no mercado. Confirme com seu fornecedor.
+                    </Text>
+                    {insights.desatualizados.map((i, idx) => (
+                      <TouchableOpacity
+                        key={i.id || idx}
+                        style={styles.listRow}
+                        onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
+                      >
+                        <Text style={styles.listRowNome} numberOfLines={1}>{i.nome}</Text>
+                        <Text style={styles.listRowValor}>
+                          {i.idadeDias == null ? 'sem histórico' : `há ${Math.round(i.idadeDias)}d`}
+                        </Text>
+                        <Feather name="chevron-right" size={14} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    ))}
+                    {insights.desatualizadosCount > insights.desatualizados.length && (
+                      <Text style={styles.listMore}>+ {insights.desatualizadosCount - insights.desatualizados.length} outros</Text>
+                    )}
+                  </View>
+                )}
+              </SectionBlock>
             )}
 
-            {/* SEÇÃO 2 — TENDÊNCIAS */}
+            {/* ─────────── TENDÊNCIAS DE PREÇO ─────────── */}
             {insights.variacoesCount > 0 && (
-              <View style={styles.sectionHeader}>
-                <View style={[styles.sectionIcon, { backgroundColor: colors.info + '15' }]}>
-                  <Feather name="trending-up" size={14} color={colors.info} />
-                </View>
-                <Text style={styles.sectionHeaderText}>Tendências de preço</Text>
-              </View>
-            )}
-
-            {/* VARIAÇÕES RECENTES */}
-            {insights.variacoesCount > 0 && (
-              <>
-                <Text style={[styles.sectionTitle, { marginTop: 0 }]}>
-                  Variações ≥ 5%
-                </Text>
-                <Text style={styles.sectionDesc}>
-                  Insumos com mudança significativa de custo na última atualização. Reveja os preços de venda dos produtos que usam esses insumos.
-                </Text>
+              <SectionBlock
+                icon="trending-up"
+                color={colors.info}
+                title="Tendências de preço"
+                subtitle="Variações ≥5% na última atualização — reveja preços de venda afetados"
+              >
                 {insights.variacoes.slice(0, 8).map((v, i) => {
                   const subiu = v.delta > 0;
+                  const tintColor = subiu ? colors.error : colors.success;
                   return (
                     <TouchableOpacity
                       key={i}
-                      style={styles.variacaoRow}
+                      style={styles.listRow}
                       onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: v.materia_prima_id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
                     >
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.variacaoNome} numberOfLines={1}>{v.nome}</Text>
-                        <Text style={styles.variacaoSub}>
+                        <Text style={styles.listRowNome} numberOfLines={1}>{v.nome}</Text>
+                        <Text style={styles.listRowSub}>
                           {formatCurrency(v.anterior)} → {formatCurrency(v.atual)}
                         </Text>
                       </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Feather name={subiu ? 'trending-up' : 'trending-down'} size={14} color={subiu ? colors.error : colors.success} />
-                        <Text style={{ fontSize: fonts.regular, fontFamily: fontFamily.bold, color: subiu ? colors.error : colors.success }}>
+                      <View style={[styles.deltaBadge, { backgroundColor: tintColor + '15' }]}>
+                        <Feather name={subiu ? 'trending-up' : 'trending-down'} size={12} color={tintColor} />
+                        <Text style={[styles.deltaBadgeText, { color: tintColor }]}>
                           {subiu ? '+' : ''}{(v.delta * 100).toFixed(1)}%
                         </Text>
                       </View>
                     </TouchableOpacity>
                   );
                 })}
-              </>
+              </SectionBlock>
             )}
 
-            {/* SEÇÃO 3 — OPORTUNIDADES DE CUSTO */}
+            {/* ─────────── OPORTUNIDADES DE CUSTO ─────────── */}
             {insights.top5Caros.length > 0 && (
-              <View style={styles.sectionHeader}>
-                <View style={[styles.sectionIcon, { backgroundColor: colors.success + '15' }]}>
-                  <Feather name="dollar-sign" size={14} color={colors.success} />
-                </View>
-                <Text style={styles.sectionHeaderText}>Oportunidades de custo</Text>
-              </View>
-            )}
-
-            {/* TOP 5 MAIS CAROS — pra ataque de custos */}
-            {insights.top5Caros.length > 0 && (
-              <>
-                <Text style={[styles.sectionTitle, { marginTop: 0 }]}>
-                  Top 5 mais caros (por kg)
-                </Text>
-                <Text style={styles.sectionDesc}>
-                  Esses são os insumos que mais pesam por unidade. Vale renegociar com fornecedor ou buscar alternativa.
-                </Text>
+              <SectionBlock
+                icon="dollar-sign"
+                color={colors.success}
+                title="Oportunidades de custo"
+                subtitle="Top 5 insumos mais caros — vale renegociar ou buscar alternativa"
+              >
                 {insights.top5Caros.map((i, idx) => (
                   <TouchableOpacity
                     key={i.id || idx}
-                    style={styles.topRow}
+                    style={styles.listRow}
                     onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
                   >
-                    <View style={[styles.topRank, { backgroundColor: colors.error + '20' }]}>
-                      <Text style={[styles.topRankText, { color: colors.error }]}>{idx + 1}</Text>
+                    <View style={[styles.rankBadge, { backgroundColor: colors.error + '18' }]}>
+                      <Text style={[styles.rankBadgeText, { color: colors.error }]}>{idx + 1}</Text>
                     </View>
-                    <Text style={styles.topNome} numberOfLines={1}>{i.nome}</Text>
-                    <Text style={[styles.topPreco, { color: colors.error }]}>
+                    <Text style={[styles.listRowNome, { flex: 1 }]} numberOfLines={1}>{i.nome}</Text>
+                    <Text style={[styles.listRowValor, { color: colors.error, fontFamily: fontFamily.bold }]}>
                       {formatCurrency(safe(i.preco_por_kg))}/kg
                     </Text>
                   </TouchableOpacity>
                 ))}
-              </>
+              </SectionBlock>
             )}
 
-            {/* SEÇÃO 4 — VISÃO ANALÍTICA */}
+            {/* ─────────── ANÁLISE POR CATEGORIA ─────────── */}
             {categoriaStats.length > 0 && (
-              <View style={styles.sectionHeader}>
-                <View style={[styles.sectionIcon, { backgroundColor: colors.primary + '15' }]}>
-                  <Feather name="pie-chart" size={14} color={colors.primary} />
-                </View>
-                <Text style={styles.sectionHeaderText}>Análise por categoria</Text>
-              </View>
-            )}
-
-            {/* PREÇO MÉDIO POR CATEGORIA — visão analítica */}
-            {categoriaStats.length > 0 && (
-              <>
-                <Text style={[styles.sectionTitle, { marginTop: 0 }]}>
-                  Preço médio por categoria
-                </Text>
-                <Text style={styles.sectionDesc}>
-                  Use pra comparar a faixa de preços. Categorias com grande dispersão (mín vs máx) podem indicar oportunidade de padronização.
-                </Text>
+              <SectionBlock
+                icon="pie-chart"
+                color={colors.primary}
+                title="Análise por categoria"
+                subtitle="Faixa de preços por grupo — dispersão alta sugere padronização"
+              >
                 {categoriaStats.map((cat, i) => (
-                  <View key={i} style={styles.catCard}>
-                    <View style={styles.catHeader}>
-                      <Text style={styles.catNome}>{cat.nome}</Text>
-                      <Text style={styles.catCount}>{cat.count} insumo{cat.count !== 1 ? 's' : ''}</Text>
+                  <View key={i} style={styles.catRow}>
+                    <View style={styles.catRowHead}>
+                      <Text style={styles.catRowNome}>{cat.nome}</Text>
+                      <Text style={styles.catRowCount}>{cat.count} insumo{cat.count !== 1 ? 's' : ''}</Text>
                     </View>
-                    <View style={styles.catStatsRow}>
-                      <View style={styles.catStat}>
-                        <Text style={styles.catStatLabel}>Média</Text>
-                        <Text style={styles.catStatValue}>{formatCurrency(cat.media)}</Text>
+                    <View style={styles.catRowStats}>
+                      <View style={styles.catRowStat}>
+                        <Text style={styles.catRowStatLabel}>Média</Text>
+                        <Text style={styles.catRowStatValue}>{formatCurrency(cat.media)}</Text>
                       </View>
-                      <View style={styles.catStat}>
-                        <Text style={styles.catStatLabel}>Mínimo</Text>
-                        <Text style={[styles.catStatValue, { color: colors.success }]}>{formatCurrency(cat.min)}</Text>
+                      <View style={styles.catRowStat}>
+                        <Text style={styles.catRowStatLabel}>Mínimo</Text>
+                        <Text style={[styles.catRowStatValue, { color: colors.success }]}>{formatCurrency(cat.min)}</Text>
                       </View>
-                      <View style={styles.catStat}>
-                        <Text style={styles.catStatLabel}>Máximo</Text>
-                        <Text style={[styles.catStatValue, { color: colors.error }]}>{formatCurrency(cat.max)}</Text>
+                      <View style={styles.catRowStat}>
+                        <Text style={styles.catRowStatLabel}>Máximo</Text>
+                        <Text style={[styles.catRowStatValue, { color: colors.error }]}>{formatCurrency(cat.max)}</Text>
                       </View>
                     </View>
                   </View>
                 ))}
-              </>
+              </SectionBlock>
             )}
 
-            {/* Histórico (mantido — útil pra ver evolução) */}
-            {historico.length > 0 && (
-              <>
-                <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>
-                  Últimas mudanças de preço
-                </Text>
-                {historico.slice(0, 15).map((h, i) => (
+            {/* ─────────── HISTÓRICO ─────────── */}
+            <SectionBlock
+              icon="clock"
+              color={colors.textSecondary}
+              title="Últimas mudanças de preço"
+              subtitle={historico.length > 0 ? `Últimas ${Math.min(historico.length, 15)} alterações` : null}
+            >
+              {historico.length > 0 ? (
+                historico.slice(0, 15).map((h, i) => (
                   <View key={i} style={styles.histRow}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.histNome}>
@@ -565,17 +561,16 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                     </View>
                     <Text style={styles.histPreco}>{formatCurrency(safe(h.preco_por_kg))}/{h.unidade_medida || 'kg'}</Text>
                   </View>
-                ))}
-              </>
-            )}
-            {historico.length === 0 && (
-              <View style={[styles.empty, { marginTop: spacing.md, padding: spacing.md }]}>
-                <Feather name="clock" size={20} color={colors.disabled} />
-                <Text style={[styles.emptyDesc, { marginTop: 4 }]}>
-                  Sem histórico de mudanças ainda. Edite o preço de algum insumo pra começar a registrar a evolução.
-                </Text>
-              </View>
-            )}
+                ))
+              ) : (
+                <View style={styles.histEmpty}>
+                  <Feather name="clock" size={20} color={colors.disabled} />
+                  <Text style={styles.histEmptyText}>
+                    Sem histórico ainda. Edite o preço de algum insumo pra começar a registrar.
+                  </Text>
+                </View>
+              )}
+            </SectionBlock>
           </>
         )}
 
@@ -584,6 +579,46 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
     </View>
   );
 }
+
+// Sessão 28.41: SectionBlock styles — cada bloco vira um card com header,
+// divider sutil e corpo com padding generoso. Resolve o "tudo grudado".
+const sectionBlockStyles = StyleSheet.create({
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    marginBottom: spacing.lg + 4,
+    padding: spacing.md + 2,
+    // Sombra discreta — separa visualmente do background sem competir
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+    borderWidth: 1,
+    borderColor: colors.border + '80',
+  },
+  headerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+  },
+  iconCircle: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  title: {
+    fontSize: fonts.regular + 1, fontFamily: fontFamily.bold, color: colors.text,
+    fontWeight: '700',
+  },
+  subtitle: {
+    fontSize: fonts.tiny, color: colors.textSecondary, marginTop: 2,
+    lineHeight: 16,
+  },
+  divider: {
+    height: 1, backgroundColor: colors.border,
+    marginTop: spacing.md, marginBottom: spacing.md,
+    opacity: 0.6,
+  },
+  body: {},
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
@@ -599,34 +634,8 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md, marginTop: spacing.md,
   },
   btnPrimaryText: { color: '#fff', fontFamily: fontFamily.bold, fontSize: fonts.regular },
-  kpiRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
-  kpiCard: {
-    flex: 1, backgroundColor: colors.surface, padding: spacing.md,
-    borderRadius: borderRadius.md, alignItems: 'center',
-  },
-  kpiLabel: { fontSize: fonts.tiny, color: colors.textSecondary, marginBottom: 4 },
-  kpiValue: { fontSize: fonts.xlarge || 22, fontFamily: fontFamily.bold, color: colors.primary },
-  sectionTitle: { fontSize: fonts.regular, fontFamily: fontFamily.bold, color: colors.text, marginBottom: spacing.sm },
-  catCard: {
-    backgroundColor: colors.surface, padding: spacing.md,
-    borderRadius: borderRadius.md, marginBottom: spacing.sm,
-  },
-  catHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm },
-  catNome: { fontSize: fonts.regular, fontFamily: fontFamily.bold, color: colors.text },
-  catCount: { fontSize: fonts.small, color: colors.textSecondary },
-  catStatsRow: { flexDirection: 'row', gap: spacing.sm },
-  catStat: { flex: 1 },
-  catStatLabel: { fontSize: fonts.tiny, color: colors.textSecondary, marginBottom: 2 },
-  catStatValue: { fontSize: fonts.regular, fontFamily: fontFamily.semiBold, color: colors.text },
-  histRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border,
-  },
-  histNome: { fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.text },
-  histData: { fontSize: fonts.tiny, color: colors.textSecondary, marginTop: 2 },
-  histPreco: { fontSize: fonts.regular, fontFamily: fontFamily.bold, color: colors.primary },
 
-  // Sessão 28.39: header polido + section dividers visuais
+  // Sessão 28.39: hero + refresh
   heroHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: colors.surface,
@@ -644,71 +653,98 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     alignItems: 'center', justifyContent: 'center',
   },
-  sectionHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginTop: spacing.lg, marginBottom: spacing.sm,
-    paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: colors.border,
+
+  // Sessão 28.41: KPI grid 3x2 dentro do SectionBlock "Panorama"
+  kpiGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm,
   },
-  sectionIcon: {
+  kpiTile: {
+    // 3 colunas em linhas: width = (100% - 2*gap) / 3 ≈ 32%; flexBasis garante quebra
+    flexGrow: 1, flexShrink: 1, flexBasis: '30%', minWidth: 100,
+    backgroundColor: colors.background,
+    padding: spacing.md - 2,
+    borderRadius: 10,
+    borderWidth: 1, borderColor: colors.border + '80',
+    alignItems: 'flex-start',
+  },
+  kpiTileError: { borderColor: colors.error + '40', backgroundColor: colors.error + '06' },
+  kpiTileWarn:  { borderColor: colors.warning + '40', backgroundColor: colors.warning + '06' },
+  kpiTileInfo:  { borderColor: colors.info + '40', backgroundColor: colors.info + '06' },
+  kpiTileLabel: { fontSize: fonts.tiny, color: colors.textSecondary, marginBottom: 6, fontFamily: fontFamily.medium },
+  kpiTileValue: { fontSize: 24, fontFamily: fontFamily.bold, color: colors.text, fontWeight: '700', lineHeight: 28 },
+  kpiTileSub:   { fontSize: 10, color: colors.textSecondary, marginTop: 4 },
+
+  // Sessão 28.41: alertPanel — sub-bloco dentro de "Precisa atenção"
+  alertPanel: {
+    borderRadius: 10,
+    padding: spacing.md - 2,
+    marginBottom: spacing.sm + 2,
+    borderLeftWidth: 3,
+  },
+  alertPanelHead: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4,
+  },
+  alertPanelTitle: {
+    fontSize: fonts.small + 1, fontFamily: fontFamily.bold,
+  },
+  alertPanelDesc: {
+    fontSize: fonts.tiny + 1, color: colors.textSecondary,
+    marginBottom: spacing.sm, lineHeight: 17,
+  },
+
+  // Sessão 28.41: listRow — usado em variações, top, kit-only, sem-preço, desatualizados.
+  // borderBottom ao invés de borderTop: o divider do SectionBlock já separa do header,
+  // então o primeiro item flui limpo. Cada linha vira uma "row" tipo tabela.
+  listRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingVertical: 10, paddingHorizontal: 2,
+    borderBottomWidth: 1, borderBottomColor: colors.border + '80',
+  },
+  listRowNome: { flex: 1, fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.text },
+  listRowSub:  { fontSize: fonts.tiny, color: colors.textSecondary, marginTop: 2 },
+  listRowValor: { fontSize: fonts.tiny, color: colors.textSecondary, fontFamily: fontFamily.medium },
+  listMore: {
+    fontSize: fonts.tiny, color: colors.textSecondary, fontStyle: 'italic',
+    marginTop: 8, textAlign: 'center',
+  },
+  deltaBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12,
+  },
+  deltaBadgeText: { fontSize: fonts.tiny, fontFamily: fontFamily.bold, fontWeight: '700' },
+  rankBadge: {
     width: 26, height: 26, borderRadius: 13,
     alignItems: 'center', justifyContent: 'center',
   },
-  sectionHeaderText: {
-    fontSize: fonts.regular, fontFamily: fontFamily.bold,
-    color: colors.text, textTransform: 'uppercase', letterSpacing: 0.5,
+  rankBadgeText: { fontSize: fonts.tiny, fontFamily: fontFamily.bold, fontWeight: '700' },
+
+  // Sessão 28.41: catRow — cards mais slim dentro do SectionBlock
+  catRow: {
+    paddingVertical: spacing.sm + 4,
+    borderBottomWidth: 1, borderBottomColor: colors.border + '80',
   },
-  // Sessão 28.37: novas styles pra reformulação do relatório
-  kpiSub: { fontSize: 10, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
-  sectionDesc: { fontSize: fonts.small, color: colors.textSecondary, marginBottom: spacing.sm, marginTop: -spacing.xs, lineHeight: 18 },
-  alertCard: {
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    borderLeftWidth: 4,
-  },
-  alertHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4,
-  },
-  alertTitle: {
-    fontSize: fonts.regular, fontFamily: fontFamily.bold,
-  },
-  alertDesc: {
-    fontSize: fonts.small, color: colors.textSecondary,
-    marginBottom: spacing.sm, lineHeight: 18,
-  },
-  alertItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingVertical: 8, borderTopWidth: 1, borderTopColor: colors.border,
-  },
-  alertItemNome: {
-    flex: 1, fontSize: fonts.small, fontFamily: fontFamily.medium,
-    color: colors.text,
-  },
-  alertItemValor: {
-    fontSize: fonts.tiny, color: colors.textSecondary, fontFamily: fontFamily.medium,
-  },
-  alertMore: {
-    fontSize: fonts.tiny, color: colors.textSecondary, fontStyle: 'italic',
-    marginTop: 6, textAlign: 'center',
-  },
-  variacaoRow: {
+  catRowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  catRowNome: { fontSize: fonts.small + 1, fontFamily: fontFamily.semiBold, color: colors.text },
+  catRowCount: { fontSize: fonts.tiny, color: colors.textSecondary },
+  catRowStats: { flexDirection: 'row', gap: spacing.sm },
+  catRowStat: { flex: 1 },
+  catRowStatLabel: { fontSize: 10, color: colors.textSecondary, marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.4 },
+  catRowStatValue: { fontSize: fonts.regular, fontFamily: fontFamily.semiBold, color: colors.text },
+
+  // Histórico
+  histRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: colors.surface, padding: spacing.sm + 2,
-    borderRadius: borderRadius.sm, marginBottom: 4,
+    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border + '80',
   },
-  variacaoNome: { fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.text },
-  variacaoSub: { fontSize: fonts.tiny, color: colors.textSecondary, marginTop: 2 },
-  topRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: colors.surface, padding: spacing.sm + 2,
-    borderRadius: borderRadius.sm, marginBottom: 4,
+  histNome: { fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.text },
+  histData: { fontSize: fonts.tiny, color: colors.textSecondary, marginTop: 2 },
+  histPreco: { fontSize: fonts.regular, fontFamily: fontFamily.bold, color: colors.primary },
+  histEmpty: {
+    alignItems: 'center', padding: spacing.md,
+    backgroundColor: colors.background, borderRadius: 8,
   },
-  topRank: {
-    width: 24, height: 24, borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
+  histEmptyText: {
+    fontSize: fonts.small, color: colors.textSecondary,
+    textAlign: 'center', marginTop: 6, lineHeight: 18,
   },
-  topRankText: { fontSize: fonts.tiny, fontFamily: fontFamily.bold, fontWeight: '700' },
-  topNome: { flex: 1, fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.text },
-  topPreco: { fontSize: fonts.regular, fontFamily: fontFamily.bold },
 });
