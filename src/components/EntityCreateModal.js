@@ -640,6 +640,35 @@ export default function EntityCreateModal({
       }
 
       setSaving(false);
+      // Sessão 28.36: se o preparo recém-criado veio de "+ Preparo" dentro de
+      // um produto pai, anexa o preparo ao draft do produto. Só roda quando
+      // estamos no MODO PREPARO e tem um produto pai esperando.
+      if (savedId && !isProduto && mode === 'preparo') {
+        try {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+          if (raw) {
+            const info = JSON.parse(raw);
+            if (info?.draft && info?.mode === 'produto' && info?.pendingAddType === 'preparo') {
+              const existingItens = info.draft.itens || [];
+              const novoItem = {
+                tipo: 'preparo',
+                id: savedId,
+                nome: nome.trim(),
+                quantidade: 0,
+                custoUnit: rend > 0 ? (custoTotal / rend) : 0,
+                unidade: unidadeMedidaPrep || 'g',
+              };
+              const updated = {
+                ...info,
+                draft: { ...info.draft, itens: [...existingItens, novoItem] },
+                pendingAddType: undefined,
+              };
+              await AsyncStorage.setItem('reopenEntityModalAfterEdit', JSON.stringify(updated));
+            }
+          }
+        } catch (e) { console.warn('[EntityCreateModal.preparo.autoAddToProductDraft]', e); }
+      }
       onSaved && onSaved(savedId);
       onClose && onClose();
     } catch (e) {
@@ -1176,10 +1205,18 @@ export default function EntityCreateModal({
                   já existe e o modal restaura automaticamente quando volta (Sessão 28.19). */}
               {(() => {
                 const saveDraftAndNavigate = (target, params = {}) => {
+                  // Sessão 28.36: marca pendingAddType pra que o form de cadastro
+                  // (MateriaPrimaForm/EmbalagemForm/EntityCreateModal preparo) saiba
+                  // adicionar o item recém-criado no draft do produto/preparo pai.
+                  let pendingAddType = null;
+                  if (target === 'MateriaPrimaForm') pendingAddType = 'materia_prima';
+                  else if (target === 'EmbalagemForm') pendingAddType = 'embalagem';
+                  else if (target === 'NovoPreparo') pendingAddType = 'preparo';
                   try {
                     const AsyncStorage = require('@react-native-async-storage/async-storage').default;
                     const reopenInfo = {
                       mode, editId: editId || null, ts: Date.now(),
+                      pendingAddType,
                       draft: {
                         nome, categoriaId, precoVenda,
                         tipoVenda, rendimentoUnidades, rendimentoTotalProd,

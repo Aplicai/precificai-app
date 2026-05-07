@@ -237,8 +237,20 @@ export default function KitInicioScreen({ navigation, route }) {
       return;
     }
 
-    // Padrão: ADICIONA aos existentes (preservando)
-    await executarKit(false);
+    // Sessão 28.36: confirmação ao aplicar kit MESMO SEM sobrescrever.
+    // Antes: kit era aplicado direto se "sobrescrever" estava desmarcado, sem
+    // dar pro user uma última chance. Agora pede confirmação explícita.
+    const segLabel = segmentoInfo?.label || 'segmento';
+    const msgAdd = `Vamos aplicar o kit "${segLabel}" — vai cadastrar ${insumosCount} insumos com PREÇOS DE REFERÊNCIA do mercado. Os dados existentes (insumos, preparos, produtos) serão PRESERVADOS. Você poderá ajustar os preços depois. Continuar?`;
+    if (Platform.OS === 'web') {
+      if (!window.confirm(msgAdd)) return;
+      await executarKit(false);
+    } else {
+      Alert.alert(`Aplicar kit ${segLabel}`, msgAdd, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Aplicar', onPress: () => executarKit(false) },
+      ]);
+    }
   }
 
   async function executarKit(resetar) {
@@ -363,11 +375,26 @@ export default function KitInicioScreen({ navigation, route }) {
             }
           }
           const fc = calcFatorCorrecao(qtBruta, qtLiquida);
-          // APP-14: tenta pré-preencher com preço médio de mercado pra evitar
-          // que a usuária precise pesquisar valor de cada insumo do zero.
-          const valorRef = getPrecoReferencia(selected, insumo.nome);
-          const valorFinal = valorRef != null ? valorRef : (insumo.valor_pago || 0);
-          const isEstimado = valorRef != null;
+          // APP-14 + Sessão 28.36: pré-preenche valor de mercado priorizando:
+          //  1. precosReferencia.js (per-segmento, mais específico)
+          //  2. marketPrices.js (global, fallback)
+          //  3. valor_pago do template (fallback final, geralmente 0)
+          // TODO insumo aplicado via kit é marcado como ESTIMADO — user precisa
+          // ver o badge e atualizar com o preço real dele.
+          let valorFinal = getPrecoReferencia(selected, insumo.nome);
+          if (valorFinal == null || valorFinal <= 0) {
+            try {
+              const { getMarketPrice } = require('../data/marketPrices');
+              const fallback = getMarketPrice(insumo.nome, insumo.quantidade_bruta, insumo.unidade_medida);
+              if (fallback != null) valorFinal = fallback;
+            } catch {}
+          }
+          if (valorFinal == null || valorFinal <= 0) {
+            valorFinal = insumo.valor_pago || 0;
+          }
+          // SEMPRE marca como estimado quando aplicado via kit, mesmo que valorFinal=0
+          // (user precisa ver badge "atualize com seu preço real" pra entender o estado).
+          const isEstimado = true;
           // D-27: usa qtLiquida ajustada (não a do template)
           const pb = calcPrecoBase(valorFinal, qtLiquida, insumo.unidade_medida);
           return {
