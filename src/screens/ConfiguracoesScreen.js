@@ -1,39 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import Constants from 'expo-constants';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Platform, ActivityIndicator, Switch } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Platform, Switch } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useListDensity from '../hooks/useListDensity';
 import useFeatureFlag from '../hooks/useFeatureFlag';
-// Sprint 5 S15 — camada unificada web+mobile para exportação (substitui código
-// inline que só funcionava no web). No mobile, usa expo-file-system + expo-sharing
-// se instalados; senão mostra instrução de instalação (fail-soft).
-import { exportarBackupJSON } from '../services/backupService';
 // D-02: botão sair da conta no mobile
 import { useAuth } from '../contexts/AuthContext';
 
 // Versão dinâmica via expoConfig (em vez de hardcoded — evita desync após release).
 const APP_VERSION = Constants?.expoConfig?.version || Constants?.manifest?.version || '1.0.0';
 
-// Audit P0 (Fase 2 - Fix #9): mapeia erros técnicos para mensagens amigáveis.
-// NUNCA expor `e.message` cru ao usuário (pode vazar paths, stack, infos internas).
-function mapBackupError(e) {
-  const raw = String(e?.message || '').toLowerCase();
-  if (raw.includes('quota') || raw.includes('storage')) {
-    return 'Espaço insuficiente no dispositivo para salvar o backup.';
-  }
-  if (raw.includes('permission') || raw.includes('denied')) {
-    return 'Permissão negada para salvar o arquivo.';
-  }
-  if (raw.includes('network') || raw.includes('failed to fetch')) {
-    return 'Sem conexão com a internet. Verifique sua rede.';
-  }
-  if (raw.includes('timeout')) {
-    return 'A operação demorou demais. Tente novamente.';
-  }
-  return 'Não foi possível exportar o backup. Tente novamente em instantes.';
-}
+// Sessão 28.48: removido mapBackupError (helper só do JSON backup, agora extinto).
 
 const OPCOES = [
   { key: 'perfil', icon: 'user', label: 'Perfil do Negócio', desc: 'Nome, segmento e telefone', screen: 'Perfil', color: colors.primary },
@@ -44,13 +23,7 @@ const OPCOES = [
   { key: 'privacidade', icon: 'shield', label: 'Política de Privacidade', desc: 'Como tratamos seus dados (LGPD)', screen: 'Privacidade', color: colors.accent },
 ];
 
-const BACKUP_TABLES = [
-  'configuracao', 'perfil', 'categorias_insumos', 'materias_primas',
-  'categorias_embalagens', 'embalagens', 'categorias_preparos', 'preparos',
-  'preparo_ingredientes', 'categorias_produtos', 'produtos', 'produto_ingredientes',
-  'produto_preparos', 'produto_embalagens', 'despesas_fixas', 'despesas_variaveis',
-  'faturamento_mensal', 'delivery_config', 'delivery_combos', 'delivery_combo_itens',
-];
+// Sessão 28.48: removido BACKUP_TABLES (era usado só pelo backup JSON, agora removido).
 
 /**
  * Linha de toggle de feature flag — usado na seção "Recursos avançados".
@@ -89,7 +62,6 @@ function FlagToggleRow({ icon, materialIcon, label, desc, value, onChange }) {
 }
 
 export default function ConfiguracoesScreen({ navigation }) {
-  const [exporting, setExporting] = useState(false);
   const { density, setDensity } = useListDensity();
   // D-02: signOut function pra botão sair da conta
   const { signOut, user } = useAuth();
@@ -121,75 +93,10 @@ export default function ConfiguracoesScreen({ navigation }) {
   // Sessão 28.8 — flag opcional pra exibir o CRUD de combos sem depender de delivery
   const [combosOn, setCombosOn] = useFeatureFlag('modo_avancado_combos');
 
-  // Audit P0 (Fase 2 - Fix #10): race-guard contra setState após unmount.
-  // exportBackup pode rodar 30s+ em base grande; usuário pode trocar de tela.
-  const isMountedRef = useRef(true);
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => { isMountedRef.current = false; };
-  }, []);
-
-  // Confirmação prévia antes de gerar backup. Web baixa arquivo no clique do usuário,
-  // que pode ter dados sensíveis (custos, faturamento) — evita download acidental.
-  function pedirConfirmacaoExport() {
-    Alert.alert(
-      'Exportar backup?',
-      'Será gerado um arquivo JSON com todos os seus dados (insumos, produtos, configurações financeiras, vendas). Guarde em local seguro.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Exportar', onPress: exportBackup },
-      ]
-    );
-  }
-
-  async function exportBackup() {
-    setExporting(true);
-    try {
-      const db = await getDatabase();
-      const backup = {};
-      const tabelasFaltantes = [];
-      for (const table of BACKUP_TABLES) {
-        try {
-          backup[table] = await db.getAllAsync(`SELECT * FROM ${table}`);
-        } catch (e) {
-          backup[table] = [];
-          tabelasFaltantes.push(table);
-          if (typeof console !== 'undefined' && console.warn) console.warn('[ConfiguracoesScreen.exportBackup] tabela ausente:', table, e?.message);
-        }
-      }
-      backup._meta = { date: new Date().toISOString(), version: APP_VERSION, tabelasFaltantes };
-
-      // Sprint 5 S15 — backupService unifica web+mobile. Web: download via Blob.
-      // Mobile: expo-file-system + expo-sharing (share sheet nativo) se instalados.
-      const filename = `precificai-backup-${new Date().toISOString().split('T')[0]}.json`;
-      try {
-        const res = await exportarBackupJSON(backup, { filename });
-        const aviso = tabelasFaltantes.length > 0 ? ` (${tabelasFaltantes.length} tabela(s) sem dados)` : '';
-        if (res.method === 'web-download') {
-          Alert.alert('Backup exportado', `O arquivo JSON foi baixado com sucesso.${aviso}`);
-        } else {
-          Alert.alert('Backup exportado', `Compartilhamento aberto.${aviso}`);
-        }
-      } catch (depErr) {
-        if (depErr?.code === 'DEPS_NOT_INSTALLED') {
-          Alert.alert(
-            'Backup no mobile',
-            'Para exportar no celular, o desenvolvedor precisa instalar as bibliotecas "expo-file-system" e "expo-sharing". ' +
-            'Por enquanto, use a versão web em precificaiapp.com.',
-          );
-        } else {
-          throw depErr;
-        }
-      }
-    } catch (e) {
-      if (typeof console !== 'undefined' && console.error) console.error('[ConfiguracoesScreen.exportBackup]', e);
-      // Audit P0 (Fase 2 - Fix #9): nunca expor e.message cru — usar mapBackupError.
-      if (isMountedRef.current) Alert.alert('Erro', mapBackupError(e));
-    } finally {
-      if (isMountedRef.current) setExporting(false);
-    }
-  }
-
+  // Sessão 28.48: removidas funções pedirConfirmacaoExport, exportBackup,
+  // mapBackupError, BACKUP_TABLES, isMountedRef e estado `exporting`.
+  // Eram do backup JSON que o user pediu pra remover. Mantém só o CSV inline
+  // mais abaixo na seção "Exportar Dados".
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -406,56 +313,23 @@ export default function ConfiguracoesScreen({ navigation }) {
         />
       </View>
 
-      {/* Backup e Restauração */}
+      {/* Sessão 28.48: "Backup e Restauração" simplificado.
+          Removidos os botões "Exportar Dados" (JSON) e "Importar Dados" (em breve).
+          Mantido só o "Exportar CSV". Renomeada a seção pra "Exportar Dados". */}
       <View style={styles.backupSection}>
         <View style={styles.backupHeader}>
           <View style={[styles.iconBox, { backgroundColor: colors.blue + '12' }]}>
-            <Feather name="shield" size={18} color={colors.blue} />
+            <Feather name="file-text" size={18} color={colors.blue} />
           </View>
           <View style={styles.rowBody}>
-            <Text style={styles.rowLabel}>Backup e Restauração</Text>
-            <Text style={styles.rowDesc}>Salve ou restaure todos os dados do app</Text>
+            <Text style={styles.rowLabel}>Exportar Dados</Text>
+            <Text style={styles.rowDesc}>Baixe um CSV com tudo cadastrado pra Excel / contador</Text>
           </View>
         </View>
 
-        <Text style={styles.backupDesc}>
-          Exporte seus dados (insumos, produtos, configurações, etc.) como arquivo JSON para manter uma cópia de segurança.
-        </Text>
-
+        {/* Export CSV — Sessão 28.20 / mantido na 28.48 como única opção */}
         <TouchableOpacity
-          style={[styles.backupBtn, exporting && { opacity: 0.5 }]}
-          activeOpacity={0.7}
-          onPress={pedirConfirmacaoExport}
-          disabled={exporting}
-          accessibilityRole="button"
-          accessibilityLabel={exporting ? 'Exportando dados' : 'Exportar dados'}
-          accessibilityState={{ disabled: exporting, busy: exporting }}
-        >
-          {exporting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Feather name="download" size={16} color="#fff" />
-          )}
-          <Text style={styles.backupBtnText}>
-            {exporting ? 'Exportando...' : 'Exportar Dados'}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.backupBtnOutline}
-          activeOpacity={0.7}
-          onPress={() => Alert.alert('Importar Dados', 'Em breve! Esta funcionalidade está em desenvolvimento.')}
-          accessibilityRole="button"
-          accessibilityLabel="Importar dados (em breve)"
-          accessibilityHint="Funcionalidade em desenvolvimento"
-        >
-          <Feather name="upload" size={16} color={colors.primary} />
-          <Text style={styles.backupBtnOutlineText}>Importar Dados</Text>
-        </TouchableOpacity>
-
-        {/* Sessão 28.20: Export CSV pra contador */}
-        <TouchableOpacity
-          style={[styles.backupBtnOutline, { marginTop: 8 }]}
+          style={[styles.backupBtn]}
           activeOpacity={0.7}
           onPress={async () => {
             try {
@@ -573,8 +447,8 @@ export default function ConfiguracoesScreen({ navigation }) {
           accessibilityRole="button"
           accessibilityLabel="Exportar CSV para Excel"
         >
-          <Feather name="file-text" size={16} color={colors.primary} />
-          <Text style={styles.backupBtnOutlineText}>Exportar CSV (Excel/contador)</Text>
+          <Feather name="download" size={16} color="#fff" />
+          <Text style={styles.backupBtnText}>Baixar CSV (Excel / contador)</Text>
         </TouchableOpacity>
       </View>
 
