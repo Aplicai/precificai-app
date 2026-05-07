@@ -119,8 +119,17 @@ export default function RelatorioInsumosScreen() {
     const now = Date.now();
     const dia = 24 * 60 * 60 * 1000;
 
+    // Sessão 28.39: insumos com preço SÓ do kit (marca = __VALOR_ESTIMADO_KIT__)
+    // são EXCLUÍDOS dos alertas de variação/desatualizado/top — não foi user
+    // que cadastrou esse preço, então tratar como dado autêntico polui o relatório.
+    const ehKitOnly = (i) => i?.marca === '__VALOR_ESTIMADO_KIT__';
+
     const semPreco = insumos.filter(i => safe(i.preco_por_kg) <= 0);
-    const comPreco = insumos.filter(i => safe(i.preco_por_kg) > 0);
+    // "ComPreco" = só items com preço REAL inserido pelo user
+    const comPreco = insumos.filter(i => safe(i.preco_por_kg) > 0 && !ehKitOnly(i));
+    // "ComPrecoTotal" inclui kit-only — usado só pra estatística de quantos têm valor
+    const comPrecoTotal = insumos.filter(i => safe(i.preco_por_kg) > 0);
+    const aindaEstimadoKit = insumos.filter(ehKitOnly);
 
     // Idade do preço (dias desde última atualização registrada em historico_precos)
     const ultimaAtualizacaoPorInsumo = {};
@@ -198,7 +207,10 @@ export default function RelatorioInsumosScreen() {
       custoMedio,
       catMaisCara,
       totalCadastrados: insumos.length,
-      comPrecoCount: comPreco.length,
+      comPrecoCount: comPrecoTotal.length,
+      // 28.39: itens ainda com preço-do-kit (não foram revisados pelo user)
+      kitOnlyCount: aindaEstimadoKit.length,
+      kitOnly: aindaEstimadoKit.slice(0, 10),
     };
   }, [insumos, historico, categoriaStats]);
 
@@ -213,17 +225,21 @@ export default function RelatorioInsumosScreen() {
   return (
     <View style={styles.container}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
-        <View style={[styles.header, { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }]}>
+        {/* Sessão 28.39: header polido no estilo Precificaí — ícone em círculo
+            colorido + título + subtitle estruturados, ação de refresh com ícone redondo. */}
+        <View style={styles.heroHeader}>
+          <View style={styles.heroIcon}>
+            <Feather name="bar-chart-2" size={22} color={colors.primary} />
+          </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>Relatório de Insumos</Text>
             <Text style={styles.subtitle}>
-              Saúde do seu cadastro: o que precisa atenção, top mais caros, variações de preço e custo médio por categoria.
+              Saúde do seu cadastro: pendências, variações e oportunidades de redução de custo.
             </Text>
           </View>
-          {/* Sessão 28.25: botão de refresh manual — fallback caso useFocusEffect não dispare */}
           <TouchableOpacity
             onPress={carregar}
-            style={{ padding: 8, marginLeft: 8, borderRadius: 6, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}
+            style={styles.refreshBtn}
             accessibilityLabel="Atualizar relatório"
           >
             <Feather name="refresh-cw" size={16} color={colors.primary} />
@@ -288,6 +304,45 @@ export default function RelatorioInsumosScreen() {
               </View>
             </View>
 
+            {/* SEÇÃO 1 — AÇÕES URGENTES (icon header) */}
+            {(insights.semPrecoCount > 0 || insights.desatualizadosCount > 0 || insights.kitOnlyCount > 0) && (
+              <View style={styles.sectionHeader}>
+                <View style={[styles.sectionIcon, { backgroundColor: colors.error + '15' }]}>
+                  <Feather name="zap" size={14} color={colors.error} />
+                </View>
+                <Text style={styles.sectionHeaderText}>Precisa atenção</Text>
+              </View>
+            )}
+
+            {/* Insumos com preço só do kit */}
+            {insights.kitOnlyCount > 0 && (
+              <View style={[styles.alertCard, { borderLeftColor: colors.warning }]}>
+                <View style={styles.alertHeader}>
+                  <Feather name="info" size={18} color={colors.warning} />
+                  <Text style={[styles.alertTitle, { color: colors.warning }]}>
+                    Preços ainda do Kit de Início ({insights.kitOnlyCount})
+                  </Text>
+                </View>
+                <Text style={styles.alertDesc}>
+                  Esses insumos têm o valor de mercado pré-preenchido pelo Kit. Não foram revisados por você ainda — atualize com o preço REAL que você paga pra ter o relatório fiel.
+                </Text>
+                {insights.kitOnly.map((i, idx) => (
+                  <TouchableOpacity
+                    key={i.id || idx}
+                    style={styles.alertItem}
+                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'RelatorioInsumos' } })}
+                  >
+                    <Text style={styles.alertItemNome} numberOfLines={1}>{i.nome}</Text>
+                    <Text style={styles.alertItemValor}>R$ {Number(i.preco_por_kg).toFixed(2)}/kg</Text>
+                    <Feather name="chevron-right" size={14} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                ))}
+                {insights.kitOnlyCount > insights.kitOnly.length && (
+                  <Text style={styles.alertMore}>+ {insights.kitOnlyCount - insights.kitOnly.length} outros</Text>
+                )}
+              </View>
+            )}
+
             {/* AÇÕES URGENTES: insumos sem preço */}
             {insights.semPrecoCount > 0 && (
               <View style={[styles.alertCard, { borderLeftColor: colors.error }]}>
@@ -304,7 +359,7 @@ export default function RelatorioInsumosScreen() {
                   <TouchableOpacity
                     key={i.id || idx}
                     style={styles.alertItem}
-                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id } })}
+                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'RelatorioInsumos' } })}
                   >
                     <Text style={styles.alertItemNome} numberOfLines={1}>{i.nome}</Text>
                     <Feather name="chevron-right" size={14} color={colors.textSecondary} />
@@ -332,7 +387,7 @@ export default function RelatorioInsumosScreen() {
                   <TouchableOpacity
                     key={i.id || idx}
                     style={styles.alertItem}
-                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id } })}
+                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'RelatorioInsumos' } })}
                   >
                     <Text style={styles.alertItemNome} numberOfLines={1}>{i.nome}</Text>
                     <Text style={styles.alertItemValor}>
@@ -347,11 +402,21 @@ export default function RelatorioInsumosScreen() {
               </View>
             )}
 
+            {/* SEÇÃO 2 — TENDÊNCIAS */}
+            {insights.variacoesCount > 0 && (
+              <View style={styles.sectionHeader}>
+                <View style={[styles.sectionIcon, { backgroundColor: colors.info + '15' }]}>
+                  <Feather name="trending-up" size={14} color={colors.info} />
+                </View>
+                <Text style={styles.sectionHeaderText}>Tendências de preço</Text>
+              </View>
+            )}
+
             {/* VARIAÇÕES RECENTES */}
             {insights.variacoesCount > 0 && (
               <>
-                <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>
-                  Variações de preço ≥ 5%
+                <Text style={[styles.sectionTitle, { marginTop: 0 }]}>
+                  Variações ≥ 5%
                 </Text>
                 <Text style={styles.sectionDesc}>
                   Insumos com mudança significativa de custo na última atualização. Reveja os preços de venda dos produtos que usam esses insumos.
@@ -362,7 +427,7 @@ export default function RelatorioInsumosScreen() {
                     <TouchableOpacity
                       key={i}
                       style={styles.variacaoRow}
-                      onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: v.materia_prima_id } })}
+                      onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: v.materia_prima_id, returnTo: 'RelatorioInsumos' } })}
                     >
                       <View style={{ flex: 1 }}>
                         <Text style={styles.variacaoNome} numberOfLines={1}>{v.nome}</Text>
@@ -382,10 +447,20 @@ export default function RelatorioInsumosScreen() {
               </>
             )}
 
+            {/* SEÇÃO 3 — OPORTUNIDADES DE CUSTO */}
+            {insights.top5Caros.length > 0 && (
+              <View style={styles.sectionHeader}>
+                <View style={[styles.sectionIcon, { backgroundColor: colors.success + '15' }]}>
+                  <Feather name="dollar-sign" size={14} color={colors.success} />
+                </View>
+                <Text style={styles.sectionHeaderText}>Oportunidades de custo</Text>
+              </View>
+            )}
+
             {/* TOP 5 MAIS CAROS — pra ataque de custos */}
             {insights.top5Caros.length > 0 && (
               <>
-                <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>
+                <Text style={[styles.sectionTitle, { marginTop: 0 }]}>
                   Top 5 mais caros (por kg)
                 </Text>
                 <Text style={styles.sectionDesc}>
@@ -395,7 +470,7 @@ export default function RelatorioInsumosScreen() {
                   <TouchableOpacity
                     key={i.id || idx}
                     style={styles.topRow}
-                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id } })}
+                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'RelatorioInsumos' } })}
                   >
                     <View style={[styles.topRank, { backgroundColor: colors.error + '20' }]}>
                       <Text style={[styles.topRankText, { color: colors.error }]}>{idx + 1}</Text>
@@ -409,10 +484,20 @@ export default function RelatorioInsumosScreen() {
               </>
             )}
 
+            {/* SEÇÃO 4 — VISÃO ANALÍTICA */}
+            {categoriaStats.length > 0 && (
+              <View style={styles.sectionHeader}>
+                <View style={[styles.sectionIcon, { backgroundColor: colors.primary + '15' }]}>
+                  <Feather name="pie-chart" size={14} color={colors.primary} />
+                </View>
+                <Text style={styles.sectionHeaderText}>Análise por categoria</Text>
+              </View>
+            )}
+
             {/* PREÇO MÉDIO POR CATEGORIA — visão analítica */}
             {categoriaStats.length > 0 && (
               <>
-                <Text style={[styles.sectionTitle, { marginTop: spacing.lg }]}>
+                <Text style={[styles.sectionTitle, { marginTop: 0 }]}>
                   Preço médio por categoria
                 </Text>
                 <Text style={styles.sectionDesc}>
@@ -522,6 +607,37 @@ const styles = StyleSheet.create({
   histData: { fontSize: fonts.tiny, color: colors.textSecondary, marginTop: 2 },
   histPreco: { fontSize: fonts.regular, fontFamily: fontFamily.bold, color: colors.primary },
 
+  // Sessão 28.39: header polido + section dividers visuais
+  heroHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: colors.surface,
+    padding: spacing.md, borderRadius: borderRadius.md,
+    marginBottom: spacing.md, borderLeftWidth: 4, borderLeftColor: colors.primary,
+  },
+  heroIcon: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: colors.primary + '15',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  refreshBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sectionHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginTop: spacing.lg, marginBottom: spacing.sm,
+    paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: colors.border,
+  },
+  sectionIcon: {
+    width: 26, height: 26, borderRadius: 13,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  sectionHeaderText: {
+    fontSize: fonts.regular, fontFamily: fontFamily.bold,
+    color: colors.text, textTransform: 'uppercase', letterSpacing: 0.5,
+  },
   // Sessão 28.37: novas styles pra reformulação do relatório
   kpiSub: { fontSize: 10, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
   sectionDesc: { fontSize: fonts.small, color: colors.textSecondary, marginBottom: spacing.sm, marginTop: -spacing.xs, lineHeight: 18 },
