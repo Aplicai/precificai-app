@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Platform, Share } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -50,13 +50,28 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
   // Quando filtrado por categoria, guarda o id da categoria como número.
   const [filtroCategoria, setFiltroCategoria] = usePersistedState('relatorioSimples.filtroCategoria', 'todas');
 
+  // Sessão 28.42: dedup — evita re-fetch quando focus event dispara várias vezes
+  // em sequência ou quando user troca de aba interna sem precisar de reload novo.
+  const lastLoadRef = useRef(0);
+  const loadingRef = useRef(false);
+  const lastFilterRef = useRef(null);
+  const MIN_RELOAD_MS = 3000;
+
   useFocusEffect(useCallback(() => {
+    const now = Date.now();
+    // Se o filtro mudou, sempre recarrega (semântica do filtro)
+    const filterChanged = lastFilterRef.current !== filtroCategoria;
+    if (loadingRef.current) return;
+    if (!filterChanged && (now - lastLoadRef.current) < MIN_RELOAD_MS) return;
+    lastFilterRef.current = filtroCategoria;
+    lastLoadRef.current = now;
     loadData();
   }, [filtroCategoria]));
 
   async function loadData() {
     setLoadError(null);
     try {
+      loadingRef.current = true;
       setLoading(true);
       const db = await getDatabase();
 
@@ -324,6 +339,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
       setLoadError(e?.message || 'Não foi possível gerar o relatório.');
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
   }
 

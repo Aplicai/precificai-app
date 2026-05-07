@@ -5,6 +5,7 @@ import { getDatabase } from '../database/database';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, normalizeSearch } from '../utils/calculations';
+import { formatInsumoNome } from '../utils/insumoDisplay';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -70,12 +71,12 @@ export default function AtualizarPrecosScreen({ navigation }) {
         rows = await db.getAllAsync('SELECT id, nome, marca, valor_pago, categoria_id FROM materias_primas ORDER BY nome');
         const cats = await db.getAllAsync('SELECT id, nome FROM categorias_insumos');
         const catMap = Object.fromEntries(cats.map(c => [c.id, c.nome]));
-        rows = rows.map(r => ({ ...r, displayName: r.marca ? `${r.nome} (${r.marca})` : r.nome, priceField: 'valor_pago', price: safeNum(r.valor_pago), categoria: catMap[r.categoria_id] || 'Sem categoria' }));
+        rows = rows.map(r => ({ ...r, displayName: formatInsumoNome(r.nome, r.marca), priceField: 'valor_pago', price: safeNum(r.valor_pago), categoria: catMap[r.categoria_id] || 'Sem categoria' }));
       } else if (activeTab === 'embalagens') {
         rows = await db.getAllAsync('SELECT id, nome, marca, preco_embalagem, categoria_id FROM embalagens ORDER BY nome');
         const cats = await db.getAllAsync('SELECT id, nome FROM categorias_embalagens');
         const catMap = Object.fromEntries(cats.map(c => [c.id, c.nome]));
-        rows = rows.map(r => ({ ...r, displayName: r.marca ? `${r.nome} (${r.marca})` : r.nome, priceField: 'preco_embalagem', price: safeNum(r.preco_embalagem), categoria: catMap[r.categoria_id] || 'Sem categoria' }));
+        rows = rows.map(r => ({ ...r, displayName: formatInsumoNome(r.nome, r.marca), priceField: 'preco_embalagem', price: safeNum(r.preco_embalagem), categoria: catMap[r.categoria_id] || 'Sem categoria' }));
       } else if (activeTab === 'produtos') {
         rows = await db.getAllAsync('SELECT id, nome, preco_venda, categoria_id FROM produtos ORDER BY nome');
         const cats = await db.getAllAsync('SELECT id, nome FROM categorias_produtos');

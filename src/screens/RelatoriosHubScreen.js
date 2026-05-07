@@ -76,17 +76,26 @@ export default function RelatoriosHubScreen({ navigation }) {
           })}
         </View>
 
-        {/* Conteúdo da aba ativa.
-            Render condicional (não toggle de visibilidade) pra garantir que
-            useFocusEffect/useEffect dos filhos disparem ao trocar de aba e
-            pra não acumular memória das duas árvores ao mesmo tempo. */}
+        {/* Sessão 28.42: ambos os filhos ficam SEMPRE mounted; alternamos só
+            visibilidade. Antes, render condicional fazia unmount/remount a cada
+            troca de aba — re-disparava useFocusEffect e carregar() do filho
+            inteiro, dando impressão de "demora". Agora cada filho carrega UMA
+            vez ao abrir o hub. Estado interno (filtros, scroll) preserva entre
+            trocas de aba. */}
         <View style={{ flex: 1 }}>
-          {activeTab === 'geral' && (
+          <View
+            style={{ flex: 1, display: activeTab === 'geral' ? 'flex' : 'none' }}
+            // pointerEvents none na aba inativa garante que ela não capture toques
+            pointerEvents={activeTab === 'geral' ? 'auto' : 'none'}
+          >
             <RelatorioSimplesScreen embedded navigation={navigation} />
-          )}
-          {activeTab === 'insumos' && (
+          </View>
+          <View
+            style={{ flex: 1, display: activeTab === 'insumos' ? 'flex' : 'none' }}
+            pointerEvents={activeTab === 'insumos' ? 'auto' : 'none'}
+          >
             <RelatorioInsumosScreen embedded navigation={navigation} />
-          )}
+          </View>
         </View>
       </View>
     </View>
