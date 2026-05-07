@@ -33,7 +33,7 @@ const NAV_SECTIONS = [
       // Sessão 28.40: relatórios unificados em uma única página com tabs internas
       { key: 'relatorio', label: 'Relatórios', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Mais', screen: 'Relatorios' },
       { key: 'listacompras', label: 'Lista de Compras', icon: 'shopping-cart', iconSet: 'feather', tab: 'Mais', screen: 'ListaCompras' },
-      { key: 'exportpdf', label: 'Exportar PDF', icon: 'printer', iconSet: 'feather', tab: 'Mais', screen: 'ExportPDF' },
+      { key: 'exportpdf', label: 'Fichas Técnicas', icon: 'file-text', iconSet: 'feather', tab: 'Mais', screen: 'ExportPDF' },
     ],
   },
   {

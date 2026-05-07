@@ -143,12 +143,21 @@ export default function AtualizarPrecosScreen({ navigation }) {
         const row = await db.getFirstAsync('SELECT * FROM materias_primas WHERE id = ?', [item.id]);
         if (row) {
           // Sessão 28.44 — bug #2: usa calcPrecoBase pra converter unidade.
-          // Antes: numericValue / qtdLiquida (sem unidade) — pra insumo em gramas
-          // (1000g = R$10) gravava preco_por_kg = 0.01 (1000x errado).
-          // Agora: calcPrecoBase respeita unidade_medida e devolve R$/kg correto.
           const qtdLiquida = safeNum(row.quantidade_liquida) || safeNum(row.quantidade_bruta) || 1;
           const precoPorKg = calcPrecoBase(numericValue, qtdLiquida, row.unidade_medida || 'g');
           await db.runAsync('UPDATE materias_primas SET valor_pago = ?, preco_por_kg = ? WHERE id = ?', [numericValue, precoPorKg, item.id]);
+          // Sessão 28.47 — bug #10: registra histórico de preço quando muda.
+          // Antes: AtualizarPrecos só gravava materias_primas, ignorando historico_precos
+          // → relatório de "Tendências/Últimas mudanças" exibia preços antigos/errados.
+          try {
+            const oldValor = safeNum(row.valor_pago);
+            if (Math.abs(oldValor - numericValue) > 0.001) {
+              await db.runAsync(
+                'INSERT INTO historico_precos (materia_prima_id, valor_pago, preco_por_kg) VALUES (?,?,?)',
+                [item.id, numericValue, precoPorKg]
+              );
+            }
+          } catch (_) { /* tabela pode não existir em ambientes legados */ }
         }
       } else {
         await db.runAsync(`UPDATE ${table} SET ${item.priceField} = ? WHERE id = ?`, [numericValue, item.id]);

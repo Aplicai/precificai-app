@@ -1119,20 +1119,18 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
     margin-top: 24px;
   }
   @page {
-    /* D-09: margens reduzidas + browser headers eliminados via margem zero topo.
-       Antes a primeira página vinha em branco porque .ficha { break-inside: avoid }
-       empurrava o conteúdo todo pra página 2. */
-    margin: 6mm 8mm 10mm 8mm;
+    /* Sessão 28.47 — bug #15: bottom 20mm reserva espaço pro footer fixo.
+       Antes 10mm: footer encostava/sobrepunha conteúdo da última ficha. */
+    margin: 6mm 8mm 20mm 8mm;
     size: A4;
   }
   @media print {
     body { background: #fff; padding: 0; margin: 0; }
     .page-header { margin: 0 0 8mm 0; }
-    .page-content { padding: 0; }
-    /* D-09: removido break-inside:avoid das fichas (causava 1ª página em branco
-       quando ficha não cabia junto com o header). Cada ficha agora flui naturalmente. */
-    .ficha { box-shadow: none; }
-    .page-footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 9px; color: #999; padding: 4px; }
+    /* Sessão 28.47: padding-bottom no content evita conteúdo sob o footer fixo. */
+    .page-content { padding: 0 0 14mm 0; }
+    .ficha { box-shadow: none; page-break-inside: avoid; }
+    .page-footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 9px; color: #999; padding: 4px; background: #fff; border-top: 1px solid #eee; }
   }
 </style>
 </head>
@@ -1286,13 +1284,17 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
   .total-row td { border-top: 2px solid #D8E0DE; background: #F4F6F5; }
   .page-footer { text-align: center; padding: 16px; font-size: 12px; color: #6B7D7B; border-top: 1px solid #D8E0DE; margin-top: 24px; }
   /* D-09: margens reduzidas + remoção de break-inside:avoid (evita 1ª página em branco) */
-  @page { margin: 6mm 8mm 10mm 8mm; size: A4; }
+  /* Sessão 28.47 — bug #15: aumenta margem inferior da @page pra footer fixo
+     não invadir o conteúdo. Antes (10mm) ficava muito perto e sobrepondo.
+     20mm dá espaço pra footer (~12mm) + margem de respiro. */
+  @page { margin: 6mm 8mm 20mm 8mm; size: A4; }
   @media print {
     body { background: #fff; padding: 0; margin: 0; }
     .page-header { margin: 0 0 8mm 0; }
-    .page-content { padding: 0; }
-    .ficha { box-shadow: none; }
-    .page-footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 9px; color: #999; padding: 4px; }
+    /* Sessão 28.47: padding-bottom no content reserva espaço pro footer fixo. */
+    .page-content { padding: 0 0 14mm 0; }
+    .ficha { box-shadow: none; page-break-inside: avoid; }
+    .page-footer { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 9px; color: #999; padding: 4px; background: #fff; border-top: 1px solid #eee; }
   }
 </style>
 </head>

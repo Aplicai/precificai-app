@@ -11,7 +11,7 @@
  *    Eu tenho que buscar um produto por produto."
  */
 import React, { useCallback, useMemo, useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Platform } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { SimulacaoProdutoContent } from './SimulacaoProdutoScreen';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -281,10 +281,18 @@ export default function SimuladorLoteScreen() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <Text style={{ flex: 1, fontSize: 14, fontFamily: fontFamily.bold, color: colors.text }}>{linha.prod.nome}</Text>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
                   <View>
                     <Text style={{ fontSize: 10, color: colors.textSecondary }}>CMV</Text>
                     <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>{formatCurrency(linha.prod.cmv)}</Text>
+                  </View>
+                  <View>
+                    <Text style={{ fontSize: 10, color: colors.textSecondary }}>CMV %</Text>
+                    <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>
+                      {linha.prod.precoVendaBalcao > 0
+                        ? ((linha.prod.cmv / linha.prod.precoVendaBalcao) * 100).toFixed(1) + '%'
+                        : '—'}
+                    </Text>
                   </View>
                   <View>
                     <Text style={{ fontSize: 10, color: colors.textSecondary }}>Preço balcão</Text>
@@ -343,13 +351,17 @@ export default function SimuladorLoteScreen() {
           <View>
             {/* Header row 1 — plataforma agrupada */}
             <View style={[styles.row, styles.headerRow]}>
-              <View style={[styles.cellProduto, styles.headerCell, { borderRightWidth: 1, borderRightColor: colors.border }]}>
+              <View style={[styles.cellProduto, styles.headerCell, styles.stickyColHeader, { left: 0, borderRightWidth: 1, borderRightColor: colors.border }]}>
                 <Text style={styles.headerText}>Produto</Text>
               </View>
-              <View style={[styles.cellNumeric, styles.headerCell, { borderRightWidth: 1, borderRightColor: colors.border }]}>
+              <View style={[styles.cellNumeric, styles.headerCell, styles.stickyColHeader, { left: 170, borderRightWidth: 1, borderRightColor: colors.border }]}>
                 <Text style={styles.headerText}>CMV</Text>
               </View>
-              <View style={[styles.cellNumeric, styles.headerCell, { borderRightWidth: 1, borderRightColor: colors.border }]}>
+              {/* Sessão 28.47 — CMV em % por produto (relativo ao preço atual do balcão). */}
+              <View style={[styles.cellNumeric, styles.headerCell, styles.stickyColHeader, { left: 262, borderRightWidth: 1, borderRightColor: colors.border }]}>
+                <Text style={styles.headerText}>CMV %</Text>
+              </View>
+              <View style={[styles.cellNumeric, styles.headerCell, styles.stickyColHeader, { left: 354, borderRightWidth: 1, borderRightColor: colors.border }]}>
                 <Text style={styles.headerText}>Preço{'\n'}Atual</Text>
               </View>
               {plataformas.map(plat => (
@@ -379,17 +391,25 @@ export default function SimuladorLoteScreen() {
             {/* Data rows */}
             {linhasCalculadas.map(linha => (
               <View key={linha.prod.id} style={styles.row}>
-                <View style={[styles.cellProduto, { borderRightWidth: 1, borderRightColor: colors.border }]}>
+                <View style={[styles.cellProduto, styles.stickyCol, { left: 0, borderRightWidth: 1, borderRightColor: colors.border }]}>
                   <Text style={styles.produtoNome} numberOfLines={2}>{linha.prod.nome}</Text>
                   <Text style={{ fontSize: 9, color: colors.textSecondary, marginTop: 2 }}>
                     Lucro líq./un balcão: {formatCurrency(linha.prod.precoVendaBalcao * linha.lucroPercBalcaoReal)} ({(linha.lucroPercBalcaoReal * 100).toFixed(1)}%)
                   </Text>
                 </View>
-                <View style={[styles.cellNumeric, { borderRightWidth: 1, borderRightColor: colors.border }]}>
+                <View style={[styles.cellNumeric, styles.stickyCol, { left: 170, borderRightWidth: 1, borderRightColor: colors.border }]}>
                   <Text style={styles.cellValueDim}>{formatCurrency(linha.prod.cmv)}</Text>
                 </View>
+                {/* Sessão 28.47 — coluna CMV % (CMV / preço de venda do balcão) */}
+                <View style={[styles.cellNumeric, styles.stickyCol, { left: 262, borderRightWidth: 1, borderRightColor: colors.border }]}>
+                  <Text style={styles.cellValueDim}>
+                    {linha.prod.precoVendaBalcao > 0
+                      ? ((linha.prod.cmv / linha.prod.precoVendaBalcao) * 100).toFixed(1) + '%'
+                      : '—'}
+                  </Text>
+                </View>
                 {/* Coluna "Preço Atual" — preço de venda DO PRODUTO no balcão (sessão 28.16) */}
-                <View style={[styles.cellNumeric, { borderRightWidth: 1, borderRightColor: colors.border }]}>
+                <View style={[styles.cellNumeric, styles.stickyCol, { left: 354, borderRightWidth: 1, borderRightColor: colors.border }]}>
                   <Text style={[styles.cellValuePrimary, { color: colors.text }]}>
                     {linha.prod.precoVendaBalcao > 0 ? formatCurrency(linha.prod.precoVendaBalcao) : '—'}
                   </Text>
@@ -519,6 +539,12 @@ const styles = StyleSheet.create({
   // Sessão 28.13: cells balanceados — fontes legíveis sem ficar tabloides
   cellProduto: { width: 170, padding: spacing.sm, justifyContent: 'center' },
   cellNumeric: { width: 92, padding: spacing.xs, paddingHorizontal: spacing.sm, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 4 },
+  // Sessão 28.47 — congela 3 primeiras colunas no scroll horizontal (web).
+  // Posições: Produto(0–170), CMV(170–262), CMV%(262–354), Preço Atual(354–446).
+  // Usa position:sticky — RN-Web traduz pra CSS nativo; mobile não congela
+  // mas a tabela cabe na largura sem scroll horizontal pesado.
+  stickyCol: Platform.OS === 'web' ? { position: 'sticky', zIndex: 2, backgroundColor: colors.surface } : {},
+  stickyColHeader: Platform.OS === 'web' ? { position: 'sticky', zIndex: 3, backgroundColor: colors.background } : {},
   headerCell: { borderBottomWidth: 2, borderBottomColor: colors.primary },
   headerText: { fontSize: 12, fontFamily: fontFamily.bold, color: colors.text, textAlign: 'center' },
   produtoNome: { fontSize: 13, fontFamily: fontFamily.semiBold, color: colors.text },
@@ -533,9 +559,13 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.primary,
   },
   legendTitle: { fontSize: fonts.small, fontFamily: fontFamily.bold, color: colors.text, marginBottom: 8 },
-  legendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
-  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 200 },
-  legendText: { fontSize: fonts.small, color: colors.textSecondary, flex: 1 },
+  // Sessão 28.47 — legenda com card por linha pra que cada bloco se adapte à
+  // largura do user. Antes: minWidth fixo (200) + gap horizontal forçava
+  // overflow em telas estreitas, quebrando o texto de "MESMO LUCRO".
+  // Agora cada legendRow ocupa toda a largura disponível.
+  legendGrid: { flexDirection: 'column', gap: 8 },
+  legendRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  legendText: { fontSize: fonts.small, color: colors.textSecondary, flex: 1, flexShrink: 1, lineHeight: 18 },
   // Sessão 28.16: indicador colorido pra legenda das 2 colunas (mantém vs financeiro)
   legendDot: { width: 10, height: 10, borderRadius: 5 },
   emptyTitle: { fontSize: fonts.large, fontFamily: fontFamily.bold, color: colors.text, marginTop: spacing.md, textAlign: 'center' },

@@ -1080,13 +1080,7 @@ export default function DeliveryHubScreen({ navigation }) {
                   <Feather name="x" size={22} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
-              {/* Indicador de auto-save */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, padding: 8, backgroundColor: '#ECFDF5', borderRadius: 6 }}>
-                <Feather name="check-circle" size={12} color={colors.success} />
-                <Text style={{ fontSize: 11, color: '#065F46', flex: 1 }}>
-                  Salvamento automático ao digitar (aguarda 800ms). Pode fechar quando quiser.
-                </Text>
-              </View>
+              {/* Sessão 28.47: indicador de auto-save removido por ruído visual. */}
             </View>
             {/* Conteúdo */}
             {precosLoading ? (
