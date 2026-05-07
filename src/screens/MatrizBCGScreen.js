@@ -90,15 +90,21 @@ export default function MatrizBCGScreen({ navigation }) {
   const { isDesktop, isMobile } = useResponsiveLayout();
   const saveTimer = useRef(null);
 
-  // Date strings memoizados — não mudam durante a sessão e são usados em queries/labels.
-  // Deps vazias: calculados uma única vez (dia mudar no meio de uma sessão é edge case aceitável).
+  // Date strings memoizados.
+  // Sessão 28.49: BCG é SEMPRE sobre o mês ANTERIOR (mais estável; mês corrente
+  // ainda não fechou e distorce ranking). User pediu pra UI deixar isso explícito.
+  // - `currentMonth` agora contém o MÊS ANTERIOR (ex.: hoje maio → abril)
+  // - `monthName` é "abril de 2026"
+  // - `prevMonthStr` agora é DOIS MESES atrás (usado só pro comparativo "antes")
+  // - `prevMonthName` é "março"
   const { currentMonth, monthName, prevMonthStr, prevMonthName } = useMemo(() => {
-    const now = new Date();
+    const ref = new Date();
+    ref.setMonth(ref.getMonth() - 1); // mês de referência: anterior ao atual
     const prev = new Date();
-    prev.setMonth(prev.getMonth() - 1);
+    prev.setMonth(prev.getMonth() - 2); // mês ainda mais antigo, pra comparativo
     return {
-      currentMonth: now.toISOString().slice(0, 7),
-      monthName: now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
+      currentMonth: ref.toISOString().slice(0, 7),
+      monthName: ref.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
       prevMonthStr: prev.toISOString().slice(0, 7),
       prevMonthName: prev.toLocaleDateString('pt-BR', { month: 'long' }),
     };
@@ -284,7 +290,11 @@ export default function MatrizBCGScreen({ navigation }) {
       // Combos: navega para o Delivery Hub (que tem acesso aos combos)
       navigation.navigate('DeliveryHub');
     } else if (item.id > 0) {
-      navigation.navigate('BCGProdutoForm', { id: item.id });
+      // Sessão 28.49: abre o EntityCreateModal popup novo (mesma rota usada
+      // por RelatorioInsumos, etc). Antes navegava pra BCGProdutoForm — tela
+      // antiga full-screen. Padrão `openProductEdit` é detectado pelo
+      // ProdutosListScreen.useFocusEffect e reabre o modal de edição.
+      navigation.navigate('Produtos', { screen: 'ProdutosList', params: { openProductEdit: item.id } });
     }
   }
 
