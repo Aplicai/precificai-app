@@ -146,9 +146,51 @@ export default function EntityCreateModal({
     setCatExpanded(p => ({ ...p, [filtroTipo]: true }));
   }, [filtroTipo]);
 
+  // Sessão 28.38 BUG FIX: pré-seleciona embalagem padrão da categoria
+  // (configurada via "Definir como padrão para [categoria]" em EmbalagemForm).
+  // Antes: feature existia em getEmbalagemPadrao() mas EntityCreateModal nunca
+  // chamava. Agora: ao trocar categoria em produto NOVO (não edição), busca
+  // a embalagem padrão da categoria + canal balcão e adiciona aos itens
+  // se ainda não estiver lá.
+  useEffect(() => {
+    if (!visible || !isProduto || isEditing || !categoriaId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { getEmbalagemPadrao } = await import('../services/embalagemPadrao');
+        const db = await getDatabase();
+        const embalagemId = await getEmbalagemPadrao(db, categoriaId, 'balcao');
+        if (cancelled || !embalagemId) return;
+        // Já tem essa embalagem nos itens? Não duplica.
+        if (itens.some(i => i.tipo === 'embalagem' && i.id === embalagemId)) return;
+        // Busca info da embalagem pra montar o item
+        const embRow = await db.getFirstAsync(
+          'SELECT id, nome, preco_unitario, unidade_medida FROM embalagens WHERE id = ?',
+          [embalagemId]
+        );
+        if (cancelled || !embRow) return;
+        const novoItem = {
+          tipo: 'embalagem',
+          id: embRow.id,
+          nome: embRow.nome,
+          quantidade: 1,
+          custoUnit: safeNum(embRow.preco_unitario),
+          unidade: embRow.unidade_medida || 'un',
+          fromPadrao: true,
+        };
+        setItens(prev => [...prev, novoItem]);
+      } catch (e) { /* silencioso — feature opcional */ }
+    })();
+    return () => { cancelled = true; };
+  }, [visible, isProduto, isEditing, categoriaId]);
+
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  // Sessão 28.38: cascata de popups — produto pode abrir modal de preparo
+  // empilhado em cima sem fechar nem perder estado.
+  const [nestedPreparoVisible, setNestedPreparoVisible] = useState(false);
 
   // Config de markup/precificação (carregado do banco — só relevante pra Produto)
   const [pricingConfig, setPricingConfig] = useState({
@@ -658,12 +700,16 @@ export default function EntityCreateModal({
             const info = JSON.parse(raw);
             if (info?.draft && info?.mode === 'produto' && info?.pendingAddType === 'preparo') {
               const existingItens = info.draft.itens || [];
+              // 28.38 BUG FIX: custoUnit pra preparo = custo_por_kg * 1g = custo por 1 unidade.
+              // Usa calcCustoPreparo pra fazer a conversão correta.
+              const custoPorKg = rend > 0 ? (custoTotal / rend) * 1000 : 0;
+              const custoUnit = calcCustoPreparo(custoPorKg, 1, unidadeMedidaPrep || 'g');
               const novoItem = {
                 tipo: 'preparo',
                 id: savedId,
                 nome: nome.trim(),
                 quantidade: 0,
-                custoUnit: rend > 0 ? (custoTotal / rend) : 0,
+                custoUnit,
                 unidade: unidadeMedidaPrep || 'g',
               };
               const updated = {
@@ -1272,7 +1318,9 @@ export default function EntityCreateModal({
                     {isProduto && (
                       <TouchableOpacity
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '10' }}
-                        onPress={() => saveDraftAndNavigate('NovoPreparo')}
+                        // Sessão 28.38: cascata — abre modal de preparo EMPILHADO
+                        // (sem fechar este). Antes navegava pra Preparos screen.
+                        onPress={() => setNestedPreparoVisible(true)}
                         accessibilityLabel="Cadastrar novo preparo"
                       >
                         <Feather name="plus" size={11} color={colors.primary} />
@@ -1447,6 +1495,44 @@ export default function EntityCreateModal({
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {/* Sessão 28.38: cascata — modal de preparo empilhado em cima do produto.
+          Quando o user salva, o preparo recém-criado é adicionado aos itens
+          do produto E o modal nested fecha. Se cancela, só fecha (produto
+          permanece igual). */}
+      {isProduto && (
+        <EntityCreateModal
+          visible={nestedPreparoVisible}
+          mode="preparo"
+          editId={null}
+          onClose={() => setNestedPreparoVisible(false)}
+          onSaved={async (novoPreparoId) => {
+            setNestedPreparoVisible(false);
+            if (!novoPreparoId) return;
+            // Busca o preparo recém-criado pra montar o item corretamente
+            try {
+              const db = await getDatabase();
+              const prep = await db.getFirstAsync(
+                'SELECT id, nome, custo_total, custo_por_kg, rendimento_total, unidade_medida FROM preparos WHERE id = ?',
+                [novoPreparoId]
+              );
+              if (!prep) return;
+              const custoUnit = calcCustoPreparo(safeNum(prep.custo_por_kg), 1, prep.unidade_medida || 'g');
+              setItens(prev => {
+                if (prev.some(i => i.tipo === 'preparo' && i.id === prep.id)) return prev;
+                return [...prev, {
+                  tipo: 'preparo',
+                  id: prep.id,
+                  nome: prep.nome,
+                  quantidade: 0,
+                  custoUnit,
+                  unidade: shortUnidade(prep.unidade_medida, 'preparo'),
+                }];
+              });
+            } catch (e) { console.warn('[EntityCreateModal.nestedPreparo.onSaved]', e); }
+          }}
+        />
+      )}
     </Modal>
   );
 }
