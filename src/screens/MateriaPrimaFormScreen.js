@@ -427,6 +427,15 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         clearQueryCache();
       } catch (e) { /* defensivo */ }
 
+      // Sessão 28.43: notifica list screens pra recarregarem
+      try {
+        const { notifyDataChanged } = await import('../utils/dataSync');
+        notifyDataChanged('materias_primas');
+        notifyDataChanged('preparos');
+        notifyDataChanged('produtos');
+        notifyDataChanged('delivery_combos');
+      } catch (e) { /* defensivo */ }
+
       // Sessão 28.26: histórico DE PREÇO no auto-save COM dedup defensivo.
       // Antes: só "Salvar e voltar" registrava histórico → user editava preço,
       // saía da tela direto e o relatório de insumos NÃO mostrava a mudança.
@@ -545,6 +554,11 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
       try {
         const { clearQueryCache } = await import('../database/supabaseDb');
         clearQueryCache();
+      } catch (_) {}
+      // Sessão 28.43: notifica list screens pra recarregarem após criar novo
+      try {
+        const { notifyDataChanged } = await import('../utils/dataSync');
+        notifyDataChanged('materias_primas');
       } catch (_) {}
       // Sessão 28.36/28.38: se o user veio de "+ Insumo" dentro do EntityCreateModal,
       // adiciona o insumo recém-criado à lista de itens do draft.

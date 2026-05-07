@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, FlatList, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform, RefreshControl } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -10,6 +10,7 @@ import FABMenu from '../components/FABMenu';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, getTipoUnidade, normalizeSearch } from '../utils/calculations';
+import { subscribeDataChanged } from '../utils/dataSync';
 
 // APP-14: marcador interno do Kit pra valor pré-preenchido (não exibir como marca).
 const MARCA_VALOR_ESTIMADO = '__VALOR_ESTIMADO_KIT__';
@@ -157,6 +158,30 @@ export default function MateriasPrimasScreen({ navigation }) {
     setRefreshing(true);
     try { await loadData(); } finally { setRefreshing(false); }
   }
+
+  // Sessão 28.43: subscribe pra mudanças em materias_primas (ex.: AtualizarPrecos
+  // salvou novo preço). Antes, useFocusEffect do RN era flaky no web ao trocar
+  // de tab principal — list ficava com preço velho. Agora é uma notificação
+  // explícita após o save, complementar ao useFocusEffect.
+  useEffect(() => {
+    const unsub = subscribeDataChanged((table) => {
+      if (table === 'materias_primas') loadData();
+    });
+    // Fallback adicional: focus listener + visibilitychange (Sessão 28.27 pattern)
+    const unsubFocus = navigation.addListener('focus', () => { loadData(); });
+    let onVis;
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      onVis = () => { if (!document.hidden) loadData(); };
+      document.addEventListener('visibilitychange', onVis);
+    }
+    return () => {
+      unsub();
+      unsubFocus();
+      if (onVis && typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVis);
+      }
+    };
+  }, [navigation]);
 
   useFocusEffect(useCallback(() => {
     loadData();
