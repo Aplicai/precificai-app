@@ -170,18 +170,35 @@ export default function AtualizarPrecosScreen({ navigation }) {
         }
       }
 
-      // APP-08/09/10/23: cascade pra preparos e combos quando insumo/embalagem muda
-      try {
-        if (activeTab === 'insumos' || activeTab === 'embalagens') {
-          const { cascadeFromInsumo } = await import('../services/cascadeRecalc');
-          await cascadeFromInsumo(db);
-          const { clearQueryCache } = await import('../database/supabaseDb');
-          clearQueryCache();
-        } else if (activeTab === 'preparos') {
-          const { recalcularTodosCombos } = await import('../services/cascadeRecalc');
-          await recalcularTodosCombos(db);
-        }
-      } catch (e) { console.warn('[AtualizarPrecos.cascade]', e); }
+      // Sessão 28.51 — perf: cascade roda em BACKGROUND (não bloqueia UI).
+      // Antes: await bloqueava o user esperando recalc de TODOS os preparos + combos
+      // (latência de 5s+ pra contas grandes). Agora: modal fecha imediatamente,
+      // recalc acontece em segundo plano e notifyDataChanged informa as listas.
+      const runCascadeBackground = () => {
+        const task = (async () => {
+          try {
+            if (activeTab === 'insumos' || activeTab === 'embalagens') {
+              const { cascadeFromInsumo } = await import('../services/cascadeRecalc');
+              await cascadeFromInsumo(db);
+              const { clearQueryCache } = await import('../database/supabaseDb');
+              clearQueryCache();
+            } else if (activeTab === 'preparos') {
+              const { recalcularTodosCombos } = await import('../services/cascadeRecalc');
+              await recalcularTodosCombos(db);
+            }
+            // Notifica DEPOIS do cascade pra listas verem valores recalculados
+            try {
+              const { notifyDataChanged } = await import('../utils/dataSync');
+              notifyDataChanged('preparos');
+              notifyDataChanged('produtos');
+              notifyDataChanged('delivery_combos');
+            } catch (_) {}
+          } catch (e) { console.warn('[AtualizarPrecos.cascade.bg]', e); }
+        });
+        // Dispara sem await
+        task();
+      };
+      runCascadeBackground();
 
       // Sessão 28.43: notifica todas as telas que listam essa tabela pra
       // recarregarem. Antes a list de Insumos mostrava preço velho até o

@@ -5,7 +5,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { useNavigation } from '@react-navigation/native';
 import BackToSettings from '../components/BackToSettings';
 
-const ULTIMA_ATUALIZACAO = '24 de abril de 2026';
+const ULTIMA_ATUALIZACAO = '11 de maio de 2026';
 
 const SECOES = [
   {

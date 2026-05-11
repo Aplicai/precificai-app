@@ -415,12 +415,52 @@ export const PRECOS_REFERENCIA_POR_SEGMENTO = {
   },
 };
 
+// Sessão 28.51: normaliza nome pra lookup tolerante a variações
+// (case-insensitive, ignora acentos e qualificadores entre parênteses, etc).
+// Resolve o problema "Frango desfiado (peito)" vs "Frango desfiado" não casarem.
+function _normalizeKey(s) {
+  return String(s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // remove acentos
+    .toLowerCase()
+    .replace(/\s*\([^)]*\)/g, '') // remove "(peito)", "(diversas)", etc.
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Aliases conhecidos: templates novos mapeados pra chaves canônicas
+// existentes em PRECOS_REFERENCIA_POR_SEGMENTO. Adicione aqui pra
+// destravar lookup sem precisar duplicar valores.
+const ALIASES = {
+  'frango desfiado (peito)': 'Frango desfiado',
+  'farinha de trigo 00 (italiana)': 'Farinha tipo 00',
+  'farinha de trigo tipo 1': 'Farinha tipo 1',
+  'panko (farinha de pão japonesa)': 'Panko',
+  'farinha de trigo (empanados)': 'Farinha de trigo',
+};
+
 /**
  * Retorna o preço de referência de um insumo, ou null se não houver.
+ * Lookup tolerante: tenta match exato, alias conhecido, e depois normalizado.
  */
 export function getPrecoReferencia(segmento, nomeInsumo) {
   const tabela = PRECOS_REFERENCIA_POR_SEGMENTO[segmento];
   if (!tabela) return null;
-  const preco = tabela[nomeInsumo];
-  return typeof preco === 'number' && preco > 0 ? preco : null;
+  // 1) match exato
+  let preco = tabela[nomeInsumo];
+  if (typeof preco === 'number' && preco > 0) return preco;
+  // 2) alias direto
+  const norm = _normalizeKey(nomeInsumo);
+  const aliasKey = ALIASES[norm];
+  if (aliasKey) {
+    preco = tabela[aliasKey];
+    if (typeof preco === 'number' && preco > 0) return preco;
+  }
+  // 3) match normalizado contra todas as chaves
+  for (const k of Object.keys(tabela)) {
+    if (_normalizeKey(k) === norm) {
+      const p = tabela[k];
+      if (typeof p === 'number' && p > 0) return p;
+    }
+  }
+  return null;
 }

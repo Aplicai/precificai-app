@@ -298,13 +298,27 @@ export default function DeliveryCombosScreen() {
     : combos;
 
   // Open modal for creating
-  function abrirCriarCombo() {
+  async function abrirCriarCombo() {
     setEditingCombo(null);
-    setNovoCombo({ nome: '', preco_venda: '', itens: [] });
     setBuscaItem('');
     setShowIncompleteModal(false);
     setSaveStatus(null);
     setLoaded(false);
+    // Sessão 28.51: tenta restaurar draft persistido (proteção contra perda)
+    let restored = null;
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const raw = await AsyncStorage.getItem('deliveryComboDraft');
+      if (raw) {
+        const info = JSON.parse(raw);
+        if (info?.ts && (Date.now() - info.ts) < 30 * 60 * 1000 && info.data) {
+          restored = info.data;
+        } else {
+          await AsyncStorage.removeItem('deliveryComboDraft');
+        }
+      }
+    } catch (_) {}
+    setNovoCombo(restored || { nome: '', preco_venda: '', itens: [] });
     setShowComboModal(true);
   }
 
@@ -469,7 +483,15 @@ export default function DeliveryCombosScreen() {
       setLoaded(false);
       loadData();
     } else {
-      // Create mode: if has data, warn; if empty, just close
+      // Sessão 28.51: proteção contra perda — se tem nome/itens preenchidos,
+      // pergunta confirmação. Antes fechava direto.
+      const hasContent = novoCombo.nome.trim() || novoCombo.itens.length > 0 || String(novoCombo.preco_venda || '').trim();
+      if (hasContent) {
+        const ok = Platform.OS === 'web'
+          ? (typeof window !== 'undefined' ? window.confirm('Descartar este combo? O que você preencheu será perdido.') : true)
+          : true;
+        if (!ok) return; // user cancelou
+      }
       if (novoCombo.nome.trim() || novoCombo.itens.length > 0) {
         // Check if name is empty but has items (incomplete)
         if (!novoCombo.nome.trim()) {
@@ -480,9 +502,18 @@ export default function DeliveryCombosScreen() {
         setShowComboModal(false);
         setEditingCombo(null);
         setNovoCombo({ nome: '', preco_venda: '', itens: [] });
+        // Sessão 28.51: limpa draft persistido
+        try {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          AsyncStorage.removeItem('deliveryComboDraft').catch(() => {});
+        } catch (_) {}
       } else {
         setShowComboModal(false);
         setEditingCombo(null);
+        try {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          AsyncStorage.removeItem('deliveryComboDraft').catch(() => {});
+        } catch (_) {}
       }
     }
   }
@@ -549,25 +580,67 @@ export default function DeliveryCombosScreen() {
     });
   }
 
+  // Sessão 28.51 — bug crítico do combo: custo era calculado SEMPRE em 'g',
+  // ignorando a unidade nativa do item (kg/L/mL/un). Resultado: combo com
+  // "1 kg de farinha" virava custo de "1 grama" → 1000x errado em alguns casos.
+  // Fix: usar unidade NATIVA do item em ambos os argumentos de calcCustoIngrediente.
+  // Também devolvemos a unidade pra exibir na UI ("1 kg", "1 un", etc).
+  function getItemCustoEUnidade(tipo, item) {
+    if (tipo === 'produto' || tipo === 'delivery_produto') {
+      // Produto tem tipo_venda (por_unidade / por_kg / por_litro)
+      let unidade = 'un';
+      const tv = (item.tipo_venda || '').toLowerCase();
+      if (tv.includes('kg') || tv.includes('por_kg')) unidade = 'kg';
+      else if (tv.includes('litro') || tv.includes('por_litro') || tv.includes('por_l')) unidade = 'L';
+      return { custo: item.custoUnitario || 0, unidade };
+    }
+    if (tipo === 'materia_prima') {
+      const u = item.unidade_medida || 'g';
+      return { custo: calcCustoIngrediente(item.preco_por_kg || 0, 1, u, u), unidade: u };
+    }
+    if (tipo === 'embalagem') return { custo: item.preco_unitario || 0, unidade: 'un' };
+    if (tipo === 'preparo') {
+      const u = item.unidade_medida || 'g';
+      return { custo: calcCustoPreparo(item.custo_por_kg || 0, 1, u), unidade: u };
+    }
+    return { custo: 0, unidade: 'un' };
+  }
+
+  // Mantido pra retrocompatibilidade (chamadores antigos)
   function getItemCusto(tipo, item) {
-    if (tipo === 'produto' || tipo === 'delivery_produto') return item.custoUnitario || 0;
-    if (tipo === 'materia_prima') return calcCustoIngrediente(item.preco_por_kg || 0, 1, item.unidade_medida, 'g');
-    if (tipo === 'embalagem') return item.preco_unitario || 0;
-    if (tipo === 'preparo') return calcCustoPreparo(item.custo_por_kg || 0, 1, 'g');
-    return 0;
+    return getItemCustoEUnidade(tipo, item).custo;
   }
 
   function adicionarItemAoCombo(tipo, item) {
-    const custoUnit = getItemCusto(tipo, item);
-    const newItem = { tipo, item_id: item.id, quantidade: 1, nome: item.nome, custoUnit };
+    const { custo: custoUnit, unidade } = getItemCustoEUnidade(tipo, item);
+    const newItem = { tipo, item_id: item.id, quantidade: 1, nome: item.nome, custoUnit, unidade };
     setNovoCombo(prev => {
       const updated = { ...prev, itens: [...prev.itens, newItem] };
       // Auto-save imediato com dados atualizados (modo edição)
       if (editingComboRef.current && loaded) {
         autoSaveImmediate(updated);
       }
+      // Sessão 28.51: também persiste draft em criação (proteção contra perda)
+      persistDraftCombo(updated);
       return updated;
     });
+  }
+
+  // Sessão 28.51: draft persistido em AsyncStorage durante criação.
+  // Restaurado em loadData se houver flag ativa < 30min. Protege contra
+  // click-fora acidental, refresh, etc.
+  async function persistDraftCombo(data) {
+    if (editingComboRef.current) return; // só pra modo criação
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      // Só persistir se tem algo significativo
+      const hasContent = (data?.nome && data.nome.trim()) || (data?.itens && data.itens.length > 0);
+      if (hasContent) {
+        await AsyncStorage.setItem('deliveryComboDraft', JSON.stringify({ data, ts: Date.now() }));
+      } else {
+        await AsyncStorage.removeItem('deliveryComboDraft');
+      }
+    } catch (_) {}
   }
 
   function removerItemDoCombo(index) {
@@ -576,6 +649,7 @@ export default function DeliveryCombosScreen() {
       if (editingComboRef.current && loaded) {
         autoSaveImmediate(updated);
       }
+      persistDraftCombo(updated);
       return updated;
     });
   }
@@ -591,6 +665,7 @@ export default function DeliveryCombosScreen() {
       if (editingComboRef.current && loaded) {
         autoSaveImmediate(updated);
       }
+      persistDraftCombo(updated);
       return updated;
     });
   }
@@ -946,14 +1021,22 @@ export default function DeliveryCombosScreen() {
               <InputField
                 label="Nome do combo"
                 value={novoCombo.nome}
-                onChangeText={(val) => setNovoCombo(prev => ({ ...prev, nome: val }))}
+                onChangeText={(val) => setNovoCombo(prev => {
+                  const updated = { ...prev, nome: val };
+                  persistDraftCombo(updated);
+                  return updated;
+                })}
                 placeholder="Ex: Combo Festa"
               />
 
               <InputField
                 label="Preço de venda (R$)"
                 value={novoCombo.preco_venda}
-                onChangeText={(val) => setNovoCombo(prev => ({ ...prev, preco_venda: val }))}
+                onChangeText={(val) => setNovoCombo(prev => {
+                  const updated = { ...prev, preco_venda: val };
+                  persistDraftCombo(updated);
+                  return updated;
+                })}
                 keyboardType="numeric"
                 placeholder="0,00"
               />
@@ -1060,6 +1143,12 @@ export default function DeliveryCombosScreen() {
                         >
                           <Feather name="plus" size={14} color={colors.text} />
                         </TouchableOpacity>
+                        {/* Sessão 28.51: exibe unidade do item ('un', 'kg', 'L', etc) */}
+                        {item.unidade && (
+                          <Text style={{ marginLeft: 6, fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.medium }}>
+                            {item.unidade}
+                          </Text>
+                        )}
                       </View>
                       <View style={{ flex: 1, alignItems: 'flex-end' }}>
                         <Text style={styles.modalItemV2CustoTotal}>{formatCurrency(totalItem)}</Text>
