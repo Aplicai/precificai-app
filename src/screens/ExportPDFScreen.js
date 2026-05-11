@@ -67,14 +67,17 @@ function downloadBlobFallback(htmlContent, filename) {
   // 2) Em iOS Safari `download` é frequentemente ignorado — abrimos
   //    a mesma URL em nova aba para que o usuário consiga visualizar
   //    e use o menu de compartilhamento nativo (Imprimir / Salvar em PDF).
+  // Sessão 28.53 — toast não-bloqueante substitui window.alert.
   if (isIOSSafari()) {
     try { window.open(url, '_blank'); } catch (_) {}
     try {
-      window.alert('PDF gerado — use o menu Compartilhar do navegador para Imprimir ou Salvar em PDF.');
+      const { showToast } = require('../utils/toastBus');
+      showToast('PDF gerado · use Compartilhar para Imprimir/Salvar', 'printer', 4000);
     } catch (_) {}
   } else {
     try {
-      window.alert('PDF gerado — verifique sua pasta Downloads.');
+      const { showToast } = require('../utils/toastBus');
+      showToast('PDF gerado · verifique sua pasta Downloads', 'download', 3500);
     } catch (_) {}
   }
 

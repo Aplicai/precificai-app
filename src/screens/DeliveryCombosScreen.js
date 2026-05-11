@@ -555,6 +555,8 @@ export default function DeliveryCombosScreen() {
         ));
       }
       loadData();
+      // Sessão 28.53 — feedback visual após duplicar
+      showSaveSuccess(`Combo "${combo.nome}" duplicado`);
     } catch (e) {
       console.error('[DeliveryCombosScreen.duplicarCombo]', e);
       showSaveError('Falha ao duplicar combo. Tente novamente.');
@@ -571,6 +573,8 @@ export default function DeliveryCombosScreen() {
           await db.runAsync('DELETE FROM delivery_combos WHERE id = ?', [id]);
           setConfirmRemove(null);
           loadData();
+          // Sessão 28.53 — feedback visual após remover
+          showSaveSuccess(`Combo "${nome}" removido`);
         } catch (e) {
           console.error('[DeliveryCombosScreen.removerCombo]', e);
           setConfirmRemove(null);
@@ -1823,46 +1827,58 @@ const styles = StyleSheet.create({
   },
 
   // Sessão 28.8 — Modal refinado: full-sheet mobile, centrado desktop
+  // Sessão 28.53 — alinhado ao padrão visual de EntityCreateModal (cores, paddings, shadow)
   modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center', alignItems: 'center',
+    ...Platform.select({ web: { zIndex: 1000 }, default: {} }),
   },
   modalOverlayMobile: {
     justifyContent: 'flex-end', // sheet vindo de baixo
+    alignItems: 'stretch',
     padding: 0,
   },
   modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: borderRadius.lg,
+    backgroundColor: colors.surface,
     overflow: 'hidden',
+    ...Platform.select({
+      web: { boxShadow: '0 20px 60px rgba(0,0,0,0.18)' },
+      default: { elevation: 12 },
+    }),
   },
   modalContentDesktop: {
-    width: '90%',
+    width: '92%',
     maxWidth: 1100,
-    maxHeight: '90%',
-    paddingHorizontal: spacing.md,
+    maxHeight: '88%',
+    borderRadius: borderRadius.lg,
   },
   modalContentMobile: {
     width: '100%',
-    maxHeight: '95%',
+    maxHeight: '92%',
     borderTopLeftRadius: borderRadius.lg,
     borderTopRightRadius: borderRadius.lg,
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
-    paddingHorizontal: spacing.md,
   },
   // Sessão 28.8 — body com 2 colunas desktop / vertical mobile
+  // Sessão 28.53 — paddings alinhados ao EntityCreateModal
   modalBody: {
     flex: 1,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
   },
   modalBodyTwoCol: {
     flexDirection: 'row',
-    gap: spacing.md,
+    gap: spacing.lg,
+    alignItems: 'flex-start',
   },
   modalCol: {
     flex: 1,
+    minWidth: 0,
   },
   modalColLeft: {
+    flex: 1,
+    minWidth: 0,
     borderRightWidth: 1,
     borderRightColor: colors.border,
     paddingRight: spacing.md,
@@ -1871,25 +1887,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.xs,
-    paddingTop: spacing.xs,
-    paddingBottom: spacing.md,
-    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   modalHeaderIcon: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: colors.primary + '15',
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: colors.primary + '12',
     alignItems: 'center', justifyContent: 'center',
   },
   modalHeaderCloseBtn: {
-    width: 36, height: 36, borderRadius: 18,
+    width: 32, height: 32, borderRadius: 16,
     alignItems: 'center', justifyContent: 'center',
     backgroundColor: colors.background,
   },
   modalTitle: {
-    fontSize: fonts.medium, fontFamily: fontFamily.bold, fontWeight: '700',
+    fontSize: fonts.regular, fontFamily: fontFamily.semiBold, fontWeight: '600',
     color: colors.text,
   },
   modalSubtitle: {
@@ -1977,10 +1991,10 @@ const styles = StyleSheet.create({
   modalAddItemText: { fontSize: fonts.tiny, color: colors.primary, fontWeight: '600', fontFamily: fontFamily.semiBold },
 
   // Modal actions
+  // Sessão 28.53 — paddings alinhados ao EntityCreateModal footer
   modalActions: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    marginTop: spacing.md, gap: spacing.sm,
-    paddingTop: spacing.md, paddingHorizontal: spacing.xs, paddingBottom: spacing.md,
+    flexDirection: 'row', gap: spacing.sm,
+    padding: spacing.md,
     borderTopWidth: 1, borderTopColor: colors.border,
     backgroundColor: colors.surface,
   },
@@ -2019,8 +2033,9 @@ const styles = StyleSheet.create({
   },
 
   // Sessão 28.8 — Edit modal footer com hierarquia clara
+  // Sessão 28.53 — padding alinhado ao EntityCreateModal footer
   editModalFooter: {
-    paddingTop: spacing.md, paddingHorizontal: spacing.xs, paddingBottom: spacing.md,
+    padding: spacing.md,
     borderTopWidth: 1, borderTopColor: colors.border,
     backgroundColor: colors.surface,
     gap: spacing.sm,
@@ -2039,7 +2054,7 @@ const styles = StyleSheet.create({
   },
   duplicarBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#fff', borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
     borderRadius: borderRadius.sm, paddingVertical: spacing.sm + 4, paddingHorizontal: spacing.md,
     minHeight: 44, flex: 1, gap: 4,
   },

@@ -6,6 +6,7 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, converterParaBase } from '../utils/calculations';
 import EmptyState from '../components/EmptyState';
+import InfoToast from '../components/InfoToast';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import useListDensity from '../hooks/useListDensity';
@@ -45,6 +46,8 @@ export default function ListaComprasScreen({ navigation }) {
   // Audit P0: estados de erro (loadProdutos + gerarLista eram silent).
   const [loadError, setLoadError] = useState(null);
   const [gerarError, setGerarError] = useState(null);
+  // Sessão 28.53 — toast de feedback para gerar lista / exportar PDF
+  const [toast, setToast] = useState(null);
 
   useFocusEffect(useCallback(() => {
     loadProdutos();
@@ -289,6 +292,8 @@ export default function ListaComprasScreen({ navigation }) {
       });
 
       setLista({ grouped, categorias, custoTotal, totalItems: items.length });
+      // Sessão 28.53 — feedback após gerar lista
+      setToast({ message: `Lista gerada · ${items.length} ${items.length === 1 ? 'item' : 'itens'}`, icon: 'shopping-cart' });
     } catch (e) {
       // Audit P0: catch silencioso fazia "Gerar Lista" não responder.
       console.error('[ListaCompras.gerarLista]', e);
@@ -365,6 +370,8 @@ export default function ListaComprasScreen({ navigation }) {
     win.document.write(html);
     win.document.close();
     setTimeout(() => win.print(), 500);
+    // Sessão 28.53 — feedback após exportar PDF
+    setToast({ message: 'PDF aberto em nova aba', icon: 'printer' });
   }
 
   const temProdutosSelecionados = Object.values(quantidades).some(v => parseInt(v) > 0);
@@ -591,6 +598,13 @@ export default function ListaComprasScreen({ navigation }) {
           )}
         </TouchableOpacity>
       </View>
+      {/* Sessão 28.53 — feedback toast (gerar lista / exportar PDF) */}
+      <InfoToast
+        visible={!!toast}
+        message={toast?.message}
+        icon={toast?.icon}
+        onDismiss={() => setToast(null)}
+      />
     </View>
   );
 }

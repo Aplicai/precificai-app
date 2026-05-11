@@ -105,10 +105,11 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
       // confiável → a tela ficava travada sem voltar. Em todas plataformas,
       // voltamos imediatamente; a tela de Insumos mostrará o saldo atualizado.
       setSalvando(false);
-      if (Platform.OS === 'web') {
-        // window.alert é síncrono no web → garante feedback antes de voltar
-        try { window.alert('Entrada registrada com sucesso. Saldo e custo médio atualizados.'); } catch {}
-      }
+      // Sessão 28.53 — toast não-bloqueante via bus global (substitui window.alert).
+      try {
+        const { showToast } = require('../utils/toastBus');
+        showToast('Entrada registrada · saldo e custo atualizados', 'check-circle');
+      } catch (_) {}
       voltar();
     } catch (e) {
       console.error('[EntradaEstoque.salvar]', e);
