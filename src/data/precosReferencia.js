@@ -27,11 +27,12 @@ export const PRECOS_REFERENCIA_POR_SEGMENTO = {
     'Farinha de trigo com fermento': 7.50,
     'Farinha de rosca': 8.00,
     'Amido de milho (Maizena)': 12.00,
-    'Polvilho doce': 10.00,
-    'Polvilho azedo': 11.00,
+    // Sessão 28.50: valores atualizados pra mercado BR 2025
+    'Polvilho doce': 13.00,
+    'Polvilho azedo': 14.00,
     'Farinha de amêndoas': 65.00,
-    'Farinha de coco': 28.00,
-    'Aveia em flocos': 15.00,
+    'Farinha de coco': 32.00,
+    'Aveia em flocos': 12.00,
 
     // Açúcares e Adoçantes
     'Açúcar refinado': 4.50,
@@ -40,7 +41,7 @@ export const PRECOS_REFERENCIA_POR_SEGMENTO = {
     'Açúcar demerara': 10.00,
     'Açúcar de confeiteiro': 8.50,
     'Mel': 35.00,
-    'Glucose de milho': 15.00,
+    'Glucose de milho': 22.00,
     'Leite condensado': 8.50,
     'Leite condensado light': 10.00,
 
@@ -83,7 +84,8 @@ export const PRECOS_REFERENCIA_POR_SEGMENTO = {
     // Espessantes e Gelificantes
     'Gelatina em pó sem sabor': 28.00,
     'Gelatina em folha': 18.00,
-    'Ágar-ágar': 35.00,
+    // Sessão 28.50: faixa alta de qualidade — ágar food-service R$60–90/un
+    'Ágar-ágar': 70.00,
 
     // Aromas e Essências
     'Essência de baunilha': 15.00,
@@ -112,15 +114,14 @@ export const PRECOS_REFERENCIA_POR_SEGMENTO = {
     'Pistache': 180.00,
     'Coco em flocos': 18.00,
 
-    // Sessão 28.36: nomes EXATOS dos templates de confeitaria
-    'Amido de milho (maisena)': 8.00,
-    'Polvilho doce': 9.00,
-    'Farinha de coco': 22.00,
-    'Aveia em flocos': 9.00,
-    'Glucose de milho': 14.00,
+    // Sessão 28.36: nomes EXATOS dos templates de confeitaria.
+    // Sessão 28.50: chaves duplicadas REMOVIDAS daqui (eram sobrescritas em JS,
+    // causando preços errados — ex.: Pasta de baunilha caía pra R$35).
+    // Mantidos apenas os nomes NOVOS (com qualificadores específicos do template).
+    'Amido de milho (maisena)': 14.00,
     'Xarope de açúcar invertido': 15.00,
     'Chocolate em pó 50%': 35.00,
-    'Cacau em pó 100%': 50.00,
+    'Cacau em pó 100%': 55.00,
     'Chocolate granulado': 18.00,
     'Chocolate ruby': 90.00,
     'Gotas de chocolate': 45.00,
@@ -128,18 +129,13 @@ export const PRECOS_REFERENCIA_POR_SEGMENTO = {
     'Chantilly': 22.00,
     'Requeijão cremoso': 13.00,
     'Ricota': 22.00,
-    'Mascarpone': 80.00,
+    'Mascarpone': 70.00,
     'Ovos (bandeja 30un)': 22.00,
-    'Margarina culinária': 12.00,
-    'Óleo de soja': 8.00,
     'Óleo de canola': 14.00,
     'Óleo de coco': 25.00,
-    'Bicarbonato de sódio': 6.00,
     'Gelatina em pó sem sabor': 35.00,
     'Gelatina em folha': 18.00,
-    'Ágar-ágar': 80.00,
     'Aroma de manteiga': 12.00,
-    'Pasta de baunilha': 35.00,
     // Frutas extras
     'Manga': 6.00,
     'Coco fresco ralado': 18.00,
@@ -187,7 +183,7 @@ export const PRECOS_REFERENCIA_POR_SEGMENTO = {
     'Pão de hambúrguer tradicional': 12.00,
     'Pão australiano': 22.00,
     // Queijos
-    'Queijo cheddar fatiado': 45.00,
+    'Queijo cheddar fatiado': 58.00,
     'Queijo prato fatiado': 38.00,
     'Queijo mussarela': 42.00,
     'Cream cheese': 35.00,
@@ -229,7 +225,7 @@ export const PRECOS_REFERENCIA_POR_SEGMENTO = {
     'Calabresa fatiada': 35.00,
     'Presunto fatiado': 32.00,
     'Bacon': 60.00,
-    'Pepperoni': 65.00,
+    'Pepperoni': 95.00,
     // Vegetais
     'Cebola': 5.50,
     'Tomate': 9.00,
@@ -253,14 +249,15 @@ export const PRECOS_REFERENCIA_POR_SEGMENTO = {
     // Carnes
     'Patinho': 42.00,
     'Alcatra': 55.00,
-    'Acém': 32.00,
+    // Sessão 28.50: valores subestimados corrigidos pro mercado BR 2025
+    'Acém': 36.00,
     'Frango filé peito': 22.00,
     'Frango sobrecoxa': 12.00,
     'Bisteca suína': 26.00,
     // Peixes
-    'Filé de tilápia': 35.00,
-    'Salmão': 95.00,
-    'Camarão limpo': 80.00,
+    'Filé de tilápia': 38.00,
+    'Salmão': 125.00,
+    'Camarão limpo': 120.00,
     // Verduras
     'Cenoura': 5.50,
     'Batata inglesa': 5.00,
@@ -275,7 +272,13 @@ export const PRECOS_REFERENCIA_POR_SEGMENTO = {
     // Farinhas
     'Farinha de trigo': 6.50,
     'Farinha tipo 1': 7.00,
+    // Sessão 28.50 — Farinha de centeio ausente. Adicionada com preço de mercado.
+    'Farinha de centeio': 12.00,
+    'Farinha de trigo integral': 9.00,
+    'Farinha de trigo com fermento': 7.50,
     'Fermento biológico fresco': 28.00,
+    // Sessão 28.50 — fermento biológico seco 500g (estava ok no valor)
+    'Fermento biológico seco': 28.00,
     // Açúcares
     'Açúcar refinado': 4.50,
     'Açúcar cristal': 4.20,
@@ -336,7 +339,7 @@ export const PRECOS_REFERENCIA_POR_SEGMENTO = {
     'Colher descartável': 0.15,
   },
   cafeteria: {
-    'Café em grãos especial': 65.00,
+    'Café em grãos especial': 95.00,
     'Café tradicional moído': 18.00,
     'Leite integral': 5.50,
     'Leite vegetal de aveia': 18.00,
@@ -394,8 +397,8 @@ export const PRECOS_REFERENCIA_POR_SEGMENTO = {
     'Arroz para sushi': 12.00,
     'Vinagre de arroz': 18.00,
     'Alga nori (10 folhas)': 22.00,
-    'Salmão fresco': 95.00,
-    'Atum fresco': 110.00,
+    'Salmão fresco': 125.00,
+    'Atum fresco': 155.00,
     'Pepino japonês': 8.00,
     'Cream cheese': 35.00,
     'Cebolinha': 4.00,

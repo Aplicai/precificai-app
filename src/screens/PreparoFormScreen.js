@@ -526,7 +526,18 @@ export default function PreparoFormScreen({ route, navigation }) {
               onValueChange={(v) => { if (v) openQuantityPrompt(v); }}
               options={materiasPrimas.map(mp => ({ label: formatInsumoLabel(mp), value: mp.id }))}
               placeholder="Selecione um insumo"
-              onCreateNew={() => navigation.navigate('MateriaPrimaForm')}
+              onCreateNew={async () => {
+                // Sessão 28.50 — cascata: marca pra que ao voltar de MateriaPrimaForm
+                // o user retorne pro PreparoForm com o preparoId preservado.
+                try {
+                  const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                  await AsyncStorage.setItem('reopenPreparoFormAfterEdit', JSON.stringify({
+                    preparoId: editId || null,
+                    ts: Date.now(),
+                  }));
+                } catch (_) {}
+                navigation.navigate('MateriaPrimaForm');
+              }}
               createLabel="Cadastrar novo insumo"
             />
             {ingAdicionado && (
@@ -614,7 +625,18 @@ export default function PreparoFormScreen({ route, navigation }) {
             }}
             options={embalagens.map(e => ({ label: `${e.nome} — ${formatCurrency(e.custo_unitario || 0)}/un`, value: e.id }))}
             placeholder={embalagens.length === 0 ? 'Cadastre uma embalagem primeiro' : 'Selecione uma embalagem'}
-            onCreateNew={() => navigation.navigate('Embalagens', { screen: 'EmbalagemForm' })}
+            onCreateNew={async () => {
+              // Sessão 28.50 — cascata: marca pra que ao voltar de EmbalagemForm
+              // o user retorne pro PreparoForm (mesmo id) com o estado preservado.
+              try {
+                const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                await AsyncStorage.setItem('reopenPreparoFormAfterEdit', JSON.stringify({
+                  preparoId: editId || null,
+                  ts: Date.now(),
+                }));
+              } catch (_) {}
+              navigation.navigate('Embalagens', { screen: 'EmbalagemForm' });
+            }}
             createLabel="Cadastrar nova embalagem"
           />
           {preparoEmbalagens.length > 0 && (

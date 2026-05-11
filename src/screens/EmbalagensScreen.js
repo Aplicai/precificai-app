@@ -100,6 +100,25 @@ export default function EmbalagensScreen({ navigation }) {
   const checkReopenFlag = useCallback(async () => {
     try {
       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      // Sessão 28.50: também detecta retorno pro PreparoForm full-screen.
+      // Caso user tenha clicado "Cadastrar nova embalagem" de DENTRO de um
+      // PreparoFormScreen (não popup), volta pra ele com o id preservado.
+      try {
+        const rawPrep = await AsyncStorage.getItem('reopenPreparoFormAfterEdit');
+        if (rawPrep) {
+          const infoPrep = JSON.parse(rawPrep);
+          if (infoPrep?.ts && (Date.now() - infoPrep.ts) < 5 * 60 * 1000) {
+            await AsyncStorage.removeItem('reopenPreparoFormAfterEdit');
+            navigation.navigate('Preparos', {
+              screen: 'PreparoForm',
+              params: infoPrep.preparoId ? { id: infoPrep.preparoId } : {},
+            });
+            return;
+          }
+          await AsyncStorage.removeItem('reopenPreparoFormAfterEdit');
+        }
+      } catch {}
+
       const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
       if (!raw) return;
       const info = JSON.parse(raw);

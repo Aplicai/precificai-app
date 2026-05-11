@@ -183,8 +183,19 @@ export default function PerfilScreen({ navigation, route }) {
   }
 
   function onContinuePress() {
-    if (!perfil.nome_negocio.trim()) {
+    // Sessão 28.50: agora exige nome + segmento + telefone (WhatsApp).
+    // Lojas continua opcional.
+    const faltam = [];
+    if (!perfil.nome_negocio.trim()) faltam.push('Nome do negócio');
+    if (!perfil.segmento.trim()) faltam.push('Segmento');
+    if (!perfil.telefone.trim()) faltam.push('Telefone / WhatsApp');
+    if (faltam.length > 0) {
       setShowNameError(true);
+      try {
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert('Preencha para continuar:\n• ' + faltam.join('\n• '));
+        }
+      } catch (_) {}
       return;
     }
     navigation.replace('KitInicio', { setup: true });
@@ -278,7 +289,7 @@ export default function PerfilScreen({ navigation, route }) {
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Segmento</Text>
+          <Text style={styles.label}>Segmento {isSetup ? <Text style={{ color: '#dc2626' }}>*</Text> : null}</Text>
           <TextInput
             style={styles.input}
             value={perfil.segmento}
@@ -289,7 +300,7 @@ export default function PerfilScreen({ navigation, route }) {
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Telefone / WhatsApp</Text>
+          <Text style={styles.label}>Telefone / WhatsApp {isSetup ? <Text style={{ color: '#dc2626' }}>*</Text> : null}</Text>
           <TextInput
             style={styles.input}
             value={perfil.telefone}

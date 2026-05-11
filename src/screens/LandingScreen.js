@@ -3,6 +3,13 @@ import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView } from 'rea
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 
+// Sessão 28.50 — Landing reformulada:
+// - 4 caixinhas (era 3) com "Delivery está te dando prejuízo?" incluído
+// - Destaque pra "zero planilhas necessárias" no subtítulo
+// - "Ranking de produtos" focado em LUCRO (não em volume)
+// - CTA mantido "Começar Grátis" → navega pra Register
+// - Mantida ausência de travessões (—) — usa quebras de linha e pontuação normal
+// - Mantido o estilo minimalista, evitando exagero visual
 export default function LandingScreen({ navigation }) {
   return (
     <ScrollView contentContainerStyle={styles.scroll} style={styles.container}>
@@ -20,20 +27,26 @@ export default function LandingScreen({ navigation }) {
           <Text style={styles.subtitle}>
             Calcule custos, margens e preços de venda{'\n'}de forma simples e profissional.
           </Text>
+          {/* Sessão 28.50: destaque sutil pra "zero planilhas" */}
+          <View style={styles.zeroPlanilhasPill}>
+            <Feather name="check-circle" size={12} color="#fff" />
+            <Text style={styles.zeroPlanilhasText}>Zero planilhas necessárias</Text>
+          </View>
         </View>
 
-        {/* Features */}
+        {/* Features — 4 caixinhas */}
         <View style={styles.features}>
           {[
             { icon: 'dollar-sign', text: 'Markup e margem automáticos' },
             { icon: 'pie-chart', text: 'Ficha técnica dos produtos' },
-            { icon: 'truck', text: 'Precificação para delivery' },
+            { icon: 'truck', text: 'Delivery está te dando prejuízo?' },
+            { icon: 'award', text: 'Ranking de produtos que dão mais lucro' },
           ].map((f, i) => (
             <View key={i} style={styles.featureRow}>
               <View style={styles.featureIcon}>
                 <Feather name={f.icon} size={16} color={colors.primary} />
               </View>
-              <Text style={styles.featureText}>{f.text}</Text>
+              <Text style={styles.featureText} numberOfLines={2}>{f.text}</Text>
             </View>
           ))}
         </View>
@@ -45,10 +58,10 @@ export default function LandingScreen({ navigation }) {
             onPress={() => navigation.navigate('Register')}
             activeOpacity={0.8}
           >
-            <Text style={styles.registerBtnText}>Começar Grátis</Text>
+            <Text style={styles.registerBtnText}>Criar conta grátis</Text>
             <Feather name="arrow-right" size={18} color={colors.primary} style={{ marginLeft: 8 }} />
           </TouchableOpacity>
-          <Text style={styles.freeText}>Grátis para até 5 produtos</Text>
+          <Text style={styles.freeText}>Grátis para até 5 produtos cadastrados</Text>
 
           <View style={styles.loginRow}>
             <Text style={styles.loginText}>Já tem conta? </Text>
@@ -103,6 +116,25 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
+  // Sessão 28.50: pill "zero planilhas"
+  zeroPlanilhasPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  zeroPlanilhasText: {
+    color: '#fff',
+    fontSize: 12,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+  },
   features: {
     marginBottom: 32,
     gap: 10,
@@ -114,6 +146,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     paddingVertical: 10,
     paddingHorizontal: 14,
+    minHeight: 48,
   },
   featureIcon: {
     width: 30,
@@ -123,12 +156,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+    flexShrink: 0,
   },
   featureText: {
     color: '#fff',
     fontSize: 14,
     fontFamily: fontFamily.medium,
     fontWeight: '500',
+    flex: 1,
+    flexShrink: 1,
   },
   ctaArea: {
     alignItems: 'center',
@@ -137,6 +173,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: borderRadius.md,
     paddingVertical: 14,
+    paddingHorizontal: 18,
     minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
@@ -154,13 +191,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontFamily: fontFamily.semiBold,
   },
+  // Sessão 28.50: espaçamento ajustado — antes ficava estranho em mobile
   freeText: {
-    color: 'rgba(255,255,255,0.5)',
+    color: 'rgba(255,255,255,0.7)',
     fontSize: 12,
     fontFamily: fontFamily.regular,
     textAlign: 'center',
-    marginTop: 10,
-    marginBottom: 24,
+    marginTop: 12,
+    marginBottom: 22,
+    paddingHorizontal: 8,
   },
   loginRow: {
     flexDirection: 'row',

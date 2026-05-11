@@ -1281,15 +1281,21 @@ export default function ConfiguracaoScreen() {
         </View>
 
         {/* Desktop: 2-column layout */}
+        {/* Sessão 28.50 — BUG FIX CRÍTICO: FormContent/SummaryPanel são funções
+            declaradas DENTRO do ConfiguracaoScreen. Usá-las como <Component />
+            faz o React tratar como "tipo novo" a cada render (nova ref de fn)
+            → unmount/mount da subárvore → TextInput de descrição perde foco
+            a cada keystroke. Fix: invocar como FUNÇÃO ({FormContent()}) ao invés
+            de elemento JSX, eliminando o reconciler entre re-renders. */}
         {isDesktop ? (
           <View style={s.desktopLayout}>
-            <FormContent />
-            <SummaryPanel />
+            {FormContent()}
+            {SummaryPanel()}
           </View>
         ) : (
           <View>
-            <SummaryPanel />
-            <FormContent />
+            {SummaryPanel()}
+            {FormContent()}
             {/* Sessão 28.15: botão "Salvar e voltar" agora INLINE no fim do conteúdo
                 (antes era position: absolute e cobria a página o tempo todo). */}
             <View style={s.inlineFooter}>

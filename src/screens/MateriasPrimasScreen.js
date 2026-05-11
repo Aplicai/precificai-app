@@ -165,6 +165,23 @@ export default function MateriasPrimasScreen({ navigation }) {
   const checkReopenFlag = useCallback(async () => {
     try {
       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      // Sessão 28.50: cascata retorno pro PreparoForm full-screen
+      try {
+        const rawPrep = await AsyncStorage.getItem('reopenPreparoFormAfterEdit');
+        if (rawPrep) {
+          const infoPrep = JSON.parse(rawPrep);
+          if (infoPrep?.ts && (Date.now() - infoPrep.ts) < 5 * 60 * 1000) {
+            await AsyncStorage.removeItem('reopenPreparoFormAfterEdit');
+            navigation.navigate('Preparos', {
+              screen: 'PreparoForm',
+              params: infoPrep.preparoId ? { id: infoPrep.preparoId } : {},
+            });
+            return;
+          }
+          await AsyncStorage.removeItem('reopenPreparoFormAfterEdit');
+        }
+      } catch {}
+
       const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
       if (!raw) return;
       const info = JSON.parse(raw);
