@@ -225,10 +225,19 @@ export default function SimuladorLoteScreen() {
     <View style={styles.container}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.title}>Visão geral / Simulador em lote</Text>
-          <Text style={styles.subtitle}>
-            Preço sugerido para cada produto em cada plataforma. Cálculo: CMV + lucro + custos fixos + imposto + comissão + taxa pgto online.
-          </Text>
+          {/* Sessão 28.50: título limpo. "Simulador em lote" removido (era ruído).
+              Subtítulo com fórmula virou tooltip ao lado do título. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.title}>Visão Geral</Text>
+            <View
+              accessibilityRole="text"
+              accessibilityLabel="Preço sugerido para cada produto em cada plataforma. Cálculo: CMV + lucro + custos fixos + imposto + comissão + taxa pgto online."
+              {...(Platform.OS === 'web' ? { title: 'Preço sugerido para cada produto em cada plataforma. Cálculo: CMV + lucro + custos fixos + imposto + comissão + taxa pgto online.' } : {})}
+              style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: colors.primary + '15', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Feather name="info" size={12} color={colors.primary} />
+            </View>
+          </View>
         </View>
 
         {/* Sessão 28.16: tooltip de estratégia + Como ler reformulado */}
@@ -392,10 +401,9 @@ export default function SimuladorLoteScreen() {
             {linhasCalculadas.map(linha => (
               <View key={linha.prod.id} style={styles.row}>
                 <View style={[styles.cellProduto, styles.stickyCol, { left: 0, borderRightWidth: 1, borderRightColor: colors.border }]}>
+                  {/* Sessão 28.50: linha de "Lucro líq./un balcão" removida da tabela
+                      (ruído visual). Info ainda disponível na legenda + tooltip. */}
                   <Text style={styles.produtoNome} numberOfLines={2}>{linha.prod.nome}</Text>
-                  <Text style={{ fontSize: 9, color: colors.textSecondary, marginTop: 2 }}>
-                    Lucro líq./un balcão: {formatCurrency(linha.prod.precoVendaBalcao * linha.lucroPercBalcaoReal)} ({(linha.lucroPercBalcaoReal * 100).toFixed(1)}%)
-                  </Text>
                 </View>
                 <View style={[styles.cellNumeric, styles.stickyCol, { left: 170, borderRightWidth: 1, borderRightColor: colors.border }]}>
                   <Text style={styles.cellValueDim}>{formatCurrency(linha.prod.cmv)}</Text>
@@ -421,19 +429,33 @@ export default function SimuladorLoteScreen() {
                   const meuPreco = precosCadastrados[`${linha.prod.id}-${plat.id}`] || 0;
                   return (
                     <View key={plat.id} style={{ flexDirection: 'row', width: 270, borderRightWidth: 1, borderRightColor: colors.border }}>
-                      <TouchableOpacity
-                        style={{ width: 90, alignItems: 'center', justifyContent: 'center', padding: spacing.xs, borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: meuPreco > 0 ? '#FEF3C7' : 'transparent' }}
-                        onPress={() => setPopupSimulacao({ produtoId: linha.prod.id, plataformaId: plat.id })}
-                        activeOpacity={0.6}
-                      >
-                        {meuPreco > 0 ? (
-                          <Text style={[styles.cellValuePrimary, { color: '#92400E', fontSize: 12 }]}>
-                            {formatCurrency(meuPreco)}
-                          </Text>
-                        ) : (
-                          <Text style={{ fontSize: 10, color: colors.textSecondary, fontStyle: 'italic' }}>cadastrar</Text>
-                        )}
-                      </TouchableOpacity>
+                      {(() => {
+                        // Sessão 28.50: cores verde claro / vermelho claro
+                        // (sem amarelo). Compara meuPreco vs sugFinanceiro:
+                        //   meu < sugerido → vermelho (perdendo)
+                        //   meu >= sugerido → verde (no preço ou acima)
+                        let bg = 'transparent';
+                        let txtColor = colors.text;
+                        if (meuPreco > 0 && okFin) {
+                          if (meuPreco < sugFinanceiro.preco) { bg = '#FEE2E2'; txtColor = '#991B1B'; }
+                          else { bg = '#DCFCE7'; txtColor = '#166534'; }
+                        }
+                        return (
+                          <TouchableOpacity
+                            style={{ width: 90, alignItems: 'center', justifyContent: 'center', padding: spacing.xs, borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: bg }}
+                            onPress={() => setPopupSimulacao({ produtoId: linha.prod.id, plataformaId: plat.id })}
+                            activeOpacity={0.6}
+                          >
+                            {meuPreco > 0 ? (
+                              <Text style={[styles.cellValuePrimary, { color: txtColor, fontSize: 12 }]}>
+                                {formatCurrency(meuPreco)}
+                              </Text>
+                            ) : (
+                              <Text style={{ fontSize: 10, color: colors.textSecondary, fontStyle: 'italic' }}>cadastrar</Text>
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })()}
                       <TouchableOpacity
                         style={{ width: 90, alignItems: 'center', justifyContent: 'center', padding: spacing.xs, borderRightWidth: 1, borderRightColor: colors.border }}
                         onPress={() => setPopupSimulacao({ produtoId: linha.prod.id, plataformaId: plat.id })}

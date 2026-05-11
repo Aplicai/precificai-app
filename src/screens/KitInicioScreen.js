@@ -23,6 +23,7 @@ import { getPrecoReferencia } from '../data/precosReferencia';
 // D-27/D-28: aplica fatores de correção de referência (TACO) automaticamente
 import { getFatorCorrecaoReferencia, estimarQuantidadeLiquida } from '../data/fatoresCorrecao';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import BackToSettings from '../components/BackToSettings';
 
 // APP-14: marcador no campo `marca` pra UI mostrar badge "valor estimado".
 // Usar uma string única que o usuário não digitaria por acidente.
@@ -695,7 +696,11 @@ export default function KitInicioScreen({ navigation, route }) {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        {/* Botão Voltar */}
+        {/* Sessão 28.50: "Voltar para Configurações" padrão das outras telas
+            quando NÃO está em fluxo de setup inicial (where temos o backBtn próprio). */}
+        {!isSetup && <BackToSettings navigation={navigation} />}
+
+        {/* Botão Voltar do setup inicial */}
         {isSetup && (
           <TouchableOpacity
             style={styles.backBtn}

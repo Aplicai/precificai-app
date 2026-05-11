@@ -269,57 +269,8 @@ export default function ContaSegurancaScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Change Email */}
-      <TouchableOpacity
-        style={[styles.optionCard, section === 'email' && styles.optionCardActive]}
-        activeOpacity={0.7}
-        onPress={() => setSection(section === 'email' ? null : 'email')}
-      >
-        <View style={styles.optionHeader}>
-          <View style={[styles.iconBox, { backgroundColor: colors.blue + '12' }]}>
-            <Feather name="at-sign" size={18} color={colors.blue} />
-          </View>
-          <Text style={styles.optionTitle}>Alterar E-mail</Text>
-          <Feather name={section === 'email' ? 'chevron-up' : 'chevron-down'} size={18} color={colors.disabled} />
-        </View>
-      </TouchableOpacity>
-      {section === 'email' && (
-        <View style={styles.formCard}>
-          <Text style={styles.fieldLabel}>Novo e-mail</Text>
-          <TextInput
-            style={styles.input}
-            value={newEmail}
-            onChangeText={setNewEmail}
-            placeholder="novo@email.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            placeholderTextColor={colors.disabled}
-          />
-          <Text style={styles.fieldLabel}>Confirmar novo e-mail</Text>
-          <TextInput
-            style={styles.input}
-            value={confirmEmail}
-            onChangeText={setConfirmEmail}
-            placeholder="Repita o novo e-mail"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            placeholderTextColor={colors.disabled}
-          />
-          <Text style={styles.hint}>Será enviado um e-mail de confirmação para o novo endereço e para o endereço atual.</Text>
-          <TouchableOpacity
-            style={[styles.saveBtn, { minHeight: buttonHeight, paddingVertical: isCompact ? 8 : 12 }, loading && { opacity: 0.6 }]}
-            onPress={handleUpdateEmail}
-            disabled={loading}
-          >
-            {loading ? <ActivityIndicator size="small" color="#fff" /> : (
-              <>
-                <Feather name="check" size={16} color="#fff" />
-                <Text style={styles.saveBtnText}>Confirmar</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* Sessão 28.50: "Alterar E-mail" REMOVIDO a pedido do user.
+          Somente "E-mail atual" (read-only acima) + "Alterar Senha" abaixo. */}
 
       {/* Change Password */}
       <TouchableOpacity

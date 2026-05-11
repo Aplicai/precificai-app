@@ -185,6 +185,11 @@ export default function DeliveryHubScreen({ navigation }) {
     ]);
 
     setPlataformas(plats);
+    // Sessão 28.50: plataformas ativas começam expandidas (user pediu — não precisa
+    // clicar pra ver taxas/comissão dos canais que já estão ligados).
+    const expandMap = {};
+    (plats || []).forEach(p => { if (p.ativo) expandMap[p.id] = true; });
+    setExpandedPlats(prev => ({ ...expandMap, ...prev }));
 
     // Sessão 28.26: usa builder unificado em deliveryAdapter (substitui ~10 linhas)
     try {
@@ -252,6 +257,11 @@ export default function DeliveryHubScreen({ navigation }) {
       const newAtivo = plat.ativo ? 0 : 1;
       await db.runAsync('UPDATE delivery_config SET ativo = ? WHERE id = ?', [newAtivo, plat.id]);
       setPlataformas(prev => prev.map(p => p.id === plat.id ? { ...p, ativo: newAtivo } : p));
+      // Sessão 28.50: quando ATIVAR uma plataforma, abrir expandida automaticamente
+      // pra user já ver os campos de taxa/comissão sem precisar clicar de novo.
+      if (newAtivo) {
+        setExpandedPlats(prev => ({ ...prev, [plat.id]: true }));
+      }
     } catch (e) {
       console.error('[DeliveryHubScreen.togglePlataforma]', e);
       setSaveError('Não foi possível ativar/desativar essa plataforma.');

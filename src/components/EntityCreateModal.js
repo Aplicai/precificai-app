@@ -818,6 +818,24 @@ export default function EntityCreateModal({
   const iconModal = isProduto ? 'tag' : 'pot-steam-outline';
   const usaMaterialIcon = !isProduto;
 
+  // Sessão 28.50 — proteção contra perda de dados:
+  // se o user tem algo preenchido e clica FORA do modal, pergunta antes de descartar.
+  const hasUnsavedDraft = !!(
+    (nome && nome.trim()) ||
+    categoriaId != null ||
+    (precoVenda && String(precoVenda).trim()) ||
+    (itens && itens.length > 0)
+  );
+  const handleBackdropPress = () => {
+    if (!hasUnsavedDraft) { onClose && onClose(); return; }
+    const msg = 'Você tem mudanças não salvas. Deseja descartar?';
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(msg)) onClose && onClose();
+    } else {
+      onClose && onClose();
+    }
+  };
+
   return (
     <Modal
       visible={visible}
@@ -827,7 +845,7 @@ export default function EntityCreateModal({
       <TouchableOpacity
         style={[styles.overlay, !isDesktop && styles.overlayMobile]}
         activeOpacity={1}
-        onPress={onClose}
+        onPress={handleBackdropPress}
       >
         <TouchableOpacity
           activeOpacity={1}

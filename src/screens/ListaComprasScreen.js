@@ -298,8 +298,16 @@ export default function ListaComprasScreen({ navigation }) {
     }
   }
 
-  function exportarPDF() {
+  async function exportarPDF() {
     if (!lista || Platform.OS !== 'web') return;
+
+    // Sessão 28.50: puxa nome da empresa do `perfil` pra cabeçalho do PDF
+    let nomeEmpresa = '';
+    try {
+      const db = await getDatabase();
+      const rows = await db.getAllAsync('SELECT nome_negocio FROM perfil');
+      if (rows && rows[0] && rows[0].nome_negocio) nomeEmpresa = String(rows[0].nome_negocio).trim();
+    } catch (_) {}
 
     const prodsSelecionados = produtos.filter(p => parseInt(quantidades[p.id]) > 0)
       .map(p => `<li>${escapeHtml(p.nome)}${p.isCombo ? ' (Combo)' : ''} — ${quantidades[p.id]} un</li>`).join('');
@@ -327,6 +335,7 @@ export default function ListaComprasScreen({ navigation }) {
       @media print { body { padding: 0; } .footer { position: fixed; bottom: 0; left: 0; right: 0; } }
     </style></head><body>
     <div class="header">
+      ${nomeEmpresa ? `<div style="font-size:13px;color:#004d47;font-weight:700;letter-spacing:0.5px;margin-bottom:6px">${escapeHtml(nomeEmpresa)}</div>` : ''}
       <h1>Lista de Compras</h1>
       <p>Gerada por Precificaí em ${new Date().toLocaleDateString('pt-BR')}</p>
     </div>
