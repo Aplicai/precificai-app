@@ -400,15 +400,22 @@ function MainTabs({ route }) {
             AsyncStorage.setItem(LAST_TAB_KEY, currentTab).catch(() => {});
           }
         },
+        // Sessão 28.60 — fix: ao tocar na tab Mais (ou qualquer outra) quando
+        // o stack interno tem alguma tela empurrada (FinanceiroMain, Ranking, etc.),
+        // o usuário esperava voltar pra MaisMain. Antes o popToTop em setTimeout
+        // não estava funcionando confiavelmente. Agora navegamos explicitamente
+        // pra screen inicial do stack via { screen: initialRouteName }.
         tabPress: (e) => {
           const state = navigation.getState();
-          const currentRoute = state.routes.find(r => r.name === route.name);
-          if (currentRoute?.state?.index > 0) {
+          const tab = state.routes.find(r => r.name === route.name);
+          if (tab?.state && tab.state.index > 0) {
             e.preventDefault();
-            navigation.navigate(route.name);
-            setTimeout(() => {
-              navigation.dispatch(StackActions.popToTop());
-            }, 50);
+            const initialScreen = tab.state.routeNames && tab.state.routeNames[0];
+            if (initialScreen) {
+              navigation.navigate(route.name, { screen: initialScreen });
+            } else {
+              navigation.navigate(route.name);
+            }
           }
         },
       })}
