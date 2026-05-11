@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal, Keyboard, TextInput, Switch, RefreshControl, Platform } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import CurrencyInputModal from '../components/CurrencyInputModal';
@@ -87,6 +87,43 @@ export default function ConfiguracaoScreen() {
       return () => setConfirmDelete(null);
     }, [])
   );
+
+  // Sessão 28.59 — bug fix: quando user vem direto do Onboarding mobile
+  // (Home → navigate('Mais', { screen: 'FinanceiroMain' })) ou do FinanceiroStack
+  // standalone, NÃO há tela anterior na pilha → headerLeft global some.
+  // Aqui forçamos um back button SEMPRE visível, com fallback para 'Mais > MaisMain'
+  // quando não dá pra goBack.
+  useEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <TouchableOpacity
+          onPress={() => {
+            try {
+              if (navigation.canGoBack && navigation.canGoBack()) {
+                navigation.goBack();
+                return;
+              }
+            } catch (_) {}
+            // Fallback: ir para a tab Mais (MaisMain)
+            try {
+              const parent = navigation.getParent && navigation.getParent();
+              if (parent && parent.navigate) {
+                parent.navigate('Mais', { screen: 'MaisMain' });
+                return;
+              }
+            } catch (_) {}
+            try { navigation.navigate('Mais'); } catch (_) {}
+          }}
+          style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginLeft: 0 }}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          accessibilityRole="button"
+          accessibilityLabel="Voltar"
+        >
+          <Feather name="chevron-left" size={22} color="#fff" />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
 
   async function handleRefresh() {
     setRefreshing(true);
