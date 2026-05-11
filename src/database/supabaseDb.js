@@ -114,6 +114,37 @@ async function executeQuery(sql, params, mode) {
     return executeJoinQuery(normalized, params, mode);
   }
 
+  // Sessão 28.56 — Handle COUNT(*) queries explicitly.
+  // Antes: `SELECT COUNT(*) as n FROM tabela WHERE ...` ia direto pro
+  // `supabase.from(tabela).select('COUNT(*) as n')` que o PostgREST rejeita
+  // com 400 Bad Request. Solução: usar head:true + count:'exact', que retorna
+  // só o count no header, sem rows.
+  const countMatch = normalized.match(/^SELECT\s+COUNT\s*\(\s*\*\s*\)\s*(?:as\s+(\w+))?\s+FROM\s+(\w+)(.*?)$/i);
+  if (countMatch) {
+    const countAlias = countMatch[1] || 'count';
+    const table = countMatch[2];
+    const rest = (countMatch[3] || '').trim();
+    let query = supabase.from(table).select('*', { count: 'exact', head: true });
+    const whereParts = parseWhere(rest, params);
+    for (const w of whereParts) {
+      if (w.op === '=') query = query.eq(w.col, w.val);
+      else if (w.op === '!=') query = query.neq(w.col, w.val);
+      else if (w.op === '>') query = query.gt(w.col, w.val);
+      else if (w.op === '<') query = query.lt(w.col, w.val);
+      else if (w.op === '>=') query = query.gte(w.col, w.val);
+      else if (w.op === '<=') query = query.lte(w.col, w.val);
+      else if (w.op === 'IS NULL') query = query.is(w.col, null);
+      else if (w.op === 'IS NOT NULL') query = query.not(w.col, 'is', null);
+    }
+    const { count, error } = await query;
+    if (error) {
+      if (__DEV__) console.error('[SupabaseDb] COUNT error:', error.message, sql);
+      return mode === 'first' ? null : [];
+    }
+    const row = { [countAlias]: count || 0 };
+    return mode === 'first' ? row : [row];
+  }
+
   // Simple SELECT
   const selectMatch = normalized.match(/^SELECT\s+(.+?)\s+FROM\s+(\w+)(.*?)$/i);
   if (!selectMatch) {
@@ -125,8 +156,13 @@ async function executeQuery(sql, params, mode) {
   const table = selectMatch[2];
   const rest = selectMatch[3].trim();
 
-  // Build Supabase query
-  const selectCols = columns === '*' ? '*' : columns;
+  // Sessão 28.56 — defesa contra colunas com alias-prefixos (mp.preco_por_kg)
+  // ou expressões SQL que o PostgREST não entende. Se detectarmos algo
+  // diferente de identificadores simples ou `*`, caímos pra select('*') e
+  // deixamos o consumidor pegar os campos no JS.
+  const isSimpleColumns = columns === '*' ||
+    /^([\w]+\s*(?:,\s*[\w]+\s*)*)$/.test(columns);
+  const selectCols = isSimpleColumns ? columns : '*';
   let query = supabase.from(table).select(selectCols);
 
   // Parse WHERE clause

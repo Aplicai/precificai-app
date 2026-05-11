@@ -23,9 +23,14 @@ export function AuthProvider({ children }) {
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const lastActiveRef = useRef(Date.now());
   const timeoutRef = useRef(null);
+  // Sessão 28.56 — flag pra distinguir SIGNED_OUT intencional (user clicou em
+  // sair) de espúrio (sessão expirou em background). Só aceitamos o intencional.
+  const intentionalSignOutRef = useRef(false);
 
   const handleInactivityLogout = useCallback(async () => {
     if (user) {
+      // Sessão 28.56 — sinaliza SIGNED_OUT como intencional
+      intentionalSignOutRef.current = true;
       resetDatabase();
       await supabase.auth.signOut();
     }
@@ -95,27 +100,51 @@ export function AuthProvider({ children }) {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-      // Sessão 28.54 — security/UX: ignorar SIGNED_OUT espúrio quando o evento
-      // não vem com session=null vindo de uma chamada intencional. TOKEN_REFRESHED
-      // com sessão válida deve manter o user logado.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, s) => {
       addBreadcrumb({ category: 'auth', message: `auth event: ${_event}` });
+      if (typeof console !== 'undefined' && console.log) {
+        console.log('[AuthContext] event:', _event, 'hasSession:', !!s);
+      }
+      // Sessão 28.54 — TOKEN_REFRESHED sem session: ignora pra evitar logout espúrio
       if (_event === 'TOKEN_REFRESHED' && !s) {
-        // Refresh falhou mas mantém o estado anterior — onAuthStateChange virá
-        // novamente com SIGNED_OUT real se a sessão estiver de fato inválida.
         if (typeof console !== 'undefined' && console.warn) {
-          console.warn('[AuthContext] TOKEN_REFRESHED sem session — ignorando para evitar logout espúrio');
+          console.warn('[AuthContext] TOKEN_REFRESHED sem session — ignorando');
         }
         return;
+      }
+      // Sessão 28.56 — SIGNED_OUT espontâneo: tenta refresh antes de aceitar.
+      // Supabase às vezes emite SIGNED_OUT quando o refresh expira e o browser
+      // estava em background; a sessão pode ser recuperada com refreshSession().
+      // Só aceitamos SIGNED_OUT se intencional (intentionalSignOutRef.current=true)
+      // ou se refreshSession também falhar.
+      if (_event === 'SIGNED_OUT' && !intentionalSignOutRef.current) {
+        try {
+          const { data: { session: refreshed } } = await supabase.auth.refreshSession();
+          if (refreshed) {
+            if (typeof console !== 'undefined' && console.warn) {
+              console.warn('[AuthContext] SIGNED_OUT espúrio recuperado via refreshSession');
+            }
+            setSession(refreshed);
+            setUser(refreshed.user ?? null);
+            reportSetUser(refreshed.user ?? null);
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[AuthContext] refreshSession falhou:', e?.message);
+          }
+        }
       }
       setSession(s);
       setUser(s?.user ?? null);
       reportSetUser(s?.user ?? null);
       // Sessão 28.9 — APP-01: detecta quando user voltou do email de reset de senha.
-      // Sinaliza pro AppNavigator forçar a tela ResetPassword.
       if (_event === 'PASSWORD_RECOVERY') {
         setPasswordRecovery(true);
       }
+      // Reset flag se foi um signOut intencional concluído
+      if (_event === 'SIGNED_OUT') intentionalSignOutRef.current = false;
       setLoading(false);
     });
 
@@ -171,6 +200,9 @@ export function AuthProvider({ children }) {
 
   const signOut = async () => {
     addBreadcrumb({ category: 'auth', message: 'signOut' });
+    // Sessão 28.56 — sinaliza que o SIGNED_OUT que vai chegar é INTENCIONAL
+    // (o listener vai aceitar; caso contrário tentaria recuperar a sessão).
+    intentionalSignOutRef.current = true;
     // Sessão 28.44 — security H2: invalida sessão Supabase ANTES do reset local.
     // Antes: resetDatabase rodava primeiro → se signOut falhasse (rede), token
     // ficava em storage e onAuthStateChange repopulava o user → estado zumbi.
