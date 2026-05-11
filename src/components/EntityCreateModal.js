@@ -100,6 +100,11 @@ export default function EntityCreateModal({
   onClose,
   onSaved,
   defaultCategoriaId = null,
+  // Sessão 28.52: quando o modal é aberto como nested (ex.: preparo dentro
+  // de produto), o pai passa seu próprio estado aqui. Usado pra preservar o
+  // produto pai quando user fizer cascata "+ Insumo" / "+ Embalagem" de
+  // dentro do nested preparo. Antes: produto pai era perdido nessa cascata.
+  parentEntity = null,
 }) {
   const { isDesktop } = useResponsiveLayout();
   const navigation = useNavigation();
@@ -261,6 +266,29 @@ export default function EntityCreateModal({
               setUnidadeMedidaPrep(d.unidadeMedidaPrep || 'g');
               setItens(d.itens || []);
             }
+          }
+          // Sessão 28.52: cascata 3 níveis — se houver flag de reabrir nested
+          // preparo (vindo de fluxo produto > preparo > insumo/embalagem), abre
+          // automaticamente o nested após restaurar o produto.
+          if (isProduto) {
+            try {
+              const rawNested = await AsyncStorage.getItem('reopenNestedPreparoOnMount');
+              if (rawNested) {
+                const nestedInfo = JSON.parse(rawNested);
+                await AsyncStorage.removeItem('reopenNestedPreparoOnMount');
+                if (nestedInfo?.draft && nestedInfo?.ts && (Date.now() - nestedInfo.ts) < 5 * 60 * 1000) {
+                  // Persiste o draft do preparo nested pra o modal nested ler
+                  await AsyncStorage.setItem('entityDraftToRestore', JSON.stringify({
+                    mode: 'preparo',
+                    editId: nestedInfo.editId || null,
+                    draft: nestedInfo.draft,
+                    ts: Date.now(),
+                  }));
+                  // Dá um tempo pro produto montar, depois abre nested
+                  setTimeout(() => { if (!cancelled) setNestedPreparoVisible(true); }, 150);
+                }
+              }
+            } catch {}
           }
         } catch {}
       })();
@@ -1291,15 +1319,38 @@ export default function EntityCreateModal({
                   else if (target === 'NovoPreparo') pendingAddType = 'preparo';
                   try {
                     const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-                    const reopenInfo = {
-                      mode, editId: editId || null, ts: Date.now(),
-                      pendingAddType,
-                      draft: {
-                        nome, categoriaId, precoVenda,
-                        tipoVenda, rendimentoUnidades, rendimentoTotalProd,
-                        rendimentoTotalPrep, unidadeMedidaPrep, itens,
-                      },
+                    const currentDraft = {
+                      nome, categoriaId, precoVenda,
+                      tipoVenda, rendimentoUnidades, rendimentoTotalProd,
+                      rendimentoTotalPrep, unidadeMedidaPrep, itens,
                     };
+                    // Sessão 28.52: cascata 3 níveis (produto → preparo nested → insumo/embalagem).
+                    // Se temos parentEntity (somos um nested), salvamos o PRODUTO PAI como o reopen
+                    // e marcamos `reopenNestedPreparo` pra reabrir o preparo nested também.
+                    let reopenInfo;
+                    if (parentEntity && parentEntity.mode === 'produto') {
+                      reopenInfo = {
+                        mode: parentEntity.mode,
+                        editId: parentEntity.editId || null,
+                        ts: Date.now(),
+                        pendingAddType: null, // o produto pai não recebe o novo item; o preparo nested recebe ao reabrir
+                        draft: parentEntity.draft || {},
+                        // Quando ProdutosListScreen reabrir o produto, este flag faz o
+                        // EntityCreateModal abrir automaticamente o nested preparo restaurado.
+                        reopenNestedPreparo: {
+                          mode: 'preparo',
+                          editId: editId || null,
+                          draft: currentDraft,
+                          pendingAddType,
+                        },
+                      };
+                    } else {
+                      reopenInfo = {
+                        mode, editId: editId || null, ts: Date.now(),
+                        pendingAddType,
+                        draft: currentDraft,
+                      };
+                    }
                     AsyncStorage.setItem('reopenEntityModalAfterEdit', JSON.stringify(reopenInfo));
                   } catch {}
                   try { onClose && onClose(); } catch {}
@@ -1531,6 +1582,17 @@ export default function EntityCreateModal({
           mode="preparo"
           editId={null}
           onClose={() => setNestedPreparoVisible(false)}
+          // Sessão 28.52: passa estado do produto pai pro nested preparo.
+          // Se user fizer cascata "+ Insumo"/"+ Embalagem" lá, o produto é preservado.
+          parentEntity={{
+            mode: 'produto',
+            editId,
+            draft: {
+              nome, categoriaId, precoVenda,
+              tipoVenda, rendimentoUnidades, rendimentoTotalProd,
+              rendimentoTotalPrep, unidadeMedidaPrep, itens,
+            },
+          }}
           onSaved={async (novoPreparoId) => {
             setNestedPreparoVisible(false);
             if (!novoPreparoId) return;
