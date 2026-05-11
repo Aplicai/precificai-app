@@ -6,6 +6,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { AuthProvider } from './src/contexts/AuthContext';
 import { colors } from './src/utils/theme';
 import { initErrorReporter, wrap as wrapWithSentry } from './src/utils/errorReporter';
+import GlobalToastHost from './src/components/GlobalToastHost';
 
 // Inicializa o reporter de erros (P0-01). No-op se DSN ausente.
 initErrorReporter();
@@ -48,6 +49,8 @@ function App() {
       <View style={{ flex: 1 }}>
         <StatusBar style="light" />
         <AppNavigator />
+        {/* Sessão 28.53 — toast bus global p/ feedback após ações que encerram a tela */}
+        <GlobalToastHost />
       </View>
     </AuthProvider>
   );

@@ -176,9 +176,11 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
         });
       }
       setSalvando(false);
-      if (Platform.OS === 'web') {
-        try { window.alert('Ajuste registrado. Saldo atualizado.'); } catch {}
-      }
+      // Sessão 28.53 — toast não-bloqueante substitui window.alert.
+      try {
+        const { showToast } = require('../utils/toastBus');
+        showToast('Ajuste registrado · saldo atualizado', 'check-circle');
+      } catch (_) {}
       voltar();
     } catch (e) {
       console.error('[AjusteEstoque.salvar]', e);
