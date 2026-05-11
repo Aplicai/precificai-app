@@ -39,6 +39,8 @@ import {
   calcLucroLiquido, calcCMVPercentual, calcMargem, calcMargemLiquida,
 } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+// Área 4 (Preparos) — toast de confirmação ao salvar preparo via modal
+import { showToast } from '../utils/toastBus';
 
 function safeNum(v) {
   // APP-07: aceitar string com vírgula ('0,25') tanto quanto ponto ('0.25')
@@ -106,7 +108,7 @@ export default function EntityCreateModal({
   // dentro do nested preparo. Antes: produto pai era perdido nessa cascata.
   parentEntity = null,
 }) {
-  const { isDesktop } = useResponsiveLayout();
+  const { isDesktop, isMobile } = useResponsiveLayout();
   const navigation = useNavigation();
   const isProduto = mode === 'produto';
   const isEditing = !!editId;
@@ -596,6 +598,244 @@ export default function EntityCreateModal({
     setItens(prev => prev.filter((_, i) => i !== idx));
   }
 
+  // Área 4 (Preparos) — render dos itens + resumo extraído pra função;
+  // no desktop é chamado dentro da coluna esquerda; no mobile, é
+  // renderizado depois da coluna "Adicionar" pra ordem ficar:
+  // form → adicionar → lista de itens → resumo.
+  function renderItensEResumoBlock() {
+    return (
+      <View>
+        <View style={styles.itensHeader}>
+          <Text style={styles.subtitle}>{isProduto ? `Itens (${itens.length})` : `Ingredientes (${itens.length})`}</Text>
+          {itens.length > 0 && (
+            <Text style={styles.itensHint}>Ajuste a quantidade de cada item ↓</Text>
+          )}
+        </View>
+        {itens.length === 0 && (
+          <EmptyState
+            compact
+            icon="package"
+            title={isProduto ? 'Nenhum item ainda' : 'Sem ingredientes'}
+            description="Use a busca acima para adicionar."
+          />
+        )}
+        {itens.map((it, index) => {
+          const badge = TIPO_BADGE[it.tipo];
+          const qtd = safeNum(it.quantidade) || 0;
+          const total = safeNum(it.custoUnit) * qtd;
+          return (
+            <View key={`${it.tipo}-${it.id}-${index}`} style={styles.itemRow}>
+              <View style={styles.itemRowHeader}>
+                <View style={[styles.itemTipoBadge, { backgroundColor: badge.color + '15' }]}>
+                  <Text style={[styles.itemTipoBadgeText, { color: badge.color }]}>{badge.label}</Text>
+                </View>
+                <TouchableOpacity
+                  style={{ flex: 1 }}
+                  onPress={() => {
+                    if (!navigation) return;
+                    try {
+                      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                      const reopenInfo = {
+                        mode, editId, ts: Date.now(),
+                        draft: {
+                          nome, categoriaId, precoVenda,
+                          tipoVenda, rendimentoUnidades, rendimentoTotalProd,
+                          rendimentoTotalPrep, unidadeMedidaPrep, itens,
+                        },
+                      };
+                      AsyncStorage.setItem('reopenEntityModalAfterEdit', JSON.stringify(reopenInfo));
+                    } catch {}
+                    try { onClose && onClose(); } catch {}
+                    setTimeout(() => {
+                      try {
+                        if (it.tipo === 'preparo') navigation.navigate('Preparos', { screen: 'PreparosMain', params: { openPreparoEdit: it.id } });
+                        else if (it.tipo === 'materia_prima') navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: it.id, returnToEntityModal: true } });
+                        else if (it.tipo === 'embalagem') navigation.navigate('Embalagens', { screen: 'EmbalagemForm', params: { id: it.id, returnToEntityModal: true } });
+                      } catch (e) {
+                        try {
+                          if (it.tipo === 'preparo') navigation.navigate('Preparos', { params: { openPreparoEdit: it.id } });
+                          else if (it.tipo === 'materia_prima') navigation.navigate('MateriaPrimaForm', { id: it.id, returnToEntityModal: true });
+                          else if (it.tipo === 'embalagem') navigation.navigate('EmbalagemForm', { id: it.id, returnToEntityModal: true });
+                        } catch {}
+                      }
+                    }, 120);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Editar ${it.nome}`}
+                  activeOpacity={0.6}
+                >
+                  <Text style={styles.itemNome} numberOfLines={1}>{it.nome} <Feather name="edit-2" size={10} color={colors.primary} /></Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => removerItem(index)}
+                  style={styles.itemDeleteBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remover ${it.nome}`}
+                >
+                  <Feather name="trash-2" size={15} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.itemRowFooter}>
+                <View style={styles.stepper}>
+                  <TouchableOpacity
+                    style={styles.stepperBtn}
+                    onPress={() => alterarQuantidade(index, String(Math.max(0, qtd - 1)).replace('.', ','))}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Feather name="minus" size={14} color={colors.text} />
+                  </TouchableOpacity>
+                  <TextInput
+                    value={String(it.quantidade)}
+                    onChangeText={(v) => alterarQuantidade(index, v)}
+                    keyboardType="decimal-pad"
+                    style={styles.stepperInput}
+                    placeholder="0,25"
+                  />
+                  <TouchableOpacity
+                    style={styles.stepperBtn}
+                    onPress={() => alterarQuantidade(index, String(qtd + 1).replace('.', ','))}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Feather name="plus" size={14} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.unidadeBadge}>
+                  <Text style={styles.unidadeBadgeText}>{(() => {
+                    if (it.tipo === 'materia_prima') {
+                      const mp = allMaterias.find(m => m.id === it.id);
+                      return shortUnidade(mp?.unidade_medida || it.unidade, 'materia_prima');
+                    }
+                    if (it.tipo === 'embalagem') {
+                      const em = allEmbalagens.find(e => e.id === it.id);
+                      return shortUnidade(em?.unidade_medida || it.unidade, 'embalagem') || 'un';
+                    }
+                    if (it.tipo === 'preparo') {
+                      const pr = allPreparos.find(p => p.id === it.id);
+                      return shortUnidade(pr?.unidade_medida || it.unidade, 'preparo');
+                    }
+                    return it.unidade;
+                  })()}</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                  <Text style={styles.itemCustoTotal}>{formatCurrency(total)}</Text>
+                </View>
+              </View>
+            </View>
+          );
+        })}
+
+        {(itens.length > 0 || isProduto) && (
+          <View style={styles.resumo}>
+            <View style={styles.resumoHeader}>
+              <Feather name="dollar-sign" size={14} color={colors.primary} />
+              <Text style={styles.resumoTitle}>Resumo de Custos</Text>
+            </View>
+            {isProduto ? (
+              <>
+                <View style={styles.resumoGrid}>
+                  <View style={styles.resumoCell}>
+                    <Text style={styles.resumoLabel}>CMV {tipoVenda === 'unidade' ? 'unit.' : `/${tipoVenda === 'kg' ? 'kg' : 'L'}`}</Text>
+                    <Text style={styles.resumoValue}>{formatCurrency(cmvUnitario)}</Text>
+                  </View>
+                  <View style={styles.resumoCell}>
+                    <Text style={styles.resumoLabel}>Sugerido</Text>
+                    <Text style={[styles.resumoValue, { color: colors.textSecondary }]}>
+                      {precoSugerido > 0 ? formatCurrency(precoSugerido) : '—'}
+                    </Text>
+                  </View>
+                  <View style={styles.resumoCell}>
+                    <Text style={styles.resumoLabel}>Lucro</Text>
+                    <Text style={[styles.resumoValue, { color: lucroUnit >= 0 ? colors.primary : colors.error }]}>{formatCurrency(lucroUnit)}</Text>
+                  </View>
+                  <View style={styles.resumoCell}>
+                    <Text style={styles.resumoLabel}>Margem</Text>
+                    <Text style={[styles.resumoValue, {
+                      color: margem >= 25 ? colors.success : margem >= 15 ? colors.accent : colors.error,
+                    }]}>
+                      {precoVendaNum > 0 ? `${margem.toFixed(1)}%` : '—'}
+                    </Text>
+                  </View>
+                </View>
+                {precoVendaNum > 0 && precoSugerido > 0 && Math.abs(diffSugerido) > 0.005 && (
+                  <Text style={[styles.resumoComparacao, {
+                    color: diffSugerido > 0 ? colors.success : colors.accent,
+                  }]}>
+                    {diffSugerido > 0
+                      ? `▲ Acima do sugerido (+${formatCurrency(diffSugerido)})`
+                      : `▼ Abaixo do sugerido (${formatCurrency(diffSugerido)})`}
+                  </Text>
+                )}
+                {(custoInsumos > 0 || custoPreparos > 0 || custoEmbalagens > 0) && (
+                  <View style={styles.resumoBreakdown}>
+                    {custoInsumos > 0 && <Text style={styles.resumoBreakdownItem}>Insumos {formatCurrency(custoInsumos / divisor)}</Text>}
+                    {custoInsumos > 0 && custoPreparos > 0 && <Text style={styles.resumoBreakdownSep}>·</Text>}
+                    {custoPreparos > 0 && <Text style={styles.resumoBreakdownItem}>Preparos {formatCurrency(custoPreparos / divisor)}</Text>}
+                    {(custoInsumos > 0 || custoPreparos > 0) && custoEmbalagens > 0 && <Text style={styles.resumoBreakdownSep}>·</Text>}
+                    {custoEmbalagens > 0 && <Text style={styles.resumoBreakdownItem}>Emb. {formatCurrency(custoEmbalagens / divisor)}</Text>}
+                  </View>
+                )}
+                {precoEfetivo > 0 && (pricingConfig.despFixasPerc > 0 || pricingConfig.despVarPerc > 0) && (
+                  <View style={styles.analiseBox}>
+                    <Text style={styles.analiseTitulo}>Composição por unidade vendida</Text>
+                    <View style={styles.analiseLinha}>
+                      <Text style={styles.analiseLabel}>CMV</Text>
+                      <Text style={styles.analiseValor}>{formatCurrency(cmvUnitario)} <Text style={styles.analisePerc}>({formatPercent(cmvPerc)})</Text></Text>
+                    </View>
+                    {pricingConfig.despFixasPerc > 0 && (
+                      <View style={styles.analiseLinha}>
+                        <Text style={styles.analiseLabel}>Custos do mês</Text>
+                        <Text style={styles.analiseValor}>{formatCurrency(despFixasValor)} <Text style={styles.analisePerc}>({formatPercent(pricingConfig.despFixasPerc)})</Text></Text>
+                      </View>
+                    )}
+                    {pricingConfig.despVarPerc > 0 && (
+                      <View style={styles.analiseLinha}>
+                        <Text style={styles.analiseLabel}>Custos por venda</Text>
+                        <Text style={styles.analiseValor}>{formatCurrency(despVarValor)} <Text style={styles.analisePerc}>({formatPercent(pricingConfig.despVarPerc)})</Text></Text>
+                      </View>
+                    )}
+                    <View style={[styles.analiseLinha, styles.analiseLinhaTotal]}>
+                      <Text style={[styles.analiseLabel, styles.analiseLabelTotal]}>Lucro Líquido</Text>
+                      <Text style={[styles.analiseValor, {
+                        color: lucroLiquido >= 0 ? colors.success : colors.error,
+                        fontWeight: '700',
+                      }]}>
+                        {formatCurrency(lucroLiquido)} <Text style={styles.analisePerc}>({formatPercent(lucroLiquidoPerc)})</Text>
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                {pricingConfig.despFixasPerc === 0 && pricingConfig.despVarPerc === 0 && (
+                  <View style={styles.analiseHint}>
+                    <Feather name="info" size={11} color={colors.textSecondary} />
+                    <Text style={styles.analiseHintText}>
+                      Cadastre despesas fixas, variáveis e faturamento em "Configurações" para ver a análise completa de preço sugerido.
+                    </Text>
+                  </View>
+                )}
+              </>
+            ) : (
+              <View style={styles.resumoGrid}>
+                <View style={styles.resumoCell}>
+                  <Text style={styles.resumoLabel}>Custo total</Text>
+                  <Text style={styles.resumoValue}>{formatCurrency(custoTotal)}</Text>
+                </View>
+                <View style={styles.resumoCell}>
+                  <Text style={styles.resumoLabel}>Custo / {unidadeMedidaPrep}</Text>
+                  <Text style={styles.resumoValue}>
+                    {parseInputValue(rendimentoTotalPrep) > 0
+                      ? formatCurrency(custoTotal / parseInputValue(rendimentoTotalPrep))
+                      : '—'}
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  }
+
   // Custos
   const custoTotal = itens.reduce((acc, it) => acc + safeNum(it.custoUnit) * safeNum(it.quantidade), 0);
   const custoInsumos = itens.filter(i => i.tipo === 'materia_prima').reduce((a, i) => a + safeNum(i.custoUnit) * safeNum(i.quantidade), 0);
@@ -749,6 +989,12 @@ export default function EntityCreateModal({
             }
           }
         } catch (e) { console.warn('[EntityCreateModal.preparo.autoAddToProductDraft]', e); }
+      }
+      // Área 4 — toast de confirmação após salvar preparo (cobre tanto criação
+      // quanto edição via EntityCreateModal mode='preparo'). Produto fica
+      // a cargo da Área que cuida dele.
+      if (!isProduto) {
+        try { showToast('Preparo salvo', 'check-circle'); } catch (_) {}
       }
       onSaved && onSaved(savedId);
       onClose && onClose();
@@ -1044,260 +1290,11 @@ export default function EntityCreateModal({
               )}
 
               {/* Itens já adicionados — vêm ANTES do resumo pra deixar claro que
-                  é preciso preencher quantidade de cada item antes de avaliar custos */}
-              <View style={styles.itensHeader}>
-                <Text style={styles.subtitle}>{isProduto ? `Itens (${itens.length})` : `Ingredientes (${itens.length})`}</Text>
-                {itens.length > 0 && (
-                  <Text style={styles.itensHint}>Ajuste a quantidade de cada item ↓</Text>
-                )}
-              </View>
-              {itens.length === 0 && (
-                <EmptyState
-                  compact
-                  icon="package"
-                  title={isProduto ? 'Nenhum item ainda' : 'Sem ingredientes'}
-                  description="Use a busca ao lado para adicionar."
-                />
-              )}
-              {itens.map((it, index) => {
-                const badge = TIPO_BADGE[it.tipo];
-                const qtd = safeNum(it.quantidade) || 0;
-                const total = safeNum(it.custoUnit) * qtd;
-                return (
-                  <View key={`${it.tipo}-${it.id}-${index}`} style={styles.itemRow}>
-                    <View style={styles.itemRowHeader}>
-                      <View style={[styles.itemTipoBadge, { backgroundColor: badge.color + '15' }]}>
-                        <Text style={[styles.itemTipoBadgeText, { color: badge.color }]}>{badge.label}</Text>
-                      </View>
-                      {/* D-18 (sessão 28.13b): tap no nome FECHA o modal e navega — antes abria atrás */}
-                      <TouchableOpacity
-                        style={{ flex: 1 }}
-                        onPress={() => {
-                          if (!navigation) return;
-                          // Sessão 28.14 + 28.19: salva flag + DRAFT do produto pra reabrir
-                          // ANTES (28.14) só salvava { mode, editId } — então ao voltar, o modal
-                          // reabria mas se o produto era NOVO (editId=null), os itens digitados
-                          // se PERDIAM porque nada estava persistido. Agora também serializamos
-                          // o estado completo (nome, categoria, itens, etc) e restauramos no abrir.
-                          // Sessão 28.20 BUG FIX: agora salva o DRAFT também pra produtos EXISTENTES (não só novos).
-                          // Antes, ao editar um produto existente e clicar em editar um insumo dentro,
-                          // ao voltar o loadForEdit recarregava do DB e PERDIA as alterações em memória
-                          // (novos itens adicionados, mudanças de quantidade, etc). Agora preserva tudo.
-                          try {
-                            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-                            const reopenInfo = {
-                              mode, editId, ts: Date.now(),
-                              draft: {
-                                nome, categoriaId, precoVenda,
-                                tipoVenda, rendimentoUnidades, rendimentoTotalProd,
-                                rendimentoTotalPrep, unidadeMedidaPrep, itens,
-                              },
-                            };
-                            AsyncStorage.setItem('reopenEntityModalAfterEdit', JSON.stringify(reopenInfo));
-                          } catch {}
-                          // Fecha PRIMEIRO o EntityCreateModal pra a edição não abrir por trás
-                          try { onClose && onClose(); } catch {}
-                          // Pequeno delay pra modal terminar de fechar antes do navigate
-                          // Sessão 28.21: pra PREPARO, navega pra lista de preparos com flag pra
-                          // abrir o EntityCreateModal em modo preparo (mesma UI do produto, não a
-                          // tela antiga PreparoForm).
-                          setTimeout(() => {
-                            try {
-                              if (it.tipo === 'preparo') navigation.navigate('Preparos', { screen: 'PreparosMain', params: { openPreparoEdit: it.id } });
-                              else if (it.tipo === 'materia_prima') navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: it.id, returnToEntityModal: true } });
-                              else if (it.tipo === 'embalagem') navigation.navigate('Embalagens', { screen: 'EmbalagemForm', params: { id: it.id, returnToEntityModal: true } });
-                            } catch (e) {
-                              try {
-                                if (it.tipo === 'preparo') navigation.navigate('Preparos', { params: { openPreparoEdit: it.id } });
-                                else if (it.tipo === 'materia_prima') navigation.navigate('MateriaPrimaForm', { id: it.id, returnToEntityModal: true });
-                                else if (it.tipo === 'embalagem') navigation.navigate('EmbalagemForm', { id: it.id, returnToEntityModal: true });
-                              } catch {}
-                            }
-                          }, 120);
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Editar ${it.nome}`}
-                        activeOpacity={0.6}
-                      >
-                        <Text style={styles.itemNome} numberOfLines={1}>{it.nome} <Feather name="edit-2" size={10} color={colors.primary} /></Text>
-                      </TouchableOpacity>
-                      {/* D-12 (sessão 28.12): ícone "trocar" removido. Pra trocar item: deletar (lixeira) e adicionar o novo do picker à direita. */}
-                      <TouchableOpacity
-                        onPress={() => removerItem(index)}
-                        style={styles.itemDeleteBtn}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remover ${it.nome}`}
-                      >
-                        <Feather name="trash-2" size={15} color={colors.textSecondary} />
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.itemRowFooter}>
-                      <View style={styles.stepper}>
-                        <TouchableOpacity
-                          style={styles.stepperBtn}
-                          onPress={() => alterarQuantidade(index, String(Math.max(0, qtd - 1)).replace('.', ','))}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                        >
-                          <Feather name="minus" size={14} color={colors.text} />
-                        </TouchableOpacity>
-                        <TextInput
-                          value={String(it.quantidade)}
-                          onChangeText={(v) => alterarQuantidade(index, v)}
-                          keyboardType="decimal-pad"
-                          style={styles.stepperInput}
-                          placeholder="0,25"
-                        />
-                        <TouchableOpacity
-                          style={styles.stepperBtn}
-                          onPress={() => alterarQuantidade(index, String(qtd + 1).replace('.', ','))}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                        >
-                          <Feather name="plus" size={14} color={colors.text} />
-                        </TouchableOpacity>
-                      </View>
-                      {/* Sessão 28.13b — unidade busca SEMPRE do catálogo atual (não cacheia) */}
-                      <View style={styles.unidadeBadge}>
-                        <Text style={styles.unidadeBadgeText}>{(() => {
-                          if (it.tipo === 'materia_prima') {
-                            const mp = allMaterias.find(m => m.id === it.id);
-                            return shortUnidade(mp?.unidade_medida || it.unidade, 'materia_prima');
-                          }
-                          if (it.tipo === 'embalagem') {
-                            const em = allEmbalagens.find(e => e.id === it.id);
-                            return shortUnidade(em?.unidade_medida || it.unidade, 'embalagem') || 'un';
-                          }
-                          if (it.tipo === 'preparo') {
-                            const pr = allPreparos.find(p => p.id === it.id);
-                            return shortUnidade(pr?.unidade_medida || it.unidade, 'preparo');
-                          }
-                          return it.unidade;
-                        })()}</Text>
-                      </View>
-                      <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                        <Text style={styles.itemCustoTotal}>{formatCurrency(total)}</Text>
-                      </View>
-                    </View>
-                  </View>
-                );
-              })}
-
-              {/* Resumo de Custos — vem APÓS os itens pra reforçar a ordem natural:
-                  primeiro adiciona itens + quantidades, depois vê o resultado */}
-              {(itens.length > 0 || isProduto) && (
-                <View style={styles.resumo}>
-                  <View style={styles.resumoHeader}>
-                    <Feather name="dollar-sign" size={14} color={colors.primary} />
-                    <Text style={styles.resumoTitle}>Resumo de Custos</Text>
-                  </View>
-                  {isProduto ? (
-                    <>
-                      <View style={styles.resumoGrid}>
-                        <View style={styles.resumoCell}>
-                          <Text style={styles.resumoLabel}>CMV {tipoVenda === 'unidade' ? 'unit.' : `/${tipoVenda === 'kg' ? 'kg' : 'L'}`}</Text>
-                          <Text style={styles.resumoValue}>{formatCurrency(cmvUnitario)}</Text>
-                        </View>
-                        <View style={styles.resumoCell}>
-                          <Text style={styles.resumoLabel}>Sugerido</Text>
-                          <Text style={[styles.resumoValue, { color: colors.textSecondary }]}>
-                            {precoSugerido > 0 ? formatCurrency(precoSugerido) : '—'}
-                          </Text>
-                        </View>
-                        <View style={styles.resumoCell}>
-                          <Text style={styles.resumoLabel}>Lucro</Text>
-                          <Text style={[styles.resumoValue, { color: lucroUnit >= 0 ? colors.primary : colors.error }]}>{formatCurrency(lucroUnit)}</Text>
-                        </View>
-                        <View style={styles.resumoCell}>
-                          <Text style={styles.resumoLabel}>Margem</Text>
-                          <Text style={[styles.resumoValue, {
-                            color: margem >= 25 ? colors.success : margem >= 15 ? colors.accent : colors.error,
-                          }]}>
-                            {precoVendaNum > 0 ? `${margem.toFixed(1)}%` : '—'}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* Comparação preço de venda vs sugerido */}
-                      {precoVendaNum > 0 && precoSugerido > 0 && Math.abs(diffSugerido) > 0.005 && (
-                        <Text style={[styles.resumoComparacao, {
-                          color: diffSugerido > 0 ? colors.success : colors.accent,
-                        }]}>
-                          {diffSugerido > 0
-                            ? `▲ Acima do sugerido (+${formatCurrency(diffSugerido)})`
-                            : `▼ Abaixo do sugerido (${formatCurrency(diffSugerido)})`}
-                        </Text>
-                      )}
-
-                      {(custoInsumos > 0 || custoPreparos > 0 || custoEmbalagens > 0) && (
-                        <View style={styles.resumoBreakdown}>
-                          {custoInsumos > 0 && <Text style={styles.resumoBreakdownItem}>Insumos {formatCurrency(custoInsumos / divisor)}</Text>}
-                          {custoInsumos > 0 && custoPreparos > 0 && <Text style={styles.resumoBreakdownSep}>·</Text>}
-                          {custoPreparos > 0 && <Text style={styles.resumoBreakdownItem}>Preparos {formatCurrency(custoPreparos / divisor)}</Text>}
-                          {(custoInsumos > 0 || custoPreparos > 0) && custoEmbalagens > 0 && <Text style={styles.resumoBreakdownSep}>·</Text>}
-                          {custoEmbalagens > 0 && <Text style={styles.resumoBreakdownItem}>Emb. {formatCurrency(custoEmbalagens / divisor)}</Text>}
-                        </View>
-                      )}
-
-                      {/* Análise detalhada (composição do preço) */}
-                      {precoEfetivo > 0 && (pricingConfig.despFixasPerc > 0 || pricingConfig.despVarPerc > 0) && (
-                        <View style={styles.analiseBox}>
-                          <Text style={styles.analiseTitulo}>Composição por unidade vendida</Text>
-                          <View style={styles.analiseLinha}>
-                            <Text style={styles.analiseLabel}>CMV</Text>
-                            <Text style={styles.analiseValor}>{formatCurrency(cmvUnitario)} <Text style={styles.analisePerc}>({formatPercent(cmvPerc)})</Text></Text>
-                          </View>
-                          {pricingConfig.despFixasPerc > 0 && (
-                            <View style={styles.analiseLinha}>
-                              <Text style={styles.analiseLabel}>Custos do mês</Text>
-                              <Text style={styles.analiseValor}>{formatCurrency(despFixasValor)} <Text style={styles.analisePerc}>({formatPercent(pricingConfig.despFixasPerc)})</Text></Text>
-                            </View>
-                          )}
-                          {pricingConfig.despVarPerc > 0 && (
-                            <View style={styles.analiseLinha}>
-                              <Text style={styles.analiseLabel}>Custos por venda</Text>
-                              <Text style={styles.analiseValor}>{formatCurrency(despVarValor)} <Text style={styles.analisePerc}>({formatPercent(pricingConfig.despVarPerc)})</Text></Text>
-                            </View>
-                          )}
-                          <View style={[styles.analiseLinha, styles.analiseLinhaTotal]}>
-                            <Text style={[styles.analiseLabel, styles.analiseLabelTotal]}>Lucro Líquido</Text>
-                            <Text style={[styles.analiseValor, {
-                              color: lucroLiquido >= 0 ? colors.success : colors.error,
-                              fontWeight: '700',
-                            }]}>
-                              {formatCurrency(lucroLiquido)} <Text style={styles.analisePerc}>({formatPercent(lucroLiquidoPerc)})</Text>
-                            </Text>
-                          </View>
-                        </View>
-                      )}
-
-                      {/* Hint quando config não está preenchida */}
-                      {pricingConfig.despFixasPerc === 0 && pricingConfig.despVarPerc === 0 && (
-                        <View style={styles.analiseHint}>
-                          <Feather name="info" size={11} color={colors.textSecondary} />
-                          <Text style={styles.analiseHintText}>
-                            Cadastre despesas fixas, variáveis e faturamento em "Configurações" para ver a análise completa de preço sugerido.
-                          </Text>
-                        </View>
-                      )}
-                    </>
-                  ) : (
-                    <View style={styles.resumoGrid}>
-                      <View style={styles.resumoCell}>
-                        <Text style={styles.resumoLabel}>Custo total</Text>
-                        <Text style={styles.resumoValue}>{formatCurrency(custoTotal)}</Text>
-                      </View>
-                      <View style={styles.resumoCell}>
-                        <Text style={styles.resumoLabel}>Custo / {unidadeMedidaPrep}</Text>
-                        <Text style={styles.resumoValue}>
-                          {parseInputValue(rendimentoTotalPrep) > 0
-                            ? formatCurrency(custoTotal / parseInputValue(rendimentoTotalPrep))
-                            : '—'}
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-                </View>
-              )}
+                  é preciso preencher quantidade de cada item antes de avaliar custos.
+                  Área 4 (mobile): no mobile esse bloco é renderizado APÓS o picker
+                  "Adicionar" (coluna direita), pra ordem ficar: form → adicionar → lista.
+                  Aqui só renderiza no desktop. O bloco mobile fica no final. */}
+              {!isMobile && renderItensEResumoBlock()}
             </View>
 
             {/* Coluna direita — Picker */}
@@ -1471,6 +1468,10 @@ export default function EntityCreateModal({
                 );
               })()}
             </View>
+
+            {/* Área 4 (mobile): lista de itens + resumo vai aqui no fim pra
+                seguir ordem: form → adicionar → lista. */}
+            {isMobile && renderItensEResumoBlock()}
           </ScrollView>
 
           {/* Footer */}

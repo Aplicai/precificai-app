@@ -13,6 +13,7 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useListDensity from '../hooks/useListDensity';
 import { calcPrecoUnitarioEmbalagem, formatCurrency } from '../utils/calculations';
 import { t } from '../i18n/pt-BR';
+import { showToast } from '../utils/toastBus';
 // Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 
@@ -82,6 +83,42 @@ export default function EmbalagemFormScreen({ route, navigation }) {
   // F2-J2-01: recarrega categorias ao retornar para a tela
   // (categoria criada inline em outro form precisa aparecer aqui sem reabrir)
   useFocusEffect(useCallback(() => { loadCategorias(); }, []));
+
+  // Sessão Mobile-29 — bug fix tab Embalagens reabrindo form anterior.
+  // Quando o usuário troca de tab estando dentro do form, ao voltar para
+  // a tab Embalagens o RN Stack restaurava o form (top da stack). Agora,
+  // ao blur (perder foco) sem ser por saída explícita do form, fazemos
+  // pop pra que a próxima vinda à tab caia direto na lista.
+  // Idempotente: só roda em modo edição (criação tem beforeRemove guard).
+  const blurPopTimer = useRef(null);
+  useEffect(() => {
+    if (!editId) return;
+    const unsub = navigation.addListener('blur', () => {
+      // Cancela timer anterior se ainda pendente.
+      if (blurPopTimer.current) clearTimeout(blurPopTimer.current);
+      // Defer pra deixar o auto-save terminar e evitar race com o navigator.
+      blurPopTimer.current = setTimeout(() => {
+        try {
+          allowExit.current = true;
+          if (navigation.canGoBack && navigation.canGoBack()) {
+            navigation.goBack();
+          }
+        } catch (_) {}
+      }, 250);
+    });
+    const unsubFocus = navigation.addListener('focus', () => {
+      // Se a tela voltou a focar antes do timer disparar, cancelamos o pop.
+      if (blurPopTimer.current) {
+        clearTimeout(blurPopTimer.current);
+        blurPopTimer.current = null;
+      }
+    });
+    return () => {
+      unsub();
+      unsubFocus();
+      if (blurPopTimer.current) clearTimeout(blurPopTimer.current);
+    };
+  }, [navigation, editId]);
 
   // Intercepta saída para validar campos
   useEffect(() => {
@@ -277,6 +314,8 @@ export default function EmbalagemFormScreen({ route, navigation }) {
       const { notifyDataChanged } = await import('../utils/dataSync');
       notifyDataChanged('embalagens');
     } catch (_) {}
+    // Sessão Mobile-29 — confirmação visual após salvar nova embalagem.
+    try { showToast('Embalagem salva', 'check-circle'); } catch (_) {}
     // Sessão 28.54 — auto-retorno para a tab do reopenInfo (Produtos/Preparos)
     // ao invés de cair na lista de Embalagens. Necessário pra cascata 3 níveis.
     try {
@@ -611,6 +650,8 @@ export default function EmbalagemFormScreen({ route, navigation }) {
               } catch(e) { console.error('[EmbalagemForm.priceHistory]', e); }
             }
             autoSave();
+            // Sessão Mobile-29 — confirmação visual após salvar edição.
+            try { showToast('Embalagem salva', 'check-circle'); } catch (_) {}
             setTimeout(() => {
               const returnTo = route.params?.returnTo;
               if (returnTo) {

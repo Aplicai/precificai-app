@@ -35,7 +35,9 @@ function escapeHtml(str) {
 export default function ListaComprasScreen({ navigation }) {
   const { isDesktop, isMobile } = useResponsiveLayout();
   const { isCompact, rowMinHeight, titleFontSize, listItemSubtitleFontSize, cardPadding } = useListDensity();
-  const bottomOffset = isMobile ? 86 : 16; // BottomTab clearance on mobile
+  // Sessão 28.55: BottomTab no mobile ocupa ~86px (com safe-area no iPhone).
+  // Garante folga pro sticky footer não sobrepor a tab. Desktop sem tab → 16px.
+  const bottomOffset = isMobile ? 86 : 16;
   const [produtos, setProdutos] = useState([]);
   const [quantidades, setQuantidades] = useState({});
   const [lista, setLista] = useState(null);
@@ -303,6 +305,20 @@ export default function ListaComprasScreen({ navigation }) {
     }
   }
 
+  // Sessão 28.55: detecta Safari em iOS (incluindo iPadOS 13+ que se reporta como Mac).
+  // No iOS Safari `window.open('', '_blank')` é frequentemente bloqueado fora do
+  // gesto síncrono do clique, e `win.print()` em popup também é ignorado.
+  // Único caminho confiável: gerar Blob + <a download> + abrir em nova aba pro
+  // usuário usar o menu Compartilhar nativo.
+  function isIOSSafari() {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    const isIOS = /iPad|iPhone|iPod/.test(ua) ||
+      (ua.includes('Mac') && typeof document !== 'undefined' && 'ontouchend' in document);
+    const isSafari = /^((?!chrome|android|crios|fxios|edgios).)*safari/i.test(ua);
+    return isIOS && isSafari;
+  }
+
   async function exportarPDF() {
     if (!lista || Platform.OS !== 'web') return;
 
@@ -366,12 +382,54 @@ export default function ListaComprasScreen({ navigation }) {
     <div class="footer">Gerado por Precificaí - precificaipp.com</div>
     </body></html>`;
 
+    // Sessão 28.55: iOS Safari bloqueia window.open + win.print. Usa Blob + anchor
+    // download e abre em nova aba pra usuário usar Compartilhar/Imprimir nativo.
+    if (isIOSSafari()) {
+      try {
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `lista-compras-${Date.now()}.html`;
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        try { window.open(url, '_blank'); } catch (_) {}
+        setToast({ message: 'PDF gerado · use Compartilhar para Imprimir/Salvar', icon: 'printer' });
+        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 10000);
+      } catch (e) {
+        setToast({ message: 'Não foi possível gerar o PDF. Tente novamente.', icon: 'alert-circle' });
+      }
+      return;
+    }
+
+    // Desktop/Android: nova aba + print
     const win = window.open('', '_blank');
-    win.document.write(html);
-    win.document.close();
-    setTimeout(() => win.print(), 500);
-    // Sessão 28.53 — feedback após exportar PDF
-    setToast({ message: 'PDF aberto em nova aba', icon: 'printer' });
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      setTimeout(() => { try { win.print(); } catch (_) {} }, 500);
+      // Sessão 28.53 — feedback após exportar PDF
+      setToast({ message: 'PDF aberto em nova aba', icon: 'printer' });
+    } else {
+      // Popup bloqueado — fallback Blob/download
+      try {
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `lista-compras-${Date.now()}.html`;
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setToast({ message: 'PDF baixado · verifique sua pasta Downloads', icon: 'download' });
+        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 10000);
+      } catch (e) {
+        setToast({ message: 'Não foi possível gerar o PDF.', icon: 'alert-circle' });
+      }
+    }
   }
 
   const temProdutosSelecionados = Object.values(quantidades).some(v => parseInt(v) > 0);
@@ -461,7 +519,9 @@ export default function ListaComprasScreen({ navigation }) {
                       {items.map(p => (
                         <View key={p.id} style={isDesktop ? styles.gridCardProduto : [styles.produtoRow, { minHeight: rowMinHeight, paddingVertical: isCompact ? 8 : 14 }]}>
                           {Platform.OS === 'web' ? (
-                            <div title={p.nome} style={{ flex: 1, overflow: 'hidden' }}>
+                            // minWidth:0 é crítico — sem isso o flex:1 não permite
+                            // que o filho com texto truncado encolha (28.55).
+                            <div title={p.nome} style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
                               <Text style={isDesktop ? styles.gridCardName : styles.produtoNome} numberOfLines={1}>{p.nome}</Text>
                             </div>
                           ) : (
@@ -612,6 +672,8 @@ export default function ListaComprasScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.md, maxWidth: 1200, width: '100%', paddingBottom: 220, alignSelf: 'center' },
+  // Sessão 28.55: zIndex garante que o sticky CTA fique acima de cards mas abaixo
+  // da BottomTab (que tem zIndex maior no AppNavigator).
   stickyFooter: {
     position: 'absolute', left: 0, right: 0,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
@@ -619,6 +681,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: colors.border,
     shadowColor: colors.shadow, shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.05, shadowRadius: 4, elevation: 4,
+    zIndex: 5,
   },
 
   // Audit P0: banner de erro (loadError + gerarError)
@@ -660,8 +723,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.border + '40',
     backgroundColor: colors.surface,
   },
-  produtoNome: { flex: 1, fontSize: fonts.regular, fontFamily: fontFamily.semiBold, color: colors.text, marginRight: 12 },
-  qtyGroup: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  // Sessão 28.55: nome longo (ex. "Bolo branco com maracujá") sobrepunha os
+  // controles de quantidade. flex:1 + minWidth:0 + flexShrink:1 garante que o
+  // texto reduza/quebre antes de empurrar o grupo de qty.
+  produtoNome: { flex: 1, minWidth: 0, flexShrink: 1, fontSize: fonts.regular, fontFamily: fontFamily.semiBold, color: colors.text, marginRight: 12 },
+  // qtyGroup tem flexShrink:0 + minWidth pra nunca colapsar.
+  qtyGroup: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0, minWidth: 128 },
   qtyBtn: {
     width: 32, height: 32, borderRadius: 16,
     backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border,

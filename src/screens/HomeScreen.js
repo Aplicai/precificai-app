@@ -11,6 +11,8 @@ import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { getSetupStatus } from '../utils/setupStatus';
 import InfoTooltip from '../components/InfoTooltip';
 import Loader from '../components/Loader';
+import MobileOnboardingOverlay from '../components/MobileOnboardingOverlay';
+import MobileDesktopHint from '../components/MobileDesktopHint';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { useAuth } from '../contexts/AuthContext';
 import useFeatureFlag from '../hooks/useFeatureFlag';
@@ -46,7 +48,7 @@ function getGreeting() {
 }
 
 export default function HomeScreen({ navigation }) {
-  const { isDesktop, width } = useResponsiveLayout();
+  const { isDesktop, isMobile, width } = useResponsiveLayout();
   // Sessão polish — KPIs estouravam em 320pt por causa de minWidth: 150.
   // ≤360pt: 1 coluna (100%); demais mobile: 2 colunas (48%); desktop usa kpiCardDesktop.
   const kpiCardWidth = width <= 360 ? '100%' : '48%';
@@ -504,15 +506,25 @@ export default function HomeScreen({ navigation }) {
 
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, isMobile && styles.contentMobile]}
       refreshControl={Platform.OS !== 'web' ? (
         <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} colors={[colors.primary]} />
       ) : undefined}
     >
 
+      {/* Mobile-only onboarding overlay — explica a ordem correta de uso
+          (Financeiro → Insumos → Preparos → Embalagens → Produtos → Análise).
+          O componente decide internamente quando aparecer (flag dismiss +
+          contador de aberturas) e filtra mobile via useResponsiveLayout. */}
+      <MobileOnboardingOverlay navigation={navigation} />
+
+      {/* Área 9 — banner discreto sugerindo experiência desktop. Aparece 1 a
+          cada 5 sessões em mobile (e no 1º uso). Dismissível. */}
+      <MobileDesktopHint />
+
       {/* Greeting */}
-      <View style={styles.greetingRow}>
-        <Text style={styles.greetingText}>{getGreeting()} 👋</Text>
+      <View style={[styles.greetingRow, isMobile && styles.greetingRowMobile]}>
+        <Text style={[styles.greetingText, isMobile && styles.greetingTextMobile]}>{getGreeting()} 👋</Text>
         <Text style={styles.greetingDesc}>
           {pendente ? 'Complete a configuração para começar' : d.totalProdutos === 0 ? 'Cadastre seus primeiros produtos' : 'Veja como está sua precificação'}
         </Text>
@@ -630,7 +642,7 @@ export default function HomeScreen({ navigation }) {
 
       {/* Status card */}
       <TouchableOpacity
-        style={styles.statusCard}
+        style={[styles.statusCard, isMobile && styles.statusCardMobile]}
         activeOpacity={statusOnPress ? 0.7 : 1}
         onPress={statusOnPress || undefined}
       >
@@ -671,7 +683,7 @@ export default function HomeScreen({ navigation }) {
           antes de explorar os KPIs e a base de cadastro. */}
       {d.featuredInsight && !pendente && !baseIncompleta && (
         <TouchableOpacity
-          style={[styles.featuredInsight, { borderLeftColor: d.featuredInsight.color, backgroundColor: d.featuredInsight.color + '0C' }]}
+          style={[styles.featuredInsight, { borderLeftColor: d.featuredInsight.color, backgroundColor: d.featuredInsight.color + '0C' }, isMobile && styles.featuredInsightMobile]}
           activeOpacity={d.featuredInsight.action ? 0.7 : 1}
           onPress={() => {
             const a = d.featuredInsight.action;
@@ -700,14 +712,14 @@ export default function HomeScreen({ navigation }) {
 
       {/* KPIs - Saúde da Precificação */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }]}>Saúde da Precificação</Text>
+        <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }, isMobile && styles.sectionTitleMobile]}>Saúde da Precificação</Text>
         <InfoTooltip
           title="Regra 30-30-30-10"
           text="Referência do setor de alimentação para composição saudável do preço de venda."
           examples={['CMV: até 30%', 'Mão de obra: até 30%', 'Despesas: até 30%', 'Lucro: mínimo 10%']}
         />
       </View>
-      <View style={[styles.kpiRow, isDesktop && styles.kpiRowDesktop]}>
+      <View style={[styles.kpiRow, isDesktop && styles.kpiRowDesktop, isMobile && styles.kpiRowMobile]}>
         {(() => {
           // Sessão 28.44 — bug #9: usa Number.isFinite ao invés de `||` pra
           // distinguir "valor 0 válido" (user desligou o benchmark) de "input
@@ -742,7 +754,7 @@ export default function HomeScreen({ navigation }) {
           const Wrapper = k.onPress ? TouchableOpacity : View;
           const wrapperProps = k.onPress ? { activeOpacity: 0.7, onPress: k.onPress } : {};
           return (
-            <Wrapper key={k.label} style={[styles.kpiCard, { padding: cardPadding, minHeight: isCompact ? 80 : 96 }, !isDesktop && { width: kpiCardWidth, minWidth: undefined }, isDesktop && styles.kpiCardDesktop]} {...wrapperProps}>
+            <Wrapper key={k.label} style={[styles.kpiCard, { padding: cardPadding, minHeight: isCompact ? 80 : 96 }, !isDesktop && { width: kpiCardWidth, minWidth: undefined }, isDesktop && styles.kpiCardDesktop, isMobile && styles.kpiCardMobile]} {...wrapperProps}>
               <View style={styles.kpiHeader}>
                 <View style={[styles.kpiIconCircle, { backgroundColor: k.color + '15' }]}>
                   <Feather name={k.icon} size={14} color={k.color} />
@@ -760,7 +772,7 @@ export default function HomeScreen({ navigation }) {
       </View>
 
       {/* Resumo rápido inline */}
-      <View style={styles.resumoRow}>
+      <View style={[styles.resumoRow, isMobile && styles.resumoRowMobile]}>
         {baseCards.map(k => (
           <TouchableOpacity key={k.label} style={styles.resumoItem} activeOpacity={0.7} onPress={() => nav(k.tab)}>
             <Text style={[styles.resumoValue, { color: k.value > 0 ? k.color : colors.disabled }]}>{k.value}</Text>
@@ -790,10 +802,10 @@ export default function HomeScreen({ navigation }) {
       )}
 
       {/* Ações Rápidas */}
-      <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }]}>Ações Rápidas</Text>
-      <View style={styles.acoesRow}>
+      <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }, isMobile && styles.sectionTitleMobile]}>Ações Rápidas</Text>
+      <View style={[styles.acoesRow, isMobile && styles.acoesRowMobile]}>
         {acoes.map((a) => (
-          <TouchableOpacity key={a.label} style={styles.acaoBtn} activeOpacity={0.7} onPress={() => nav(a.tab)}>
+          <TouchableOpacity key={a.label} style={[styles.acaoBtn, isMobile && styles.acaoBtnMobile]} activeOpacity={0.7} onPress={() => nav(a.tab)}>
             <View style={styles.acaoIconCircle}>
               {a.set === 'material' ? (
                 <MaterialCommunityIcons name={a.icon} size={18} color={colors.primary} />
@@ -813,7 +825,7 @@ export default function HomeScreen({ navigation }) {
           contexto correto (produto específico, financeiro, insumos, etc.). */}
       {d.insights?.length > 0 && (
         <>
-          <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }]}>Análises Rápidas</Text>
+          <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }, isMobile && styles.sectionTitleMobile]}>Análises Rápidas</Text>
           {d.insights.map((insight, i) => {
             const a = insight.action;
             const Wrapper = a ? TouchableOpacity : View;
@@ -1019,6 +1031,21 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   // Sessão 28 — paddingBottom 40→100 garante último card visível acima do BottomTab
   content: { padding: spacing.md, paddingBottom: 100, maxWidth: 960, alignSelf: 'center', width: '100%' },
+  // Sessão 29 — Home mobile mais compacta: padding lateral reduzido (sm).
+  contentMobile: { padding: spacing.sm, paddingBottom: 100 },
+
+  // Sessão 29 — overrides mobile (apenas spacing). Áreas de toque ≥ 44pt preservadas.
+  greetingRowMobile: { marginBottom: spacing.sm },
+  greetingTextMobile: { fontSize: 18 },
+  sectionTitleMobile: { marginTop: 0, marginBottom: 6 },
+  statusCardMobile: { padding: spacing.sm + 2, marginBottom: spacing.sm + 2 },
+  kpiRowMobile: { gap: 6, marginBottom: spacing.sm + 2 },
+  kpiCardMobile: { padding: spacing.sm + 2 },
+  resumoRowMobile: { paddingVertical: spacing.sm, marginBottom: spacing.sm + 2 },
+  acoesRowMobile: { marginBottom: spacing.sm + 2 },
+  // Reduz altura da row mantendo área de toque mínima de 44pt (sm + 4 + ~24 do conteúdo ≈ 44).
+  acaoBtnMobile: { paddingVertical: spacing.sm + 2 },
+  featuredInsightMobile: { padding: spacing.sm + 2, marginBottom: spacing.sm + 2 },
 
   // APP-42 — segmented control filtro canal
   canalToggleRow: {

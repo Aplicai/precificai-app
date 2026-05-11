@@ -6,7 +6,7 @@ import { getDatabase } from '../database/database';
 import FAB from '../components/FAB';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, getTipoUnidade, normalizeSearch } from '../utils/calculations';
+import { formatCurrency, normalizeSearch } from '../utils/calculations';
 import { subscribeDataChanged } from '../utils/dataSync';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
@@ -44,11 +44,26 @@ function getCategoryColor(index) {
 }
 
 // Cor da badge de unidade
+// Sessão Mobile-29 — bug fix: antes usava getTipoUnidade(), que retornava
+// 'peso' (label "kg") como fallback para qualquer unidade não-mapeada
+// ("Unidades", "Metros", "Rolos"). Resultado: TODA embalagem cadastrada
+// em "Unidades" aparecia como "kg" na lista. Agora respeitamos o valor
+// real cadastrado em item.unidade_medida e usamos 'un' como fallback
+// quando vazio (NUNCA 'kg').
 function getUnidadeInfo(unidade) {
-  const tipo = getTipoUnidade(unidade);
-  if (tipo === 'peso') return { label: 'kg', color: colors.primary };
-  if (tipo === 'volume') return { label: 'L', color: colors.accent };
-  return { label: 'un', color: colors.purple };
+  const raw = (unidade || '').toString().trim();
+  if (!raw) return { label: 'un', color: colors.purple };
+  const lower = raw.toLowerCase();
+  // Mapas curtos pra unidades comuns do form de embalagem.
+  if (lower.startsWith('unidad')) return { label: 'un', color: colors.purple };
+  if (lower.startsWith('metro')) return { label: 'm', color: colors.accent };
+  if (lower.startsWith('rolo')) return { label: 'rolo', color: colors.coral };
+  if (lower === 'kg' || lower === 'quilograma' || lower === 'quilo') return { label: 'kg', color: colors.primary };
+  if (lower === 'g' || lower === 'grama' || lower === 'gramas') return { label: 'g', color: colors.primary };
+  if (lower === 'l' || lower === 'litro' || lower === 'litros') return { label: 'L', color: colors.accent };
+  if (lower === 'ml') return { label: 'mL', color: colors.accent };
+  // Para qualquer outra string, mostra os 4 primeiros chars do que foi cadastrado.
+  return { label: raw.slice(0, 4), color: colors.purple };
 }
 
 export default function EmbalagensScreen({ navigation }) {
@@ -97,6 +112,13 @@ export default function EmbalagensScreen({ navigation }) {
   // E via focus listener (useFocusEffect flaky no web — Sessão 28.27/28.43).
   // Antes: ficava só dentro do useFocusEffect → user terminava de criar
   // embalagem e ficava em EmbalagensScreen ao invés de voltar pro produto.
+  //
+  // Sessão Mobile-29 — bug fix: clicar no tab Embalagens reabria o form que
+  // estava sendo editado. Causa: flags stale (reopenEntityModalAfterEdit/
+  // reopenPreparoFormAfterEdit) sobreviviam entre navegações. Agora só
+  // executamos o redirect se o flag for explicitamente uma cascata recente
+  // (existe `pendingAddType === 'embalagem'` OU `reopenNestedPreparo`).
+  // Flags sem pendingAddType ou de cascata já concluída → ignoramos e limpamos.
   const checkReopenFlag = useCallback(async () => {
     try {
       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
@@ -107,7 +129,10 @@ export default function EmbalagensScreen({ navigation }) {
         const rawPrep = await AsyncStorage.getItem('reopenPreparoFormAfterEdit');
         if (rawPrep) {
           const infoPrep = JSON.parse(rawPrep);
-          if (infoPrep?.ts && (Date.now() - infoPrep.ts) < 5 * 60 * 1000) {
+          // Só considera válido se for cascata recente E pendente (pendingAddType=embalagem).
+          const isCascadaPendente = infoPrep?.pendingAddType === 'embalagem'
+            && infoPrep?.ts && (Date.now() - infoPrep.ts) < 5 * 60 * 1000;
+          if (isCascadaPendente) {
             await AsyncStorage.removeItem('reopenPreparoFormAfterEdit');
             navigation.navigate('Preparos', {
               screen: 'PreparoForm',
@@ -115,6 +140,7 @@ export default function EmbalagensScreen({ navigation }) {
             });
             return;
           }
+          // Flag stale ou já consumida → limpa.
           await AsyncStorage.removeItem('reopenPreparoFormAfterEdit');
         }
       } catch {}
@@ -123,6 +149,14 @@ export default function EmbalagensScreen({ navigation }) {
       if (!raw) return;
       const info = JSON.parse(raw);
       if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) {
+        await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
+        return;
+      }
+      // Só redireciona se ainda há cascata pendente (pendingAddType=embalagem
+      // direto OU dentro de reopenNestedPreparo). Senão é flag stale → limpa.
+      const cascataDireta = info?.pendingAddType === 'embalagem';
+      const cascataNested = info?.reopenNestedPreparo?.pendingAddType === 'embalagem';
+      if (!cascataDireta && !cascataNested) {
         await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
         return;
       }
@@ -767,6 +801,12 @@ export default function EmbalagensScreen({ navigation }) {
                 {/* Info */}
                 <View style={styles.rowInfo}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    {/* Sessão Mobile-29 — chip de cor da categoria (badge sutil) */}
+                    <View
+                      style={[styles.catChip, { backgroundColor: catColor }]}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no-hide-descendants"
+                    />
                     {Number(item.favorito) === 1 && (
                       <Feather name="star" size={11} color={colors.yellow || '#FFC83A'} />
                     )}
@@ -1076,6 +1116,11 @@ const styles = StyleSheet.create({
   rowMarca: {
     fontSize: 12, fontFamily: fontFamily.regular,
     color: colors.textSecondary, marginTop: 1,
+  },
+
+  // Chip de cor da categoria — badge sutil pré-nome
+  catChip: {
+    width: 6, height: 6, borderRadius: 3,
   },
 
   // Preço + unidade

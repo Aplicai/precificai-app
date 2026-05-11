@@ -10,6 +10,7 @@
  */
 import { registerRootComponent } from 'expo';
 import App from './App';
+import injectMobileWebFixes from './src/utils/mobileWebFixes';
 
 if (typeof document !== 'undefined') {
   // PWA meta tags
@@ -24,13 +25,20 @@ if (typeof document !== 'undefined') {
     el.setAttribute('content', content);
   }
 
-  setMeta('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no');
+  // Área 9 — removido `user-scalable=no` (prejudica a11y). Zoom indevido no Safari
+  // iOS ao focar inputs é resolvido via font-size mínimo de 16px (ver
+  // src/utils/mobileWebFixes.js), abordagem mais segura.
+  setMeta('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
   setMeta('theme-color', '#004d47');
   setMeta('description', 'Precificação inteligente: insumos, fichas técnicas, custo médio, margem, delivery e estoque.');
   setMeta('apple-mobile-web-app-capable', 'yes');
   setMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
   setMeta('apple-mobile-web-app-title', 'Precificaí');
   setMeta('mobile-web-app-capable', 'yes');
+
+  // Área 9 — injeta CSS que força font-size 16px em inputs no mobile
+  // (evita zoom automático no Safari iOS ao focar campos).
+  injectMobileWebFixes();
 
   // Manifest link
   if (!document.querySelector('link[rel="manifest"]')) {
