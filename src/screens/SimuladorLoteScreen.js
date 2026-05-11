@@ -514,17 +514,36 @@ export default function SimuladorLoteScreen() {
         resultado={modalCalculo?.resultado}
       />
 
-      {/* Sessão 28.21: popup de simulação dedicada (substitui navigation pra tela) */}
+      {/* Sessão 28.21 / 28.51: popup de simulação alinhado ao padrão do app
+          (overlay com TouchableOpacity, header limpo com ícone + título +
+          botão X, conteúdo respira melhor). */}
       <Modal visible={!!popupSimulacao} transparent animationType="fade" onRequestClose={() => setPopupSimulacao(null)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
-          <View style={{ backgroundColor: colors.surface, borderRadius: 16, width: '100%', maxWidth: 720, maxHeight: '92%', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: 0, height: 6 }, elevation: 12 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', padding: spacing.sm, position: 'absolute', top: 0, right: 0, zIndex: 10 }}>
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={() => setPopupSimulacao(null)}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 16 }}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={() => {}}
+            style={{ backgroundColor: colors.surface, borderRadius: 16, width: '100%', maxWidth: 720, maxHeight: '92%', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: 0, height: 6 }, elevation: 12 }}
+          >
+            {/* Sessão 28.51: header padronizado (mesmo formato do EntityCreateModal) */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primary + '15', alignItems: 'center', justifyContent: 'center' }}>
+                <Feather name="smartphone" size={16} color={colors.primary} />
+              </View>
+              <Text style={{ flex: 1, fontSize: fonts.regular, fontFamily: fontFamily.bold, color: colors.text }}>
+                Editar preço por plataforma
+              </Text>
               <TouchableOpacity
                 onPress={() => setPopupSimulacao(null)}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                style={{ padding: 8, backgroundColor: '#fff', borderRadius: 20, borderWidth: 1, borderColor: colors.border }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border }}
+                accessibilityRole="button"
+                accessibilityLabel="Fechar"
               >
-                <Feather name="x" size={20} color={colors.text} />
+                <Feather name="x" size={18} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
             {popupSimulacao && (
@@ -539,8 +558,8 @@ export default function SimuladorLoteScreen() {
                 isPopup
               />
             )}
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
     </View>
   );

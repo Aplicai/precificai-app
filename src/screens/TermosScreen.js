@@ -5,89 +5,141 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { useNavigation } from '@react-navigation/native';
 import BackToSettings from '../components/BackToSettings';
 
-const ULTIMA_ATUALIZACAO = '7 de maio de 2026';
+const ULTIMA_ATUALIZACAO = '11 de maio de 2026';
 
+// Sessão 28.51: Termos reforçados — linguagem mais robusta e protetiva,
+// alinhada à LGPD (Lei 13.709/2018), CDC (Lei 8.078/1990) e Marco Civil
+// da Internet (Lei 12.965/2014). Recomenda-se revisão jurídica final
+// antes do uso comercial.
 const SECOES = [
   {
     titulo: '1. Aceitação dos Termos',
     paragrafos: [
-      'Ao criar uma conta, acessar ou utilizar o aplicativo PrecificaApp ("Aplicativo"), você declara ter lido, compreendido e concordado integralmente com estes Termos de Uso.',
-      'Se você não concordar com qualquer disposição destes Termos, não utilize o Aplicativo. O uso continuado após eventuais atualizações representa concordância com a versão vigente.',
+      'Estes Termos de Uso ("Termos") constituem um contrato eletrônico vinculante entre você ("Usuário") e a Aplicais ("Aplicais", "nós"), responsável pelo aplicativo PrecificaApp ("Aplicativo" ou "Serviço").',
+      'Ao criar uma conta, acessar, instalar ou utilizar o Aplicativo, em qualquer plataforma (web, iOS, Android), você declara ter lido, compreendido e concordado integralmente com estes Termos e com a Política de Privacidade. Se você não concorda com qualquer disposição, não utilize o Serviço.',
+      'O uso continuado após eventuais atualizações representa concordância tácita com a versão vigente. Você é responsável por revisar estes Termos periodicamente.',
+      'Estes Termos prevalecem sobre quaisquer comunicações verbais, comerciais ou de marketing, salvo acordo escrito em contrário.',
     ],
   },
   {
     titulo: '2. Descrição do Serviço',
     paragrafos: [
-      'O PrecificaApp é uma ferramenta de auxílio à precificação de produtos e gestão de custos voltada para pequenos negócios do setor de gastronomia, como lanchonetes, restaurantes, food trucks, confeitarias e estabelecimentos similares.',
-      'O Aplicativo realiza cálculos com base em informações fornecidas pelo próprio usuário (custos de insumos, embalagens, mão de obra, despesas, margens desejadas etc.) e apresenta sugestões de preço, indicadores e relatórios.',
-      'Os resultados têm caráter informativo e auxiliar. Não substituem orientação contábil, financeira ou jurídica especializada.',
+      'O PrecificaApp é uma ferramenta SaaS (Software como Serviço) de auxílio à precificação de produtos e gestão de custos voltada para pequenos negócios do setor de gastronomia (lanchonetes, restaurantes, food trucks, confeitarias, marmitarias, pizzarias e estabelecimentos similares).',
+      'O Serviço executa cálculos a partir de dados fornecidos exclusivamente pelo Usuário (custos de insumos, embalagens, mão de obra, despesas operacionais, margens desejadas, vendas e demais informações comerciais) e apresenta sugestões de preço, indicadores de desempenho, fichas técnicas e relatórios.',
+      'TODOS os resultados gerados pelo Aplicativo têm caráter ESTRITAMENTE INFORMATIVO E AUXILIAR. Eles não constituem aconselhamento contábil, fiscal, tributário, financeiro, jurídico ou estratégico, e não substituem orientação profissional especializada.',
+      'A Aplicais pode, a seu exclusivo critério e a qualquer tempo, adicionar, modificar, suspender ou descontinuar funcionalidades, integrações ou planos comerciais do Aplicativo, comunicando o Usuário por meios razoáveis (notificação dentro do app, e-mail ou aviso no site).',
     ],
   },
   {
     titulo: '3. Cadastro e Conta',
     paragrafos: [
-      'Para utilizar o Aplicativo é necessário criar uma conta com e-mail válido e senha. Você é responsável por fornecer informações verdadeiras, atualizadas e completas no momento do cadastro.',
-      'A senha é pessoal e intransferível. Você é o único responsável por manter a confidencialidade das suas credenciais e por todas as atividades realizadas em sua conta.',
-      'Em caso de uso não autorizado da sua conta, comunique-nos imediatamente pelos canais de contato indicados nestes Termos.',
+      'Para utilizar o Aplicativo é necessário criar uma conta com endereço de e-mail válido, ativo e de sua titularidade, além de senha pessoal. O Usuário deve ter pelo menos 18 anos ou capacidade civil plena nos termos do Código Civil brasileiro.',
+      'O Usuário é integralmente responsável por: (i) fornecer informações verdadeiras, exatas, atualizadas e completas no cadastro; (ii) manter sua senha em sigilo absoluto; (iii) não compartilhar credenciais com terceiros; (iv) todas as atividades realizadas em sua conta, autorizadas ou não.',
+      'Em caso de suspeita de acesso não autorizado, comprometimento de credenciais ou qualquer atividade incomum, o Usuário deve comunicar-nos imediatamente pelos canais de contato indicados nestes Termos. A Aplicais não responde por danos decorrentes de não comunicação tempestiva.',
+      'Reservamo-nos o direito de recusar cadastro, suspender ou encerrar contas que apresentem indícios de fraude, falsidade ideológica, violação destes Termos ou risco à integridade do Serviço.',
     ],
   },
   {
-    titulo: '4. Uso Permitido e Proibido',
+    titulo: '4. Planos, Preços e Pagamentos',
     paragrafos: [
-      'Você se compromete a utilizar o Aplicativo apenas para fins lícitos, em conformidade com a legislação brasileira e com estes Termos.',
-      'É expressamente proibido: (i) utilizar o Aplicativo para qualquer atividade ilegal, fraudulenta ou que viole direitos de terceiros; (ii) tentar acessar áreas restritas, contas de outros usuários ou sistemas internos; (iii) realizar engenharia reversa, descompilar, modificar ou copiar partes do Aplicativo; (iv) coletar dados de outros usuários ou do Aplicativo por meios automatizados (scraping, bots, crawlers); (v) revender, sublicenciar ou redistribuir o Aplicativo ou seu conteúdo; (vi) introduzir vírus, códigos maliciosos ou qualquer mecanismo que possa prejudicar o funcionamento do Aplicativo ou de seus usuários.',
-      'O descumprimento destas regras pode resultar em suspensão ou exclusão da conta, sem prejuízo de outras medidas cabíveis.',
+      'O Aplicativo oferece plano gratuito com limitações de uso (por exemplo, número máximo de produtos cadastrados) e, futuramente, planos pagos com funcionalidades adicionais. A Aplicais reserva-se o direito de alterar limites, recursos e preços de qualquer plano, comunicando o Usuário com antecedência razoável (mínimo de 30 dias para planos pagos ativos).',
+      'Quando aplicáveis, pagamentos são processados por operadoras de meios de pagamento terceirizadas. A Aplicais não armazena dados completos de cartão de crédito em seus servidores.',
+      'Cancelamentos de planos pagos podem ser solicitados a qualquer momento e produzem efeito ao final do ciclo de cobrança vigente, sem reembolso proporcional, salvo disposição legal expressa em contrário (CDC Art. 49, no caso de contratação à distância nos primeiros 7 dias).',
     ],
   },
   {
-    titulo: '5. Propriedade Intelectual',
+    titulo: '5. Uso Permitido e Proibido',
     paragrafos: [
-      'Todos os direitos relativos ao Aplicativo — incluindo marca, layout, código-fonte, textos, imagens, ícones e demais elementos — pertencem à Aplicais (razão social: [A definir antes de publicação], CNPJ: [A definir antes de publicação], com sede em [Endereço a definir]) ou a seus licenciantes, sendo protegidos pela legislação de propriedade intelectual.',
-      'Os dados que você cadastra no Aplicativo (insumos, produtos, preços, faturamento, despesas, fichas técnicas) permanecem de sua propriedade. A Aplicais utiliza essas informações exclusivamente para prestar o serviço a você, conforme descrito nestes Termos e na Política de Privacidade.',
+      'O Usuário compromete-se a utilizar o Aplicativo exclusivamente para fins lícitos, em conformidade com a legislação brasileira (incluindo CDC, LGPD, Marco Civil da Internet e Código Civil) e com estes Termos.',
+      'É EXPRESSAMENTE PROIBIDO: (i) utilizar o Serviço para qualquer atividade ilegal, fraudulenta, lavagem de dinheiro, sonegação fiscal, ou que viole direitos de terceiros; (ii) tentar acessar áreas restritas, contas de outros usuários, sistemas internos, infraestrutura, código-fonte ou bancos de dados; (iii) realizar engenharia reversa, descompilação, desmontagem, modificação ou cópia de partes do Aplicativo, salvo na exata medida permitida por lei; (iv) coletar dados de outros usuários ou do Aplicativo por meios automatizados (scraping, bots, crawlers, screen-scraping); (v) revender, sublicenciar, alugar, ceder ou redistribuir o Aplicativo ou seu conteúdo; (vi) introduzir vírus, ransomware, malware, códigos maliciosos ou qualquer mecanismo que possa prejudicar o funcionamento do Aplicativo, sua infraestrutura ou seus usuários; (vii) sobrecarregar deliberadamente os servidores (ataques DoS/DDoS); (viii) personificar outras pessoas, empresas ou entidades; (ix) usar o Aplicativo para spam, phishing ou comunicações não solicitadas; (x) burlar limites de uso do plano gratuito por meio de múltiplas contas ou outras manobras.',
+      'O descumprimento de qualquer destas regras resulta em suspensão imediata e/ou exclusão definitiva da conta, sem prejuízo de medidas judiciais cabíveis (incluindo ressarcimento de danos, perdas e lucros cessantes).',
     ],
   },
   {
-    titulo: '6. Limitação de Responsabilidade',
+    titulo: '6. Propriedade Intelectual',
     paragrafos: [
-      'O Aplicativo fornece cálculos e sugestões a partir dos dados que você informa. As decisões finais de precificação, compra, venda e gestão do seu negócio são exclusivamente suas.',
-      'A Aplicais não se responsabiliza por: (i) decisões comerciais ou financeiras tomadas com base em informações geradas pelo Aplicativo; (ii) prejuízos, lucros cessantes ou danos indiretos decorrentes do uso ou da impossibilidade de uso do Aplicativo; (iii) erros nos cálculos causados por dados incorretos ou incompletos informados pelo usuário; (iv) perdas decorrentes de falhas de conectividade, indisponibilidade temporária do serviço ou de provedores terceiros.',
-      'Recomendamos que você confira os resultados, consulte profissionais especializados quando necessário e mantenha cópias próprias das informações importantes do seu negócio.',
+      'Todos os direitos de propriedade intelectual relativos ao Aplicativo — incluindo marcas registradas, nome empresarial, layout, design, código-fonte, textos, imagens, ícones, algoritmos, fluxos, conteúdo editorial, segmentos de mercado pré-cadastrados, preços de referência, fatores de correção e demais elementos — pertencem exclusivamente à Aplicais (razão social: [A definir antes da publicação], CNPJ: [A definir antes da publicação], com sede em [Endereço a definir]) ou a seus licenciantes, e são protegidos pela Lei 9.279/1996 (Propriedade Industrial), Lei 9.610/1998 (Direito Autoral), e tratados internacionais aplicáveis.',
+      'Os dados que o Usuário cadastra no Aplicativo (insumos, produtos, preços, faturamento, despesas, fichas técnicas, vendas, fornecedores) são e permanecem de sua propriedade. A Aplicais recebe licença limitada, não exclusiva, mundial, gratuita e revogável de uso desses dados exclusivamente para: (i) prestar o Serviço ao Usuário; (ii) realizar manutenções, backups e atualizações; (iii) gerar estatísticas anonimizadas e agregadas (sem identificação individual) para melhoria do produto e do mercado em geral.',
+      'A Aplicais NÃO comercializa, repassa nem disponibiliza dados identificáveis do Usuário a terceiros sem autorização expressa, exceto nas hipóteses previstas em lei ou em ordem judicial.',
     ],
   },
   {
-    titulo: '7. Disponibilidade do Serviço',
+    titulo: '7. Limitação de Responsabilidade',
     paragrafos: [
-      'Empenhamo-nos para manter o Aplicativo disponível e funcionando corretamente, mas o serviço é fornecido em regime de melhor esforço (best-effort), sem garantia de disponibilidade contínua, ininterrupta ou livre de erros.',
-      'Podemos realizar manutenções programadas, atualizações ou ajustes que resultem em indisponibilidade temporária. Sempre que possível, comunicaremos com antecedência.',
+      'O Aplicativo gera cálculos e sugestões a partir EXCLUSIVAMENTE dos dados que o Usuário informa. As decisões finais de precificação, compra, venda, gestão financeira e estratégia comercial são EXCLUSIVAMENTE do Usuário.',
+      'Na máxima extensão permitida pela legislação aplicável, a Aplicais NÃO se responsabiliza por: (i) decisões comerciais, financeiras, fiscais ou tributárias tomadas com base em informações geradas pelo Aplicativo; (ii) prejuízos, perdas de lucro, lucros cessantes, danos indiretos, incidentais, consequenciais ou punitivos decorrentes do uso ou da impossibilidade de uso do Serviço; (iii) erros nos cálculos causados por dados incorretos, desatualizados, incompletos ou inseridos com erro pelo Usuário; (iv) perdas decorrentes de falhas de conectividade, indisponibilidade temporária do Serviço ou de provedores terceirizados (hospedagem, autenticação, pagamentos); (v) atos de força maior, caso fortuito, ataques cibernéticos não imputáveis a culpa da Aplicais, falhas de redes elétricas/internet de terceiros, ou eventos fora de seu controle razoável.',
+      'A responsabilidade total agregada da Aplicais perante o Usuário, em qualquer hipótese, fica limitada ao valor efetivamente pago pelo Usuário ao plano contratado nos 12 (doze) meses anteriores ao evento que originou a controvérsia. Para usuários do plano gratuito, a limitação corresponde a R$ 100,00 (cem reais).',
+      'Recomendamos enfaticamente que o Usuário: (a) confira manualmente todos os resultados antes de utilizá-los comercialmente; (b) consulte profissionais especializados (contador, advogado, consultor financeiro) quando necessário; (c) mantenha cópias próprias e backups das informações importantes do seu negócio (o recurso "Exportar Dados" do app facilita isso).',
     ],
   },
   {
-    titulo: '8. Modificações dos Termos',
+    titulo: '8. Disponibilidade e Manutenção do Serviço',
     paragrafos: [
-      'Podemos atualizar estes Termos a qualquer momento, para refletir mudanças no Aplicativo, em nossa operação ou na legislação aplicável.',
-      'Quando isso acontecer, alteraremos a data de "última atualização" no topo deste documento. Em mudanças relevantes, notificaremos você dentro do próprio Aplicativo.',
-      'O uso continuado do Aplicativo após uma atualização representa aceite dos novos Termos.',
+      'A Aplicais envida seus melhores esforços para manter o Aplicativo disponível e funcionando corretamente, sob regime de melhor esforço (best-effort), SEM, contudo, garantia de disponibilidade contínua, ininterrupta, isenta de erros ou de qualquer SLA específico para o plano gratuito.',
+      'Podemos realizar manutenções programadas, atualizações de segurança, deploys de novas versões ou ajustes operacionais que resultem em indisponibilidade temporária. Sempre que tecnicamente viável, comunicaremos com antecedência razoável.',
+      'A Aplicais não garante compatibilidade com versões antigas de navegadores, sistemas operacionais ou dispositivos descontinuados pelos respectivos fabricantes.',
     ],
   },
   {
-    titulo: '9. Encerramento da Conta',
+    titulo: '9. Privacidade e Proteção de Dados (LGPD)',
     paragrafos: [
-      'Você pode encerrar sua conta a qualquer momento, diretamente pelo Aplicativo, em "Configurações > Conta e Segurança", ou solicitando a exclusão pelos canais de contato.',
-      'Podemos suspender ou encerrar contas que violem estes Termos ou que apresentem risco à segurança do serviço ou de outros usuários, sem aviso prévio quando necessário.',
-      'O tratamento dos seus dados após o encerramento da conta segue o disposto na nossa Política de Privacidade.',
+      'O tratamento de dados pessoais do Usuário e dos dados comerciais por ele inseridos é regido pela Política de Privacidade do PrecificaApp, integrada a estes Termos por referência.',
+      'A Aplicais atua como Controladora dos dados de cadastro do Usuário e como Operadora dos dados comerciais inseridos pelo Usuário (insumos, vendas, etc.), em conformidade com a Lei Geral de Proteção de Dados (Lei 13.709/2018).',
+      'O Usuário pode exercer os direitos previstos no Art. 18 da LGPD (acesso, correção, anonimização, portabilidade, eliminação, informação sobre compartilhamento, revogação de consentimento) pelos canais de contato indicados nestes Termos, com prazo de resposta legal.',
     ],
   },
   {
-    titulo: '10. Lei Aplicável e Foro',
+    titulo: '10. Modificações dos Termos',
     paragrafos: [
-      'Estes Termos são regidos pelas leis da República Federativa do Brasil.',
-      'Eventuais controvérsias decorrentes destes Termos serão dirimidas no foro do domicílio do usuário, conforme previsto no Código de Defesa do Consumidor.',
+      'A Aplicais pode atualizar estes Termos a qualquer momento para refletir mudanças no Aplicativo, em sua operação, em melhores práticas de mercado ou na legislação aplicável.',
+      'Em alterações relevantes (que ampliem obrigações do Usuário ou reduzam direitos), notificaremos por meio do próprio Aplicativo ou por e-mail, com antecedência mínima de 15 (quinze) dias da entrada em vigor.',
+      'Em mudanças não relevantes (correções, esclarecimentos, atualizações pontuais), a comunicação se dá pela atualização da data de "última atualização" no topo do documento.',
+      'O uso continuado do Aplicativo após a vigência de uma nova versão representa aceite tácito dos novos Termos. Caso não concorde, o Usuário deve cessar o uso e poderá solicitar exclusão da conta.',
     ],
   },
   {
-    titulo: '11. Contato',
+    titulo: '11. Encerramento da Conta',
     paragrafos: [
-      'Para dúvidas, sugestões ou solicitações relacionadas a estes Termos ou ao uso do Aplicativo, entre em contato pelo e-mail: contato@precificaiapp.com.',
+      'O Usuário pode encerrar sua conta a qualquer momento, diretamente pelo Aplicativo, na seção "Configurações > Conta e Segurança", ou solicitando a exclusão pelos canais de contato.',
+      'Após o encerramento, os dados pessoais e comerciais são tratados conforme prazos previstos na Política de Privacidade, observando obrigações legais de retenção (Marco Civil da Internet — guarda de logs de acesso por 6 meses; legislação fiscal — guarda de registros contábeis por 5 anos quando aplicável).',
+      'A Aplicais pode suspender ou encerrar contas, sem aviso prévio quando necessário, que: (i) violem estes Termos; (ii) apresentem risco à segurança do Serviço, infraestrutura ou outros usuários; (iii) sejam usadas para atividades ilícitas; (iv) permaneçam inativas por mais de 24 meses consecutivos, observado aviso prévio por e-mail.',
+    ],
+  },
+  {
+    titulo: '12. Garantias e Isenções',
+    paragrafos: [
+      'O Aplicativo é fornecido "NO ESTADO EM QUE SE ENCONTRA" e "CONFORME DISPONÍVEL", sem garantias de qualquer natureza, expressas ou implícitas, salvo aquelas que não podem ser excluídas por força do CDC ou de outra legislação consumerista aplicável.',
+      'Em particular, a Aplicais NÃO garante que: (i) os resultados gerados serão livres de erros ou alinhados ao planejamento específico do Usuário; (ii) o Serviço atenderá necessidades particulares do Usuário; (iii) o Serviço será ininterrupto ou imune a falhas; (iv) precisão absoluta de preços de referência ou fatores de correção de mercado fornecidos pelo Aplicativo (são estimativas de auxílio).',
+      'Nenhuma garantia adicional, expressa ou implícita, deve ser presumida a partir de comunicações de marketing, materiais informativos ou interações com a equipe da Aplicais, exceto quando formalizada por escrito.',
+    ],
+  },
+  {
+    titulo: '13. Indenização',
+    paragrafos: [
+      'O Usuário concorda em indenizar, defender e isentar a Aplicais, suas subsidiárias, sócios, diretores, empregados e agentes de quaisquer reclamações, demandas, ações judiciais, danos, perdas, custos e despesas (incluindo honorários advocatícios razoáveis) decorrentes de: (i) violação destes Termos pelo Usuário; (ii) uso indevido ou ilícito do Aplicativo; (iii) dados imprecisos, falsos ou ilegais inseridos pelo Usuário; (iv) violação de direitos de terceiros por meio do Aplicativo.',
+    ],
+  },
+  {
+    titulo: '14. Disposições Gerais',
+    paragrafos: [
+      'A eventual tolerância da Aplicais quanto a descumprimentos destes Termos não constitui novação, renúncia ou alteração das obrigações aqui previstas.',
+      'Se qualquer disposição destes Termos for considerada inválida ou inexequível por autoridade competente, as demais disposições permanecem em pleno vigor.',
+      'Estes Termos representam o entendimento integral entre as partes em relação ao uso do Aplicativo, prevalecendo sobre acordos ou entendimentos anteriores sobre o mesmo objeto.',
+      'O Usuário não pode ceder seus direitos e obrigações destes Termos sem consentimento prévio e por escrito da Aplicais. A Aplicais pode ceder este contrato em caso de reorganização societária, fusão, aquisição ou venda de ativos, comunicando o Usuário.',
+    ],
+  },
+  {
+    titulo: '15. Lei Aplicável e Foro',
+    paragrafos: [
+      'Estes Termos são regidos e interpretados exclusivamente pelas leis da República Federativa do Brasil.',
+      'Eventuais controvérsias decorrentes destes Termos serão dirimidas, preferencialmente, por meio de tratativa direta e amigável entre as partes. Não havendo composição, fica eleito o foro do domicílio do Usuário, na qualidade de consumidor, conforme previsto no Código de Defesa do Consumidor.',
+    ],
+  },
+  {
+    titulo: '16. Contato',
+    paragrafos: [
+      'Para dúvidas, sugestões, solicitações relacionadas a estes Termos, exercício de direitos da LGPD ou ao uso do Aplicativo, entre em contato pelo e-mail: contato@precificaiapp.com.',
+      'O Encarregado de Proteção de Dados (DPO) pode ser acionado pelo mesmo endereço, com o assunto "LGPD".',
     ],
   },
 ];

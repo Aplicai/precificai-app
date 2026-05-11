@@ -11,6 +11,8 @@ export const entityCreateModalStyles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    // Sessão 28.51 — zIndex defensivo pra garantir empilhamento correto no web.
+    ...Platform.select({ web: { zIndex: 1000 }, default: {} }),
   },
   overlayMobile: {
     justifyContent: 'flex-end',
