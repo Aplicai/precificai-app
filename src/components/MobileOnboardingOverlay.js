@@ -122,16 +122,19 @@ export default function MobileOnboardingOverlay({ navigation }) {
   }, [fade]);
 
   const navigateToFinanceiro = useCallback(() => {
-    // HomeScreen navega para Financeiro via:
-    //   navigation.getParent()?.navigate('Mais', { screen: 'FinanceiroMain' });
-    // Replicamos esse padrão aqui.
+    // Sessão 28.59 — bug fix: navigate direto pra FinanceiroMain pulava
+    // MaisMain, deixando a pilha do MaisStack com index=0 → sem back button.
+    // Solução em 2 passos: garantir MaisMain primeiro, depois empurrar FinanceiroMain.
     try {
       const parent = navigation?.getParent?.();
-      if (parent && typeof parent.navigate === 'function') {
-        parent.navigate('Mais', { screen: 'FinanceiroMain' });
-      } else if (navigation && typeof navigation.navigate === 'function') {
-        // Fallback caso esteja em outra estrutura
-        navigation.navigate('Mais', { screen: 'FinanceiroMain' });
+      const nav = (parent && typeof parent.navigate === 'function') ? parent : navigation;
+      if (nav && typeof nav.navigate === 'function') {
+        // Passo 1: garante que está na tab Mais com MaisMain (inicial)
+        nav.navigate('Mais', { screen: 'MaisMain' });
+        // Passo 2: empurra FinanceiroMain por cima de MaisMain
+        setTimeout(() => {
+          try { nav.navigate('Mais', { screen: 'FinanceiroMain' }); } catch (_) {}
+        }, 60);
       }
     } catch {
       // ignore
