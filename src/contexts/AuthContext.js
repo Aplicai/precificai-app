@@ -6,12 +6,11 @@ import { captureException, addBreadcrumb, setUser as reportSetUser } from '../ut
 
 const AuthContext = createContext({});
 
-// Sessão 28.54 — timeout de inatividade aumentado de 1h → 4h.
-// Motivo: usuários testando o app por longos períodos (web, sem interação
-// constante com mouse/teclado) estavam sendo deslogados durante o uso.
-// 4 horas é margem suficiente para sessão de uso real sem comprometer
-// segurança em máquinas compartilhadas.
-const INACTIVITY_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours
+// Sessão 28.57 — timeout de inatividade extendido para 7 dias no web.
+// 4h da 28.54 ainda estava derrubando user durante uso ativo. Para máquinas
+// compartilhadas o ideal é o user clicar em "Sair" — não vamos forçar logout
+// automático que atrapalha quem usa o app no dia a dia.
+const INACTIVITY_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -112,12 +111,13 @@ export function AuthProvider({ children }) {
         }
         return;
       }
-      // Sessão 28.56 — SIGNED_OUT espontâneo: tenta refresh antes de aceitar.
-      // Supabase às vezes emite SIGNED_OUT quando o refresh expira e o browser
-      // estava em background; a sessão pode ser recuperada com refreshSession().
-      // Só aceitamos SIGNED_OUT se intencional (intentionalSignOutRef.current=true)
-      // ou se refreshSession também falhar.
+      // Sessão 28.57 — SIGNED_OUT espontâneo: 3 camadas de defesa antes de aceitar.
+      // (1) tenta refreshSession → se recupera, mantém user.
+      // (2) tenta getSession → se ainda há sessão no storage, mantém user.
+      // (3) último recurso: limpa user. Só limpa se as 3 falharem.
+      // Bypassa toda essa lógica se foi intencional (intentionalSignOutRef).
       if (_event === 'SIGNED_OUT' && !intentionalSignOutRef.current) {
+        // Camada 1 — refreshSession
         try {
           const { data: { session: refreshed } } = await supabase.auth.refreshSession();
           if (refreshed) {
@@ -134,6 +134,27 @@ export function AuthProvider({ children }) {
           if (typeof console !== 'undefined' && console.warn) {
             console.warn('[AuthContext] refreshSession falhou:', e?.message);
           }
+        }
+        // Camada 2 — getSession (storage ainda tem token válido?)
+        try {
+          const { data: { session: current } } = await supabase.auth.getSession();
+          if (current) {
+            if (typeof console !== 'undefined' && console.warn) {
+              console.warn('[AuthContext] SIGNED_OUT espúrio — getSession ainda válido');
+            }
+            setSession(current);
+            setUser(current.user ?? null);
+            reportSetUser(current.user ?? null);
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[AuthContext] getSession falhou:', e?.message);
+          }
+        }
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('[AuthContext] SIGNED_OUT confirmado após 3 camadas — deslogando');
         }
       }
       setSession(s);
