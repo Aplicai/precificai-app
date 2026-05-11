@@ -129,6 +129,11 @@ export default function ProdutosListScreen({ navigation }) {
       if (info.draft) {
         try { await AsyncStorage.setItem('entityDraftToRestore', JSON.stringify({ mode: 'produto', editId: info.editId || null, draft: info.draft, ts: Date.now() })); } catch {}
       }
+      // Sessão 28.52: cascata 3 níveis — se vem com reopenNestedPreparo,
+      // guarda em key separada pra EntityCreateModal abrir o nested ao montar.
+      if (info.reopenNestedPreparo) {
+        try { await AsyncStorage.setItem('reopenNestedPreparoOnMount', JSON.stringify({ ...info.reopenNestedPreparo, ts: Date.now() })); } catch {}
+      }
       setEditingId(info.editId || null);
       setShowCreateModal(true);
     } catch {}
