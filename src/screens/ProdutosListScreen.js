@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator, Platform, RefreshControl } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
@@ -110,8 +110,19 @@ export default function ProdutosListScreen({ navigation }) {
 
   async function handleRefresh() {
     setRefreshing(true);
-    try { await loadData(); } finally { setRefreshing(false); }
+    try { await loadData(true); } finally { setRefreshing(false); }
   }
+
+  // Sessão 28.54 — throttle: useFocusEffect + focus listener + visibilitychange
+  // estavam chamando loadData 3x sequenciais a cada focus (12 queries × 3 = 36
+  // queries em milissegundos). Throttle 500ms reduz a apenas 1 carga.
+  const lastLoadRef = useRef(0);
+  const loadDataThrottled = useCallback(async (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastLoadRef.current < 500) return;
+    lastLoadRef.current = now;
+    return loadData();
+  }, []);
 
   // Sessão 28.46: extraído pra rodar via useFocusEffect E via focus listener
   // (useFocusEffect flaky no web). Antes user voltava de criar embalagem/insumo
@@ -140,19 +151,20 @@ export default function ProdutosListScreen({ navigation }) {
   }, []);
 
   // Sessão 28.46: focus listener fallback + dataSync subscribe + visibilitychange
+  // Sessão 28.54: usar loadDataThrottled (skip se carregou nos últimos 500ms)
   useEffect(() => {
     const unsub = subscribeDataChanged((table) => {
-      if (table === 'produtos') loadData();
+      if (table === 'produtos') loadDataThrottled();
     });
     const unsubFocus = navigation.addListener('focus', () => {
-      loadData();
+      loadDataThrottled();
       checkReopenAndOpen();
     });
     let onVis;
     if (typeof document !== 'undefined' && document.addEventListener) {
       onVis = () => {
         if (!document.hidden) {
-          loadData();
+          loadDataThrottled();
           checkReopenAndOpen();
         }
       };
@@ -165,10 +177,10 @@ export default function ProdutosListScreen({ navigation }) {
         document.removeEventListener('visibilitychange', onVis);
       }
     };
-  }, [navigation, checkReopenAndOpen]);
+  }, [navigation, checkReopenAndOpen, loadDataThrottled]);
 
   useFocusEffect(useCallback(() => {
-    loadData();
+    loadDataThrottled();
     checkReopenAndOpen();
     // Sessão 28.17: deep-link de outras telas (Relatório etc) que querem abrir
     // a edição do produto direto no modal — uso o param `openProductEdit`.
@@ -184,7 +196,7 @@ export default function ProdutosListScreen({ navigation }) {
       }
     } catch {}
     return () => setConfirmDelete(null);
-  }, [filtroCategoria, busca, sortBy, navigation, checkReopenAndOpen]));
+  }, [filtroCategoria, busca, sortBy, navigation, checkReopenAndOpen, loadDataThrottled]));
 
   async function loadData() {
     setLoading(true);

@@ -573,22 +573,38 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
           const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
           if (raw) {
             const info = JSON.parse(raw);
-            if (info?.draft && info?.pendingAddType === 'materia_prima') {
-              const existingItens = info.draft.itens || [];
-              const custoUnit = calcCustoIngrediente(
-                precoBase || 0,
-                1,
-                form.unidade_medida || 'g',
-                form.unidade_medida || 'g'
-              );
-              const novoItem = {
-                tipo: 'materia_prima',
-                id: result.lastInsertRowId,
-                nome: form.nome,
-                quantidade: 0,
-                custoUnit,
-                unidade: form.unidade_medida,
+            const custoUnit = calcCustoIngrediente(
+              precoBase || 0,
+              1,
+              form.unidade_medida || 'g',
+              form.unidade_medida || 'g'
+            );
+            const novoItem = {
+              tipo: 'materia_prima',
+              id: result.lastInsertRowId,
+              nome: form.nome,
+              quantidade: 0,
+              custoUnit,
+              unidade: form.unidade_medida,
+            };
+            // Sessão 28.54 — fix regressão cascata 3 níveis: se o pendingAddType
+            // está no NESTED (produto → preparo → insumo), inserimos no draft do
+            // preparo nested, não no produto pai. Antes só checava info.pendingAddType
+            // (nível externo) → insumo "sumia" no fluxo de 3 níveis.
+            if (info?.reopenNestedPreparo?.pendingAddType === 'materia_prima') {
+              const nestedDraft = info.reopenNestedPreparo.draft || {};
+              const existing = nestedDraft.itens || [];
+              const updated = {
+                ...info,
+                reopenNestedPreparo: {
+                  ...info.reopenNestedPreparo,
+                  draft: { ...nestedDraft, itens: [...existing, novoItem] },
+                  pendingAddType: undefined,
+                },
               };
+              await AsyncStorage.setItem('reopenEntityModalAfterEdit', JSON.stringify(updated));
+            } else if (info?.draft && info?.pendingAddType === 'materia_prima') {
+              const existingItens = info.draft.itens || [];
               const updated = {
                 ...info,
                 draft: { ...info.draft, itens: [...existingItens, novoItem] },
@@ -599,6 +615,24 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
           }
         } catch (e) { console.warn('[MateriaPrimaForm.autoAddToDraft]', e); }
       }
+      // Sessão 28.54 — se viemos via cascata do EntityCreateModal, navegar
+      // direto pra tab do reopenInfo.mode (produto/preparo) em vez de cair
+      // na lista de Insumos. Antes o user precisava trocar a tab manualmente.
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+        if (raw) {
+          const info = JSON.parse(raw);
+          if (info?.mode === 'produto') {
+            navigation.navigate('Produtos', { screen: 'ProdutosList' });
+            return;
+          }
+          if (info?.mode === 'preparo') {
+            navigation.navigate('Preparos', { screen: 'Preparos' });
+            return;
+          }
+        }
+      } catch (_) {}
       navigation.goBack();
     } catch (e) {
       allowExit.current = false;

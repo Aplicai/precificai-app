@@ -415,6 +415,206 @@ export const PRECOS_REFERENCIA_POR_SEGMENTO = {
   },
 };
 
+// Sessão 28.54 — fallback global. Muitos insumos dos templates (padaria,
+// salgaderia, marmitaria, etc) não tinham preço de referência no segmento
+// específico → kit nascia com valor R$ 0.00 e usuário precisava preencher
+// tudo. Esta tabela é consultada como fallback quando o lookup do segmento
+// falha. Preços médios BR 2025–2026 (Atacadão/Assaí/varejo).
+const PRECOS_FALLBACK_GLOBAL = {
+  // Farinhas
+  'Farinha de trigo': 6.50,
+  'Farinha de trigo especial': 8.50,
+  'Farinha de trigo integral': 9.00,
+  'Farinha de centeio': 12.00,
+  'Farinha de milho (fubá)': 5.50,
+  'Fubá': 5.50,
+  'Amido de milho': 14.00,
+  'Polvilho doce': 13.00,
+  'Polvilho azedo': 14.00,
+  'Farinha de rosca': 8.00,
+  'Farinha de mandioca': 8.50,
+  'Farinha tipo 00': 12.00,
+  'Farinha tipo 1': 7.00,
+  // Fermentos
+  'Fermento biológico seco': 28.00,
+  'Fermento biológico fresco': 18.00,
+  'Fermento químico': 12.00,
+  'Bicarbonato de sódio': 8.00,
+  // Açúcares
+  'Açúcar refinado': 4.50,
+  'Açúcar cristal': 4.20,
+  'Açúcar mascavo': 12.00,
+  'Açúcar demerara': 10.00,
+  'Açúcar de confeiteiro': 8.50,
+  'Açúcar': 4.50,
+  'Adoçante': 12.00,
+  'Mel': 35.00,
+  // Laticínios
+  'Leite integral': 5.50,
+  'Leite desnatado': 5.80,
+  'Leite condensado': 8.50,
+  'Creme de leite': 7.50,
+  'Leite em pó': 38.00,
+  'Manteiga': 45.00,
+  'Manteiga sem sal': 45.00,
+  'Manteiga com sal': 42.00,
+  'Margarina': 14.00,
+  'Margarina culinária': 14.00,
+  'Cream cheese': 35.00,
+  'Iogurte natural': 6.00,
+  'Requeijão': 13.00,
+  'Requeijão cremoso': 13.00,
+  'Chantilly': 22.00,
+  'Queijo minas': 38.00,
+  'Queijo mussarela': 42.00,
+  'Mussarela': 42.00,
+  'Queijo prato': 38.00,
+  'Queijo provolone': 65.00,
+  'Catupiry': 28.00,
+  // Ovos
+  'Ovos': 18.00,
+  'Ovos brancos': 18.00,
+  'Ovos vermelhos': 20.00,
+  'Ovos (bandeja 30un)': 22.00,
+  // Gorduras
+  'Óleo de soja': 8.50,
+  'Óleo de soja (fritura)': 8.50,
+  'Óleo de canola': 14.00,
+  'Óleo de coco': 35.00,
+  'Banha': 22.00,
+  'Gordura vegetal': 14.00,
+  'Azeite de oliva extra virgem': 38.00,
+  // Frios e embutidos
+  'Presunto': 32.00,
+  'Presunto fatiado': 32.00,
+  'Peito de peru': 38.00,
+  'Mortadela': 22.00,
+  'Salame': 65.00,
+  'Apresuntado': 22.00,
+  'Calabresa': 35.00,
+  'Calabresa fatiada': 35.00,
+  'Bacon': 60.00,
+  'Bacon fatiado': 60.00,
+  'Pepperoni': 95.00,
+  'Salsicha': 18.00,
+  'Linguiça calabresa': 32.00,
+  // Carnes
+  'Frango desfiado': 25.00,
+  'Frango cozido desfiado': 25.00,
+  'Frango filé peito': 22.00,
+  'Frango sobrecoxa': 12.00,
+  'Carne moída': 32.00,
+  'Carne moída bovina': 38.00,
+  'Carne moída (patinho)': 42.00,
+  'Carne moída (acém)': 36.00,
+  'Carne seca desfiada': 65.00,
+  'Patinho': 42.00,
+  'Alcatra': 55.00,
+  'Acém': 36.00,
+  'Bisteca suína': 26.00,
+  // Peixes/Frutos do mar
+  'Filé de tilápia': 38.00,
+  'Salmão': 125.00,
+  'Salmão fresco': 125.00,
+  'Camarão limpo': 120.00,
+  'Atum em lata': 14.00,
+  'Sardinha em lata': 6.50,
+  // Chocolates
+  'Chocolate em pó': 35.00,
+  'Chocolate meio amargo': 70.00,
+  'Cacau em pó': 45.00,
+  'Achocolatado em pó': 18.00,
+  'Coco ralado': 12.00,
+  'Coco fresco': 12.00,
+  'Goiabada': 18.00,
+  'Doce de leite': 18.00,
+  // Temperos
+  'Sal': 3.00,
+  'Sal refinado': 3.00,
+  'Orégano': 35.00,
+  'Canela em pó': 20.00,
+  'Essência de baunilha': 15.00,
+  'Gergelim': 28.00,
+  'Pimenta-do-reino': 45.00,
+  'Erva-doce': 28.00,
+  'Alho': 38.00,
+  // Bebidas
+  'Café em pó': 32.00,
+  'Café em grão': 38.00,
+  'Café tradicional moído': 18.00,
+  'Café em grãos especial': 95.00,
+  'Chá (diversas ervas)': 8.00,
+  // Verduras / Legumes / Frutas
+  'Cebola': 5.50,
+  'Cebola roxa': 7.00,
+  'Tomate': 9.00,
+  'Cenoura': 5.50,
+  'Batata': 5.00,
+  'Batata inglesa': 5.00,
+  'Couve manteiga': 6.00,
+  'Alface americana': 8.00,
+  'Pimentão verde': 8.00,
+  'Azeitona verde': 22.00,
+  'Azeitona preta': 25.00,
+  'Palmito': 22.00,
+  'Milho em conserva': 6.00,
+  'Champignon': 28.00,
+  'Banana': 4.50,
+  'Maçã': 7.00,
+  'Manga': 6.00,
+  'Limão': 6.00,
+  'Laranja': 5.50,
+  'Abacaxi': 8.00,
+  'Maracujá': 8.00,
+  'Morango': 18.00,
+  'Uva passa': 30.00,
+  'Amendoim torrado': 18.00,
+  'Aveia em flocos': 12.00,
+  'Linhaça': 14.00,
+  // Molhos
+  'Molho de tomate': 8.00,
+  'Maionese': 18.00,
+  'Catchup': 14.00,
+  'Ketchup': 14.00,
+  'Mostarda': 12.00,
+  // Massas / Grãos
+  'Arroz branco': 6.00,
+  'Arroz parboilizado': 7.00,
+  'Feijão carioca': 9.50,
+  'Feijão preto': 10.00,
+  'Macarrão espaguete': 5.50,
+  'Macarrão parafuso': 6.00,
+  'Macarrão lámen': 8.00,
+  'Macarrão yakisoba': 6.00,
+  // Embalagens / descartáveis
+  'Saco de papel kraft (pão)': 0.15,
+  'Saco plástico para pão': 0.05,
+  'Caixa para bolo confeitado': 1.20,
+  'Embalagem para salgado': 0.20,
+  'Copo descartável 200ml': 0.20,
+  'Copo descartável 350ml': 0.35,
+  'Guardanapo de papel': 0.03,
+  'Touca descartável': 0.20,
+  'Luvas descartáveis': 0.15,
+  'Hashi descartável': 0.30,
+  // Limpeza
+  'Detergente': 4.50,
+  'Álcool 70%': 12.00,
+  'Esponja multiuso': 3.00,
+  'Desengordurante': 15.00,
+  'Água sanitária': 6.00,
+  'Saco de lixo 60L': 14.00,
+  'Papel toalha': 4.50,
+  // Outros
+  'Leite de coco': 8.00,
+  'Geleia de morango': 12.00,
+  'Geleia de goiaba': 14.00,
+  'Goiabada cremosa': 18.00,
+  'Creme de confeiteiro (pó)': 28.00,
+  'Nutella': 35.00,
+  'Pasta de amendoim': 18.00,
+};
+
 // Sessão 28.51: normaliza nome pra lookup tolerante a variações
 // (case-insensitive, ignora acentos e qualificadores entre parênteses, etc).
 // Resolve o problema "Frango desfiado (peito)" vs "Frango desfiado" não casarem.
@@ -441,24 +641,42 @@ const ALIASES = {
 /**
  * Retorna o preço de referência de um insumo, ou null se não houver.
  * Lookup tolerante: tenta match exato, alias conhecido, e depois normalizado.
+ * Sessão 28.54: adiciona fallback global quando o segmento não tem o insumo —
+ * antes muitos kits nasciam com valores zerados.
  */
 export function getPrecoReferencia(segmento, nomeInsumo) {
   const tabela = PRECOS_REFERENCIA_POR_SEGMENTO[segmento];
-  if (!tabela) return null;
-  // 1) match exato
-  let preco = tabela[nomeInsumo];
-  if (typeof preco === 'number' && preco > 0) return preco;
-  // 2) alias direto
-  const norm = _normalizeKey(nomeInsumo);
-  const aliasKey = ALIASES[norm];
-  if (aliasKey) {
-    preco = tabela[aliasKey];
+  if (tabela) {
+    // 1) match exato
+    let preco = tabela[nomeInsumo];
     if (typeof preco === 'number' && preco > 0) return preco;
+    // 2) alias direto
+    const norm = _normalizeKey(nomeInsumo);
+    const aliasKey = ALIASES[norm];
+    if (aliasKey) {
+      preco = tabela[aliasKey];
+      if (typeof preco === 'number' && preco > 0) return preco;
+    }
+    // 3) match normalizado contra todas as chaves do segmento
+    for (const k of Object.keys(tabela)) {
+      if (_normalizeKey(k) === norm) {
+        const p = tabela[k];
+        if (typeof p === 'number' && p > 0) return p;
+      }
+    }
   }
-  // 3) match normalizado contra todas as chaves
-  for (const k of Object.keys(tabela)) {
-    if (_normalizeKey(k) === norm) {
-      const p = tabela[k];
+  // Sessão 28.54 — 4) fallback global (preços médios independentes do segmento)
+  const normGlobal = _normalizeKey(nomeInsumo);
+  let g = PRECOS_FALLBACK_GLOBAL[nomeInsumo];
+  if (typeof g === 'number' && g > 0) return g;
+  const aliasGlobal = ALIASES[normGlobal];
+  if (aliasGlobal) {
+    g = PRECOS_FALLBACK_GLOBAL[aliasGlobal];
+    if (typeof g === 'number' && g > 0) return g;
+  }
+  for (const k of Object.keys(PRECOS_FALLBACK_GLOBAL)) {
+    if (_normalizeKey(k) === normGlobal) {
+      const p = PRECOS_FALLBACK_GLOBAL[k];
       if (typeof p === 'number' && p > 0) return p;
     }
   }
