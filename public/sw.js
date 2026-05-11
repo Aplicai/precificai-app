@@ -8,7 +8,8 @@
  *
  * Bump CACHE_VERSION sempre que mudar este arquivo OU os assets críticos.
  */
-const CACHE_VERSION = 'precificai-v1';
+// Sessão 28.61: bump pra invalidar cache antigo após reativar PWA bootstrap
+const CACHE_VERSION = 'precificai-v2';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const HTML_CACHE = `${CACHE_VERSION}-html`;
@@ -17,6 +18,9 @@ const CORE_ASSETS = [
   '/',
   '/manifest.json',
   '/favicon.png',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', (event) => {

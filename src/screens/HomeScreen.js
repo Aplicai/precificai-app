@@ -13,6 +13,7 @@ import InfoTooltip from '../components/InfoTooltip';
 import Loader from '../components/Loader';
 import MobileOnboardingOverlay from '../components/MobileOnboardingOverlay';
 import MobileDesktopHint from '../components/MobileDesktopHint';
+import InstallPWABanner from '../components/InstallPWABanner';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { useAuth } from '../contexts/AuthContext';
 import useFeatureFlag from '../hooks/useFeatureFlag';
@@ -521,6 +522,10 @@ export default function HomeScreen({ navigation }) {
       {/* Área 9 — banner discreto sugerindo experiência desktop. Aparece 1 a
           cada 5 sessões em mobile (e no 1º uso). Dismissível. */}
       <MobileDesktopHint />
+
+      {/* Sessão 28.61 — banner "Instalar como app". Aparece na 2ª visita mobile
+          web; some quando já está instalado (display-mode standalone). */}
+      <InstallPWABanner />
 
       {/* Greeting */}
       <View style={[styles.greetingRow, isMobile && styles.greetingRowMobile]}>
