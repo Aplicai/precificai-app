@@ -558,11 +558,66 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
     <p class="footer">Gerado por Precificaí · www.precificaiapp.com</p>
     </body></html>`;
 
+    // Sessão 28.55: bug "Baixar Relatório Completo" no mobile (Safari iOS) — antes
+    // chamava só `window.open('', '_blank')` + `win.print()`. iOS Safari bloqueia
+    // popups fora de gesto síncrono e ignora print() em popup, dando a sensação
+    // de que o app "voltou pra origem" sem nada acontecer. Agora detecta iOS
+    // Safari e usa Blob + download anchor + open url pra usuário usar o menu
+    // Compartilhar nativo. Em desktop/Android: comportamento original.
+    const isIOSSafari = (() => {
+      if (typeof navigator === 'undefined') return false;
+      const ua = navigator.userAgent || '';
+      const isIOS = /iPad|iPhone|iPod/.test(ua) ||
+        (ua.includes('Mac') && typeof document !== 'undefined' && 'ontouchend' in document);
+      const isSafari = /^((?!chrome|android|crios|fxios|edgios).)*safari/i.test(ua);
+      return isIOS && isSafari;
+    })();
+
+    function showToastSafe(msg, icon) {
+      try {
+        const { showToast } = require('../utils/toastBus');
+        showToast(msg, icon || 'download', 3500);
+      } catch (_) {}
+    }
+
+    function downloadBlobFallback() {
+      try {
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `relatorio-${Date.now()}.html`;
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // No iOS, também abrimos em nova aba pro user usar Compartilhar/Imprimir.
+        if (isIOSSafari) {
+          try { window.open(url, '_blank'); } catch (_) {}
+          showToastSafe('Relatório gerado · use Compartilhar para Imprimir/Salvar', 'printer');
+        } else {
+          showToastSafe('Relatório baixado · verifique sua pasta Downloads', 'download');
+        }
+        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 10000);
+      } catch (e) {
+        showToastSafe('Não foi possível gerar o relatório.', 'alert-circle');
+      }
+    }
+
+    if (isIOSSafari) {
+      downloadBlobFallback();
+      return;
+    }
+
     const win = window.open('', '_blank');
     if (win) {
       win.document.write(html);
       win.document.close();
-      setTimeout(() => win.print(), 500);
+      setTimeout(() => { try { win.print(); } catch (_) {} }, 500);
+      showToastSafe('Relatório aberto em nova aba', 'printer');
+    } else {
+      // popup bloqueado → fallback de download
+      downloadBlobFallback();
     }
   }
 

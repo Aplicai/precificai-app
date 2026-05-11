@@ -8,6 +8,7 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
 import BackToSettings from '../components/BackToSettings';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 // Multi-tenant: cada usuário tem sua chave de avatar (mesmo padrão de
 // usePushPermissions). Sem userId, não persiste nada — evita vazamento entre contas.
@@ -22,6 +23,9 @@ const ALLOWED_MIME_PREFIX = 'image/';
 export default function PerfilScreen({ navigation, route }) {
   const isSetup = route?.params?.setup || route?.name === 'ProfileSetup';
   const { user } = useAuth();
+  // Sessão 29 — "Minhas Lojas" oculto no mobile (feature multi-loja parked).
+  // Não removemos a seção nem useLojas; só não renderizamos no mobile.
+  const { isMobile } = useResponsiveLayout();
   const [perfil, setPerfil] = useState({
     nome_negocio: '',
     segmento: '',
@@ -312,8 +316,10 @@ export default function PerfilScreen({ navigation, route }) {
         </View>
       </View>
 
-      {/* Sessão 28.22: Multi-loja — gerenciar lojas + selecionar a atual */}
-      {!isSetup && <LojasSection userId={user?.id} />}
+      {/* Sessão 28.22: Multi-loja — gerenciar lojas + selecionar a atual
+          Sessão 29: oculto no mobile via flag (feature em standby; ver
+          backlog.md "Multi-loja wiring"). NÃO REMOVER — só esconder. */}
+      {!isSetup && !isMobile && <LojasSection userId={user?.id} />}
 
       {isSetup && (
         <TouchableOpacity

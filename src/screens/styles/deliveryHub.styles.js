@@ -61,8 +61,8 @@ export const deliveryHubStyles = StyleSheet.create({
   },
   infoText: { flex: 1, fontSize: 13, color: colors.textSecondary, fontFamily: fontFamily.regular, lineHeight: 18 },
 
-  // Count
-  countText: { fontSize: 12, color: colors.textSecondary, fontFamily: fontFamily.medium, marginBottom: spacing.sm },
+  // Count — Área 9: 12→13 pra leitura no mobile
+  countText: { fontSize: 13, color: colors.textSecondary, fontFamily: fontFamily.medium, marginBottom: spacing.sm },
 
   // Platform card
   platCard: {
@@ -74,9 +74,11 @@ export const deliveryHubStyles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     padding: spacing.md,
   },
-  platDot: { width: 10, height: 10, borderRadius: 5, marginRight: spacing.sm },
+  // Área 9 — dot um pouco maior (10→14) pra equilibrar com texto, ainda discreto
+  platDot: { width: 14, height: 14, borderRadius: 7, marginRight: spacing.sm },
   platName: { flex: 1, fontSize: fonts.body, fontFamily: fontFamily.semiBold, color: colors.text },
-  platStatus: { fontSize: 11, fontFamily: fontFamily.medium },
+  // Área 9 — status 11→12 (fonts.tiny) pra equilibrar peso visual
+  platStatus: { fontSize: fonts.tiny, fontFamily: fontFamily.medium },
   platBody: {
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
     borderTopWidth: 1, borderTopColor: colors.border,
@@ -84,11 +86,14 @@ export const deliveryHubStyles = StyleSheet.create({
   },
   platFieldsRow: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
   platField: { flex: 1, minWidth: 120 },
-  platFieldLabel: { fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.medium, marginBottom: 4 },
+  // Área 9 — labels 11→13 pra leitura confortável no mobile, balanceando o input maior
+  platFieldLabel: { fontSize: 13, color: colors.textSecondary, fontFamily: fontFamily.medium, marginBottom: 4 },
   platInput: {
     backgroundColor: colors.inputBg, borderRadius: borderRadius.sm,
+    // Área 9 — fontSize fonts.body (15) mantido; iOS Safari zoom é coberto pelo
+    // CSS global em mobileWebFixes.js (16px mínimo). Altura 40→44 pra toque maior.
     padding: 10, fontSize: fonts.body, fontFamily: fontFamily.regular, color: colors.text,
-    borderWidth: 1, borderColor: colors.border, height: 40,
+    borderWidth: 1, borderColor: colors.border, height: 44,
   },
   deleteBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.md, alignSelf: 'flex-start' },
   deleteBtnText: { fontSize: 12, color: colors.error, fontFamily: fontFamily.medium },

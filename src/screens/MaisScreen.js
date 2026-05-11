@@ -4,6 +4,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useFeatureFlag from '../hooks/useFeatureFlag';
 import useListDensity from '../hooks/useListDensity';
+import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 /**
  * Hub "Ferramentas" reorganizado (audit S9 — Sprint 4).
@@ -127,6 +128,9 @@ const MENU_GROUPS = [
         set: 'feather',
         screen: 'ComparativoCanais',
         flag: 'usa_delivery',
+        // Área 9 — Comparativo de Canais só faz sentido em desktop (tabelas largas).
+        // No mobile fica oculto pra alinhar com o desktop: só "Delivery" aparece.
+        desktopOnly: true,
       },
     ],
   },
@@ -171,6 +175,8 @@ export default function MaisScreen({ navigation }) {
   const [combosAvancado] = useFeatureFlag('modo_avancado_combos');
   // Sessão 28.6 — densidade aplicada em cards e títulos
   const { isCompact, cardPadding, sectionGap, titleFontSize, iconSize, listItemSubtitleFontSize, bodyLineHeight } = useListDensity();
+  // Área 9 — esconder itens marcados como desktopOnly quando em mobile
+  const { isDesktop } = useResponsiveLayout();
   const _isFlagOn = (name) => {
     if (!name) return true;
     if (name === 'usa_delivery') return !!usaDelivery;
@@ -186,7 +192,10 @@ export default function MaisScreen({ navigation }) {
   };
   const visibleGroups = MENU_GROUPS
     .filter((g) => flagOn(g.flag))
-    .map((g) => ({ ...g, items: g.items.filter((it) => flagOn(it.flag)) }))
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((it) => flagOn(it.flag) && (!it.desktopOnly || isDesktop)),
+    }))
     .filter((g) => g.items.length > 0);
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>

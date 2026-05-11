@@ -1306,11 +1306,20 @@ export default function ConfiguracaoScreen() {
                   showSaved('Tudo salvo!');
                   setTimeout(() => {
                     try {
-                      if (navigation && navigation.navigate) {
-                        if (navigation.jumpTo) {
-                          navigation.jumpTo('Home');
-                        } else {
-                          navigation.navigate('Home');
+                      // Tab raiz se chama 'Início' (não 'Home'). Como esta tela
+                      // pode estar dentro de stack aninhado (Mais > Configuração),
+                      // tentamos primeiro o parent navigator (tab navigator).
+                      if (navigation) {
+                        const parent = navigation.getParent && navigation.getParent();
+                        if (parent && parent.navigate) {
+                          parent.navigate('Início');
+                        } else if (navigation.navigate) {
+                          // Fallback: navegar diretamente à tab 'Início' via MainTabs
+                          try {
+                            navigation.navigate('MainTabs', { screen: 'Início' });
+                          } catch {
+                            navigation.navigate('Início');
+                          }
                         }
                       }
                     } catch (e) {

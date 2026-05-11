@@ -68,6 +68,16 @@ function getHealthBorderColor(margem, meta = 0.15) {
   return colors.error + '50';
 }
 
+// Classifica a margem do produto em uma das faixas do filtro de lucro.
+// Mesmas thresholds do semáforo visual: acima da meta (verde), faixa amarela
+// (meta-10 a meta), abaixo (vermelho) e -1 (sem preço cadastrado).
+function getMargemClass(margem, meta = 0.15) {
+  if (margem === -1) return 'sem_preco';
+  if (margem >= meta) return 'acima';
+  if (margem >= meta - 0.10) return 'medio';
+  return 'abaixo';
+}
+
 export default function ProdutosListScreen({ navigation }) {
   const { isDesktop } = useResponsiveLayout();
   const isFocused = useIsFocused();
@@ -82,6 +92,9 @@ export default function ProdutosListScreen({ navigation }) {
   const undoDelete = useUndoableDelete();
   const [sortBy, setSortBy] = usePersistedState('produtos.sortBy', 'nome_asc');
   const [viewMode, setViewMode] = usePersistedState('produtos.viewMode', 'list');
+  // Sessão 28.x — filtro por faixa de lucro clicável. Valores: null | 'acima' | 'medio' | 'abaixo' | 'sem_preco'.
+  // Persiste entre navegações pela mesma chave usada pra sortBy/viewMode.
+  const [filtroLucro, setFiltroLucro] = usePersistedState('produtos.filtroLucro', null);
   // Bug fix: no mobile o grid renderiza apenas chips com preço (sem nome). Força lista no mobile.
   const isGrid = isDesktop;
   const { rowOverride, nameOverride, avatarSize, isCompact, rowMinHeight, titleFontSize, listItemSubtitleFontSize } = useListDensity();
@@ -726,9 +739,16 @@ export default function ProdutosListScreen({ navigation }) {
     );
   }
 
-  // Filtra linhas em janela de undo (P1-11)
+  // Filtra linhas em janela de undo (P1-11) e por faixa de lucro (filtroLucro).
   const visibleSections = sections
-    .map((s) => ({ ...s, data: s.data.filter((it) => !undoDelete.hiddenIds.has(it.id)) }))
+    .map((s) => ({
+      ...s,
+      data: s.data.filter((it) => {
+        if (undoDelete.hiddenIds.has(it.id)) return false;
+        if (filtroLucro && getMargemClass(it.margem, config.margemMeta) !== filtroLucro) return false;
+        return true;
+      }),
+    }))
     .filter((s) => s.data.length > 0 || filtroCategoria === s.catId);
 
   // P3-B Stats summary
@@ -804,21 +824,66 @@ export default function ProdutosListScreen({ navigation }) {
           </View>
           {/* Bug fix: toggle de grid escondido no mobile — grid mobile mostrava só chips de preço. */}
         </View>
-        {/* Legenda do semáforo de lucro */}
+        {/* Chips clicáveis de filtro por faixa de lucro (substituem a legenda passiva).
+            Toggle: tocar no chip ativo limpa o filtro. "Todos" também limpa. */}
         {(() => {
           const metaPct = Math.round(config.margemMeta * 100);
           const limiteInf = Math.max(0, metaPct - 10);
+          const items = [
+            { key: 'acima', label: `Lucro ≥${metaPct}%`, bg: colors.success + '12', border: colors.success + '50', active: colors.success },
+            { key: 'medio', label: `Lucro ${limiteInf}-${metaPct}%`, bg: YELLOW + '18', border: YELLOW + '60', active: YELLOW },
+            { key: 'abaixo', label: `Lucro <${limiteInf}%`, bg: colors.error + '12', border: colors.error + '50', active: colors.error },
+            { key: 'sem_preco', label: 'Sem preço', bg: colors.disabled + '0C', border: colors.disabled + '40', active: colors.disabled },
+          ];
           return (
-            <View style={styles.legendRow}>
-              <View style={[styles.legendSwatch, { backgroundColor: colors.success + '12', borderLeftWidth: 3, borderLeftColor: colors.success + '50' }]} />
-              <Text style={styles.legendText}>Lucro ≥{metaPct}%</Text>
-              <View style={[styles.legendSwatch, { backgroundColor: YELLOW + '18', borderLeftWidth: 3, borderLeftColor: YELLOW + '60' }]} />
-              <Text style={styles.legendText}>Lucro {limiteInf}-{metaPct}%</Text>
-              <View style={[styles.legendSwatch, { backgroundColor: colors.error + '12', borderLeftWidth: 3, borderLeftColor: colors.error + '50' }]} />
-              <Text style={styles.legendText}>Lucro &lt;{limiteInf}%</Text>
-              <View style={[styles.legendSwatch, { backgroundColor: colors.disabled + '0C', borderLeftWidth: 3, borderLeftColor: colors.disabled + '40' }]} />
-              <Text style={styles.legendText}>Sem preço</Text>
-            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.lucroFiltroRow}
+              nestedScrollEnabled
+            >
+              <TouchableOpacity
+                key="todos"
+                onPress={() => setFiltroLucro(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Mostrar todos os produtos"
+                style={[
+                  styles.lucroChip,
+                  filtroLucro === null && { backgroundColor: colors.primary + '15', borderColor: colors.primary, borderWidth: 1.5 },
+                ]}
+              >
+                {filtroLucro === null && (
+                  <Feather name="check" size={11} color={colors.primary} style={{ marginRight: 4 }} />
+                )}
+                <Text style={[styles.lucroChipText, filtroLucro === null && { color: colors.primary, fontWeight: '700' }]}>
+                  Todos
+                </Text>
+              </TouchableOpacity>
+              {items.map((it) => {
+                const isActive = filtroLucro === it.key;
+                return (
+                  <TouchableOpacity
+                    key={it.key}
+                    onPress={() => setFiltroLucro(isActive ? null : it.key)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isActive }}
+                    accessibilityLabel={`Filtrar por ${it.label}${isActive ? ' (ativo, toque para limpar)' : ''}`}
+                    style={[
+                      styles.lucroChip,
+                      { backgroundColor: it.bg, borderLeftWidth: 3, borderLeftColor: it.border },
+                      isActive && { borderWidth: 1.5, borderColor: it.active, backgroundColor: it.active + '22' },
+                    ]}
+                  >
+                    {isActive && (
+                      <Feather name="check" size={11} color={it.active} style={{ marginRight: 4 }} />
+                    )}
+                    <Text style={[styles.lucroChipText, isActive && { color: it.active, fontWeight: '700' }]}>
+                      {it.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           );
         })()}
       </View>
@@ -1296,13 +1361,29 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
 
-  // Legenda semáforo
+  // Legenda semáforo (mantida por compat, mas hoje a UI usa chips clicáveis abaixo).
   legendRow: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: 2,
   },
   legendSwatch: { width: 20, height: 14, borderRadius: 3 },
   legendText: { fontSize: 11, color: colors.text, fontFamily: fontFamily.medium, fontWeight: '500', marginRight: 10 },
+
+  // Chips clicáveis de filtro por faixa de lucro (substituem a legenda passiva).
+  lucroFiltroRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: 4, gap: 6,
+  },
+  lucroChip: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 14, borderWidth: 1, borderColor: 'transparent',
+    backgroundColor: colors.surface || '#f5f5f5',
+  },
+  lucroChipText: {
+    fontSize: 11, color: colors.text,
+    fontFamily: fontFamily.medium, fontWeight: '500',
+  },
 
   // Checkbox bulk
   checkbox: {

@@ -123,11 +123,11 @@ export default function NotificacoesScreen() {
         </View>
       )}
 
-      {!isPushSupported() && Platform.OS === 'web' && (
+      {Platform.OS === 'web' && (
         <View style={styles.notice}>
           <Feather name="info" size={16} color={colors.info} />
           <Text style={styles.noticeText}>
-            Notificações push em navegadores chegam na próxima versão. Por enquanto, só no app instalado.
+            Notificações estão em desenvolvimento. No momento usamos avisos dentro do app (banners e alertas em tempo real). Notificações push e por e-mail estarão disponíveis em breve.
           </Text>
         </View>
       )}

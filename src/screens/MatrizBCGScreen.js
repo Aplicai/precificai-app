@@ -413,7 +413,11 @@ export default function MatrizBCGScreen({ navigation }) {
             text="Classifica cada produto pela margem de contribuição × popularidade (vendas do MÊS ANTERIOR — mais estável que o mês corrente, que ainda não fechou). A mediana divide os produtos em 4 quadrantes (também conhecido como Engenharia do Cardápio)."
           />
         </View>
-        <Text style={styles.subtitle}>Classificação baseada nas vendas do mês anterior (mais estável que o mês corrente). Você ainda registra as vendas do mês atual abaixo.</Text>
+        {/* Área 9 — texto compactado pra caber em 1 linha no mobile. Detalhe completo
+            fica no InfoTooltip acima ("Como funciona?"). */}
+        <Text style={styles.subtitle} numberOfLines={1}>
+          Baseado nas vendas do mês anterior. Mês atual entra a partir do dia 5.
+        </Text>
       </View>
 
       {/* Sales CTA - always visible when not editing */}

@@ -397,7 +397,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                       <TouchableOpacity
                         key={i.id || idx}
                         style={styles.listRow}
-                        onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
+                        onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id } })}
                       >
                         <Text style={styles.listRowNome} numberOfLines={1}>{i.nome}</Text>
                         <Text style={styles.listRowValor}>R$ {Number(i.preco_por_kg).toFixed(2)}/kg</Text>
@@ -425,7 +425,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                       <TouchableOpacity
                         key={i.id || idx}
                         style={styles.listRow}
-                        onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
+                        onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id } })}
                       >
                         <Text style={styles.listRowNome} numberOfLines={1}>{i.nome}</Text>
                         <Feather name="chevron-right" size={14} color={colors.textSecondary} />
@@ -452,7 +452,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                       <TouchableOpacity
                         key={i.id || idx}
                         style={styles.listRow}
-                        onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
+                        onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id } })}
                       >
                         <Text style={styles.listRowNome} numberOfLines={1}>{i.nome}</Text>
                         <Text style={styles.listRowValor}>
@@ -516,7 +516,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                   <TouchableOpacity
                     key={i.id || idx}
                     style={styles.listRow}
-                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
+                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id } })}
                   >
                     <View style={[styles.rankBadge, { backgroundColor: colors.error + '18' }]}>
                       <Text style={[styles.rankBadgeText, { color: colors.error }]}>{idx + 1}</Text>

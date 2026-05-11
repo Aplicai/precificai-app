@@ -14,6 +14,8 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useListDensity from '../hooks/useListDensity';
 import { t } from '../i18n/pt-BR';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+// Área 4 (Preparos) — toast de confirmação ao salvar
+import { showToast } from '../utils/toastBus';
 // Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 // Sessão 28.8 — exibe nome+marca p/ distinguir insumos com mesmo nome
@@ -48,6 +50,12 @@ export default function PreparoFormScreen({ route, navigation }) {
   const [categorias, setCategorias] = useState([]);
   const [novoIng, setNovoIng] = useState({ materia_prima_id: null, quantidade: '' });
   const [quantityPrompt, setQuantityPrompt] = useState(null);
+  // Área 4 — pickerResetKey força remontagem do PickerSelect (e seu modal interno
+  // com search/lista) a cada novo "Adicionar Insumo/Embalagem", garantindo estado
+  // 100% limpo. Sem isso, o searchText interno e o destaque do último item
+  // selecionado persistiam entre aberturas, dando a sensação de "form preenchido
+  // com o último item adicionado".
+  const [pickerResetKey, setPickerResetKey] = useState(0);
   // D-20: embalagens opcionais (alguns preparos precisam de embalagem de armazenamento)
   const [embalagens, setEmbalagens] = useState([]); // catálogo
   const [preparoEmbalagens, setPreparoEmbalagens] = useState([]); // selecionadas neste preparo
@@ -278,6 +286,9 @@ export default function PreparoFormScreen({ route, navigation }) {
       quantidade_utilizada: qtd,
     }]);
     setQuantityPrompt(null);
+    // Área 4 — reseta o picker pra próximo "Adicionar" abrir limpo
+    setPickerResetKey(k => k + 1);
+    setNovoIng({ materia_prima_id: null, quantidade: '' });
     setIngAdicionado(true);
     setTimeout(() => setIngAdicionado(false), 1500);
   }
@@ -402,6 +413,8 @@ export default function PreparoFormScreen({ route, navigation }) {
     } catch (e) {
       if (typeof console !== 'undefined') console.warn('[PreparoForm.salvarNovo embalagens]', e?.message || e);
     }
+    // Área 4 — toast de confirmação após salvar preparo novo
+    try { showToast('Preparo salvo', 'check-circle'); } catch (_) {}
     navigation.goBack();
   }
 
@@ -521,6 +534,7 @@ export default function PreparoFormScreen({ route, navigation }) {
           {/* Adicionar ingrediente */}
           <View style={styles.addIngSection}>
             <PickerSelect
+              key={`pick-insumo-${pickerResetKey}`}
               label="Adicionar insumo"
               value={null}
               onValueChange={(v) => { if (v) openQuantityPrompt(v); }}
@@ -609,6 +623,7 @@ export default function PreparoFormScreen({ route, navigation }) {
             Adicione embalagens se este preparo for armazenado (ex: pote pra calda, saco pra massa). O custo entra no total do preparo.
           </Text>
           <PickerSelect
+            key={`pick-embalagem-${pickerResetKey}`}
             label="Adicionar embalagem"
             value={null}
             onValueChange={(v) => {
@@ -622,6 +637,8 @@ export default function PreparoFormScreen({ route, navigation }) {
                 custo_unitario: em.custo_unitario,
                 quantidade_utilizada: 1,
               }]);
+              // Área 4 — força remontagem pra próxima adição vir limpa
+              setPickerResetKey(k => k + 1);
             }}
             options={embalagens.map(e => ({ label: `${e.nome} — ${formatCurrency(e.custo_unitario || 0)}/un`, value: e.id }))}
             placeholder={embalagens.length === 0 ? 'Cadastre uma embalagem primeiro' : 'Selecione uma embalagem'}
@@ -823,7 +840,7 @@ export default function PreparoFormScreen({ route, navigation }) {
               <SaveStatus status={saveStatus} variant="badge" />
             </View>
           )}
-          <TouchableOpacity style={styles.saveBackBtn} onPress={async () => { allowExit.current = true; try { await autoSave(); } catch(e) {
+          <TouchableOpacity style={styles.saveBackBtn} onPress={async () => { allowExit.current = true; try { await autoSave(); try { showToast('Preparo salvo', 'check-circle'); } catch (_) {} } catch(e) {
             // CR-5: catch antes era silencioso — log + status de erro p/ feedback
             if (typeof console !== 'undefined' && console.error) console.error('[PreparoForm.saveBackBtn]', e);
             setSaveStatus('error');
@@ -929,12 +946,14 @@ export default function PreparoFormScreen({ route, navigation }) {
         </TouchableOpacity>
       </Modal>
 
-      {/* Modal Quantity Prompt */}
-      <Modal visible={!!quantityPrompt} transparent animationType="fade" onRequestClose={() => setQuantityPrompt(null)}>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setQuantityPrompt(null)}>
+      {/* Modal Quantity Prompt — key força remontagem do TextInput a cada novo
+          prompt, garantindo que não fique nem rastros visuais nem do input nativo
+          do último insumo adicionado (bug Área 4). */}
+      <Modal visible={!!quantityPrompt} transparent animationType="fade" onRequestClose={() => { setQuantityPrompt(null); setPickerResetKey(k => k + 1); }}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => { setQuantityPrompt(null); setPickerResetKey(k => k + 1); }}>
           <TouchableOpacity activeOpacity={1} style={[styles.modalContent, { maxWidth: 360 }]} onPress={() => {}}>
             {quantityPrompt && (
-              <>
+              <View key={`qty-${quantityPrompt.materia_prima_id}-${quantityPrompt.editIndex ?? 'new'}-${pickerResetKey}`}>
                 <Text style={styles.modalTitle}>{quantityPrompt.nome}</Text>
                 <Text style={styles.modalLabel}>Quantidade ({quantityPrompt.unidade})</Text>
                 <TextInput
@@ -950,14 +969,14 @@ export default function PreparoFormScreen({ route, navigation }) {
                   returnKeyType="done"
                 />
                 <View style={styles.modalActions}>
-                  <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setQuantityPrompt(null)}>
+                  <TouchableOpacity style={styles.modalCancelBtn} onPress={() => { setQuantityPrompt(null); setPickerResetKey(k => k + 1); }}>
                     <Text style={styles.modalCancelText}>Cancelar</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={styles.modalSaveBtn} onPress={confirmQuantity}>
                     <Text style={styles.modalSaveText}>Adicionar</Text>
                   </TouchableOpacity>
                 </View>
-              </>
+              </View>
             )}
           </TouchableOpacity>
         </TouchableOpacity>

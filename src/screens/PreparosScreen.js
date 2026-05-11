@@ -65,6 +65,94 @@ function formatRendimento(valor, unidade) {
   return `${valor} ${valor === 1 ? 'unidade' : 'unidades'}`;
 }
 
+// Área 4 (Preparos) — strip de stats adaptada pro mobile.
+// O ListStatsStrip global usa flex:1 sem minWidth:0, então valores grandes
+// (ex: R$ 1.234.567,89/kg) invadiam a coluna ao lado. Aqui cada métrica fica
+// em coluna (label em cima, valor embaixo) e o texto é truncado com
+// numberOfLines={1} + ellipsizeMode="tail" + flexShrink. Mantém 3 colunas
+// equivalentes ao desktop, mas sem overflow.
+function PreparosStatsStripMobile({ stats = [] }) {
+  if (!stats || stats.length === 0) return null;
+  return (
+    <View style={mobileStatsStyles.strip}>
+      {stats.map((stat, idx) => (
+        <React.Fragment key={`${stat.label}-${idx}`}>
+          {idx > 0 && <View style={mobileStatsStyles.separator} />}
+          <View style={mobileStatsStyles.cell}>
+            <View style={mobileStatsStyles.labelRow}>
+              {!!stat.icon && (
+                <Feather
+                  name={stat.icon}
+                  size={11}
+                  color={stat.color || colors.primary}
+                  style={{ marginRight: 3 }}
+                />
+              )}
+              <Text style={mobileStatsStyles.label} numberOfLines={1} ellipsizeMode="tail">
+                {stat.label}
+              </Text>
+            </View>
+            <Text
+              style={[mobileStatsStyles.value, stat.color && { color: stat.color }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              adjustsFontSizeToFit
+              minimumFontScale={0.7}
+            >
+              {stat.value}
+            </Text>
+          </View>
+        </React.Fragment>
+      ))}
+    </View>
+  );
+}
+
+const mobileStatsStyles = StyleSheet.create({
+  strip: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: colors.surface || '#fff',
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border || '#EEF1F4',
+  },
+  cell: {
+    flex: 1,
+    minWidth: 0,           // crítico: permite que o filho com text truncado encolha
+    flexDirection: 'column',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  separator: {
+    width: 1,
+    backgroundColor: colors.border || '#EEF1F4',
+    marginHorizontal: 2,
+  },
+  label: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    fontFamily: fontFamily.medium,
+    flexShrink: 1,
+  },
+  value: {
+    fontSize: 13,
+    color: colors.text,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+});
+
 export default function PreparosScreen({ navigation }) {
   const { isDesktop } = useResponsiveLayout();
   const isFocused = useIsFocused();
@@ -730,7 +818,11 @@ export default function PreparosScreen({ navigation }) {
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
           stickySectionHeadersEnabled={true}
-          ListHeaderComponent={statsList.length > 0 ? <ListStatsStrip stats={statsList} /> : null}
+          ListHeaderComponent={statsList.length > 0 ? (
+            isDesktop
+              ? <ListStatsStrip stats={statsList} />
+              : <PreparosStatsStripMobile stats={statsList} />
+          ) : null}
           refreshControl={
             Platform.OS !== 'web' ? (
               <RefreshControl

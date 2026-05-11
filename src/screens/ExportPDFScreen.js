@@ -1475,6 +1475,8 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
+  // Sessão 28.55: zIndex pra ficar acima dos cards do ScrollView sem cobrir
+  // a BottomTab (offset via prop `bottom` configurado no componente).
   stickyFooter: {
     position: 'absolute', left: 0, right: 0,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
@@ -1482,6 +1484,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: colors.border,
     shadowColor: colors.shadow, shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.05, shadowRadius: 4, elevation: 4,
+    zIndex: 5,
   },
   loadingContainer: {
     flex: 1,
@@ -1580,12 +1583,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary + '06',
   },
   productName: {
+    // Sessão 28.55: flex:1 + minWidth:0 + flexShrink:1 evita que nomes longos
+    // (ex. "Bolo branco com maracujá") empurrem o preço pra fora da row.
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     fontSize: fonts.regular,
     fontFamily: fontFamily.semiBold,
     fontWeight: '600',
     color: colors.text,
     marginLeft: spacing.md,
   },
+  productPriceWrap: { flexShrink: 0, marginLeft: 8 },
   productCategory: {
     fontSize: fonts.tiny,
     fontFamily: fontFamily.regular,
