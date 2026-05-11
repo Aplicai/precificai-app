@@ -238,16 +238,30 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
         if (raw) {
           const info = JSON.parse(raw);
-          if (info?.draft && info?.pendingAddType === 'embalagem') {
-            const existingItens = info.draft.itens || [];
-            const novoItem = {
-              tipo: 'embalagem',
-              id: result.lastInsertRowId,
-              nome: form.nome,
-              quantidade: 1,
-              custoUnit: precoUn || 0,
-              unidade: form.unidade_medida,
+          const novoItem = {
+            tipo: 'embalagem',
+            id: result.lastInsertRowId,
+            nome: form.nome,
+            quantidade: 1,
+            custoUnit: precoUn || 0,
+            unidade: form.unidade_medida,
+          };
+          // Sessão 28.54 — fix regressão cascata 3 níveis (produto → preparo → embalagem).
+          // Se pendingAddType veio no nested, inserimos no draft do preparo (não no produto).
+          if (info?.reopenNestedPreparo?.pendingAddType === 'embalagem') {
+            const nestedDraft = info.reopenNestedPreparo.draft || {};
+            const existing = nestedDraft.itens || [];
+            const updated = {
+              ...info,
+              reopenNestedPreparo: {
+                ...info.reopenNestedPreparo,
+                draft: { ...nestedDraft, itens: [...existing, novoItem] },
+                pendingAddType: undefined,
+              },
             };
+            await AsyncStorage.setItem('reopenEntityModalAfterEdit', JSON.stringify(updated));
+          } else if (info?.draft && info?.pendingAddType === 'embalagem') {
+            const existingItens = info.draft.itens || [];
             const updated = {
               ...info,
               draft: { ...info.draft, itens: [...existingItens, novoItem] },
@@ -262,6 +276,23 @@ export default function EmbalagemFormScreen({ route, navigation }) {
     try {
       const { notifyDataChanged } = await import('../utils/dataSync');
       notifyDataChanged('embalagens');
+    } catch (_) {}
+    // Sessão 28.54 — auto-retorno para a tab do reopenInfo (Produtos/Preparos)
+    // ao invés de cair na lista de Embalagens. Necessário pra cascata 3 níveis.
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+      if (raw) {
+        const info = JSON.parse(raw);
+        if (info?.mode === 'produto') {
+          navigation.navigate('Produtos', { screen: 'ProdutosList' });
+          return;
+        }
+        if (info?.mode === 'preparo') {
+          navigation.navigate('Preparos', { screen: 'Preparos' });
+          return;
+        }
+      }
     } catch (_) {}
     navigation.goBack();
   }

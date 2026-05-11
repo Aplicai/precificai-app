@@ -1147,13 +1147,13 @@ export default function DeliveryCombosScreen() {
                         >
                           <Feather name="plus" size={14} color={colors.text} />
                         </TouchableOpacity>
-                        {/* Sessão 28.51: exibe unidade do item ('un', 'kg', 'L', etc) */}
-                        {item.unidade && (
-                          <Text style={{ marginLeft: 6, fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.medium }}>
-                            {item.unidade}
-                          </Text>
-                        )}
                       </View>
+                      {/* Sessão 28.54: unidade FORA do stepper (era visualmente "colada" no botão +). */}
+                      {item.unidade && (
+                        <View style={styles.unidadeBadgeCombo}>
+                          <Text style={styles.unidadeBadgeComboText}>{item.unidade}</Text>
+                        </View>
+                      )}
                       <View style={{ flex: 1, alignItems: 'flex-end' }}>
                         <Text style={styles.modalItemV2CustoTotal}>{formatCurrency(totalItem)}</Text>
                         {qtd > 1 && (
@@ -1597,6 +1597,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  // Sessão 28.54: badge da unidade SEPARADO do stepper (antes o texto colava no "+").
+  unidadeBadgeCombo: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: colors.primary + '12',
+    minWidth: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unidadeBadgeComboText: {
+    fontSize: 11,
+    color: colors.primary,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
   },
   modalItemV2CustoTotal: {
     fontSize: fonts.small,

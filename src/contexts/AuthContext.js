@@ -6,7 +6,12 @@ import { captureException, addBreadcrumb, setUser as reportSetUser } from '../ut
 
 const AuthContext = createContext({});
 
-const INACTIVITY_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
+// Sessão 28.54 — timeout de inatividade aumentado de 1h → 4h.
+// Motivo: usuários testando o app por longos períodos (web, sem interação
+// constante com mouse/teclado) estavam sendo deslogados durante o uso.
+// 4 horas é margem suficiente para sessão de uso real sem comprometer
+// segurança em máquinas compartilhadas.
+const INACTIVITY_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -91,10 +96,21 @@ export function AuthProvider({ children }) {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      // Sessão 28.54 — security/UX: ignorar SIGNED_OUT espúrio quando o evento
+      // não vem com session=null vindo de uma chamada intencional. TOKEN_REFRESHED
+      // com sessão válida deve manter o user logado.
+      addBreadcrumb({ category: 'auth', message: `auth event: ${_event}` });
+      if (_event === 'TOKEN_REFRESHED' && !s) {
+        // Refresh falhou mas mantém o estado anterior — onAuthStateChange virá
+        // novamente com SIGNED_OUT real se a sessão estiver de fato inválida.
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('[AuthContext] TOKEN_REFRESHED sem session — ignorando para evitar logout espúrio');
+        }
+        return;
+      }
       setSession(s);
       setUser(s?.user ?? null);
       reportSetUser(s?.user ?? null);
-      addBreadcrumb({ category: 'auth', message: `auth event: ${_event}` });
       // Sessão 28.9 — APP-01: detecta quando user voltou do email de reset de senha.
       // Sinaliza pro AppNavigator forçar a tela ResetPassword.
       if (_event === 'PASSWORD_RECOVERY') {
