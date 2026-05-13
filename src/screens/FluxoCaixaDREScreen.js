@@ -20,13 +20,42 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency } from '../utils/calculations';
+import {
+  formatCurrency,
+  calcCustoIngrediente,
+  calcCustoPreparo,
+  parseDecimalBROrZero,
+} from '../utils/calculations';
 import InputField from '../components/InputField';
 import PickerSelect from '../components/PickerSelect';
 import EmptyState from '../components/EmptyState';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import CurrencyInputModal from '../components/CurrencyInputModal';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { showToast } from '../utils/toastBus';
+
+// safeNum defensivo — alinhado com o resto do app (evita NaN/Infinity)
+function safeNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+// Valida formato YYYY-MM-DD básico
+function isValidDateStr(s) {
+  if (!s || typeof s !== 'string') return false;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number);
+  if (m < 1 || m > 12) return false;
+  if (d < 1 || d > 31) return false;
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+}
+
+// Formata número como "1.234,56" para exibição no input modal de moeda
+function formatBRNumber(n) {
+  const num = safeNum(n);
+  return num.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
 
 const TABS = [
   { key: 'fluxo', label: 'Fluxo de Caixa', icon: 'trending-up' },
@@ -83,9 +112,11 @@ export default function FluxoCaixaDREScreen() {
 
   // Fluxo de caixa state
   const [movimentos, setMovimentos] = useState([]);
+  const [saldoInicial, setSaldoInicial] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null); // null = novo, obj = edit
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [valorModalOpen, setValorModalOpen] = useState(false);
 
   // Form state — modal
   const [formData, setFormData] = useState('');
@@ -93,6 +124,11 @@ export default function FluxoCaixaDREScreen() {
   const [formCategoria, setFormCategoria] = useState('');
   const [formDescricao, setFormDescricao] = useState('');
   const [formValor, setFormValor] = useState('');
+  const [formErrors, setFormErrors] = useState({});
+
+  // DRE — flag pra editar CMV manualmente quando não há vendas
+  const [cmvManual, setCmvManual] = useState(false);
+  const [vendasCount, setVendasCount] = useState(null); // null = ainda não calculado
 
   // DRE state — valores ajustáveis pelo user (após "Recalcular" puxa do banco)
   const [dre, setDre] = useState({
@@ -112,14 +148,35 @@ export default function FluxoCaixaDREScreen() {
     try {
       const db = await getDatabase();
       const { start, end } = monthRange(monthKey);
-      const rows = await db.getAllAsync(
-        'SELECT * FROM fluxo_caixa_movimentos WHERE data >= ? AND data <= ? ORDER BY data DESC',
-        [start, end]
-      ).catch((e) => {
-        console.warn('[FluxoCaixaDRE.load]', e?.message || e);
-        return [];
-      });
+
+      // Carrega movimentos do mês + saldo acumulado de meses anteriores em paralelo
+      const [rows, anteriores] = await Promise.all([
+        db.getAllAsync(
+          'SELECT * FROM fluxo_caixa_movimentos WHERE data >= ? AND data <= ? ORDER BY data DESC',
+          [start, end]
+        ).catch((e) => {
+          console.warn('[FluxoCaixaDRE.load]', e?.message || e);
+          return [];
+        }),
+        // Saldo inicial = soma de TUDO antes do primeiro dia do mês
+        db.getAllAsync(
+          'SELECT tipo, COALESCE(SUM(valor), 0) AS total FROM fluxo_caixa_movimentos WHERE data < ? GROUP BY tipo',
+          [start]
+        ).catch((e) => {
+          console.warn('[FluxoCaixaDRE.saldoInicial]', e?.message || e);
+          return [];
+        }),
+      ]);
+
       setMovimentos(rows || []);
+
+      let saldo = 0;
+      for (const r of (anteriores || [])) {
+        const v = safeNum(r.total);
+        if (r.tipo === 'entrada') saldo += v;
+        else saldo -= v;
+      }
+      setSaldoInicial(saldo);
     } finally {
       setLoading(false);
     }
@@ -132,16 +189,16 @@ export default function FluxoCaixaDREScreen() {
     let entradas = 0;
     let saidas = 0;
     for (const m of movimentos) {
-      const v = Number(m.valor) || 0;
+      const v = safeNum(m.valor);
       if (m.tipo === 'entrada') entradas += v;
       else saidas += v;
     }
     return {
       entradas, saidas,
-      saldoInicial: 0, // simplificação — pequeno negócio começa do zero no mês
-      saldoFinal: entradas - saidas,
+      saldoInicial,
+      saldoFinal: saldoInicial + entradas - saidas,
     };
-  }, [movimentos]);
+  }, [movimentos, saldoInicial]);
 
   function abrirNovo() {
     setEditing(null);
@@ -150,6 +207,7 @@ export default function FluxoCaixaDREScreen() {
     setFormCategoria('');
     setFormDescricao('');
     setFormValor('');
+    setFormErrors({});
     setModalOpen(true);
   }
 
@@ -159,21 +217,32 @@ export default function FluxoCaixaDREScreen() {
     setFormTipo(mov.tipo || 'entrada');
     setFormCategoria(mov.categoria || '');
     setFormDescricao(mov.descricao || '');
-    setFormValor(String(mov.valor ?? '').replace('.', ','));
+    setFormValor(formatBRNumber(mov.valor));
+    setFormErrors({});
     setModalOpen(true);
   }
 
+  function validateForm() {
+    const errs = {};
+    if (!isValidDateStr(formData)) errs.data = 'Data inválida (use AAAA-MM-DD).';
+    if (formTipo !== 'entrada' && formTipo !== 'saida') errs.tipo = 'Selecione entrada ou saída.';
+    const v = parseDecimalBROrZero(formValor);
+    if (!(v > 0)) errs.valor = 'Valor deve ser maior que zero.';
+    if (!formCategoria) errs.categoria = 'Selecione uma categoria.';
+    setFormErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
   async function salvarMovimento() {
-    const valor = parseNum(formValor);
-    if (!formData || !formTipo || valor <= 0) {
-      if (typeof window !== 'undefined' && window.alert) {
-        window.alert('Preencha data, tipo e valor (>0).');
-      }
+    if (!validateForm()) {
+      showToast('Verifique os campos do formulário', 'alert-triangle');
       return;
     }
+    const valor = parseDecimalBROrZero(formValor);
     try {
       const db = await getDatabase();
-      if (editing?.id) {
+      const isEdit = !!editing?.id;
+      if (isEdit) {
         await db.runAsync(
           'UPDATE fluxo_caixa_movimentos SET data = ?, tipo = ?, categoria = ?, descricao = ?, valor = ? WHERE id = ?',
           [formData, formTipo, formCategoria || null, formDescricao || null, valor, editing.id]
@@ -185,7 +254,7 @@ export default function FluxoCaixaDREScreen() {
         );
       }
       setModalOpen(false);
-      showToast('Movimento registrado', 'check-circle');
+      showToast(isEdit ? 'Movimento atualizado' : 'Movimento registrado', 'check-circle');
       await reloadMovimentos();
     } catch (e) {
       console.error('[FluxoCaixaDRE.salvar]', e);
@@ -259,45 +328,102 @@ export default function FluxoCaixaDREScreen() {
     setDreLoading(true);
     try {
       const db = await getDatabase();
-      const [vendas, produtos, despFixas, despVars, fluxoMov] = await Promise.all([
+      const { start, end } = monthRange(monthKey);
+      const [
+        vendas,
+        produtos,
+        produtoIngredientes,
+        produtoPreparos,
+        produtoEmbalagens,
+        despFixas,
+        despVars,
+        fluxoMov,
+      ] = await Promise.all([
+        // vendas.data armazena YYYY-MM (mês todo), bate exato com monthKey
         db.getAllAsync('SELECT * FROM vendas WHERE data = ?', [monthKey]).catch(() => []),
         db.getAllAsync('SELECT * FROM produtos').catch(() => []),
+        // Joins idênticos aos usados em MatrizBCGScreen pra calcular custo do produto
+        db.getAllAsync(
+          'SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'
+        ).catch(() => []),
+        db.getAllAsync(
+          'SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'
+        ).catch(() => []),
+        db.getAllAsync(
+          'SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'
+        ).catch(() => []),
         db.getAllAsync('SELECT * FROM despesas_fixas').catch(() => []),
         db.getAllAsync('SELECT * FROM despesas_variaveis').catch(() => []),
-        // outras receitas/despesas vêm de movimentos manuais
-        (async () => {
-          const { start, end } = monthRange(monthKey);
-          return db.getAllAsync(
-            'SELECT * FROM fluxo_caixa_movimentos WHERE data >= ? AND data <= ?',
-            [start, end]
-          ).catch(() => []);
-        })(),
+        db.getAllAsync(
+          'SELECT * FROM fluxo_caixa_movimentos WHERE data >= ? AND data <= ?',
+          [start, end]
+        ).catch(() => []),
       ]);
 
+      // Marca se há vendas no mês — usado pra mostrar mensagem informativa
+      setVendasCount((vendas || []).length);
+
+      // Agrupa ingredientes/preparos/embalagens por produto_id
+      const ingsByProd = {};
+      for (const r of (produtoIngredientes || [])) {
+        (ingsByProd[r.produto_id] = ingsByProd[r.produto_id] || []).push(r);
+      }
+      const prepsByProd = {};
+      for (const r of (produtoPreparos || [])) {
+        (prepsByProd[r.produto_id] = prepsByProd[r.produto_id] || []).push(r);
+      }
+      const embsByProd = {};
+      for (const r of (produtoEmbalagens || [])) {
+        (embsByProd[r.produto_id] = embsByProd[r.produto_id] || []).push(r);
+      }
+
+      // Calcula custo unitário REAL de cada produto somando ingredientes + preparos + embalagens
+      // (mesma fórmula usada em MatrizBCGScreen)
       const precoMap = {};
       const custoUnitMap = {};
-      (produtos || []).forEach(p => {
-        precoMap[p.id] = Number(p.preco_venda) || 0;
-        // Aproximação simples de CMV: deixa zero pra o usuário ajustar manualmente.
-        // Fórmula completa exigiria expandir ingredientes/preparos/embalagens
-        // de cada produto vendido — overkill pra V1 desta feature beta.
-        custoUnitMap[p.id] = 0;
-      });
+      for (const p of (produtos || [])) {
+        precoMap[p.id] = safeNum(p.preco_venda);
+        const ings = ingsByProd[p.id] || [];
+        const custoIng = ings.reduce(
+          (a, i) => a + safeNum(calcCustoIngrediente(
+            safeNum(i.preco_por_kg),
+            i.quantidade_utilizada,
+            i.unidade_medida,
+            i.unidade_medida
+          )),
+          0
+        );
+        const preps = prepsByProd[p.id] || [];
+        const custoPr = preps.reduce(
+          (a, pp) => a + safeNum(calcCustoPreparo(
+            safeNum(pp.custo_por_kg),
+            pp.quantidade_utilizada,
+            pp.unidade_medida || 'g'
+          )),
+          0
+        );
+        const embs = embsByProd[p.id] || [];
+        const custoEmb = embs.reduce(
+          (a, e) => a + safeNum(e.preco_unitario) * safeNum(e.quantidade_utilizada),
+          0
+        );
+        custoUnitMap[p.id] = custoIng + custoPr + custoEmb;
+      }
 
       let receitaBruta = 0;
       let cmv = 0;
       for (const v of (vendas || [])) {
-        const qtd = Number(v.quantidade) || 0;
+        const qtd = safeNum(v.quantidade);
         receitaBruta += qtd * (precoMap[v.produto_id] || 0);
         cmv += qtd * (custoUnitMap[v.produto_id] || 0);
       }
 
-      const despesasFixas = (despFixas || []).reduce((s, d) => s + (Number(d.valor) || 0), 0);
-      const totalVarPerc = (despVars || []).reduce((s, d) => s + (Number(d.percentual) || 0), 0);
+      const despesasFixas = (despFixas || []).reduce((s, d) => s + safeNum(d.valor), 0);
+      const totalVarPerc = (despVars || []).reduce((s, d) => s + safeNum(d.percentual), 0);
       // Impostos vem do somatório das variáveis que contêm "imposto" na descrição.
       const impostoPerc = (despVars || []).reduce((s, d) => {
         const desc = String(d.descricao || '').toLowerCase();
-        return desc.includes('imposto') ? s + (Number(d.percentual) || 0) : s;
+        return desc.includes('imposto') ? s + safeNum(d.percentual) : s;
       }, 0);
       const deducoes = receitaBruta * (impostoPerc / 100);
       const despesasVariaveis = receitaBruta * ((totalVarPerc - impostoPerc) / 100);
@@ -308,11 +434,17 @@ export default function FluxoCaixaDREScreen() {
       for (const m of (fluxoMov || [])) {
         const cat = String(m.categoria || '');
         if (m.tipo === 'entrada') {
-          if (cat === 'Outras Receitas') outrasReceitas += Number(m.valor) || 0;
+          if (cat === 'Outras Receitas') outrasReceitas += safeNum(m.valor);
         } else {
           // saidas operacionais já estão em despesasFixas/Vars; aqui só "Outras"
-          if (cat === 'Outros') outrasDespesas += Number(m.valor) || 0;
+          if (cat === 'Outros') outrasDespesas += safeNum(m.valor);
         }
+      }
+
+      // Se o user havia ativado edição manual de CMV mas agora existem vendas,
+      // mantém o valor automático (o flag só faz sentido quando vendasCount === 0).
+      if ((vendas || []).length > 0) {
+        setCmvManual(false);
       }
 
       setDre({
@@ -328,6 +460,7 @@ export default function FluxoCaixaDREScreen() {
       showToast('DRE recalculada', 'refresh-cw');
     } catch (e) {
       console.error('[FluxoCaixaDRE.recalcular]', e);
+      showToast('Erro ao recalcular DRE', 'alert-triangle');
     } finally {
       setDreLoading(false);
     }
@@ -377,6 +510,17 @@ export default function FluxoCaixaDREScreen() {
           >
             <Feather name="chevron-right" size={22} color={colors.primary} />
           </TouchableOpacity>
+          {monthKey !== getMonthKey(new Date()) ? (
+            <TouchableOpacity
+              onPress={() => setMonthKey(getMonthKey(new Date()))}
+              style={styles.todayChip}
+              accessibilityRole="button"
+              accessibilityLabel="Voltar para o mês atual"
+            >
+              <Feather name="calendar" size={12} color={colors.primary} />
+              <Text style={styles.todayChipText}>Hoje</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* Tabs (padrão DeliveryHubScreen) */}
@@ -422,6 +566,10 @@ export default function FluxoCaixaDREScreen() {
               loading={dreLoading}
               onRecalcular={recalcularDRE}
               onExportPDF={() => showToast('Exportação PDF em breve', 'file-text')}
+              vendasCount={vendasCount}
+              cmvManual={cmvManual}
+              onAtivarCmvManual={() => setCmvManual(true)}
+              monthLabel={formatMonthLabel(monthKey)}
             />
           )}
         </ScrollView>
@@ -440,14 +588,44 @@ export default function FluxoCaixaDREScreen() {
               </TouchableOpacity>
             </View>
             <ScrollView style={{ maxHeight: 480 }}>
-              <InputField
-                label="Data"
-                value={formData}
-                onChangeText={setFormData}
-                placeholder="AAAA-MM-DD"
-              />
+              {/* Data — usa <input type="date"> no web pra ter picker nativo */}
+              <Text style={styles.fieldLabel}>Data</Text>
+              {Platform.OS === 'web' ? (
+                <input
+                  type="date"
+                  value={formData}
+                  onChange={(e) => setFormData(e.target.value)}
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    padding: '10px 12px',
+                    fontSize: 14,
+                    fontFamily: 'inherit',
+                    backgroundColor: colors.inputBg,
+                    border: `1px solid ${formErrors.data ? colors.error : colors.border}`,
+                    borderRadius: borderRadius.sm,
+                    color: colors.text,
+                    marginBottom: 4,
+                    outline: 'none',
+                  }}
+                />
+              ) : (
+                <TextInput
+                  style={[
+                    styles.dateInputNative,
+                    formErrors.data && { borderColor: colors.error },
+                  ]}
+                  value={formData}
+                  onChangeText={setFormData}
+                  placeholder="AAAA-MM-DD"
+                  placeholderTextColor={colors.placeholder}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              )}
+              {formErrors.data ? <Text style={styles.errorText}>{formErrors.data}</Text> : null}
 
-              <Text style={styles.fieldLabel}>Tipo</Text>
+              <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Tipo</Text>
               <View style={styles.chipRow}>
                 {['entrada', 'saida'].map(t => {
                   const sel = formTipo === t;
@@ -479,21 +657,35 @@ export default function FluxoCaixaDREScreen() {
                 options={(formTipo === 'entrada' ? CATEGORIAS_ENTRADA : CATEGORIAS_SAIDA).map(c => ({ value: c, label: c }))}
                 onValueChange={setFormCategoria}
               />
+              {formErrors.categoria ? <Text style={styles.errorText}>{formErrors.categoria}</Text> : null}
 
               <InputField
-                label="Descrição"
+                label="Descrição (opcional)"
                 value={formDescricao}
                 onChangeText={setFormDescricao}
                 placeholder="Ex: Aluguel maio, pagamento fornecedor X"
               />
-              <InputField
-                label="Valor (R$)"
-                value={formValor}
-                onChangeText={setFormValor}
-                placeholder="0,00"
-                keyboardType="decimal-pad"
-                inputMode="decimal"
-              />
+
+              {/* Valor — abre CurrencyInputModal com formatação BR */}
+              <Text style={styles.fieldLabel}>Valor (R$)</Text>
+              <TouchableOpacity
+                onPress={() => setValorModalOpen(true)}
+                style={[
+                  styles.valorTrigger,
+                  formErrors.valor && { borderColor: colors.error },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Editar valor"
+              >
+                <Text style={[
+                  styles.valorTriggerText,
+                  !formValor && { color: colors.placeholder },
+                ]}>
+                  {formValor ? `R$ ${formValor}` : 'Toque para informar o valor'}
+                </Text>
+                <Feather name="edit-2" size={14} color={colors.textSecondary} />
+              </TouchableOpacity>
+              {formErrors.valor ? <Text style={styles.errorText}>{formErrors.valor}</Text> : null}
             </ScrollView>
             <View style={styles.modalFooter}>
               <TouchableOpacity
@@ -519,6 +711,25 @@ export default function FluxoCaixaDREScreen() {
         nome={confirmDelete?.descricao || confirmDelete?.categoria || 'este movimento'}
         onConfirm={() => excluirMovimento(confirmDelete?.id)}
         onCancel={() => setConfirmDelete(null)}
+      />
+
+      {/* Modal de edição de valor com formatação BR */}
+      <CurrencyInputModal
+        visible={valorModalOpen}
+        title="Valor do movimento"
+        prefix="R$"
+        value={formValor}
+        placeholder="0,00"
+        onConfirm={(v) => {
+          const n = parseDecimalBROrZero(v);
+          setFormValor(n > 0 ? formatBRNumber(n) : '');
+          // Limpa erro do valor ao confirmar
+          if (formErrors.valor && n > 0) {
+            setFormErrors(prev => ({ ...prev, valor: undefined }));
+          }
+          setValorModalOpen(false);
+        }}
+        onCancel={() => setValorModalOpen(false)}
       />
     </View>
   );
@@ -563,8 +774,10 @@ function FluxoTab({ loading, movimentos, resumo, onAdd, onEdit, onDelete, onImpo
       ) : movimentos.length === 0 ? (
         <EmptyState
           icon="inbox"
-          title="Nenhum movimento neste mês"
-          description="Use o botão acima pra registrar entradas e saídas, ou importe a receita do mês a partir das vendas cadastradas."
+          title="Nenhum movimento"
+          description="Toque em + Adicionar para registrar uma entrada ou saída. Você também pode importar a receita do mês a partir das vendas cadastradas."
+          ctaLabel="+ Adicionar"
+          onPress={onAdd}
         />
       ) : (
         movimentos.map(m => (
@@ -624,41 +837,67 @@ function SummaryCard({ label, value, color, icon, highlight }) {
 // ============================================================
 // Aba 2 — DRE (Demonstração de Resultado do Exercício)
 // ============================================================
-function DRETab({ dre, setDre, linhas, loading, onRecalcular, onExportPDF }) {
+function DRETab({
+  dre, setDre, linhas, loading, onRecalcular, onExportPDF,
+  vendasCount, cmvManual, onAtivarCmvManual, monthLabel,
+}) {
+  const receita = safeNum(dre.receitaBruta);
+
+  function pctText(valor) {
+    if (receita <= 0) return '';
+    const p = (safeNum(valor) / receita) * 100;
+    return `${p.toFixed(1).replace('.', ',')}%`;
+  }
+
   function setField(field, str) {
-    setDre(d => ({ ...d, [field]: parseNum(str) }));
+    setDre(d => ({ ...d, [field]: parseDecimalBROrZero(str) }));
   }
   function field(label, value, fieldName, options = {}) {
     return (
       <View style={styles.dreRow}>
         <Text style={[styles.dreLabel, options.indent && { paddingLeft: 16 }]}>{label}</Text>
-        <TextInput
-          style={styles.dreInput}
-          value={String(value).replace('.', ',')}
-          onChangeText={(t) => setField(fieldName, t)}
-          keyboardType="decimal-pad"
-          inputMode="decimal"
-          placeholder="0,00"
-          placeholderTextColor={colors.placeholder}
-        />
+        <View style={styles.dreValueCol}>
+          <TextInput
+            style={[styles.dreInput, options.disabled && { opacity: 0.55 }]}
+            value={String(value).replace('.', ',')}
+            onChangeText={(t) => setField(fieldName, t)}
+            keyboardType="decimal-pad"
+            inputMode="decimal"
+            placeholder="0,00"
+            placeholderTextColor={colors.placeholder}
+            editable={!options.disabled}
+          />
+          {options.showPct ? (
+            <Text style={styles.drePctText}>{pctText(value)}</Text>
+          ) : null}
+        </View>
       </View>
     );
   }
-  function readonly(label, value, { strong, signal } = {}) {
+  function readonly(label, value, { strong, signal, showPct } = {}) {
     const positive = (value || 0) >= 0;
     return (
       <View style={[styles.dreRow, strong && styles.dreRowStrong]}>
         <Text style={[styles.dreLabel, strong && styles.dreLabelStrong]}>{label}</Text>
-        <Text style={[
-          styles.dreReadonly,
-          strong && styles.dreReadonlyStrong,
-          signal && { color: positive ? colors.success : colors.error },
-        ]}>
-          {formatCurrency(value || 0)}
-        </Text>
+        <View style={styles.dreValueCol}>
+          <Text style={[
+            styles.dreReadonly,
+            strong && styles.dreReadonlyStrong,
+            signal && { color: positive ? colors.success : colors.error },
+          ]}>
+            {formatCurrency(value || 0)}
+          </Text>
+          {showPct ? <Text style={styles.drePctText}>{pctText(value)}</Text> : null}
+        </View>
       </View>
     );
   }
+
+  // CMV editável só quando: (a) não há vendas cadastradas e o user clicou
+  // pra editar manualmente, OU (b) o user quer ajustar mesmo com vendas.
+  // Por padrão, com vendas no mês o CMV vem do cálculo automático e fica
+  // editável (mantemos compat — DRE não trava ninguém).
+  const cmvAutoOff = vendasCount === 0 && !cmvManual;
 
   return (
     <>
@@ -676,29 +915,50 @@ function DRETab({ dre, setDre, linhas, loading, onRecalcular, onExportPDF }) {
       <View style={styles.dreCard}>
         <Text style={styles.dreHelper}>
           Valores puxados do seu cadastro de produtos, despesas e vendas. Edite qualquer linha pra ajustar manualmente.
+          A coluna cinza à direita mostra % sobre a Receita Bruta.
         </Text>
 
-        {field('RECEITA BRUTA', dre.receitaBruta, 'receitaBruta')}
-        {field('(-) Deduções (impostos)', dre.deducoes, 'deducoes', { indent: true })}
-        {field('(-) Devoluções', dre.devolucoes, 'devolucoes', { indent: true })}
-        {readonly('= RECEITA LÍQUIDA', linhas.receitaLiquida, { strong: true })}
+        {/* Aviso quando não há vendas registradas no mês */}
+        {vendasCount === 0 ? (
+          <View style={styles.dreWarning}>
+            <Feather name="alert-circle" size={14} color={colors.warning || '#B45309'} />
+            <Text style={styles.dreWarningText}>
+              Nenhuma venda registrada em {monthLabel}. CMV não pode ser calculado automaticamente.
+            </Text>
+            {!cmvManual ? (
+              <TouchableOpacity onPress={onAtivarCmvManual} style={styles.dreWarningCta}>
+                <Text style={styles.dreWarningCtaText}>Inserir manualmente</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
 
-        {field('(-) Custo dos Produtos Vendidos (CMV)', dre.cmv, 'cmv', { indent: true })}
-        {readonly('= LUCRO BRUTO', linhas.lucroBruto, { strong: true, signal: true })}
+        {field('RECEITA BRUTA', dre.receitaBruta, 'receitaBruta')}
+        {field('(-) Deduções (impostos)', dre.deducoes, 'deducoes', { indent: true, showPct: true })}
+        {field('(-) Devoluções', dre.devolucoes, 'devolucoes', { indent: true, showPct: true })}
+        {readonly('= RECEITA LÍQUIDA', linhas.receitaLiquida, { strong: true, showPct: true })}
+
+        {field('(-) Custo dos Produtos Vendidos (CMV)', dre.cmv, 'cmv', {
+          indent: true, showPct: true, disabled: cmvAutoOff,
+        })}
+        {readonly('= LUCRO BRUTO', linhas.lucroBruto, { strong: true, signal: true, showPct: true })}
 
         <View style={styles.dreRow}>
           <Text style={styles.dreLabel}>(-) Despesas Operacionais</Text>
-          <Text style={styles.dreReadonly}>{formatCurrency(linhas.totalOperacionais)}</Text>
+          <View style={styles.dreValueCol}>
+            <Text style={styles.dreReadonly}>{formatCurrency(linhas.totalOperacionais)}</Text>
+            <Text style={styles.drePctText}>{pctText(linhas.totalOperacionais)}</Text>
+          </View>
         </View>
-        {field('   Despesas Fixas', dre.despesasFixas, 'despesasFixas', { indent: true })}
-        {field('   Despesas Variáveis', dre.despesasVariaveis, 'despesasVariaveis', { indent: true })}
+        {field('   Despesas Fixas', dre.despesasFixas, 'despesasFixas', { indent: true, showPct: true })}
+        {field('   Despesas Variáveis', dre.despesasVariaveis, 'despesasVariaveis', { indent: true, showPct: true })}
 
-        {readonly('= LUCRO OPERACIONAL', linhas.lucroOperacional, { strong: true, signal: true })}
+        {readonly('= LUCRO OPERACIONAL', linhas.lucroOperacional, { strong: true, signal: true, showPct: true })}
 
-        {field('(-) Outras Despesas', dre.outrasDespesas, 'outrasDespesas', { indent: true })}
-        {field('(+) Outras Receitas', dre.outrasReceitas, 'outrasReceitas', { indent: true })}
+        {field('(-) Outras Despesas', dre.outrasDespesas, 'outrasDespesas', { indent: true, showPct: true })}
+        {field('(+) Outras Receitas', dre.outrasReceitas, 'outrasReceitas', { indent: true, showPct: true })}
 
-        {readonly('= LUCRO LÍQUIDO', linhas.lucroLiquido, { strong: true, signal: true })}
+        {readonly('= LUCRO LÍQUIDO', linhas.lucroLiquido, { strong: true, signal: true, showPct: true })}
       </View>
 
       <Text style={styles.dreFooter}>
@@ -730,6 +990,43 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary + '10',
   },
   monthLabel: { fontSize: fonts.regular, fontFamily: fontFamily.semiBold, color: colors.text, textTransform: 'capitalize' },
+  todayChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    marginLeft: spacing.sm,
+    paddingVertical: 6, paddingHorizontal: 10,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1, borderColor: colors.primary + '40',
+    backgroundColor: colors.primary + '10',
+  },
+  todayChipText: {
+    fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.primary,
+  },
+
+  // Modal — campos
+  dateInputNative: {
+    height: 44,
+    paddingHorizontal: 12,
+    backgroundColor: colors.inputBg,
+    borderWidth: 1, borderColor: colors.border,
+    borderRadius: borderRadius.sm,
+    color: colors.text,
+    fontSize: 14,
+  },
+  errorText: {
+    fontSize: 11, color: colors.error, marginTop: 4, marginBottom: 4,
+    fontFamily: fontFamily.medium,
+  },
+  valorTrigger: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    minHeight: 48, paddingHorizontal: 12, paddingVertical: 10,
+    backgroundColor: colors.inputBg,
+    borderWidth: 1.5, borderColor: colors.primary + '40',
+    borderRadius: borderRadius.sm,
+    marginBottom: 4,
+  },
+  valorTriggerText: {
+    fontSize: 16, fontFamily: fontFamily.semiBold, color: colors.text,
+  },
 
   // Tabs (replica do DeliveryHub)
   tabsRow: {
@@ -885,6 +1182,37 @@ const styles = StyleSheet.create({
     color: colors.text, textAlign: 'right',
   },
   dreReadonlyStrong: { fontSize: 15, fontFamily: fontFamily.bold },
+  dreValueCol: {
+    alignItems: 'flex-end',
+    minWidth: 130,
+  },
+  drePctText: {
+    fontSize: 10,
+    fontFamily: fontFamily.medium,
+    color: colors.textSecondary,
+    marginTop: 2,
+    paddingHorizontal: 10,
+  },
+  dreWarning: {
+    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6,
+    backgroundColor: (colors.warning || '#FBBF24') + '15',
+    borderWidth: 1, borderColor: (colors.warning || '#FBBF24') + '50',
+    borderRadius: borderRadius.sm,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  dreWarningText: {
+    flex: 1, fontSize: 12, color: colors.text, lineHeight: 16,
+    fontFamily: fontFamily.medium,
+  },
+  dreWarningCta: {
+    paddingVertical: 6, paddingHorizontal: 10,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.primary,
+  },
+  dreWarningCtaText: {
+    fontSize: 11, color: '#fff', fontFamily: fontFamily.semiBold,
+  },
   dreFooter: {
     fontSize: 11, color: colors.textSecondary,
     textAlign: 'center', marginTop: spacing.md,
