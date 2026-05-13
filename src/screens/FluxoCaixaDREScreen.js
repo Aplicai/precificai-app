@@ -799,10 +799,11 @@ function DRETab({
       <View style={styles.dreHelperBox}>
         <Feather name="info" size={14} color={colors.primary} />
         <Text style={styles.dreHelperText}>
-          Solução solitária: todas as linhas são editáveis. Use{' '}
+          Você pode editar qualquer valor desta DRE. Pra agilizar, use{' '}
           <Text style={{ fontFamily: fontFamily.semiBold }}>Importar do Fluxo</Text>
-          {' '}pra puxar Receita Bruta do mês ou ligue o toggle nas Despesas Fixas
-          pra usar o cadastro do Financeiro. Coluna cinza = % sobre Receita Bruta.
+          {' '}(puxa a Receita Bruta automaticamente) ou ative{' '}
+          <Text style={{ fontFamily: fontFamily.semiBold }}>Usar cadastro do Financeiro</Text>
+          {' '}nas Despesas Fixas. Os valores em cinza mostram o % de cada item sobre a Receita Bruta.
         </Text>
       </View>
 
