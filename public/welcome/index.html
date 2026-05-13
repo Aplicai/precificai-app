@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Precificaí — app de precificação inteligente para pequenos negócios alimentícios. Confeitarias, lanchonetes, food trucks e produtores artesanais." />
+  <meta name="theme-color" content="#004d47" />
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/manifest.json" />
+  <title>Precificaí — Precificação inteligente para seu negócio</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: #004d47;
+      color: #FFFFFF;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .hero {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 64px 24px 32px;
+      text-align: center;
+      max-width: 720px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .logo {
+      width: 96px;
+      height: 96px;
+      border-radius: 22px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+      margin-bottom: 28px;
+    }
+    h1 {
+      font-size: 40px;
+      font-weight: 700;
+      margin: 0 0 12px;
+      letter-spacing: -0.5px;
+    }
+    .tagline {
+      font-size: 18px;
+      opacity: 0.85;
+      margin: 0 0 36px;
+      max-width: 540px;
+    }
+    .cta {
+      display: inline-block;
+      background: #FFFFFF;
+      color: #004d47;
+      font-weight: 700;
+      font-size: 16px;
+      text-decoration: none;
+      padding: 14px 32px;
+      border-radius: 999px;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+    }
+    .cta:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24); }
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-top: 56px;
+      width: 100%;
+      max-width: 720px;
+    }
+    .feature {
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 18px;
+      text-align: left;
+    }
+    .feature h3 {
+      margin: 0 0 6px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .feature p {
+      margin: 0;
+      font-size: 13px;
+      opacity: 0.8;
+    }
+    footer {
+      background: #003B36;
+      color: #FFFFFF;
+      padding: 28px 24px;
+      text-align: center;
+      font-size: 14px;
+    }
+    footer a {
+      color: #FFFFFF;
+      text-decoration: underline;
+      margin: 0 12px;
+      opacity: 0.9;
+    }
+    footer a:hover { opacity: 1; }
+    .footer-meta {
+      margin-top: 12px;
+      font-size: 12px;
+      opacity: 0.6;
+    }
+    @media (max-width: 600px) {
+      h1 { font-size: 30px; }
+      .tagline { font-size: 16px; }
+      .hero { padding: 40px 20px 24px; }
+    }
+  </style>
+</head>
+<body>
+
+  <main class="hero">
+    <img src="/icon-192.png" alt="Logo Precificaí" class="logo" />
+    <h1>Precificaí</h1>
+    <p class="tagline">Precificação inteligente para confeitarias, lanchonetes, food trucks e produtores artesanais.</p>
+
+    <a href="/login" class="cta">Acessar o app</a>
+
+    <section class="features" aria-label="Recursos">
+      <div class="feature">
+        <h3>Custo real, preço justo</h3>
+        <p>Calcule CMV, embalagens, mão de obra e impostos automaticamente.</p>
+      </div>
+      <div class="feature">
+        <h3>Combos &amp; Kits</h3>
+        <p>Monte combinações com margens claras e preço de venda sugerido.</p>
+      </div>
+      <div class="feature">
+        <h3>Fluxo de Caixa &amp; DRE</h3>
+        <p>Acompanhe entradas, saídas e resultado mensal em um só lugar.</p>
+      </div>
+      <div class="feature">
+        <h3>Funciona offline</h3>
+        <p>Instalável como app, com cache local — anote vendas mesmo sem internet.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <nav>
+      <a href="/privacy">Política de Privacidade</a>
+      <span aria-hidden="true">·</span>
+      <a href="/terms">Termos de Serviço</a>
+      <span aria-hidden="true">·</span>
+      <a href="mailto:contato@aplicaiconsultoria.com.br">contato@aplicaiconsultoria.com.br</a>
+    </nav>
+    <div class="footer-meta">
+      © 2026 Aplicaí Consultoria. Todos os direitos reservados.
+    </div>
+  </footer>
+
+</body>
+</html>
