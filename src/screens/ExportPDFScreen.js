@@ -10,6 +10,7 @@ import { getDatabase } from '../database/database';
 import { converterParaBase, formatCurrency, formatPercent, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, calcMarkup, calcPrecoSugerido } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import Loader from '../components/Loader';
+import { openPrintableHTML } from '../utils/openPrintableHTML';
 
 const CATEGORY_COLORS = [
   '#004d47', '#265bb0', '#e3b842', '#e3704d', '#6a4fb0',
@@ -1329,124 +1330,43 @@ function exportarPDF(htmlContent, preOpenedWindow) {
 
   const filename = `ficha-${Date.now()}.html`;
 
-  // -------------------------------------------------------------------------
-  // Safari iOS: NEM `iframe.contentWindow.print()` NEM `window.print()` em
-  // popup funcionam de forma confiável. Vamos direto para o fallback Blob +
-  // anchor download + window.open — única estratégia que permite ao usuário
-  // gerar o PDF via menu nativo de compartilhamento.
-  // -------------------------------------------------------------------------
-  if (isIOSSafari()) {
-    try {
-      downloadBlobFallback(htmlContent, filename);
-      // Se uma janela foi pré-aberta antes do await, fechar — não vamos usar.
-      if (preOpenedWindow && !preOpenedWindow.closed) {
-        try { preOpenedWindow.close(); } catch (_) {}
-      }
-    } catch (e) {
-      try { window.alert('Falha ao gerar PDF: ' + (e?.message || e)); } catch (_) {}
-    }
-    return;
+  // M-3 defense-in-depth XSS:
+  // Antes:  `win.document.write(htmlContent)` em window.open('', '_blank') —
+  //         o novo documento herdava window.location.origin do app, então
+  //         qualquer escape falho em campos do usuário daria acesso ao
+  //         localStorage (incluindo token Supabase).
+  // Agora:  Blob URL (origem opaca/null) → isolamento total do site principal.
+  //
+  // Trade-off: perdemos `win.print()` automático. O usuário aciona Ctrl/Cmd+P
+  // ou (iOS Safari) usa o menu nativo de Compartilhar > Imprimir.
+
+  // Se havia uma janela pré-aberta (truque antigo p/ não cair em popup blocker),
+  // fechamos — o openPrintableHTML abre uma nova aba isolada.
+  if (preOpenedWindow && !preOpenedWindow.closed) {
+    try { preOpenedWindow.close(); } catch (_) {}
   }
 
   try {
-    // Se já temos uma janela pré-aberta (aberta antes do await), usar ela
-    if (preOpenedWindow && !preOpenedWindow.closed) {
-      preOpenedWindow.document.write(htmlContent);
-      preOpenedWindow.document.close();
-      setTimeout(() => {
-        try { preOpenedWindow.print(); } catch(e) {}
-      }, 600);
+    const ok = openPrintableHTML(htmlContent, filename);
+    if (!ok) {
+      // Fallback de último recurso — mantém o downloadBlobFallback existente,
+      // que já usa Blob URL (também seguro).
+      downloadBlobFallback(htmlContent, filename);
       return;
     }
-
-    if (isMobileWeb()) {
-      // Mobile (Android Chrome etc.): usar iframe fullscreen como overlay
-      // para não sair da página. Em Safari iOS já caímos no branch acima.
-      const overlay = document.createElement('div');
-      overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;';
-
-      // Barra de ações no topo
-      const toolbar = document.createElement('div');
-      toolbar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#004d47;';
-
-      const printBtn = document.createElement('button');
-      printBtn.textContent = 'Imprimir / Salvar PDF';
-      printBtn.style.cssText = 'background:#fff;color:#004d47;border:none;padding:8px 18px;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;';
-      printBtn.onclick = () => {
-        // Try/catch + fallback: se print() falhar (ex.: WebView estranho),
-        // dispara o download Blob.
-        try {
-          iframe.contentWindow.print();
-        } catch (e) {
-          downloadBlobFallback(htmlContent, filename);
-        }
-      };
-
-      // Botão extra: download direto do HTML (atalho explícito ao fallback).
-      const dlBtn = document.createElement('button');
-      dlBtn.textContent = 'Baixar';
-      dlBtn.style.cssText = 'background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.4);padding:8px 14px;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;margin-left:8px;';
-      dlBtn.onclick = () => downloadBlobFallback(htmlContent, filename);
-
-      const closeBtn = document.createElement('button');
-      closeBtn.textContent = 'Fechar';
-      closeBtn.style.cssText = 'background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.4);padding:8px 18px;border-radius:8px;font-weight:600;font-size:14px;cursor:pointer;margin-left:8px;';
-      closeBtn.onclick = () => document.body.removeChild(overlay);
-
-      const actions = document.createElement('div');
-      actions.style.cssText = 'display:flex;align-items:center;';
-      actions.appendChild(printBtn);
-      actions.appendChild(dlBtn);
-      actions.appendChild(closeBtn);
-      toolbar.appendChild(document.createElement('div'));
-      toolbar.appendChild(actions);
-
-      const iframe = document.createElement('iframe');
-      iframe.style.cssText = 'flex:1;width:100%;border:none;background:#fff;border-radius:0;';
-      overlay.appendChild(toolbar);
-      overlay.appendChild(iframe);
-      document.body.appendChild(overlay);
-
-      const doc = iframe.contentDocument || iframe.contentWindow.document;
-      doc.open();
-      doc.write(htmlContent);
-      doc.close();
-    } else {
-      // Desktop: abrir nova aba
-      const win = window.open('', '_blank');
-      if (win) {
-        win.document.write(htmlContent);
-        win.document.close();
-        setTimeout(() => win.print(), 500);
+    // Mensagem orientativa — varia conforme ambiente.
+    try {
+      const { showToast } = require('../utils/toastBus');
+      if (isIOSSafari()) {
+        showToast('PDF gerado · use Compartilhar para Imprimir/Salvar', 'printer', 4000);
+      } else if (isMobileWeb()) {
+        showToast('PDF aberto · use o menu do navegador para imprimir', 'printer', 3500);
       } else {
-        // Popup bloqueado — tenta iframe oculto. Se ainda assim falhar
-        // (try/catch abaixo), cai no Blob download.
-        try {
-          const iframe = document.createElement('iframe');
-          iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:none;';
-          document.body.appendChild(iframe);
-          const doc = iframe.contentDocument || iframe.contentWindow.document;
-          doc.open();
-          doc.write(htmlContent);
-          doc.close();
-          setTimeout(() => {
-            try {
-              iframe.contentWindow.focus();
-              iframe.contentWindow.print();
-            } catch (e) {
-              downloadBlobFallback(htmlContent, filename);
-            }
-            setTimeout(() => {
-              try { document.body.removeChild(iframe); } catch (_) {}
-            }, 1000);
-          }, 500);
-        } catch (e) {
-          downloadBlobFallback(htmlContent, filename);
-        }
+        showToast('PDF aberto em nova aba · use Ctrl+P para imprimir', 'printer', 3500);
       }
-    }
+    } catch (_) {}
   } catch (e) {
-    // Qualquer falha não prevista no caminho web → fallback universal.
+    // Qualquer falha não prevista — fallback universal (também Blob).
     downloadBlobFallback(htmlContent, filename);
   }
 }

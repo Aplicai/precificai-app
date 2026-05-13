@@ -14,11 +14,25 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+// === Sessão 28.68 — security hardening (L-2) ===
+// CORS whitelist explícita. Antes era 'Access-Control-Allow-Origin: *'.
+const ALLOWED_ORIGINS = new Set<string>([
+  'https://app.precificaiapp.com',
+  'https://precificaiapp.com',
+  'http://localhost:8081',
+  'http://localhost:19006',
+]);
+
+function corsHeaders(req?: Request): Record<string, string> {
+  const origin = req?.headers.get('Origin') || '';
+  const allow = ALLOWED_ORIGINS.has(origin) ? origin : 'https://app.precificaiapp.com';
+  return {
+    'Access-Control-Allow-Origin': allow,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  };
+}
 
 interface FeedbackPayload {
   mensagem: string;
@@ -40,12 +54,12 @@ function escapeHtml(s: string): string {
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders(req) });
   }
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     });
   }
 
@@ -54,7 +68,7 @@ serve(async (req: Request) => {
     if (!payload?.mensagem || typeof payload.mensagem !== 'string') {
       return new Response(JSON.stringify({ error: 'mensagem é obrigatória' }), {
         status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       });
     }
 
@@ -66,7 +80,7 @@ serve(async (req: Request) => {
       // Sem API key — feedback só ficou na tabela. Retorna sucesso "soft".
       return new Response(JSON.stringify({ ok: true, emailSent: false, reason: 'RESEND_API_KEY not configured' }), {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       });
     }
 
@@ -128,20 +142,20 @@ Enviado pela Central de Suporte do app Precificaí.`;
       // Não falha o user — feedback já foi salvo na tabela.
       return new Response(JSON.stringify({ ok: true, emailSent: false, resendStatus: resendRes.status }), {
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       });
     }
 
     const data = await resendRes.json();
     return new Response(JSON.stringify({ ok: true, emailSent: true, id: data.id }), {
       status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     });
   } catch (e) {
     console.error('[send-feedback-email]', e);
     return new Response(JSON.stringify({ error: String((e as Error).message || e) }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     });
   }
 });

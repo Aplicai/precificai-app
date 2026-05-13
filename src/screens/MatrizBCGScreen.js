@@ -9,13 +9,7 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo } from '../utils/calculations';
-
-// Safe number helper: evita NaN/Infinity vazando para cálculos financeiros.
-function safeNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-}
+import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, safeNum } from '../utils/calculations';
 
 // Classification config (audit P1-07): nomes afetivos em vez de jargão BCG.
 // Chaves mantidas em português gastronômico para compatibilidade com dados

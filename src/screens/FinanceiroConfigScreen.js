@@ -49,7 +49,7 @@ const SUGESTOES_VARIAVEIS = [
   'Imposto sobre serviço', 'ICMS', 'Contribuição sindical',
 ];
 
-export default function ConfiguracaoScreen() {
+export default function FinanceiroConfigScreen() {
   const { isDesktop } = useResponsiveLayout();
   const isFocused = useIsFocused();
   const navigation = useNavigation();
@@ -207,7 +207,7 @@ export default function ConfiguracaoScreen() {
     setFinStatus(status);
     } catch (e) {
       setLoadError(true);
-      if (typeof console !== 'undefined' && console.error) console.error('[ConfiguracaoScreen.loadData]', e);
+      if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.loadData]', e);
     }
   }
 
@@ -232,7 +232,7 @@ export default function ConfiguracaoScreen() {
       showSaved('Volume de vendas salvo');
       loadData();
     } catch (e) {
-      console.warn('[ConfiguracaoScreen.salvarVendasCanal] coluna inexistente?', e?.message);
+      console.warn('[FinanceiroConfigScreen.salvarVendasCanal] coluna inexistente?', e?.message);
       showError('Não foi possível salvar (coluna pode estar faltando).');
     }
   }
@@ -245,7 +245,7 @@ export default function ConfiguracaoScreen() {
       return Alert.alert('Valor inválido', 'A margem de segurança não pode ser negativa.');
     }
     if (valor > 30) {
-      // Aviso não-bloqueante (proxy via Alert porque ConfiguracaoScreen ainda usa modais antigos)
+      // Aviso não-bloqueante (proxy via Alert porque FinanceiroConfigScreen ainda usa modais antigos)
       Alert.alert(
         'Valor incomum',
         'Margem de segurança acima de 30% é incomum. Confirme se faz sentido para seu negócio.',
@@ -358,7 +358,7 @@ export default function ConfiguracaoScreen() {
       showSaved('Faturamento salvo');
       loadData();
     } catch (e) {
-      if (typeof console !== 'undefined' && console.error) console.error('[ConfiguracaoScreen.salvarFaturamentoMedio]', e);
+      if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.salvarFaturamentoMedio]', e);
       showError('Não foi possível salvar o faturamento.');
     }
   }
@@ -738,7 +738,7 @@ export default function ConfiguracaoScreen() {
                       showSaved('Margem salva');
                       await loadData();
                     } catch (e) {
-                      console.error('[ConfiguracaoScreen.lucro.save]', e);
+                      console.error('[FinanceiroConfigScreen.lucro.save]', e);
                     }
                   }
                 },
@@ -810,7 +810,7 @@ export default function ConfiguracaoScreen() {
                           showSaved('Margem de segurança salva');
                           await loadData();
                         } catch (e) {
-                          console.error('[ConfiguracaoScreen.salvarMargemSeguranca]', e);
+                          console.error('[FinanceiroConfigScreen.salvarMargemSeguranca]', e);
                           showError('Falha ao salvar margem de segurança. Tente de novo.');
                         }
                       },
@@ -1319,7 +1319,7 @@ export default function ConfiguracaoScreen() {
 
         {/* Desktop: 2-column layout */}
         {/* Sessão 28.50 — BUG FIX CRÍTICO: FormContent/SummaryPanel são funções
-            declaradas DENTRO do ConfiguracaoScreen. Usá-las como <Component />
+            declaradas DENTRO do FinanceiroConfigScreen. Usá-las como <Component />
             faz o React tratar como "tipo novo" a cada render (nova ref de fn)
             → unmount/mount da subárvore → TextInput de descrição perde foco
             a cada keystroke. Fix: invocar como FUNÇÃO ({FormContent()}) ao invés
@@ -1360,7 +1360,7 @@ export default function ConfiguracaoScreen() {
                         }
                       }
                     } catch (e) {
-                      console.warn('[ConfiguracaoScreen.salvarVoltar]', e);
+                      console.warn('[FinanceiroConfigScreen.salvarVoltar]', e);
                     }
                   }, 600);
                 }}

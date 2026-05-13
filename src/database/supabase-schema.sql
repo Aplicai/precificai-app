@@ -417,3 +417,30 @@ BEGIN
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_fluxo_caixa_user_data ON fluxo_caixa_movimentos(user_id, data DESC);
+
+-- ============================================================
+-- BETA FEATURES: whitelist por usuario (substitui hardcode no bundle)
+-- Para aplicar em base existente, rode `migration-beta-features.sql`.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS beta_features (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  feature_key TEXT NOT NULL,
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_id, feature_key)
+);
+
+ALTER TABLE beta_features ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'beta_features' AND policyname = 'users_read_own_beta'
+  ) THEN
+    EXECUTE 'CREATE POLICY "users_read_own_beta" ON beta_features FOR SELECT USING (auth.uid() = user_id)';
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_beta_features_user ON beta_features(user_id);

@@ -23,6 +23,15 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = 'claude-sonnet-4-5';
 
+// === Sessão 28.68 — security hardening (L-2) ===
+// CORS whitelist explícita. Antes era 'Access-Control-Allow-Origin: *'.
+const ALLOWED_ORIGINS = new Set<string>([
+  'https://app.precificaiapp.com',
+  'https://precificaiapp.com',
+  'http://localhost:8081',
+  'http://localhost:19006',
+]);
+
 // === Sessão 28.68 — security hardening (H-1) ===
 // Rate-limit in-memory por user.id (persiste enquanto a edge function estiver
 // quente). Suficiente pra evitar abuso massivo da ANTHROPIC_API_KEY. Em caso
@@ -77,15 +86,15 @@ interface SuggestResponse {
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders() });
+    return new Response('ok', { headers: corsHeaders(req) });
   }
   if (req.method !== 'POST') {
-    return json({ error: 'method_not_allowed' }, 405);
+    return json({ error: 'method_not_allowed' }, 405, req);
   }
 
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) {
-    return json({ error: 'missing_api_key', detail: 'ANTHROPIC_API_KEY não configurada no Supabase' }, 500);
+    return json({ error: 'missing_api_key', detail: 'ANTHROPIC_API_KEY não configurada no Supabase' }, 500, req);
   }
   const model = Deno.env.get('ANTHROPIC_MODEL') ?? DEFAULT_MODEL;
 
@@ -95,7 +104,7 @@ serve(async (req) => {
   const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
   const authHeader = req.headers.get('Authorization') ?? '';
   if (!authHeader || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    return json({ error: 'unauthorized' }, 401);
+    return json({ error: 'unauthorized' }, 401, req);
   }
   let userId: string;
   try {
@@ -103,10 +112,10 @@ serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
     const { data: u, error: uErr } = await userClient.auth.getUser();
-    if (uErr || !u?.user) return json({ error: 'unauthorized' }, 401);
+    if (uErr || !u?.user) return json({ error: 'unauthorized' }, 401, req);
     userId = u.user.id;
   } catch {
-    return json({ error: 'unauthorized' }, 401);
+    return json({ error: 'unauthorized' }, 401, req);
   }
 
   const rl = checkRateLimit(userId);
@@ -119,7 +128,7 @@ serve(async (req) => {
         headers: {
           'Content-Type': 'application/json',
           'Retry-After': String(retryAfterSec),
-          ...corsHeaders(),
+          ...corsHeaders(req),
         },
       },
     );
@@ -130,25 +139,25 @@ serve(async (req) => {
   try {
     payload = await req.json();
   } catch {
-    return json({ error: 'invalid_json' }, 400);
+    return json({ error: 'invalid_json' }, 400, req);
   }
 
   if (!payload?.produto_nome || typeof payload.cmv !== 'number' || payload.cmv < 0) {
-    return json({ error: 'missing_fields', detail: 'produto_nome e cmv (>=0) são obrigatórios' }, 400);
+    return json({ error: 'missing_fields', detail: 'produto_nome e cmv (>=0) são obrigatórios' }, 400, req);
   }
 
   // === Sessão 28.68 — payload size validation (H-1) ===
   if (typeof payload.produto_nome !== 'string' || payload.produto_nome.length > MAX_PRODUTO_NOME_LEN) {
-    return json({ error: 'payload_too_large', detail: `produto_nome > ${MAX_PRODUTO_NOME_LEN} chars` }, 400);
+    return json({ error: 'payload_too_large', detail: `produto_nome > ${MAX_PRODUTO_NOME_LEN} chars` }, 400, req);
   }
   if (payload.cmv > MAX_CMV) {
-    return json({ error: 'payload_invalid', detail: `cmv > ${MAX_CMV}` }, 400);
+    return json({ error: 'payload_invalid', detail: `cmv > ${MAX_CMV}` }, 400, req);
   }
   if (typeof payload.categoria === 'string' && payload.categoria.length > MAX_CATEGORIA_LEN) {
     payload.categoria = payload.categoria.slice(0, MAX_CATEGORIA_LEN);
   }
   if (typeof payload.observacoes === 'string' && payload.observacoes.length > MAX_OBSERVACOES_LEN) {
-    return json({ error: 'payload_too_large', detail: `observacoes > ${MAX_OBSERVACOES_LEN} chars` }, 400);
+    return json({ error: 'payload_too_large', detail: `observacoes > ${MAX_OBSERVACOES_LEN} chars` }, 400, req);
   }
   if (Array.isArray(payload.historico) && payload.historico.length > MAX_HISTORICO_ITEMS) {
     payload.historico = payload.historico.slice(0, MAX_HISTORICO_ITEMS);
@@ -175,12 +184,12 @@ serve(async (req) => {
       }),
     });
   } catch (e) {
-    return json({ error: 'upstream_unreachable', detail: String(e?.message ?? e) }, 502);
+    return json({ error: 'upstream_unreachable', detail: String(e?.message ?? e) }, 502, req);
   }
 
   if (!claudeResp.ok) {
     const text = await claudeResp.text();
-    return json({ error: 'upstream_error', status: claudeResp.status, detail: text.slice(0, 500) }, 502);
+    return json({ error: 'upstream_error', status: claudeResp.status, detail: text.slice(0, 500) }, 502, req);
   }
 
   const claudeData = await claudeResp.json();
@@ -188,11 +197,11 @@ serve(async (req) => {
   const parsed = safeParseJson(text);
 
   if (!parsed) {
-    return json({ error: 'invalid_model_output', raw: text.slice(0, 800) }, 502);
+    return json({ error: 'invalid_model_output', raw: text.slice(0, 800) }, 502, req);
   }
 
   const normalized = normalize(parsed, payload);
-  return json(normalized);
+  return json(normalized, 200, req);
 });
 
 const SYSTEM_PROMPT = `Você é um especialista em precificação para pequenos negócios brasileiros (food service, comércio, varejo).
@@ -299,16 +308,20 @@ function num(v: any, fallback: number): number {
 function clamp(n: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, n)); }
 function round2(n: number) { return Math.round(n * 100) / 100; }
 
-function json(obj: unknown, status = 200) {
+function json(obj: unknown, status = 200, req?: Request) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+    headers: { 'Content-Type': 'application/json', ...corsHeaders(req) },
   });
 }
-function corsHeaders() {
+// Sessão 28.68 (L-2): CORS whitelist explícita.
+function corsHeaders(req?: Request): Record<string, string> {
+  const origin = req?.headers.get('Origin') || '';
+  const allow = ALLOWED_ORIGINS.has(origin) ? origin : 'https://app.precificaiapp.com';
   return {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST,OPTIONS',
+    'Access-Control-Allow-Origin': allow,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Vary': 'Origin',
   };
 }

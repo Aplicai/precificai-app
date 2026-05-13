@@ -20,17 +20,12 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import {
   formatCurrency, calcCustoIngrediente, calcCustoPreparo,
-  getDivisorRendimento,
+  getDivisorRendimento, safeNum,
 } from '../utils/calculations';
 import { calcSugestaoDeliveryCompleta } from '../utils/deliveryPricing';
 import { calcularPrecoBalcao } from '../utils/precificacao';
 import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
-
-const safeNum = (v) => {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-};
 
 export default function SimuladorLoteScreen() {
   const navigation = useNavigation();

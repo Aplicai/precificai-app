@@ -17,7 +17,7 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import SearchBar from '../components/SearchBar';
-import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem } from '../utils/calculations';
+import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum } from '../utils/calculations';
 // Sprint 2 S3 — fonte única da verdade para precificação delivery (substitui fórmula inline duplicada).
 import { calcResultadoDelivery, sugerirPrecoDelivery, calcSugestaoDeliveryCompleta } from '../utils/deliveryPricing';
 // Sessão 28.12 (D-22b): adapter pra extrair imposto% das despesas variáveis
@@ -33,11 +33,6 @@ const isWeb = Platform.OS === 'web';
 const PLAT_NUMERIC_FIELDS = Object.freeze([
   'taxa_plataforma', 'taxa_entrega', 'comissao_app', 'desconto_promocao', 'embalagem_extra',
 ]);
-
-function safeNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-}
 
 const TABS = [
   { key: 'plataformas', label: 'Plataformas', icon: 'smartphone' },

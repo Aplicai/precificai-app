@@ -16,8 +16,10 @@ import { Feather } from '@expo/vector-icons';
 import { supabase } from '../config/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import { MIN_PASSWORD_LENGTH, validatePassword, passwordCriteria } from '../utils/passwordPolicy';
 
-const MIN_PASSWORD_LENGTH = 6;
+// Sessão 28.68 (L-3): política unificada com RegisterScreen — 8 chars +
+// maiúscula + minúscula + número + símbolo. Antes aceitava apenas 6 chars.
 
 export default function ResetPasswordScreen({ navigation }) {
   const { clearPasswordRecovery } = useAuth();
@@ -47,8 +49,10 @@ export default function ResetPasswordScreen({ navigation }) {
 
   async function handleSubmit() {
     setError('');
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setError(`A senha precisa de pelo menos ${MIN_PASSWORD_LENGTH} caracteres.`);
+    // Sessão 28.68 (L-3): política única — alinhada com RegisterScreen.
+    const pol = validatePassword(password);
+    if (!pol.ok) {
+      setError(pol.error);
       return;
     }
     if (password !== confirm) {
@@ -135,7 +139,7 @@ export default function ResetPasswordScreen({ navigation }) {
           <Feather name="lock" size={24} color={colors.primary} />
         </View>
         <Text style={styles.title}>Redefinir senha</Text>
-        <Text style={styles.desc}>Crie uma nova senha pra sua conta. Use no mínimo {MIN_PASSWORD_LENGTH} caracteres.</Text>
+        <Text style={styles.desc}>Crie uma nova senha pra sua conta. Use no mínimo {MIN_PASSWORD_LENGTH} caracteres, com maiúscula, minúscula, número e símbolo.</Text>
 
         <Text style={styles.label}>Nova senha</Text>
         <View style={styles.inputWrap}>
@@ -144,13 +148,26 @@ export default function ResetPasswordScreen({ navigation }) {
             onChangeText={(v) => { setPassword(v); if (error) setError(''); }}
             secureTextEntry={!showPassword}
             style={styles.input}
-            placeholder="Mínimo 6 caracteres"
+            placeholder={`Mínimo ${MIN_PASSWORD_LENGTH} caracteres`}
             autoCapitalize="none"
           />
           <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
             <Feather name={showPassword ? 'eye-off' : 'eye'} size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
+
+        {/* Sessão 28.68 (L-3): checklist de critérios em tempo real,
+            consistente com o RegisterScreen. */}
+        {password ? (
+          <View style={styles.criteriaWrap}>
+            {passwordCriteria(password).map((c, i) => (
+              <View key={i} style={styles.criteriaRow}>
+                <Feather name={c.ok ? 'check-circle' : 'circle'} size={12} color={c.ok ? colors.success : colors.disabled} />
+                <Text style={[styles.criteriaText, { color: c.ok ? colors.success : colors.textSecondary, marginLeft: 6 }]}>{c.label}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         <Text style={styles.label}>Confirme a nova senha</Text>
         <TextInput
@@ -207,4 +224,8 @@ const styles = StyleSheet.create({
   successTitle: { fontSize: fonts.title, fontFamily: fontFamily.bold, color: colors.text, marginBottom: 6 },
   successDesc: { fontSize: fonts.small, color: colors.textSecondary, textAlign: 'center' },
   checkingText: { marginTop: spacing.sm, color: colors.textSecondary, fontSize: fonts.small },
+  // Sessão 28.68 (L-3): checklist de critérios de senha — match com RegisterScreen.
+  criteriaWrap: { marginTop: 8, marginBottom: 4 },
+  criteriaRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
+  criteriaText: { fontSize: fonts.small, fontFamily: fontFamily.semiBold },
 });

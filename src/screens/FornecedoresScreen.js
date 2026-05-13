@@ -4,17 +4,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency } from '../utils/calculations';
+import { formatCurrency, safeNum } from '../utils/calculations';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
-
-// Audit P1: helper defensivo para qualquer valor numérico vindo de DB.
-function safeNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-}
 
 const CATEGORY_COLORS = [
   colors.primary, colors.accent, colors.coral, colors.purple,

@@ -23,6 +23,17 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
+// === Sessão 28.68 — security hardening (L-2) ===
+// CORS whitelist explícita. Antes era 'Access-Control-Allow-Origin: *',
+// agora só responde com o Origin se ele estiver na whitelist (senão volta
+// o domínio canônico do app — bloqueando requisições de origens não previstas).
+const ALLOWED_ORIGINS = new Set<string>([
+  'https://app.precificaiapp.com',
+  'https://precificaiapp.com',
+  'http://localhost:8081',
+  'http://localhost:19006',
+]);
+
 interface PushPayload {
   user_id: string;
   title: string;
@@ -37,22 +48,22 @@ interface PushPayload {
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders() });
+    return new Response('ok', { headers: corsHeaders(req) });
   }
   if (req.method !== 'POST') {
-    return json({ error: 'method_not_allowed' }, 405);
+    return json({ error: 'method_not_allowed' }, 405, req);
   }
 
   let payload: PushPayload;
   try {
     payload = await req.json();
   } catch {
-    return json({ error: 'invalid_json' }, 400);
+    return json({ error: 'invalid_json' }, 400, req);
   }
 
   const { user_id, title, body, data = {}, channelId = 'default', bypass_prefs, pref_key } = payload;
   if (!user_id || !title || !body) {
-    return json({ error: 'missing_fields' }, 400);
+    return json({ error: 'missing_fields' }, 400, req);
   }
 
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -69,7 +80,7 @@ serve(async (req) => {
   if (!isInternal) {
     const authHeader = req.headers.get('Authorization') ?? '';
     if (!authHeader || !SUPABASE_ANON_KEY) {
-      return json({ error: 'unauthorized' }, 401);
+      return json({ error: 'unauthorized' }, 401, req);
     }
     let authedUserId: string | null = null;
     try {
@@ -78,14 +89,14 @@ serve(async (req) => {
       });
       const { data: u, error: uErr } = await userClient.auth.getUser();
       if (uErr || !u?.user) {
-        return json({ error: 'unauthorized' }, 401);
+        return json({ error: 'unauthorized' }, 401, req);
       }
       authedUserId = u.user.id;
     } catch {
-      return json({ error: 'unauthorized' }, 401);
+      return json({ error: 'unauthorized' }, 401, req);
     }
     if (authedUserId !== user_id) {
-      return json({ error: 'forbidden', detail: 'Cannot send push to another user' }, 403);
+      return json({ error: 'forbidden', detail: 'Cannot send push to another user' }, 403, req);
     }
   }
   // === fim do security gate ===
@@ -97,15 +108,15 @@ serve(async (req) => {
     const { data: prefs } = await supa
       .from('notif_prefs').select(pref_key).eq('user_id', user_id).maybeSingle();
     if (prefs && prefs[pref_key] === false) {
-      return json({ skipped: 'user_pref_disabled' });
+      return json({ skipped: 'user_pref_disabled' }, 200, req);
     }
   }
 
   // 2. Busca tokens
   const { data: tokens, error: tokErr } = await supa
     .from('device_tokens').select('expo_push_token, platform').eq('user_id', user_id);
-  if (tokErr) return json({ error: tokErr.message }, 500);
-  if (!tokens || tokens.length === 0) return json({ skipped: 'no_tokens' });
+  if (tokErr) return json({ error: tokErr.message }, 500, req);
+  if (!tokens || tokens.length === 0) return json({ skipped: 'no_tokens' }, 200, req);
 
   // 3. Monta mensagens batch p/ Expo Push API
   const messages = tokens.map((t) => ({
@@ -139,20 +150,26 @@ serve(async (req) => {
     }
   }
 
-  return json({ sent: messages.length, result });
+  return json({ sent: messages.length, result }, 200, req);
 });
 
-function json(obj: unknown, status = 200) {
+function json(obj: unknown, status = 200, req?: Request) {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders() },
+    headers: { 'Content-Type': 'application/json', ...corsHeaders(req) },
   });
 }
 
-function corsHeaders() {
+// Sessão 28.68 (L-2): CORS dinâmico baseado em whitelist.
+// Se o Origin não estiver na whitelist (ou for ausente), devolve o domínio
+// canônico do app — o browser do atacante não conseguirá ler a resposta.
+function corsHeaders(req?: Request): Record<string, string> {
+  const origin = req?.headers.get('Origin') || '';
+  const allow = ALLOWED_ORIGINS.has(origin) ? origin : 'https://app.precificaiapp.com';
   return {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST,OPTIONS',
+    'Access-Control-Allow-Origin': allow,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-cron-token',
+    'Vary': 'Origin',
   };
 }

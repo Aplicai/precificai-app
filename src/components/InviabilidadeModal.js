@@ -38,12 +38,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency } from '../utils/calculations';
-
-function safeNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(v);
-  return Number.isFinite(n) ? n : 0;
-}
+import { formatCurrency, safeNum } from '../utils/calculations';
 
 /**
  * Calcula o preço delivery mínimo viável (lucro >= 0):

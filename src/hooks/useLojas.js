@@ -116,10 +116,23 @@ export async function selecionarLojaAtual(userId, id) {
  * Hook reativo. Retorna { lojas, currentId, current, loaded, ...actions }.
  */
 export default function useLojas(userId) {
-  const [snap, setSnap] = useState({ lojas: _state.lojas, currentId: _state.currentId, loaded: _state.loaded && _state.userId === userId });
+  // Lazy initializer + effect-sync abaixo. O state real mora em `_state` (module-store);
+  // o useState aqui é só pra disparar re-render quando o listener notificar.
+  // Mudanças de `userId` são reconciliadas no useEffect via sync síncrono + _load().
+  const [snap, setSnap] = useState(() => ({
+    lojas: _state.userId === userId ? _state.lojas : [],
+    currentId: _state.userId === userId ? _state.currentId : null,
+    loaded: _state.loaded && _state.userId === userId,
+  }));
 
   useEffect(() => {
     let cancelled = false;
+    // Sync síncrono ao mudar `userId` — evita render stale com dados do user anterior.
+    setSnap({
+      lojas: _state.userId === userId ? _state.lojas : [],
+      currentId: _state.userId === userId ? _state.currentId : null,
+      loaded: _state.loaded && _state.userId === userId,
+    });
     const listener = (s) => {
       if (cancelled) return;
       if (s.userId !== userId) return;

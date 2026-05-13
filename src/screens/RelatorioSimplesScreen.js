@@ -4,10 +4,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida } from '../utils/calculations';
+import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, safeNum } from '../utils/calculations';
 import EmptyState from '../components/EmptyState';
 import Loader from '../components/Loader';
 import usePersistedState from '../hooks/usePersistedState';
+import { openPrintableHTML } from '../utils/openPrintableHTML';
 
 // Paleta de cores para chips de categoria — espelha o padrão de ProdutosListScreen
 // para manter coerência visual entre telas que filtram por categoria.
@@ -20,12 +21,6 @@ const CATEGORY_COLORS = [
 function getCategoryColor(index) {
   return CATEGORY_COLORS[index % CATEGORY_COLORS.length];
 }
-
-// Helper: extrai número finito ou 0
-const safeNum = (v) => {
-  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-};
 
 function escapeHtml(text) {
   if (!text) return '';
@@ -558,12 +553,9 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
     <p class="footer">Gerado por Precificaí · www.precificaiapp.com</p>
     </body></html>`;
 
-    // Sessão 28.55: bug "Baixar Relatório Completo" no mobile (Safari iOS) — antes
-    // chamava só `window.open('', '_blank')` + `win.print()`. iOS Safari bloqueia
-    // popups fora de gesto síncrono e ignora print() em popup, dando a sensação
-    // de que o app "voltou pra origem" sem nada acontecer. Agora detecta iOS
-    // Safari e usa Blob + download anchor + open url pra usuário usar o menu
-    // Compartilhar nativo. Em desktop/Android: comportamento original.
+    // M-3: defense-in-depth XSS — Blob URL (origin opaca) substitui o antigo
+    // window.open('', '_blank') + document.write (que herdava origin do app
+    // e poderia expor token Supabase em localStorage se algum escape falhasse).
     const isIOSSafari = (() => {
       if (typeof navigator === 'undefined') return false;
       const ua = navigator.userAgent || '';
@@ -580,44 +572,16 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
       } catch (_) {}
     }
 
-    function downloadBlobFallback() {
-      try {
-        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `relatorio-${Date.now()}.html`;
-        a.rel = 'noopener';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        // No iOS, também abrimos em nova aba pro user usar Compartilhar/Imprimir.
-        if (isIOSSafari) {
-          try { window.open(url, '_blank'); } catch (_) {}
-          showToastSafe('Relatório gerado · use Compartilhar para Imprimir/Salvar', 'printer');
-        } else {
-          showToastSafe('Relatório baixado · verifique sua pasta Downloads', 'download');
-        }
-        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 10000);
-      } catch (e) {
-        showToastSafe('Não foi possível gerar o relatório.', 'alert-circle');
-      }
-    }
-
-    if (isIOSSafari) {
-      downloadBlobFallback();
-      return;
-    }
-
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-      setTimeout(() => { try { win.print(); } catch (_) {} }, 500);
-      showToastSafe('Relatório aberto em nova aba', 'printer');
+    const ok = openPrintableHTML(html, `relatorio-${Date.now()}.html`);
+    if (ok) {
+      showToastSafe(
+        isIOSSafari
+          ? 'Relatório gerado · use Compartilhar para Imprimir/Salvar'
+          : 'Relatório aberto em nova aba · use Ctrl+P para imprimir',
+        'printer'
+      );
     } else {
-      // popup bloqueado → fallback de download
-      downloadBlobFallback();
+      showToastSafe('Não foi possível gerar o relatório.', 'alert-circle');
     }
   }
 

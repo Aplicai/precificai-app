@@ -6,11 +6,27 @@ import { captureException, addBreadcrumb, setUser as reportSetUser } from '../ut
 
 const AuthContext = createContext({});
 
-// Sessão 28.57 — timeout de inatividade extendido para 7 dias no web.
-// 4h da 28.54 ainda estava derrubando user durante uso ativo. Para máquinas
-// compartilhadas o ideal é o user clicar em "Sair" — não vamos forçar logout
-// automático que atrapalha quem usa o app no dia a dia.
-const INACTIVITY_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// Timeout de inatividade — configurável pelo usuário via checkbox
+// "Lembrar de mim" no LoginScreen (M-2):
+//  - Default (checkbox desmarcado, mais seguro p/ máquinas compartilhadas): 2 horas
+//  - "Lembrar de mim" marcado (dispositivo pessoal): 7 dias
+//
+// A escolha é persistida em AsyncStorage chave `auth_remember_me` ('true' | 'false').
+// `getEffectiveTimeout()` lê o valor dinamicamente — o heartbeat e o handler de
+// AppState consultam a cada checagem, então mudanças entram em vigor imediatamente.
+const TIMEOUT_REMEMBER = 7 * 24 * 60 * 60 * 1000; // 7 dias
+const TIMEOUT_DEFAULT = 2 * 60 * 60 * 1000; // 2 horas
+const REMEMBER_ME_KEY = 'auth_remember_me';
+
+async function getEffectiveTimeout() {
+  try {
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    const raw = await AsyncStorage.getItem(REMEMBER_ME_KEY);
+    return raw === 'true' ? TIMEOUT_REMEMBER : TIMEOUT_DEFAULT;
+  } catch {
+    return TIMEOUT_DEFAULT;
+  }
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -41,10 +57,11 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (Platform.OS !== 'web') {
       // Native: AppState transitions
-      const handleAppStateChange = (nextState) => {
+      const handleAppStateChange = async (nextState) => {
         if (nextState === 'active') {
           const elapsed = Date.now() - lastActiveRef.current;
-          if (elapsed >= INACTIVITY_TIMEOUT_MS && user) {
+          const timeout = await getEffectiveTimeout();
+          if (elapsed >= timeout && user) {
             handleInactivityLogout();
           }
           lastActiveRef.current = Date.now();
@@ -62,10 +79,11 @@ export function AuthProvider({ children }) {
     if (typeof document === 'undefined' || typeof window === 'undefined') return;
 
     const bumpActivity = () => { lastActiveRef.current = Date.now(); };
-    const checkInactivity = () => {
+    const checkInactivity = async () => {
       if (!user) return;
       const elapsed = Date.now() - lastActiveRef.current;
-      if (elapsed >= INACTIVITY_TIMEOUT_MS) {
+      const timeout = await getEffectiveTimeout();
+      if (elapsed >= timeout) {
         handleInactivityLogout();
       }
     };
@@ -320,12 +338,26 @@ export function AuthProvider({ children }) {
   // o fluxo de recovery (depois de redefinir senha + signOut).
   const clearPasswordRecovery = useCallback(() => setPasswordRecovery(false), []);
 
+  // M-2: persiste a preferência "Lembrar de mim" do LoginScreen.
+  // O valor é consultado por getEffectiveTimeout() a cada checagem de inatividade.
+  const setRememberMe = useCallback(async (value) => {
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      await AsyncStorage.setItem(REMEMBER_ME_KEY, value ? 'true' : 'false');
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('[AuthContext.setRememberMe] falhou:', e?.message);
+      }
+    }
+  }, []);
+
   return (
     <AuthContext.Provider value={{
       user, session, loading,
       signIn, signUp, signOut, resetPassword,
       signInWithGoogle,
       passwordRecovery, clearPasswordRecovery,
+      setRememberMe,
     }}>
       {children}
     </AuthContext.Provider>

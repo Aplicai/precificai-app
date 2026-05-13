@@ -8,13 +8,9 @@ import InputField from '../components/InputField';
 import InfoTooltip from '../components/InfoTooltip';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import { safeNum } from '../utils/calculations';
 
 // ─── Numeric helpers (audit P0) ─────────────
-function safeNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-}
-
 function parseInputNumber(raw) {
   if (raw === null || raw === undefined) return null;
   const str = String(raw).trim().replace(',', '.');
