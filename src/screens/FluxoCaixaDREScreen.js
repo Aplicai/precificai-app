@@ -1,17 +1,23 @@
 /**
  * FluxoCaixaDREScreen — Feature beta gated por whitelist por email.
  *
- * Página com 2 abas (padrão visual idêntico ao DeliveryHubScreen):
- *  1. Fluxo de Caixa — movimentações mensais (entradas/saídas) com sumário
- *     de saldo, CRUD em modal e botão "Importar receita do mês" (pré-popula
- *     com vendas registradas no mês × preço de venda).
- *  2. DRE — Demonstração de Resultado do Exercício no formato brasileiro
- *     simplificado pra pequeno negócio (estilo ContaAzul / Granatum / Bling):
- *     receita bruta → deduções → custos → despesas → lucro líquido.
+ * REDESIGN (Sessão 28.50):
+ *  - Solução SOLITÁRIA: a tela NÃO depende mais de vendas/produtos/CMV
+ *    automático. Toda a DRE é editável manualmente.
+ *  - Única integração com o resto do app: tabela `despesas_fixas` (toggle
+ *    "Usar Financeiro" pode importar o total). User pode desligar e digitar.
+ *  - Integração interna: a DRE pode opcionalmente puxar Receita Bruta /
+ *    Outras Receitas / Outras Despesas do Fluxo de Caixa do mesmo mês.
+ *  - Valor passou a ser TextInput inline (decimal-pad + formatação BR),
+ *    nada de CurrencyInputModal.
+ *  - Layout reformulado: seletor de mês proeminente compartilhado pelas 2
+ *    tabs, KPIs grandes no topo, lista timeline no Fluxo, tabela com
+ *    subtotais coloridos na DRE.
  *
- * Mantém SIMPLES: pequeno negócio não precisa de contabilidade complexa.
+ * Preserva: schema `fluxo_caixa_movimentos`, 2 tabs (Fluxo / DRE),
+ * feature flag externo (`useFeatureFlags().dreFluxoCaixa`), navegação.
  */
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, Modal, Platform,
   TextInput, ActivityIndicator, StyleSheet,
@@ -20,27 +26,21 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import {
-  formatCurrency,
-  calcCustoIngrediente,
-  calcCustoPreparo,
-  parseDecimalBROrZero,
-} from '../utils/calculations';
+import { formatCurrency, parseDecimalBROrZero } from '../utils/calculations';
 import InputField from '../components/InputField';
 import PickerSelect from '../components/PickerSelect';
 import EmptyState from '../components/EmptyState';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
-import CurrencyInputModal from '../components/CurrencyInputModal';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { showToast } from '../utils/toastBus';
 
-// safeNum defensivo — alinhado com o resto do app (evita NaN/Infinity)
+// ---------- helpers ----------
+
 function safeNum(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
 
-// Valida formato YYYY-MM-DD básico
 function isValidDateStr(s) {
   if (!s || typeof s !== 'string') return false;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
@@ -51,10 +51,48 @@ function isValidDateStr(s) {
   return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
 }
 
-// Formata número como "1.234,56" para exibição no input modal de moeda
+// "1234.56" / 1234.56 → "1.234,56"
 function formatBRNumber(n) {
   const num = safeNum(n);
   return num.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+// Sanitiza input de moeda enquanto o user digita: aceita só dígitos,
+// vírgula e ponto; preserva o que o user digitou (não força máscara
+// agressiva que move o cursor).
+function sanitizeCurrencyInput(raw) {
+  if (raw == null) return '';
+  // Só dígitos, vírgula, ponto. Limita a 1 vírgula.
+  let s = String(raw).replace(/[^\d.,]/g, '');
+  // se tiver mais de uma vírgula, mantém só a primeira
+  const firstComma = s.indexOf(',');
+  if (firstComma >= 0) {
+    s = s.slice(0, firstComma + 1) + s.slice(firstComma + 1).replace(/,/g, '');
+  }
+  // máximo 2 casas após vírgula
+  const parts = s.split(',');
+  if (parts.length === 2 && parts[1].length > 2) {
+    s = parts[0] + ',' + parts[1].slice(0, 2);
+  }
+  return s;
+}
+
+function pad2(n) { return String(n).padStart(2, '0'); }
+function getMonthKey(date) { return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}`; }
+function monthRange(monthKey) {
+  const [y, m] = monthKey.split('-').map(Number);
+  const last = new Date(y, m, 0).getDate();
+  return { start: `${monthKey}-01`, end: `${monthKey}-${pad2(last)}` };
+}
+function formatMonthLabel(monthKey) {
+  const [y, m] = monthKey.split('-').map(Number);
+  const date = new Date(y, m - 1, 1);
+  return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+}
+function shiftMonth(monthKey, delta) {
+  const [y, m] = monthKey.split('-').map(Number);
+  const date = new Date(y, m - 1 + delta, 1);
+  return getMonthKey(date);
 }
 
 const TABS = [
@@ -70,40 +108,9 @@ const CATEGORIAS_SAIDA = [
   'Energia/Água', 'Internet/Telefone', 'Manutenção', 'Outros',
 ];
 
-// Util — converte string "1.234,56" ou "1234.56" pra número
-function parseNum(str) {
-  if (typeof str === 'number') return str;
-  if (!str) return 0;
-  const n = parseFloat(String(str).replace(/\./g, '').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-}
-
-function pad2(n) { return String(n).padStart(2, '0'); }
-
-// Mês de referência: YYYY-MM
-function getMonthKey(date) {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}`;
-}
-
-// Primeiro/último dia do mês em YYYY-MM-DD
-function monthRange(monthKey) {
-  const [y, m] = monthKey.split('-').map(Number);
-  const last = new Date(y, m, 0).getDate();
-  return { start: `${monthKey}-01`, end: `${monthKey}-${pad2(last)}` };
-}
-
-function formatMonthLabel(monthKey) {
-  const [y, m] = monthKey.split('-').map(Number);
-  const date = new Date(y, m - 1, 1);
-  return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-}
-
-function shiftMonth(monthKey, delta) {
-  const [y, m] = monthKey.split('-').map(Number);
-  const date = new Date(y, m - 1 + delta, 1);
-  return getMonthKey(date);
-}
-
+// ============================================================
+// MAIN
+// ============================================================
 export default function FluxoCaixaDREScreen() {
   const { isDesktop } = useResponsiveLayout();
   const [activeTab, setActiveTab] = useState('fluxo');
@@ -114,9 +121,8 @@ export default function FluxoCaixaDREScreen() {
   const [movimentos, setMovimentos] = useState([]);
   const [saldoInicial, setSaldoInicial] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState(null); // null = novo, obj = edit
+  const [editing, setEditing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
-  const [valorModalOpen, setValorModalOpen] = useState(false);
 
   // Form state — modal
   const [formData, setFormData] = useState('');
@@ -126,50 +132,41 @@ export default function FluxoCaixaDREScreen() {
   const [formValor, setFormValor] = useState('');
   const [formErrors, setFormErrors] = useState({});
 
-  // DRE — flag pra editar CMV manualmente quando não há vendas
-  const [cmvManual, setCmvManual] = useState(false);
-  const [vendasCount, setVendasCount] = useState(null); // null = ainda não calculado
+  // DRE state — TUDO digitado pelo user (string para o input, número derivado).
+  const emptyDre = {
+    receitaBruta: '',
+    deducoes: '',
+    devolucoes: '',
+    cmv: '',
+    despesasFixas: '',
+    despesasVariaveis: '',
+    outrasDespesas: '',
+    outrasReceitas: '',
+  };
+  const [dre, setDre] = useState(emptyDre);
+  const [despesasFixasFromFinanceiro, setDespesasFixasFromFinanceiro] = useState(0);
+  // Toggle: usar custos fixos do Financeiro automaticamente?
+  const [useFixasFromFinanceiro, setUseFixasFromFinanceiro] = useState(true);
+  const [showDespesasFixasDetail, setShowDespesasFixasDetail] = useState(false);
+  const [despesasFixasList, setDespesasFixasList] = useState([]);
 
-  // DRE state — valores ajustáveis pelo user (após "Recalcular" puxa do banco)
-  const [dre, setDre] = useState({
-    receitaBruta: 0,
-    deducoes: 0,
-    devolucoes: 0,
-    cmv: 0,
-    despesasFixas: 0,
-    despesasVariaveis: 0,
-    outrasDespesas: 0,
-    outrasReceitas: 0,
-  });
-  const [dreLoading, setDreLoading] = useState(false);
-
+  // ---------- LOAD FLUXO ----------
   const reloadMovimentos = useCallback(async () => {
     setLoading(true);
     try {
       const db = await getDatabase();
       const { start, end } = monthRange(monthKey);
-
-      // Carrega movimentos do mês + saldo acumulado de meses anteriores em paralelo
       const [rows, anteriores] = await Promise.all([
         db.getAllAsync(
           'SELECT * FROM fluxo_caixa_movimentos WHERE data >= ? AND data <= ? ORDER BY data DESC',
           [start, end]
-        ).catch((e) => {
-          console.warn('[FluxoCaixaDRE.load]', e?.message || e);
-          return [];
-        }),
-        // Saldo inicial = soma de TUDO antes do primeiro dia do mês
+        ).catch((e) => { console.warn('[FluxoCaixaDRE.load]', e?.message || e); return []; }),
         db.getAllAsync(
           'SELECT tipo, COALESCE(SUM(valor), 0) AS total FROM fluxo_caixa_movimentos WHERE data < ? GROUP BY tipo',
           [start]
-        ).catch((e) => {
-          console.warn('[FluxoCaixaDRE.saldoInicial]', e?.message || e);
-          return [];
-        }),
+        ).catch((e) => { console.warn('[FluxoCaixaDRE.saldoInicial]', e?.message || e); return []; }),
       ]);
-
       setMovimentos(rows || []);
-
       let saldo = 0;
       for (const r of (anteriores || [])) {
         const v = safeNum(r.total);
@@ -184,22 +181,65 @@ export default function FluxoCaixaDREScreen() {
 
   useFocusEffect(useCallback(() => { reloadMovimentos(); }, [reloadMovimentos]));
 
-  // Sumário do mês
+  // ---------- LOAD DESPESAS FIXAS (Financeiro) ----------
+  const reloadDespesasFixas = useCallback(async () => {
+    try {
+      const db = await getDatabase();
+      const rows = await db.getAllAsync('SELECT * FROM despesas_fixas').catch(() => []);
+      setDespesasFixasList(rows || []);
+      const total = (rows || []).reduce((s, d) => s + safeNum(d.valor), 0);
+      setDespesasFixasFromFinanceiro(total);
+    } catch (e) {
+      console.warn('[FluxoCaixaDRE.despesasFixas]', e?.message || e);
+    }
+  }, []);
+
+  useEffect(() => { reloadDespesasFixas(); }, [reloadDespesasFixas]);
+
+  // Se o toggle "Usar do Financeiro" está ligado, sincroniza o campo.
+  useEffect(() => {
+    if (useFixasFromFinanceiro) {
+      setDre(prev => ({
+        ...prev,
+        despesasFixas: despesasFixasFromFinanceiro > 0
+          ? formatBRNumber(despesasFixasFromFinanceiro) : '',
+      }));
+    }
+  }, [useFixasFromFinanceiro, despesasFixasFromFinanceiro]);
+
+  // ---------- FLUXO sumário ----------
   const resumo = useMemo(() => {
-    let entradas = 0;
-    let saidas = 0;
+    let entradas = 0, saidas = 0;
     for (const m of movimentos) {
       const v = safeNum(m.valor);
       if (m.tipo === 'entrada') entradas += v;
       else saidas += v;
     }
-    return {
-      entradas, saidas,
-      saldoInicial,
-      saldoFinal: saldoInicial + entradas - saidas,
-    };
+    return { entradas, saidas, saldoInicial, saldoFinal: saldoInicial + entradas - saidas };
   }, [movimentos, saldoInicial]);
 
+  // ---------- DRE valores numéricos ----------
+  const dreNum = useMemo(() => ({
+    receitaBruta: parseDecimalBROrZero(dre.receitaBruta),
+    deducoes: parseDecimalBROrZero(dre.deducoes),
+    devolucoes: parseDecimalBROrZero(dre.devolucoes),
+    cmv: parseDecimalBROrZero(dre.cmv),
+    despesasFixas: parseDecimalBROrZero(dre.despesasFixas),
+    despesasVariaveis: parseDecimalBROrZero(dre.despesasVariaveis),
+    outrasDespesas: parseDecimalBROrZero(dre.outrasDespesas),
+    outrasReceitas: parseDecimalBROrZero(dre.outrasReceitas),
+  }), [dre]);
+
+  const dreLinhas = useMemo(() => {
+    const receitaLiquida = dreNum.receitaBruta - dreNum.deducoes - dreNum.devolucoes;
+    const lucroBruto = receitaLiquida - dreNum.cmv;
+    const totalOperacionais = dreNum.despesasFixas + dreNum.despesasVariaveis;
+    const lucroOperacional = lucroBruto - totalOperacionais;
+    const lucroLiquido = lucroOperacional - dreNum.outrasDespesas + dreNum.outrasReceitas;
+    return { receitaLiquida, lucroBruto, totalOperacionais, lucroOperacional, lucroLiquido };
+  }, [dreNum]);
+
+  // ---------- FORM helpers ----------
   function abrirNovo() {
     setEditing(null);
     setFormData(new Date().toISOString().slice(0, 10));
@@ -276,221 +316,54 @@ export default function FluxoCaixaDREScreen() {
     }
   }
 
-  // "Importar receita do mês" — soma das vendas registradas no mês × preço.
-  // vendas.data armazena YYYY-MM (não YYYY-MM-DD). Se o usuário não tiver
-  // vendas registradas, mostra mensagem informativa.
-  async function importarReceitaDoMes() {
-    try {
-      const db = await getDatabase();
-      const [vendas, produtos] = await Promise.all([
-        db.getAllAsync('SELECT * FROM vendas WHERE data = ?', [monthKey]).catch(() => []),
-        db.getAllAsync('SELECT id, nome, preco_venda FROM produtos').catch(() => []),
-      ]);
-      if (!vendas || vendas.length === 0) {
-        if (typeof window !== 'undefined' && window.alert) {
-          window.alert(`Sem vendas registradas em ${formatMonthLabel(monthKey)}. Cadastre vendas no Painel Geral primeiro.`);
-        }
-        return;
+  // ---------- INTEGRAÇÃO Fluxo → DRE ----------
+  // "Importar do Fluxo": preenche Receita Bruta = soma de entradas do mês
+  // (exceto categoria "Outras Receitas") e Outras Receitas/Despesas das
+  // categorias específicas. NÃO toca CMV nem despesas variáveis.
+  function importarDoFluxo() {
+    let receita = 0, outrasRec = 0, outrasDesp = 0;
+    for (const m of movimentos) {
+      const cat = String(m.categoria || '');
+      const v = safeNum(m.valor);
+      if (m.tipo === 'entrada') {
+        if (cat === 'Outras Receitas') outrasRec += v;
+        else receita += v;
+      } else {
+        if (cat === 'Outros') outrasDesp += v;
       }
-      const precoMap = {};
-      (produtos || []).forEach(p => { precoMap[p.id] = Number(p.preco_venda) || 0; });
-      let total = 0;
-      for (const v of vendas) {
-        total += (Number(v.quantidade) || 0) * (precoMap[v.produto_id] || 0);
-      }
-      if (total <= 0) {
-        if (typeof window !== 'undefined' && window.alert) {
-          window.alert('Vendas existem, mas o total ficou em R$ 0,00 (preços não cadastrados?).');
-        }
-        return;
-      }
-      const { start } = monthRange(monthKey);
-      await db.runAsync(
-        'INSERT INTO fluxo_caixa_movimentos (data, tipo, categoria, descricao, valor) VALUES (?, ?, ?, ?, ?)',
-        [start, 'entrada', 'Vendas Balcão', `Receita do mês ${formatMonthLabel(monthKey)} (importada)`, total]
-      );
-      showToast('Receita importada: ' + formatCurrency(total), 'download');
-      await reloadMovimentos();
-    } catch (e) {
-      console.error('[FluxoCaixaDRE.importarReceita]', e);
+    }
+    setDre(prev => ({
+      ...prev,
+      receitaBruta: receita > 0 ? formatBRNumber(receita) : prev.receitaBruta,
+      outrasReceitas: outrasRec > 0 ? formatBRNumber(outrasRec) : prev.outrasReceitas,
+      outrasDespesas: outrasDesp > 0 ? formatBRNumber(outrasDesp) : prev.outrasDespesas,
+    }));
+    showToast('Valores importados do Fluxo de Caixa', 'download');
+  }
+
+  function setDreField(field, raw) {
+    const s = sanitizeCurrencyInput(raw);
+    setDre(prev => ({ ...prev, [field]: s }));
+    // Se o user editou despesas fixas manualmente, desliga o toggle automático.
+    if (field === 'despesasFixas' && useFixasFromFinanceiro) {
+      setUseFixasFromFinanceiro(false);
     }
   }
 
-  // --- DRE ---
+  function resetDre() {
+    setDre(emptyDre);
+    setUseFixasFromFinanceiro(true);
+    showToast('DRE limpo', 'rotate-ccw');
+  }
 
-  // Recalcula DRE puxando dados do banco:
-  //  - receita bruta: vendas do mês × preco_venda (mesmo cálculo do botão)
-  //  - CMV: soma do custo unitário de cada produto × quantidade vendida
-  //  - despesas fixas: soma de despesas_fixas
-  //  - despesas variáveis: soma % × receita
-  //  - impostos (deduções): % de impostos × receita
-  const recalcularDRE = useCallback(async () => {
-    setDreLoading(true);
-    try {
-      const db = await getDatabase();
-      const { start, end } = monthRange(monthKey);
-      const [
-        vendas,
-        produtos,
-        produtoIngredientes,
-        produtoPreparos,
-        produtoEmbalagens,
-        despFixas,
-        despVars,
-        fluxoMov,
-      ] = await Promise.all([
-        // vendas.data armazena YYYY-MM (mês todo), bate exato com monthKey
-        db.getAllAsync('SELECT * FROM vendas WHERE data = ?', [monthKey]).catch(() => []),
-        db.getAllAsync('SELECT * FROM produtos').catch(() => []),
-        // Joins idênticos aos usados em MatrizBCGScreen pra calcular custo do produto
-        db.getAllAsync(
-          'SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'
-        ).catch(() => []),
-        db.getAllAsync(
-          'SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'
-        ).catch(() => []),
-        db.getAllAsync(
-          'SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'
-        ).catch(() => []),
-        db.getAllAsync('SELECT * FROM despesas_fixas').catch(() => []),
-        db.getAllAsync('SELECT * FROM despesas_variaveis').catch(() => []),
-        db.getAllAsync(
-          'SELECT * FROM fluxo_caixa_movimentos WHERE data >= ? AND data <= ?',
-          [start, end]
-        ).catch(() => []),
-      ]);
-
-      // Marca se há vendas no mês — usado pra mostrar mensagem informativa
-      setVendasCount((vendas || []).length);
-
-      // Agrupa ingredientes/preparos/embalagens por produto_id
-      const ingsByProd = {};
-      for (const r of (produtoIngredientes || [])) {
-        (ingsByProd[r.produto_id] = ingsByProd[r.produto_id] || []).push(r);
-      }
-      const prepsByProd = {};
-      for (const r of (produtoPreparos || [])) {
-        (prepsByProd[r.produto_id] = prepsByProd[r.produto_id] || []).push(r);
-      }
-      const embsByProd = {};
-      for (const r of (produtoEmbalagens || [])) {
-        (embsByProd[r.produto_id] = embsByProd[r.produto_id] || []).push(r);
-      }
-
-      // Calcula custo unitário REAL de cada produto somando ingredientes + preparos + embalagens
-      // (mesma fórmula usada em MatrizBCGScreen)
-      const precoMap = {};
-      const custoUnitMap = {};
-      for (const p of (produtos || [])) {
-        precoMap[p.id] = safeNum(p.preco_venda);
-        const ings = ingsByProd[p.id] || [];
-        const custoIng = ings.reduce(
-          (a, i) => a + safeNum(calcCustoIngrediente(
-            safeNum(i.preco_por_kg),
-            i.quantidade_utilizada,
-            i.unidade_medida,
-            i.unidade_medida
-          )),
-          0
-        );
-        const preps = prepsByProd[p.id] || [];
-        const custoPr = preps.reduce(
-          (a, pp) => a + safeNum(calcCustoPreparo(
-            safeNum(pp.custo_por_kg),
-            pp.quantidade_utilizada,
-            pp.unidade_medida || 'g'
-          )),
-          0
-        );
-        const embs = embsByProd[p.id] || [];
-        const custoEmb = embs.reduce(
-          (a, e) => a + safeNum(e.preco_unitario) * safeNum(e.quantidade_utilizada),
-          0
-        );
-        custoUnitMap[p.id] = custoIng + custoPr + custoEmb;
-      }
-
-      let receitaBruta = 0;
-      let cmv = 0;
-      for (const v of (vendas || [])) {
-        const qtd = safeNum(v.quantidade);
-        receitaBruta += qtd * (precoMap[v.produto_id] || 0);
-        cmv += qtd * (custoUnitMap[v.produto_id] || 0);
-      }
-
-      const despesasFixas = (despFixas || []).reduce((s, d) => s + safeNum(d.valor), 0);
-      const totalVarPerc = (despVars || []).reduce((s, d) => s + safeNum(d.percentual), 0);
-      // Impostos vem do somatório das variáveis que contêm "imposto" na descrição.
-      const impostoPerc = (despVars || []).reduce((s, d) => {
-        const desc = String(d.descricao || '').toLowerCase();
-        return desc.includes('imposto') ? s + safeNum(d.percentual) : s;
-      }, 0);
-      const deducoes = receitaBruta * (impostoPerc / 100);
-      const despesasVariaveis = receitaBruta * ((totalVarPerc - impostoPerc) / 100);
-
-      // Outras receitas/despesas = movimentos manuais que NÃO sejam categoria "Vendas..."
-      let outrasReceitas = 0;
-      let outrasDespesas = 0;
-      for (const m of (fluxoMov || [])) {
-        const cat = String(m.categoria || '');
-        if (m.tipo === 'entrada') {
-          if (cat === 'Outras Receitas') outrasReceitas += safeNum(m.valor);
-        } else {
-          // saidas operacionais já estão em despesasFixas/Vars; aqui só "Outras"
-          if (cat === 'Outros') outrasDespesas += safeNum(m.valor);
-        }
-      }
-
-      // Se o user havia ativado edição manual de CMV mas agora existem vendas,
-      // mantém o valor automático (o flag só faz sentido quando vendasCount === 0).
-      if ((vendas || []).length > 0) {
-        setCmvManual(false);
-      }
-
-      setDre({
-        receitaBruta,
-        deducoes,
-        devolucoes: 0,
-        cmv,
-        despesasFixas,
-        despesasVariaveis,
-        outrasDespesas,
-        outrasReceitas,
-      });
-      showToast('DRE recalculada', 'refresh-cw');
-    } catch (e) {
-      console.error('[FluxoCaixaDRE.recalcular]', e);
-      showToast('Erro ao recalcular DRE', 'alert-triangle');
-    } finally {
-      setDreLoading(false);
-    }
-  }, [monthKey]);
-
-  // Recálculo automático ao trocar de mês na aba DRE
-  useEffect(() => {
-    if (activeTab === 'dre') {
-      recalcularDRE();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, monthKey]);
-
-  // Linhas calculadas do DRE
-  const dreLinhas = useMemo(() => {
-    const receitaLiquida = dre.receitaBruta - dre.deducoes - dre.devolucoes;
-    const lucroBruto = receitaLiquida - dre.cmv;
-    const totalOperacionais = dre.despesasFixas + dre.despesasVariaveis;
-    const lucroOperacional = lucroBruto - totalOperacionais;
-    const lucroLiquido = lucroOperacional - dre.outrasDespesas + dre.outrasReceitas;
-    return { receitaLiquida, lucroBruto, totalOperacionais, lucroOperacional, lucroLiquido };
-  }, [dre]);
-
-  // -------------------- RENDER --------------------
-
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
     <View style={styles.container}>
       <View style={styles.pageShell}>
-        {/* Seletor de mês */}
-        <View style={styles.monthBar}>
+        {/* ===== Seletor de mês PROEMINENTE (compartilhado pelas 2 tabs) ===== */}
+        <View style={styles.monthHero}>
           <TouchableOpacity
             onPress={() => setMonthKey(m => shiftMonth(m, -1))}
             style={styles.monthArrow}
@@ -499,7 +372,8 @@ export default function FluxoCaixaDREScreen() {
           >
             <Feather name="chevron-left" size={22} color={colors.primary} />
           </TouchableOpacity>
-          <View style={{ flex: 1, alignItems: 'center' }}>
+          <View style={styles.monthCenter}>
+            <Text style={styles.monthEyebrow}>PERÍODO</Text>
             <Text style={styles.monthLabel}>{formatMonthLabel(monthKey)}</Text>
           </View>
           <TouchableOpacity
@@ -523,7 +397,7 @@ export default function FluxoCaixaDREScreen() {
           ) : null}
         </View>
 
-        {/* Tabs (padrão DeliveryHubScreen) */}
+        {/* ===== Tabs ===== */}
         <View style={styles.tabsRow}>
           {TABS.map(t => {
             const active = activeTab === t.key;
@@ -555,27 +429,44 @@ export default function FluxoCaixaDREScreen() {
               onAdd={abrirNovo}
               onEdit={abrirEdicao}
               onDelete={(mov) => setConfirmDelete(mov)}
-              onImportar={importarReceitaDoMes}
               isDesktop={isDesktop}
             />
           ) : (
             <DRETab
               dre={dre}
-              setDre={setDre}
+              dreNum={dreNum}
               linhas={dreLinhas}
-              loading={dreLoading}
-              onRecalcular={recalcularDRE}
-              onExportPDF={() => showToast('Exportação PDF em breve', 'file-text')}
-              vendasCount={vendasCount}
-              cmvManual={cmvManual}
-              onAtivarCmvManual={() => setCmvManual(true)}
+              setDreField={setDreField}
+              onResetDre={resetDre}
+              onImportarFluxo={importarDoFluxo}
+              useFixasFromFinanceiro={useFixasFromFinanceiro}
+              setUseFixasFromFinanceiro={setUseFixasFromFinanceiro}
+              despesasFixasFromFinanceiro={despesasFixasFromFinanceiro}
+              despesasFixasList={despesasFixasList}
+              showDespesasFixasDetail={showDespesasFixasDetail}
+              setShowDespesasFixasDetail={setShowDespesasFixasDetail}
               monthLabel={formatMonthLabel(monthKey)}
+              isDesktop={isDesktop}
             />
           )}
         </ScrollView>
+
+        {/* FAB sticky no Fluxo (mobile e web) */}
+        {activeTab === 'fluxo' ? (
+          <TouchableOpacity
+            onPress={abrirNovo}
+            style={[styles.fab, isDesktop && styles.fabDesktop]}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Adicionar movimento"
+          >
+            <Feather name="plus" size={isDesktop ? 18 : 22} color="#fff" />
+            {isDesktop ? <Text style={styles.fabLabel}>Adicionar movimento</Text> : null}
+          </TouchableOpacity>
+        ) : null}
       </View>
 
-      {/* Modal de cadastro/edição */}
+      {/* ===== Modal cadastro / edição ===== */}
       <Modal visible={modalOpen} transparent animationType="fade" onRequestClose={() => setModalOpen(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -587,8 +478,8 @@ export default function FluxoCaixaDREScreen() {
                 <Feather name="x" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
-            <ScrollView style={{ maxHeight: 480 }}>
-              {/* Data — usa <input type="date"> no web pra ter picker nativo */}
+            <ScrollView style={{ maxHeight: 520 }}>
+              {/* Data */}
               <Text style={styles.fieldLabel}>Data</Text>
               {Platform.OS === 'web' ? (
                 <input
@@ -625,6 +516,7 @@ export default function FluxoCaixaDREScreen() {
               )}
               {formErrors.data ? <Text style={styles.errorText}>{formErrors.data}</Text> : null}
 
+              {/* Tipo */}
               <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Tipo</Text>
               <View style={styles.chipRow}>
                 {['entrada', 'saida'].map(t => {
@@ -666,26 +558,24 @@ export default function FluxoCaixaDREScreen() {
                 placeholder="Ex: Aluguel maio, pagamento fornecedor X"
               />
 
-              {/* Valor — abre CurrencyInputModal com formatação BR */}
-              <Text style={styles.fieldLabel}>Valor (R$)</Text>
-              <TouchableOpacity
-                onPress={() => setValorModalOpen(true)}
-                style={[
-                  styles.valorTrigger,
-                  formErrors.valor && { borderColor: colors.error },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="Editar valor"
-              >
-                <Text style={[
-                  styles.valorTriggerText,
-                  !formValor && { color: colors.placeholder },
-                ]}>
-                  {formValor ? `R$ ${formValor}` : 'Toque para informar o valor'}
-                </Text>
-                <Feather name="edit-2" size={14} color={colors.textSecondary} />
-              </TouchableOpacity>
-              {formErrors.valor ? <Text style={styles.errorText}>{formErrors.valor}</Text> : null}
+              {/* Valor — TextInput INLINE com prefixo R$, sem modal */}
+              <InputField
+                label="Valor (R$)"
+                value={formValor}
+                onChangeText={(v) => {
+                  const sanitized = sanitizeCurrencyInput(v);
+                  setFormValor(sanitized);
+                  if (formErrors.valor && parseDecimalBROrZero(sanitized) > 0) {
+                    setFormErrors(prev => ({ ...prev, valor: undefined }));
+                  }
+                }}
+                placeholder="0,00"
+                keyboardType="decimal-pad"
+                inputMode="decimal"
+                prefix="R$"
+                error={!!formErrors.valor}
+                errorText={formErrors.valor}
+              />
             </ScrollView>
             <View style={styles.modalFooter}>
               <TouchableOpacity
@@ -698,6 +588,7 @@ export default function FluxoCaixaDREScreen() {
                 onPress={salvarMovimento}
                 style={[styles.btn, styles.btnPrimary]}
               >
+                <Feather name="check" size={16} color="#fff" />
                 <Text style={styles.btnPrimaryText}>Salvar</Text>
               </TouchableOpacity>
             </View>
@@ -712,25 +603,6 @@ export default function FluxoCaixaDREScreen() {
         onConfirm={() => excluirMovimento(confirmDelete?.id)}
         onCancel={() => setConfirmDelete(null)}
       />
-
-      {/* Modal de edição de valor com formatação BR */}
-      <CurrencyInputModal
-        visible={valorModalOpen}
-        title="Valor do movimento"
-        prefix="R$"
-        value={formValor}
-        placeholder="0,00"
-        onConfirm={(v) => {
-          const n = parseDecimalBROrZero(v);
-          setFormValor(n > 0 ? formatBRNumber(n) : '');
-          // Limpa erro do valor ao confirmar
-          if (formErrors.valor && n > 0) {
-            setFormErrors(prev => ({ ...prev, valor: undefined }));
-          }
-          setValorModalOpen(false);
-        }}
-        onCancel={() => setValorModalOpen(false)}
-      />
     </View>
   );
 }
@@ -738,32 +610,44 @@ export default function FluxoCaixaDREScreen() {
 // ============================================================
 // Aba 1 — Fluxo de Caixa
 // ============================================================
-function FluxoTab({ loading, movimentos, resumo, onAdd, onEdit, onDelete, onImportar, isDesktop }) {
+function FluxoTab({ loading, movimentos, resumo, onAdd, onEdit, onDelete, isDesktop }) {
   return (
     <>
-      {/* Sumário */}
-      <View style={[styles.summaryRow, !isDesktop && styles.summaryRowMobile]}>
-        <SummaryCard label="Saldo inicial" value={formatCurrency(resumo.saldoInicial)} color={colors.textSecondary} />
-        <SummaryCard label="Entradas" value={formatCurrency(resumo.entradas)} color={colors.success} icon="arrow-down-circle" />
-        <SummaryCard label="Saídas" value={formatCurrency(resumo.saidas)} color={colors.error} icon="arrow-up-circle" />
-        <SummaryCard
+      {/* KPIs grandes no topo */}
+      <View style={[styles.kpiRow, !isDesktop && styles.kpiRowMobile]}>
+        <KPICard
+          label="Saldo inicial"
+          value={formatCurrency(resumo.saldoInicial)}
+          color={colors.textSecondary}
+          icon="anchor"
+        />
+        <KPICard
+          label="Entradas"
+          value={formatCurrency(resumo.entradas)}
+          color={colors.success}
+          icon="arrow-down-circle"
+        />
+        <KPICard
+          label="Saídas"
+          value={formatCurrency(resumo.saidas)}
+          color={colors.error}
+          icon="arrow-up-circle"
+        />
+        <KPICard
           label="Saldo final"
           value={formatCurrency(resumo.saldoFinal)}
           color={resumo.saldoFinal >= 0 ? colors.primary : colors.error}
+          icon={resumo.saldoFinal >= 0 ? 'trending-up' : 'trending-down'}
           highlight
         />
       </View>
 
-      {/* Ações */}
-      <View style={styles.actionsRow}>
-        <TouchableOpacity onPress={onAdd} style={[styles.btn, styles.btnPrimary, { flex: 1 }]}>
-          <Feather name="plus" size={16} color="#fff" />
-          <Text style={styles.btnPrimaryText}>Adicionar movimento</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={onImportar} style={[styles.btn, styles.btnOutline, { flex: 1 }]}>
-          <Feather name="download" size={16} color={colors.primary} />
-          <Text style={styles.btnOutlineText}>Importar receita do mês</Text>
-        </TouchableOpacity>
+      {/* Section title */}
+      <View style={styles.sectionTitleRow}>
+        <Text style={styles.sectionTitle}>MOVIMENTAÇÕES DO MÊS</Text>
+        <Text style={styles.sectionCount}>
+          {movimentos.length} {movimentos.length === 1 ? 'item' : 'itens'}
+        </Text>
       </View>
 
       {/* Lista */}
@@ -775,73 +659,92 @@ function FluxoTab({ loading, movimentos, resumo, onAdd, onEdit, onDelete, onImpo
         <EmptyState
           icon="inbox"
           title="Nenhum movimento"
-          description="Toque em + Adicionar para registrar uma entrada ou saída. Você também pode importar a receita do mês a partir das vendas cadastradas."
+          description="Toque em + Adicionar para registrar uma entrada ou saída do seu caixa."
           ctaLabel="+ Adicionar"
           onPress={onAdd}
         />
       ) : (
-        movimentos.map(m => (
-          <TouchableOpacity
-            key={m.id}
-            style={styles.movRow}
-            onPress={() => onEdit(m)}
-            accessibilityRole="button"
-            accessibilityLabel={`Editar ${m.descricao || m.categoria}`}
-          >
-            <View style={[
-              styles.movDot,
-              { backgroundColor: m.tipo === 'entrada' ? colors.success : colors.error },
-            ]} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.movDesc} numberOfLines={1}>
-                {m.descricao || m.categoria || (m.tipo === 'entrada' ? 'Entrada' : 'Saída')}
-              </Text>
-              <Text style={styles.movSub} numberOfLines={1}>
-                {(m.data || '').split('-').reverse().join('/')} {m.categoria ? `• ${m.categoria}` : ''}
-              </Text>
-            </View>
-            <Text style={[
-              styles.movValor,
-              { color: m.tipo === 'entrada' ? colors.success : colors.error },
-            ]}>
-              {m.tipo === 'entrada' ? '+ ' : '- '}{formatCurrency(Number(m.valor) || 0)}
-            </Text>
-            <TouchableOpacity
-              onPress={(e) => { e?.stopPropagation?.(); onDelete(m); }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={styles.movDelete}
-              accessibilityRole="button"
-              accessibilityLabel="Excluir movimento"
-            >
-              <Feather name="x" size={16} color={colors.textSecondary} />
-            </TouchableOpacity>
-          </TouchableOpacity>
-        ))
+        <View style={styles.timeline}>
+          {movimentos.map(m => {
+            const isEntrada = m.tipo === 'entrada';
+            return (
+              <TouchableOpacity
+                key={m.id}
+                style={styles.movRow}
+                onPress={() => onEdit(m)}
+                accessibilityRole="button"
+                accessibilityLabel={`Editar ${m.descricao || m.categoria}`}
+              >
+                <View style={[
+                  styles.movIconBadge,
+                  { backgroundColor: (isEntrada ? colors.success : colors.error) + '15' },
+                ]}>
+                  <Feather
+                    name={isEntrada ? 'arrow-down-right' : 'arrow-up-right'}
+                    size={16}
+                    color={isEntrada ? colors.success : colors.error}
+                  />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.movDesc} numberOfLines={1}>
+                    {m.descricao || m.categoria || (isEntrada ? 'Entrada' : 'Saída')}
+                  </Text>
+                  <Text style={styles.movSub} numberOfLines={1}>
+                    {(m.data || '').split('-').reverse().join('/')}
+                    {m.categoria ? `  •  ${m.categoria}` : ''}
+                  </Text>
+                </View>
+                <Text style={[
+                  styles.movValor,
+                  { color: isEntrada ? colors.success : colors.error },
+                ]}>
+                  {isEntrada ? '+ ' : '- '}{formatCurrency(safeNum(m.valor))}
+                </Text>
+                <TouchableOpacity
+                  onPress={(e) => { e?.stopPropagation?.(); onDelete(m); }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={styles.movDelete}
+                  accessibilityRole="button"
+                  accessibilityLabel="Excluir movimento"
+                >
+                  <Feather name="x" size={16} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       )}
     </>
   );
 }
 
-function SummaryCard({ label, value, color, icon, highlight }) {
+function KPICard({ label, value, color, icon, highlight }) {
   return (
-    <View style={[styles.summaryCard, highlight && styles.summaryCardHighlight]}>
-      <View style={styles.summaryLabelRow}>
-        {icon ? <Feather name={icon} size={12} color={color} /> : null}
-        <Text style={styles.summaryLabel}>{label}</Text>
+    <View style={[styles.kpiCard, highlight && styles.kpiCardHighlight]}>
+      <View style={styles.kpiHeader}>
+        {icon ? (
+          <View style={[styles.kpiIconBubble, { backgroundColor: color + '15' }]}>
+            <Feather name={icon} size={14} color={color} />
+          </View>
+        ) : null}
+        <Text style={styles.kpiLabel}>{label}</Text>
       </View>
-      <Text style={[styles.summaryValue, { color }]} numberOfLines={1}>{value}</Text>
+      <Text style={[styles.kpiValue, { color }]} numberOfLines={1}>{value}</Text>
     </View>
   );
 }
 
 // ============================================================
-// Aba 2 — DRE (Demonstração de Resultado do Exercício)
+// Aba 2 — DRE
 // ============================================================
 function DRETab({
-  dre, setDre, linhas, loading, onRecalcular, onExportPDF,
-  vendasCount, cmvManual, onAtivarCmvManual, monthLabel,
+  dre, dreNum, linhas, setDreField, onResetDre, onImportarFluxo,
+  useFixasFromFinanceiro, setUseFixasFromFinanceiro,
+  despesasFixasFromFinanceiro, despesasFixasList,
+  showDespesasFixasDetail, setShowDespesasFixasDetail,
+  monthLabel, isDesktop,
 }) {
-  const receita = safeNum(dre.receitaBruta);
+  const receita = dreNum.receitaBruta;
 
   function pctText(valor) {
     if (receita <= 0) return '';
@@ -849,150 +752,367 @@ function DRETab({
     return `${p.toFixed(1).replace('.', ',')}%`;
   }
 
-  function setField(field, str) {
-    setDre(d => ({ ...d, [field]: parseDecimalBROrZero(str) }));
-  }
-  function field(label, value, fieldName, options = {}) {
-    return (
-      <View style={styles.dreRow}>
-        <Text style={[styles.dreLabel, options.indent && { paddingLeft: 16 }]}>{label}</Text>
-        <View style={styles.dreValueCol}>
-          <TextInput
-            style={[styles.dreInput, options.disabled && { opacity: 0.55 }]}
-            value={String(value).replace('.', ',')}
-            onChangeText={(t) => setField(fieldName, t)}
-            keyboardType="decimal-pad"
-            inputMode="decimal"
-            placeholder="0,00"
-            placeholderTextColor={colors.placeholder}
-            editable={!options.disabled}
-          />
-          {options.showPct ? (
-            <Text style={styles.drePctText}>{pctText(value)}</Text>
-          ) : null}
-        </View>
-      </View>
-    );
-  }
-  function readonly(label, value, { strong, signal, showPct } = {}) {
-    const positive = (value || 0) >= 0;
-    return (
-      <View style={[styles.dreRow, strong && styles.dreRowStrong]}>
-        <Text style={[styles.dreLabel, strong && styles.dreLabelStrong]}>{label}</Text>
-        <View style={styles.dreValueCol}>
-          <Text style={[
-            styles.dreReadonly,
-            strong && styles.dreReadonlyStrong,
-            signal && { color: positive ? colors.success : colors.error },
-          ]}>
-            {formatCurrency(value || 0)}
-          </Text>
-          {showPct ? <Text style={styles.drePctText}>{pctText(value)}</Text> : null}
-        </View>
-      </View>
-    );
-  }
-
-  // CMV editável só quando: (a) não há vendas cadastradas e o user clicou
-  // pra editar manualmente, OU (b) o user quer ajustar mesmo com vendas.
-  // Por padrão, com vendas no mês o CMV vem do cálculo automático e fica
-  // editável (mantemos compat — DRE não trava ninguém).
-  const cmvAutoOff = vendasCount === 0 && !cmvManual;
-
   return (
     <>
+      {/* KPIs DRE */}
+      <View style={[styles.kpiRow, !isDesktop && styles.kpiRowMobile]}>
+        <KPICard
+          label="Receita Bruta"
+          value={formatCurrency(dreNum.receitaBruta)}
+          color={colors.primary}
+          icon="dollar-sign"
+        />
+        <KPICard
+          label="CMV"
+          value={formatCurrency(dreNum.cmv)}
+          color={colors.warning}
+          icon="package"
+        />
+        <KPICard
+          label="Lucro Bruto"
+          value={formatCurrency(linhas.lucroBruto)}
+          color={linhas.lucroBruto >= 0 ? colors.success : colors.error}
+          icon="trending-up"
+        />
+        <KPICard
+          label="Lucro Líquido"
+          value={formatCurrency(linhas.lucroLiquido)}
+          color={linhas.lucroLiquido >= 0 ? colors.primary : colors.error}
+          icon={linhas.lucroLiquido >= 0 ? 'check-circle' : 'alert-circle'}
+          highlight
+        />
+      </View>
+
+      {/* Ações */}
       <View style={styles.dreActions}>
-        <TouchableOpacity onPress={onRecalcular} style={[styles.btn, styles.btnPrimary, { flex: 1 }]}>
-          {loading ? <ActivityIndicator size="small" color="#fff" /> : <Feather name="refresh-cw" size={16} color="#fff" />}
-          <Text style={styles.btnPrimaryText}>Recalcular</Text>
+        <TouchableOpacity onPress={onImportarFluxo} style={[styles.btn, styles.btnOutline, { flex: 1 }]}>
+          <Feather name="download" size={16} color={colors.primary} />
+          <Text style={styles.btnOutlineText}>Importar do Fluxo</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={onExportPDF} style={[styles.btn, styles.btnOutline, { flex: 1 }]}>
-          <Feather name="file-text" size={16} color={colors.primary} />
-          <Text style={styles.btnOutlineText}>Exportar PDF</Text>
+        <TouchableOpacity onPress={onResetDre} style={[styles.btn, styles.btnGhost, { flex: 1 }]}>
+          <Feather name="rotate-ccw" size={16} color={colors.textSecondary} />
+          <Text style={styles.btnGhostText}>Limpar</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.dreCard}>
-        <Text style={styles.dreHelper}>
-          Valores puxados do seu cadastro de produtos, despesas e vendas. Edite qualquer linha pra ajustar manualmente.
-          A coluna cinza à direita mostra % sobre a Receita Bruta.
+      {/* Helper */}
+      <View style={styles.dreHelperBox}>
+        <Feather name="info" size={14} color={colors.primary} />
+        <Text style={styles.dreHelperText}>
+          Solução solitária: todas as linhas são editáveis. Use{' '}
+          <Text style={{ fontFamily: fontFamily.semiBold }}>Importar do Fluxo</Text>
+          {' '}pra puxar Receita Bruta do mês ou ligue o toggle nas Despesas Fixas
+          pra usar o cadastro do Financeiro. Coluna cinza = % sobre Receita Bruta.
         </Text>
+      </View>
 
-        {/* Aviso quando não há vendas registradas no mês */}
-        {vendasCount === 0 ? (
-          <View style={styles.dreWarning}>
-            <Feather name="alert-circle" size={14} color={colors.warning || '#B45309'} />
-            <Text style={styles.dreWarningText}>
-              Nenhuma venda registrada em {monthLabel}. CMV não pode ser calculado automaticamente.
-            </Text>
-            {!cmvManual ? (
-              <TouchableOpacity onPress={onAtivarCmvManual} style={styles.dreWarningCta}>
-                <Text style={styles.dreWarningCtaText}>Inserir manualmente</Text>
+      {/* ===== Tabela DRE ===== */}
+      <View style={styles.dreCard}>
+        <Text style={styles.sectionTitle}>DEMONSTRATIVO — {monthLabel.toUpperCase()}</Text>
+
+        <DREEditableRow
+          label="RECEITA BRUTA"
+          value={dre.receitaBruta}
+          numValue={dreNum.receitaBruta}
+          onChangeText={(v) => setDreField('receitaBruta', v)}
+          showPct={false}
+          pctText={null}
+          bold
+        />
+        <DREEditableRow
+          label="(-) Deduções (impostos, taxas)"
+          value={dre.deducoes}
+          numValue={dreNum.deducoes}
+          onChangeText={(v) => setDreField('deducoes', v)}
+          indent
+          showPct
+          pctText={pctText(dreNum.deducoes)}
+        />
+        <DREEditableRow
+          label="(-) Devoluções"
+          value={dre.devolucoes}
+          numValue={dreNum.devolucoes}
+          onChangeText={(v) => setDreField('devolucoes', v)}
+          indent
+          showPct
+          pctText={pctText(dreNum.devolucoes)}
+        />
+
+        <DRESubtotalRow
+          label="= RECEITA LÍQUIDA"
+          value={linhas.receitaLiquida}
+          pctText={pctText(linhas.receitaLiquida)}
+        />
+
+        <DRESectionHeader title="CUSTOS" />
+        <DREEditableRow
+          label="(-) Custo dos Produtos Vendidos (CMV)"
+          value={dre.cmv}
+          numValue={dreNum.cmv}
+          onChangeText={(v) => setDreField('cmv', v)}
+          indent
+          showPct
+          pctText={pctText(dreNum.cmv)}
+        />
+
+        <DRESubtotalRow
+          label="= LUCRO BRUTO"
+          value={linhas.lucroBruto}
+          pctText={pctText(linhas.lucroBruto)}
+          highlight
+        />
+
+        <DRESectionHeader title="DESPESAS OPERACIONAIS" />
+
+        {/* Despesas Fixas — com toggle "Usar do Financeiro" */}
+        <View style={styles.dreFixasBox}>
+          <DREEditableRow
+            label="(-) Despesas Fixas"
+            value={dre.despesasFixas}
+            numValue={dreNum.despesasFixas}
+            onChangeText={(v) => setDreField('despesasFixas', v)}
+            indent
+            showPct
+            pctText={pctText(dreNum.despesasFixas)}
+            noBorder
+          />
+          <View style={styles.dreToggleRow}>
+            <TouchableOpacity
+              onPress={() => setUseFixasFromFinanceiro(v => !v)}
+              style={styles.dreToggle}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: useFixasFromFinanceiro }}
+            >
+              <View style={[
+                styles.dreToggleTrack,
+                useFixasFromFinanceiro && styles.dreToggleTrackOn,
+              ]}>
+                <View style={[
+                  styles.dreToggleThumb,
+                  useFixasFromFinanceiro && styles.dreToggleThumbOn,
+                ]} />
+              </View>
+              <Text style={styles.dreToggleLabel}>
+                Usar custos fixos do Financeiro
+                {useFixasFromFinanceiro && despesasFixasFromFinanceiro > 0
+                  ? ` (${formatCurrency(despesasFixasFromFinanceiro)})` : ''}
+              </Text>
+            </TouchableOpacity>
+            {despesasFixasList.length > 0 ? (
+              <TouchableOpacity
+                onPress={() => setShowDespesasFixasDetail(v => !v)}
+                style={styles.dreDetailBtn}
+                accessibilityRole="button"
+              >
+                <Feather
+                  name={showDespesasFixasDetail ? 'chevron-up' : 'chevron-down'}
+                  size={14}
+                  color={colors.primary}
+                />
+                <Text style={styles.dreDetailBtnText}>Detalhar</Text>
               </TouchableOpacity>
             ) : null}
           </View>
-        ) : null}
-
-        {field('RECEITA BRUTA', dre.receitaBruta, 'receitaBruta')}
-        {field('(-) Deduções (impostos)', dre.deducoes, 'deducoes', { indent: true, showPct: true })}
-        {field('(-) Devoluções', dre.devolucoes, 'devolucoes', { indent: true, showPct: true })}
-        {readonly('= RECEITA LÍQUIDA', linhas.receitaLiquida, { strong: true, showPct: true })}
-
-        {field('(-) Custo dos Produtos Vendidos (CMV)', dre.cmv, 'cmv', {
-          indent: true, showPct: true, disabled: cmvAutoOff,
-        })}
-        {readonly('= LUCRO BRUTO', linhas.lucroBruto, { strong: true, signal: true, showPct: true })}
-
-        <View style={styles.dreRow}>
-          <Text style={styles.dreLabel}>(-) Despesas Operacionais</Text>
-          <View style={styles.dreValueCol}>
-            <Text style={styles.dreReadonly}>{formatCurrency(linhas.totalOperacionais)}</Text>
-            <Text style={styles.drePctText}>{pctText(linhas.totalOperacionais)}</Text>
-          </View>
+          {showDespesasFixasDetail ? (
+            <View style={styles.dreFixasDetail}>
+              {despesasFixasList.length === 0 ? (
+                <Text style={styles.dreFixasEmpty}>
+                  Nenhuma despesa fixa cadastrada no Financeiro.
+                </Text>
+              ) : despesasFixasList.map(d => (
+                <View key={d.id} style={styles.dreFixaItem}>
+                  <Text style={styles.dreFixaDesc} numberOfLines={1}>
+                    {d.descricao || '(sem nome)'}
+                  </Text>
+                  <Text style={styles.dreFixaValor}>
+                    {formatCurrency(safeNum(d.valor))}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
         </View>
-        {field('   Despesas Fixas', dre.despesasFixas, 'despesasFixas', { indent: true, showPct: true })}
-        {field('   Despesas Variáveis', dre.despesasVariaveis, 'despesasVariaveis', { indent: true, showPct: true })}
 
-        {readonly('= LUCRO OPERACIONAL', linhas.lucroOperacional, { strong: true, signal: true, showPct: true })}
+        <DREEditableRow
+          label="(-) Despesas Variáveis"
+          value={dre.despesasVariaveis}
+          numValue={dreNum.despesasVariaveis}
+          onChangeText={(v) => setDreField('despesasVariaveis', v)}
+          indent
+          showPct
+          pctText={pctText(dreNum.despesasVariaveis)}
+        />
 
-        {field('(-) Outras Despesas', dre.outrasDespesas, 'outrasDespesas', { indent: true, showPct: true })}
-        {field('(+) Outras Receitas', dre.outrasReceitas, 'outrasReceitas', { indent: true, showPct: true })}
+        <DRESubtotalRow
+          label="(=) Total Despesas Operacionais"
+          value={linhas.totalOperacionais}
+          pctText={pctText(linhas.totalOperacionais)}
+          muted
+        />
 
-        {readonly('= LUCRO LÍQUIDO', linhas.lucroLiquido, { strong: true, signal: true, showPct: true })}
+        <DRESubtotalRow
+          label="= LUCRO OPERACIONAL"
+          value={linhas.lucroOperacional}
+          pctText={pctText(linhas.lucroOperacional)}
+          highlight
+        />
+
+        <DRESectionHeader title="NÃO-OPERACIONAIS" />
+        <DREEditableRow
+          label="(+) Outras Receitas"
+          value={dre.outrasReceitas}
+          numValue={dreNum.outrasReceitas}
+          onChangeText={(v) => setDreField('outrasReceitas', v)}
+          indent
+          showPct
+          pctText={pctText(dreNum.outrasReceitas)}
+        />
+        <DREEditableRow
+          label="(-) Outras Despesas"
+          value={dre.outrasDespesas}
+          numValue={dreNum.outrasDespesas}
+          onChangeText={(v) => setDreField('outrasDespesas', v)}
+          indent
+          showPct
+          pctText={pctText(dreNum.outrasDespesas)}
+        />
+
+        <DRESubtotalRow
+          label="= LUCRO LÍQUIDO"
+          value={linhas.lucroLiquido}
+          pctText={pctText(linhas.lucroLiquido)}
+          highlight
+          big
+        />
       </View>
 
       <Text style={styles.dreFooter}>
-        Referência: estrutura padrão brasileira simplificada para pequeno negócio
-        (alinhada com ContaAzul, Granatum e Bling).
+        Estrutura DRE simplificada para pequeno negócio — referência ContaAzul / Granatum / Bling.
       </Text>
     </>
   );
 }
 
+function DRESectionHeader({ title }) {
+  return (
+    <View style={styles.dreSectionHeader}>
+      <Text style={styles.dreSectionHeaderText}>{title}</Text>
+    </View>
+  );
+}
+
+function DREEditableRow({
+  label, value, numValue, onChangeText, indent, showPct, pctText, bold, noBorder,
+}) {
+  return (
+    <View style={[
+      styles.dreRow,
+      noBorder && { borderBottomWidth: 0 },
+    ]}>
+      <Text
+        style={[
+          styles.dreLabel,
+          indent && { paddingLeft: 14 },
+          bold && { fontFamily: fontFamily.bold, fontSize: 14 },
+        ]}
+        numberOfLines={2}
+      >
+        {label}
+      </Text>
+      <View style={styles.dreValueCol}>
+        <View style={styles.dreInputWrap}>
+          <Text style={styles.dreInputPrefix}>R$</Text>
+          <TextInput
+            style={styles.dreInput}
+            value={String(value ?? '')}
+            onChangeText={onChangeText}
+            keyboardType="decimal-pad"
+            inputMode="decimal"
+            placeholder="0,00"
+            placeholderTextColor={colors.placeholder}
+            selectTextOnFocus
+          />
+        </View>
+        {showPct ? (
+          <Text style={styles.drePctText}>{pctText || ''}</Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function DRESubtotalRow({ label, value, pctText, highlight, big, muted }) {
+  const positive = (value || 0) >= 0;
+  const bg = muted
+    ? colors.background
+    : highlight
+      ? (positive ? colors.success + '12' : colors.error + '12')
+      : colors.primary + '06';
+  const borderColor = muted
+    ? colors.border
+    : highlight
+      ? (positive ? colors.success + '40' : colors.error + '40')
+      : colors.primary + '30';
+  const valueColor = highlight
+    ? (positive ? colors.success : colors.error)
+    : colors.text;
+  return (
+    <View style={[
+      styles.dreSubtotalRow,
+      { backgroundColor: bg, borderColor },
+    ]}>
+      <Text style={[
+        styles.dreSubtotalLabel,
+        big && { fontSize: 15, fontFamily: fontFamily.bold },
+      ]}>{label}</Text>
+      <View style={styles.dreValueCol}>
+        <Text style={[
+          styles.dreSubtotalValue,
+          { color: valueColor },
+          big && { fontSize: 18 },
+        ]}>
+          {formatCurrency(value || 0)}
+        </Text>
+        {pctText ? <Text style={styles.drePctText}>{pctText}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
 // ============================================================
-// Styles
+// STYLES
 // ============================================================
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   pageShell: { flex: 1, width: '100%', maxWidth: 1100, alignSelf: 'center' },
-  content: { padding: spacing.md, paddingBottom: 100 },
+  content: { padding: spacing.md, paddingBottom: 120 },
 
-  // Month bar
-  monthBar: {
+  // -------- Month hero --------
+  monthHero: {
     flexDirection: 'row', alignItems: 'center',
-    padding: spacing.sm, paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
     backgroundColor: colors.surface,
     borderBottomWidth: 1, borderBottomColor: colors.border,
+    gap: spacing.sm,
+  },
+  monthCenter: { flex: 1, alignItems: 'center' },
+  monthEyebrow: {
+    fontSize: 10, fontFamily: fontFamily.semiBold,
+    color: colors.textSecondary, letterSpacing: 1.2,
+    marginBottom: 2,
+  },
+  monthLabel: {
+    fontSize: fonts.large, fontFamily: fontFamily.bold,
+    color: colors.text, textTransform: 'capitalize',
   },
   monthArrow: {
     width: 40, height: 40, borderRadius: 20,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.primary + '10',
+    backgroundColor: colors.primary + '12',
   },
-  monthLabel: { fontSize: fonts.regular, fontFamily: fontFamily.semiBold, color: colors.text, textTransform: 'capitalize' },
   todayChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    marginLeft: spacing.sm,
     paddingVertical: 6, paddingHorizontal: 10,
     borderRadius: borderRadius.sm,
     borderWidth: 1, borderColor: colors.primary + '40',
@@ -1002,33 +1122,7 @@ const styles = StyleSheet.create({
     fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.primary,
   },
 
-  // Modal — campos
-  dateInputNative: {
-    height: 44,
-    paddingHorizontal: 12,
-    backgroundColor: colors.inputBg,
-    borderWidth: 1, borderColor: colors.border,
-    borderRadius: borderRadius.sm,
-    color: colors.text,
-    fontSize: 14,
-  },
-  errorText: {
-    fontSize: 11, color: colors.error, marginTop: 4, marginBottom: 4,
-    fontFamily: fontFamily.medium,
-  },
-  valorTrigger: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    minHeight: 48, paddingHorizontal: 12, paddingVertical: 10,
-    backgroundColor: colors.inputBg,
-    borderWidth: 1.5, borderColor: colors.primary + '40',
-    borderRadius: borderRadius.sm,
-    marginBottom: 4,
-  },
-  valorTriggerText: {
-    fontSize: 16, fontFamily: fontFamily.semiBold, color: colors.text,
-  },
-
-  // Tabs (replica do DeliveryHub)
+  // -------- Tabs --------
   tabsRow: {
     flexDirection: 'row',
     borderBottomWidth: 1, borderBottomColor: colors.border,
@@ -1044,56 +1138,77 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 13, fontFamily: fontFamily.semiBold, color: colors.textSecondary },
   tabTextActive: { color: colors.primary },
 
-  // Summary cards
-  summaryRow: {
-    flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md,
+  // -------- KPI cards --------
+  kpiRow: {
+    flexDirection: 'row', gap: spacing.sm,
+    marginBottom: spacing.md,
   },
-  summaryRowMobile: {
-    flexWrap: 'wrap',
-  },
-  summaryCard: {
+  kpiRowMobile: { flexWrap: 'wrap' },
+  kpiCard: {
     flex: 1, minWidth: 140,
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    padding: spacing.sm + 2,
-    borderWidth: 1, borderColor: colors.border,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md - 2,
+    borderWidth: 1, borderColor: colors.border + '80',
+    ...Platform.select({
+      web: { boxShadow: '0 1px 3px rgba(0,77,71,0.06)' },
+      default: { elevation: 1, shadowColor: colors.shadow, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 2 },
+    }),
   },
-  summaryCardHighlight: {
-    borderColor: colors.primary + '40',
-    backgroundColor: colors.primary + '08',
+  kpiCardHighlight: {
+    borderColor: colors.primary + '50',
+    backgroundColor: colors.primary + '06',
   },
-  summaryLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
-  summaryLabel: { fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.medium },
-  summaryValue: { fontSize: 16, fontFamily: fontFamily.bold },
+  kpiHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  kpiIconBubble: {
+    width: 24, height: 24, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  kpiLabel: {
+    fontSize: 11, color: colors.textSecondary,
+    fontFamily: fontFamily.medium,
+    letterSpacing: 0.3,
+  },
+  kpiValue: {
+    fontSize: 20, fontFamily: fontFamily.bold,
+    marginTop: 2,
+  },
 
-  // Actions
-  actionsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md, flexWrap: 'wrap' },
-  btn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    paddingVertical: 12, paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-    minHeight: 44,
+  // -------- Section title --------
+  sectionTitleRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: spacing.sm, marginBottom: spacing.sm,
   },
-  btnPrimary: { backgroundColor: colors.primary },
-  btnPrimaryText: { color: '#fff', fontFamily: fontFamily.semiBold, fontSize: 14 },
-  btnOutline: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: colors.primary },
-  btnOutlineText: { color: colors.primary, fontFamily: fontFamily.semiBold, fontSize: 14 },
-  btnGhost: { backgroundColor: 'transparent' },
-  btnGhostText: { color: colors.textSecondary, fontFamily: fontFamily.semiBold, fontSize: 14 },
+  sectionTitle: {
+    fontSize: 12, fontFamily: fontFamily.bold,
+    color: colors.textSecondary, letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  sectionCount: {
+    fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.medium,
+  },
 
-  // Movements list
+  // -------- Timeline (movimentos) --------
+  timeline: { gap: spacing.xs },
   movRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.xs,
-    borderWidth: 1, borderColor: colors.border,
+    borderRadius: borderRadius.lg,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1, borderColor: colors.border + '50',
+    ...Platform.select({
+      web: { boxShadow: '0 1px 2px rgba(0,77,71,0.04)' },
+      default: {},
+    }),
   },
-  movDot: { width: 8, height: 8, borderRadius: 4 },
+  movIconBadge: {
+    width: 32, height: 32, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center',
+  },
   movDesc: { fontSize: 14, fontFamily: fontFamily.semiBold, color: colors.text },
   movSub: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
-  movValor: { fontSize: 14, fontFamily: fontFamily.bold },
+  movValor: { fontSize: 14, fontFamily: fontFamily.bold, marginLeft: spacing.sm },
   movDelete: {
     width: 28, height: 28, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center',
@@ -1101,24 +1216,30 @@ const styles = StyleSheet.create({
     marginLeft: spacing.xs,
   },
 
-  // Field label
-  fieldLabel: {
-    fontSize: 13, fontFamily: fontFamily.medium, color: colors.textSecondary,
-    marginBottom: 6, marginTop: spacing.xs,
+  // -------- FAB sticky --------
+  fab: {
+    position: 'absolute',
+    right: 20, bottom: 86,
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+    flexDirection: 'row', gap: 8,
+    ...Platform.select({
+      web: { boxShadow: '0 4px 12px rgba(0,77,71,0.25)' },
+      default: { elevation: 6, shadowColor: colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4 },
+    }),
   },
-  chipRow: { flexDirection: 'row', gap: 8, marginBottom: spacing.sm },
-  chip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingVertical: 8, paddingHorizontal: 12,
-    borderRadius: borderRadius.sm,
-    borderWidth: 1, borderColor: colors.border,
-    backgroundColor: colors.inputBg,
+  fabDesktop: {
+    bottom: 24,
+    width: 'auto', height: 'auto',
+    paddingHorizontal: 18, paddingVertical: 12,
+    borderRadius: borderRadius.md,
   },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { fontSize: 13, fontFamily: fontFamily.medium, color: colors.text },
-  chipTextActive: { color: '#fff' },
+  fabLabel: {
+    color: '#fff', fontFamily: fontFamily.semiBold, fontSize: 14,
+  },
 
-  // Modal
+  // -------- Modal --------
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center', alignItems: 'center',
@@ -1138,81 +1259,212 @@ const styles = StyleSheet.create({
   modalFooter: {
     flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md,
   },
+  fieldLabel: {
+    fontSize: 13, fontFamily: fontFamily.medium, color: colors.textSecondary,
+    marginBottom: 6, marginTop: spacing.xs,
+  },
+  errorText: {
+    fontSize: 11, color: colors.error, marginTop: 4, marginBottom: 4,
+    fontFamily: fontFamily.medium,
+  },
+  dateInputNative: {
+    height: 44,
+    paddingHorizontal: 12,
+    backgroundColor: colors.inputBg,
+    borderWidth: 1, borderColor: colors.border,
+    borderRadius: borderRadius.sm,
+    color: colors.text,
+    fontSize: 14,
+  },
+  chipRow: { flexDirection: 'row', gap: 8, marginBottom: spacing.sm },
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 8, paddingHorizontal: 12,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.inputBg,
+  },
+  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { fontSize: 13, fontFamily: fontFamily.medium, color: colors.text },
+  chipTextActive: { color: '#fff' },
 
-  // DRE
-  dreActions: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md, flexWrap: 'wrap' },
+  // -------- Buttons --------
+  btn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 12, paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    minHeight: 44,
+  },
+  btnPrimary: { backgroundColor: colors.primary },
+  btnPrimaryText: { color: '#fff', fontFamily: fontFamily.semiBold, fontSize: 14 },
+  btnOutline: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: colors.primary },
+  btnOutlineText: { color: colors.primary, fontFamily: fontFamily.semiBold, fontSize: 14 },
+  btnGhost: { backgroundColor: 'transparent' },
+  btnGhostText: { color: colors.textSecondary, fontFamily: fontFamily.semiBold, fontSize: 14 },
+
+  // -------- DRE --------
+  dreActions: {
+    flexDirection: 'row', gap: spacing.sm,
+    marginBottom: spacing.md, flexWrap: 'wrap',
+  },
+  dreHelperBox: {
+    flexDirection: 'row', gap: 8,
+    backgroundColor: colors.primary + '08',
+    borderWidth: 1, borderColor: colors.primary + '25',
+    borderRadius: borderRadius.md,
+    padding: spacing.sm + 2,
+    marginBottom: spacing.md,
+  },
+  dreHelperText: {
+    flex: 1,
+    fontSize: 12, color: colors.text, lineHeight: 17,
+    fontFamily: fontFamily.regular,
+  },
   dreCard: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius.lg,
     padding: spacing.md,
-    borderWidth: 1, borderColor: colors.border,
+    borderWidth: 1, borderColor: colors.border + '60',
+    ...Platform.select({
+      web: { boxShadow: '0 1px 3px rgba(0,77,71,0.06)' },
+      default: {},
+    }),
   },
-  dreHelper: {
-    fontSize: 12, color: colors.textSecondary, lineHeight: 16,
-    marginBottom: spacing.md,
+  dreSectionHeader: {
+    marginTop: spacing.sm + 2,
+    marginBottom: 2,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.border + '60',
+  },
+  dreSectionHeaderText: {
+    fontSize: 10, fontFamily: fontFamily.bold,
+    color: colors.textSecondary, letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    paddingTop: 6,
   },
   dreRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: 8,
-    borderBottomWidth: 1, borderBottomColor: colors.border + '60',
+    borderBottomWidth: 1, borderBottomColor: colors.border + '40',
     gap: spacing.sm,
   },
-  dreRowStrong: {
-    backgroundColor: colors.primary + '08',
-    paddingHorizontal: spacing.xs,
-    borderRadius: borderRadius.sm,
-    borderBottomWidth: 0,
-    marginVertical: 2,
+  dreLabel: {
+    flex: 1, fontSize: 13, color: colors.text,
+    fontFamily: fontFamily.regular,
   },
-  dreLabel: { flex: 1, fontSize: 13, color: colors.text, fontFamily: fontFamily.regular },
-  dreLabelStrong: { fontFamily: fontFamily.bold, fontSize: 14 },
-  dreInput: {
-    width: 130,
-    paddingHorizontal: 10, paddingVertical: 8,
-    backgroundColor: colors.inputBg,
-    borderRadius: borderRadius.sm,
+  dreValueCol: {
+    alignItems: 'flex-end',
+    minWidth: 140,
+  },
+  dreInputWrap: {
+    flexDirection: 'row', alignItems: 'center',
     borderWidth: 1, borderColor: colors.border,
+    borderRadius: borderRadius.sm,
+    backgroundColor: colors.inputBg,
+    overflow: 'hidden',
+  },
+  dreInputPrefix: {
+    fontSize: 11, color: colors.textSecondary,
+    fontFamily: fontFamily.semiBold,
+    paddingHorizontal: 8, paddingVertical: 8,
+    backgroundColor: colors.background,
+  },
+  dreInput: {
+    width: 100,
+    paddingHorizontal: 8, paddingVertical: 8,
     fontSize: 13, fontFamily: fontFamily.semiBold,
     color: colors.text,
     textAlign: 'right',
   },
-  dreReadonly: {
-    width: 130, paddingHorizontal: 10, paddingVertical: 8,
-    fontSize: 13, fontFamily: fontFamily.semiBold,
-    color: colors.text, textAlign: 'right',
-  },
-  dreReadonlyStrong: { fontSize: 15, fontFamily: fontFamily.bold },
-  dreValueCol: {
-    alignItems: 'flex-end',
-    minWidth: 130,
-  },
   drePctText: {
-    fontSize: 10,
-    fontFamily: fontFamily.medium,
+    fontSize: 10, fontFamily: fontFamily.medium,
     color: colors.textSecondary,
-    marginTop: 2,
-    paddingHorizontal: 10,
+    marginTop: 3,
+    paddingRight: 4,
   },
-  dreWarning: {
-    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6,
-    backgroundColor: (colors.warning || '#FBBF24') + '15',
-    borderWidth: 1, borderColor: (colors.warning || '#FBBF24') + '50',
+
+  // -------- DRE subtotal --------
+  dreSubtotalRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 10, paddingHorizontal: 10,
     borderRadius: borderRadius.sm,
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
+    borderWidth: 1,
+    marginVertical: 4,
+    gap: spacing.sm,
   },
-  dreWarningText: {
-    flex: 1, fontSize: 12, color: colors.text, lineHeight: 16,
+  dreSubtotalLabel: {
+    flex: 1, fontSize: 13.5, color: colors.text,
+    fontFamily: fontFamily.semiBold,
+  },
+  dreSubtotalValue: {
+    fontSize: 15, fontFamily: fontFamily.bold,
+    textAlign: 'right',
+  },
+
+  // -------- DRE Fixas (toggle + detail) --------
+  dreFixasBox: {
+    borderBottomWidth: 1, borderBottomColor: colors.border + '40',
+    paddingBottom: 4,
+  },
+  dreToggleRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingLeft: 14, paddingRight: 4,
+    paddingBottom: 6,
+    flexWrap: 'wrap', gap: 8,
+  },
+  dreToggle: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    flexShrink: 1,
+  },
+  dreToggleTrack: {
+    width: 32, height: 18, borderRadius: 9,
+    backgroundColor: colors.border,
+    padding: 2, justifyContent: 'center',
+  },
+  dreToggleTrackOn: { backgroundColor: colors.primary },
+  dreToggleThumb: {
+    width: 14, height: 14, borderRadius: 7,
+    backgroundColor: '#fff',
+    ...Platform.select({
+      web: { boxShadow: '0 1px 2px rgba(0,0,0,0.2)' },
+      default: { elevation: 2 },
+    }),
+  },
+  dreToggleThumbOn: { alignSelf: 'flex-end' },
+  dreToggleLabel: {
+    fontSize: 11.5, color: colors.text,
     fontFamily: fontFamily.medium,
+    flexShrink: 1,
   },
-  dreWarningCta: {
-    paddingVertical: 6, paddingHorizontal: 10,
+  dreDetailBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingVertical: 4, paddingHorizontal: 8,
     borderRadius: borderRadius.sm,
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primary + '10',
   },
-  dreWarningCtaText: {
-    fontSize: 11, color: '#fff', fontFamily: fontFamily.semiBold,
+  dreDetailBtnText: {
+    fontSize: 11, color: colors.primary, fontFamily: fontFamily.semiBold,
   },
+  dreFixasDetail: {
+    marginLeft: 14,
+    marginTop: 4, marginBottom: 6,
+    paddingVertical: 6, paddingHorizontal: 10,
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.sm,
+    gap: 4,
+  },
+  dreFixaItem: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 3,
+  },
+  dreFixaDesc: { flex: 1, fontSize: 12, color: colors.text, fontFamily: fontFamily.regular },
+  dreFixaValor: { fontSize: 12, color: colors.text, fontFamily: fontFamily.semiBold },
+  dreFixasEmpty: {
+    fontSize: 11, fontStyle: 'italic',
+    color: colors.textSecondary, fontFamily: fontFamily.regular,
+  },
+
   dreFooter: {
     fontSize: 11, color: colors.textSecondary,
     textAlign: 'center', marginTop: spacing.md,
