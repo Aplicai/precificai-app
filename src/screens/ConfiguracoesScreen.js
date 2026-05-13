@@ -6,6 +6,9 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useListDensity from '../hooks/useListDensity';
 import useFeatureFlag from '../hooks/useFeatureFlag';
+// Sistema de feature flags por email (whitelist) — features beta/sistema.
+import useFeatureFlags from '../hooks/useFeatureFlags';
+import usePersistedState from '../hooks/usePersistedState';
 // D-02: botão sair da conta no mobile
 import { useAuth } from '../contexts/AuthContext';
 
@@ -92,6 +95,12 @@ export default function ConfiguracoesScreen({ navigation }) {
   const [deliveryOn, setDeliveryOn] = useFeatureFlag('usa_delivery');
   // Sessão 28.8 — flag opcional pra exibir o CRUD de combos sem depender de delivery
   const [combosOn, setCombosOn] = useFeatureFlag('modo_avancado_combos');
+
+  // Feature flags SISTEMA (whitelist por email) — controla visibilidade de
+  // features beta. O toggle local (AsyncStorage) só aparece para quem tem o
+  // flag; só quem ativa o toggle vê o item de menu em "Mais".
+  const featureFlags = useFeatureFlags();
+  const [dreActive, setDreActive] = usePersistedState('feature_dre_fluxo_caixa_active', false);
 
   // Sessão 28.48: removidas funções pedirConfirmacaoExport, exportBackup,
   // mapBackupError, BACKUP_TABLES, isMountedRef e estado `exporting`.
@@ -285,7 +294,7 @@ export default function ConfiguracoesScreen({ navigation }) {
           icon="moped-outline"
           materialIcon
           label="Trabalha com delivery"
-          desc="Mostra Delivery, Combos e Comparativo de Canais"
+          desc="Mostra Delivery e Combos"
           value={deliveryOn}
           onChange={setDeliveryOn}
         />
@@ -312,6 +321,30 @@ export default function ConfiguracoesScreen({ navigation }) {
           onChange={setCombosOn}
         />
       </View>
+
+      {/* Recursos Beta — só aparece pra emails com whitelist (featureFlags.dreFluxoCaixa).
+          Toggle local controla se o item de menu correspondente em "Mais" fica visível.
+          Quem NÃO tem o flag não vê NEM essa seção NEM o item de menu. */}
+      {featureFlags.dreFluxoCaixa && (
+        <View style={styles.advancedSection}>
+          <View style={styles.backupHeader}>
+            <View style={[styles.iconBox, { backgroundColor: colors.accent + '12' }]}>
+              <Feather name="zap" size={18} color={colors.accent} />
+            </View>
+            <View style={styles.rowBody}>
+              <Text style={styles.rowLabel}>Recursos Beta</Text>
+              <Text style={styles.rowDesc}>Funcionalidades em teste. Liberadas individualmente por e-mail.</Text>
+            </View>
+          </View>
+          <FlagToggleRow
+            icon="trending-up"
+            label="Fluxo de Caixa + DRE"
+            desc="Inclui controle de entradas/saídas mensais e demonstração de resultados."
+            value={dreActive}
+            onChange={setDreActive}
+          />
+        </View>
+      )}
 
       {/* Sessão 28.48: "Backup e Restauração" simplificado.
           Removidos os botões "Exportar Dados" (JSON) e "Importar Dados" (em breve).

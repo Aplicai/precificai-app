@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
 import useListDensity from '../hooks/useListDensity';
@@ -14,11 +14,12 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const LOGIN_TIMEOUT_MS = 30000;
 
 export default function LoginScreen({ navigation }) {
-  const { signIn } = useAuth();
+  const { signIn, signInWithGoogle } = useAuth();
   const { isCompact, inputHeight, buttonHeight } = useListDensity();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   // Countdown (segundos) para rate-limit retornado pelo Supabase.
@@ -99,6 +100,26 @@ export default function LoginScreen({ navigation }) {
   // de rate-limit retornado pelo backend (Supabase 429).
   const btnDisabled = loading || !!rateLimit.isLocked || retryIn > 0;
 
+  // Continuar com Google — fluxo OAuth via Supabase. Em sucesso, o browser
+  // redireciona pra Google e volta pro site, onde onAuthStateChange propaga
+  // a nova sessão. Falhas exibem no mesmo errorBox do form de email/senha.
+  const handleGoogleLogin = async () => {
+    setError('');
+    setGoogleLoading(true);
+    try {
+      await signInWithGoogle();
+      // Em web, signInWithOAuth dispara redirect via window.location, então o
+      // código abaixo geralmente nem chega a executar. Mantemos o reset por
+      // segurança caso o SDK não consiga redirecionar (ex: popup bloqueado).
+    } catch (err) {
+      console.error('[LoginScreen.handleGoogleLogin]', err);
+      setError(err?.message || 'Não foi possível iniciar o login com Google. Tente novamente.');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+  const googleDisabled = googleLoading || loading;
+
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
@@ -121,6 +142,32 @@ export default function LoginScreen({ navigation }) {
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
+
+          {/* Continuar com Google — fluxo OAuth via Supabase (somente web por enquanto). */}
+          <TouchableOpacity
+            style={[styles.googleBtn, googleDisabled && styles.googleBtnDisabled]}
+            onPress={handleGoogleLogin}
+            disabled={googleDisabled}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Continuar com Google"
+            accessibilityState={{ disabled: googleDisabled }}
+          >
+            {googleLoading ? (
+              <ActivityIndicator color="#3c4043" size="small" />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="google" size={18} color="#4285F4" style={{ marginRight: 10 }} />
+                <Text style={styles.googleBtnText}>Continuar com Google</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>ou</Text>
+            <View style={styles.dividerLine} />
+          </View>
 
           <Text style={styles.label}>Email</Text>
           <TextInput
@@ -264,4 +311,42 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   errorText: { color: '#dc2626', fontSize: 13, fontFamily: fontFamily.regular, flex: 1 },
+  // Botão "Continuar com Google" — pattern visual recomendado pelo Google
+  // (fundo branco, borda cinza clara, texto cor #3c4043, ícone à esquerda).
+  googleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#dadce0',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 48,
+    marginTop: 8,
+  },
+  googleBtnDisabled: { opacity: 0.5 },
+  googleBtnText: {
+    color: '#3c4043',
+    fontSize: 15,
+    fontWeight: '500',
+    fontFamily: fontFamily.medium,
+  },
+  // Separador "ou" entre Google e form de email/senha
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
+  dividerText: {
+    marginHorizontal: 12,
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontFamily: fontFamily.regular,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
 });

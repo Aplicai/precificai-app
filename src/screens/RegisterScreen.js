@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Modal, Image } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import zxcvbn from 'zxcvbn';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
@@ -62,12 +62,13 @@ const FEEDBACK_PT = {
 const translateFeedback = (msg) => (msg ? (FEEDBACK_PT[msg] || msg) : '');
 
 export default function RegisterScreen({ navigation }) {
-  const { signUp } = useAuth();
+  const { signUp, signInWithGoogle } = useAuth();
   const rateLimit = useRateLimit();
   const { isCompact, inputHeight, buttonHeight } = useListDensity();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
@@ -168,6 +169,23 @@ export default function RegisterScreen({ navigation }) {
   // de rate-limit retornado pelo backend (Supabase 429).
   const btnDisabled = loading || !!rateLimit.isLocked || retryIn > 0;
 
+  // Continuar com Google — Supabase OAuth.
+  // Em primeira vez, o Supabase cria a conta automaticamente (não precisa de
+  // signUp separado). Em logins subsequentes, só autentica. Sempre o mesmo método.
+  const handleGoogleSignup = async () => {
+    setError('');
+    setGoogleLoading(true);
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      console.error('[RegisterScreen.handleGoogleSignup]', err);
+      setError(err?.message || 'Não foi possível iniciar o login com Google. Tente novamente.');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+  const googleDisabled = googleLoading || loading;
+
   if (success) {
     return (
       <View style={styles.container}>
@@ -214,6 +232,35 @@ export default function RegisterScreen({ navigation }) {
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
+
+          {/* Continuar com Google — Supabase cria a conta automaticamente na 1ª vez. */}
+          <TouchableOpacity
+            style={[styles.googleBtn, googleDisabled && styles.googleBtnDisabled]}
+            onPress={handleGoogleSignup}
+            disabled={googleDisabled}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Continuar com Google"
+            accessibilityState={{ disabled: googleDisabled }}
+          >
+            {googleLoading ? (
+              <ActivityIndicator color="#3c4043" size="small" />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="google" size={18} color="#4285F4" style={{ marginRight: 10 }} />
+                <Text style={styles.googleBtnText}>Continuar com Google</Text>
+              </>
+            )}
+          </TouchableOpacity>
+          <Text style={styles.googleHelperText}>
+            Vamos criar sua conta automaticamente com seu Google.
+          </Text>
+
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>ou</Text>
+            <View style={styles.dividerLine} />
+          </View>
 
           <Text style={styles.label}>Email</Text>
           <TextInput
@@ -573,4 +620,51 @@ const styles = StyleSheet.create({
   modalText: { fontSize: 13, color: colors.textSecondary, fontFamily: fontFamily.regular, lineHeight: 20 },
   modalCloseBtn: { backgroundColor: colors.primary, borderRadius: borderRadius.md, paddingVertical: 12, alignItems: 'center' },
   modalCloseBtnText: { color: '#fff', fontSize: 15, fontWeight: '600', fontFamily: fontFamily.semiBold },
+
+  // Botão "Continuar com Google" — pattern visual recomendado pelo Google
+  // (fundo branco, borda cinza clara, texto cor #3c4043, ícone à esquerda).
+  googleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#dadce0',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minHeight: 48,
+    marginTop: 8,
+  },
+  googleBtnDisabled: { opacity: 0.5 },
+  googleBtnText: {
+    color: '#3c4043',
+    fontSize: 15,
+    fontWeight: '500',
+    fontFamily: fontFamily.medium,
+  },
+  googleHelperText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 8,
+    fontFamily: fontFamily.regular,
+    lineHeight: 16,
+  },
+  // Separador "ou" entre Google e form de email/senha
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
+  dividerText: {
+    marginHorizontal: 12,
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontFamily: fontFamily.regular,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
 });

@@ -67,6 +67,8 @@ import NotificacoesScreen from '../screens/NotificacoesScreen';
 import ComparativoCanaisScreen from '../screens/ComparativoCanaisScreen';
 import TermosScreen from '../screens/TermosScreen';
 import PrivacidadeScreen from '../screens/PrivacidadeScreen';
+// Feature beta — só visível pra emails com whitelist + toggle ativo (ver useFeatureFlags).
+import FluxoCaixaDREScreen from '../screens/FluxoCaixaDREScreen';
 
 
 const Tab = createBottomTabNavigator();
@@ -337,6 +339,7 @@ function MaisStack() {
       <Stack.Screen name="ComparativoCanais" component={ComparativoCanaisScreen} options={{ title: 'Comparativo Canais' }} />
       <Stack.Screen name="Termos" component={TermosScreen} options={{ title: 'Termos de Uso' }} />
       <Stack.Screen name="Privacidade" component={PrivacidadeScreen} options={{ title: 'Política de Privacidade' }} />
+      <Stack.Screen name="FluxoCaixaDRE" component={FluxoCaixaDREScreen} options={{ title: 'Fluxo de Caixa + DRE' }} />
     </Stack.Navigator>
     </StackWithBanner>
   );

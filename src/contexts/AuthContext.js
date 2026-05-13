@@ -219,6 +219,57 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // Login com Google via Supabase OAuth.
+  //
+  // CONFIGURAÇÃO NECESSÁRIA (faça uma vez no painel/console):
+  //
+  // 1) Supabase Dashboard → Authentication → Providers → Google
+  //    - Habilite o provider
+  //    - Cole o Client ID e Client Secret obtidos do Google Cloud Console
+  //
+  // 2) Google Cloud Console → APIs & Services → Credentials
+  //    - Crie um OAuth 2.0 Client ID (tipo "Web application")
+  //    - Authorized JavaScript origins:
+  //        https://app.precificaiapp.com
+  //        http://localhost:8081   (dev)
+  //    - Authorized redirect URIs:
+  //        https://<seu-projeto>.supabase.co/auth/v1/callback
+  //
+  // 3) Supabase Dashboard → Authentication → URL Configuration
+  //    - Site URL: https://app.precificaiapp.com
+  //    - Additional Redirect URLs: http://localhost:8081
+  //
+  // TODO (nativo iOS/Android): para builds nativos é preciso implementar via
+  // expo-auth-session (deep link com esquema custom). Por enquanto a feature
+  // está restrita ao web — a app é instalada via PWA.
+  const signInWithGoogle = async () => {
+    addBreadcrumb({ category: 'auth', message: 'signInWithGoogle attempt' });
+    try {
+      if (Platform.OS !== 'web') {
+        // TODO: implementar via expo-auth-session quando for buildar app nativo
+        throw new Error('Login com Google só disponível no navegador web por enquanto.');
+      }
+      const redirectTo = (typeof window !== 'undefined' && window.location)
+        ? `${window.location.origin}` // volta pro site após auth
+        : 'https://app.precificaiapp.com';
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
+      });
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      captureException(err, { screen: 'Login', action: 'signInWithGoogle' });
+      throw err;
+    }
+  };
+
   const signOut = async () => {
     addBreadcrumb({ category: 'auth', message: 'signOut' });
     // Sessão 28.56 — sinaliza que o SIGNED_OUT que vai chegar é INTENCIONAL
@@ -273,6 +324,7 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{
       user, session, loading,
       signIn, signUp, signOut, resetPassword,
+      signInWithGoogle,
       passwordRecovery, clearPasswordRecovery,
     }}>
       {children}

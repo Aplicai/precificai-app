@@ -64,6 +64,8 @@ const ROUTE_TITLES = {
   'ComparativoCanais': 'Comparativo Canais',
   'Termos': 'Termos de Uso',
   'Privacidade': 'Política de Privacidade',
+  // Feature beta — gated por email whitelist + toggle ativo
+  'FluxoCaixaDRE': 'Fluxo de Caixa + DRE',
 };
 
 // Routes rendered as transparentModal popups — header should ignore them

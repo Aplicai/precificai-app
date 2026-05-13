@@ -3,7 +3,7 @@
  *
  * Área 9 — aparece esporadicamente (a cada 5 sessões) no topo de telas-chave
  * (Início) para usuários no mobile. Texto convidativo (não passivo-agressivo):
- * "Para uma experiência mais completa, use o PrecificaÍ no computador."
+ * "Para uma experiência mais completa, use o Precificaí no computador."
  *
  * Comportamento:
  *  - Só renderiza em `isMobile`.
@@ -62,7 +62,7 @@ export default function MobileDesktopHint() {
         <Feather name="monitor" size={16} color={colors.primary} />
       </View>
       <Text style={styles.text}>
-        Para uma experiência mais completa, use o PrecificaÍ no computador.
+        Para uma experiência mais completa, use o Precificaí no computador.
       </Text>
       <TouchableOpacity
         onPress={() => setDismissed(true)}
