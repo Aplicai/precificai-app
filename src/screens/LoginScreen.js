@@ -14,7 +14,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const LOGIN_TIMEOUT_MS = 30000;
 
 export default function LoginScreen({ navigation }) {
-  const { signIn, signInWithGoogle } = useAuth();
+  const { signIn, signInWithGoogle, setRememberMe } = useAuth();
   const { isCompact, inputHeight, buttonHeight } = useListDensity();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,6 +22,9 @@ export default function LoginScreen({ navigation }) {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  // M-2: "Lembrar de mim" — default DESMARCADO (timeout 2h em vez de 7d).
+  // Marcado = 7 dias, recomendado apenas para dispositivos pessoais.
+  const [rememberMe, setRememberMeLocal] = useState(false);
   // Countdown (segundos) para rate-limit retornado pelo Supabase.
   // Quando > 0, desabilita o botão e mostra "Aguarde Xs para tentar novamente".
   const [retryIn, setRetryIn] = useState(0);
@@ -74,6 +77,9 @@ export default function LoginScreen({ navigation }) {
       setError('Servidor demorou para responder. Verifique sua conexão e tente novamente.');
     }, LOGIN_TIMEOUT_MS);
     try {
+      // M-2: persiste preferência ANTES do signIn — assim getEffectiveTimeout
+      // já tem o valor correto na primeira checagem após o login.
+      try { await setRememberMe?.(rememberMe); } catch (_) {}
       await signIn(emailTrim.toLowerCase(), password);
       if (timedOut) return;
       rateLimit.reset();
@@ -209,6 +215,24 @@ export default function LoginScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
+          {/* M-2: Lembrar de mim — controla timeout de inatividade (2h vs 7d). */}
+          <TouchableOpacity
+            style={styles.rememberRow}
+            onPress={() => setRememberMeLocal(v => !v)}
+            activeOpacity={0.7}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: rememberMe }}
+            accessibilityLabel="Lembrar de mim por 7 dias"
+          >
+            <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
+              {rememberMe ? <Feather name="check" size={14} color="#fff" /> : null}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rememberLabel}>Lembrar de mim por 7 dias</Text>
+              <Text style={styles.rememberHint}>Recomendado apenas em dispositivos pessoais</Text>
+            </View>
+          </TouchableOpacity>
+
           <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')} style={styles.forgotBtn}>
             <Text style={styles.forgotText}>Esqueci minha senha</Text>
           </TouchableOpacity>
@@ -283,7 +307,31 @@ const styles = StyleSheet.create({
   // que esquecem a senha e não conseguem encontrar o link.
   // Sessão 28 — paddingVertical 4→12 (touch target 44pt ao invés de 21pt)
   // Sessão 28.9 — APP-02: link aumentado (era 13pt, ficou pequeno demais segundo feedback de teste)
-  forgotBtn: { alignSelf: 'flex-end', marginTop: 12, marginBottom: 22, paddingVertical: 14, paddingHorizontal: 10, minHeight: 48, justifyContent: 'center' },
+  forgotBtn: { alignSelf: 'flex-end', marginTop: 4, marginBottom: 22, paddingVertical: 14, paddingHorizontal: 10, minHeight: 48, justifyContent: 'center' },
+  // M-2: linha de "Lembrar de mim" — checkbox + texto principal + hint secundário
+  rememberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    paddingVertical: 6,
+  },
+  checkbox: {
+    width: 20, height: 20, borderRadius: 4,
+    borderWidth: 1.5, borderColor: colors.border,
+    backgroundColor: '#fff',
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 10,
+  },
+  checkboxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  rememberLabel: {
+    fontSize: 14, color: colors.text, fontFamily: fontFamily.medium, fontWeight: '600',
+  },
+  rememberHint: {
+    fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.regular, marginTop: 1,
+  },
   forgotText: {
     fontSize: 15, color: colors.primary, fontFamily: fontFamily.semiBold,
     fontWeight: '700', textDecorationLine: 'underline',

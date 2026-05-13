@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem } from '../utils/calculations';
+import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import InfoTooltip from '../components/InfoTooltip';
@@ -20,12 +20,6 @@ const TABS = [
 function normalizeStr(str) {
   return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
-
-// Helper: extrai número finito ou 0 (evita NaN/Infinity em cálculos)
-const safeNum = (v) => {
-  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-};
 
 export default function SimuladorScreen({ navigation }) {
   const { isDesktop } = useResponsiveLayout();

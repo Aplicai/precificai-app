@@ -25,7 +25,7 @@ import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 // Este app vive em app.precificaiapp.com e abre direto em Login/Register.
 import HomeScreen from '../screens/HomeScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
-import ConfiguracaoScreen from '../screens/ConfiguracaoScreen';
+import FinanceiroConfigScreen from '../screens/FinanceiroConfigScreen';
 import ConfiguracoesScreen from '../screens/ConfiguracoesScreen';
 import MateriasPrimasScreen from '../screens/MateriasPrimasScreen';
 import MateriaPrimaFormScreen from '../screens/MateriaPrimaFormScreen';
@@ -297,7 +297,7 @@ function DeliveryStack() {
 function FinanceiroStack() {
   return (
     <Stack.Navigator screenOptions={screenOptions}>
-      <Stack.Screen name="FinanceiroMain" component={ConfiguracaoScreen} options={{ title: 'Financeiro' }} />
+      <Stack.Screen name="FinanceiroMain" component={FinanceiroConfigScreen} options={{ title: 'Financeiro' }} />
     </Stack.Navigator>
   );
 }
@@ -351,7 +351,7 @@ function MaisStack() {
     >
       {/* Sprint 1 Q3 — display "Ferramentas" mas mantém route name "Mais" para preservar AsyncStorage LAST_TAB_KEY e refs cross-tab. */}
       <Stack.Screen name="MaisMain" component={MaisScreen} options={({ navigation }) => ({ title: 'Ferramentas', ...backToHomeOption(navigation) })} />
-      <Stack.Screen name="FinanceiroMain" component={ConfiguracaoScreen} options={{ title: 'Financeiro' }} />
+      <Stack.Screen name="FinanceiroMain" component={FinanceiroConfigScreen} options={{ title: 'Financeiro' }} />
       {/* Sprint 1 Q4 — display "Ranking de Produtos" (route name MatrizBCG mantido). */}
       <Stack.Screen name="MatrizBCG" component={MatrizBCGScreen} options={{ title: 'Ranking de Produtos' }} />
       <Stack.Screen name="BCGProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />

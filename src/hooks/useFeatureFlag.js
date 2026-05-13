@@ -126,11 +126,18 @@ export async function setFeatureFlag(name, next) {
  * Hook reativo. Retorna `[value, setValue, loaded]`.
  */
 export default function useFeatureFlag(name) {
-  const [value, setValueLocal] = useState(_values[name] ?? false);
-  const [loaded, setLoadedLocal] = useState(_loaded.has(name));
+  // Lazy initializer + effect-sync abaixo. NÃO copiar `name` em state aqui:
+  // a flag mora no module-store global (`_values`); o useState é só pra
+  // forçar re-render quando o listener dispara. Mudanças de `name` entre
+  // renders são reconciliadas no `useEffect([name])` abaixo.
+  const [value, setValueLocal] = useState(() => _values[name] ?? false);
+  const [loaded, setLoadedLocal] = useState(() => _loaded.has(name));
 
   useEffect(() => {
     let cancelled = false;
+    // Sync síncrono ao mudar `name` (evita render stale entre prop nova e listener).
+    setValueLocal(_values[name] ?? false);
+    setLoadedLocal(_loaded.has(name));
     const listener = (snap) => {
       if (cancelled) return;
       setValueLocal(snap[name] ?? false);

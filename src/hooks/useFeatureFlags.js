@@ -1,22 +1,59 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { hasFeature } from '../utils/featureFlags';
+import { fetchUserFeatures, hasFeature } from '../utils/featureFlags';
 
 /**
- * Hook reativo para feature flags por email.
+ * Hook reativo para feature flags BETA do usuario autenticado.
  *
- * Retorna um objeto com booleanos pré-computados pra cada flag conhecida e
- * uma função `has(name)` para checagens ad-hoc.
+ * Le a tabela `beta_features` no Supabase (RLS garante isolamento por user).
+ * O fetch eh async, entao no primeiro render todas as flags vem `false`.
+ * Quando o fetch resolve, o state atualiza e os consumidores re-renderizam.
  *
- * As flags refletem PERMISSÃO (whitelist) — não estado de ativação do user.
- * Para o estado de ativação (toggle dentro de Configurações), combine com
- * `usePersistedState`/AsyncStorage.
+ * Contrato preservado pros consumidores existentes (Sidebar, MaisScreen,
+ * ConfiguracoesScreen):
+ *   - `dreFluxoCaixa: boolean`
+ *   - `has(name): boolean`
+ *
+ * Extras:
+ *   - `loading: boolean`  — true ate o primeiro fetch resolver
+ *
+ * Tratamento de erro: qualquer falha no fetch -> features = [] (sem crash).
  */
 export default function useFeatureFlags() {
   const { user } = useAuth();
-  const email = user?.email;
+  const userId = user?.id || null;
+
+  const [features, setFeatures] = useState([]);
+  const [loading, setLoading] = useState(!!userId);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!userId) {
+      setFeatures([]);
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
+
+    setLoading(true);
+    fetchUserFeatures(userId)
+      .then((list) => {
+        if (cancelled) return;
+        setFeatures(Array.isArray(list) ? list : []);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFeatures([]);
+        setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [userId]);
+
   return useMemo(() => ({
-    dreFluxoCaixa: hasFeature('dre_fluxo_caixa', email),
-    has: (name) => hasFeature(name, email),
-  }), [email]);
+    loading,
+    dreFluxoCaixa: hasFeature('dre_fluxo_caixa', features),
+    has: (name) => hasFeature(name, features),
+  }), [features, loading]);
 }

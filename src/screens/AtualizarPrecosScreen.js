@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, calcPrecoBase } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, calcPrecoBase, safeNum } from '../utils/calculations';
 import { formatInsumoNome } from '../utils/insumoDisplay';
 import { notifyDataChanged } from '../utils/dataSync';
 import SearchBar from '../components/SearchBar';
@@ -12,12 +12,6 @@ import EmptyState from '../components/EmptyState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import useListDensity from '../hooks/useListDensity';
-
-// Audit P1: helper defensivo p/ números vindos de DB ou input manual.
-function safeNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-}
 
 const CATEGORY_COLORS = [
   colors.primary, colors.accent, colors.coral, colors.purple,

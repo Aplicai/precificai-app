@@ -4,18 +4,13 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, converterParaBase } from '../utils/calculations';
+import { formatCurrency, converterParaBase, safeNum } from '../utils/calculations';
 import EmptyState from '../components/EmptyState';
 import InfoToast from '../components/InfoToast';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import useListDensity from '../hooks/useListDensity';
-
-// Audit P1: helper defensivo para qualquer número vindo de DB.
-function safeNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-}
+import { openPrintableHTML } from '../utils/openPrintableHTML';
 
 const CATEGORY_COLORS = [
   '#004d47', '#265bb0', '#e3b842', '#e3704d', '#6a4fb0',
@@ -382,53 +377,19 @@ export default function ListaComprasScreen({ navigation }) {
     <div class="footer">Gerado por Precificaí - precificaipp.com</div>
     </body></html>`;
 
-    // Sessão 28.55: iOS Safari bloqueia window.open + win.print. Usa Blob + anchor
-    // download e abre em nova aba pra usuário usar Compartilhar/Imprimir nativo.
-    if (isIOSSafari()) {
-      try {
-        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `lista-compras-${Date.now()}.html`;
-        a.rel = 'noopener';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        try { window.open(url, '_blank'); } catch (_) {}
-        setToast({ message: 'PDF gerado · use Compartilhar para Imprimir/Salvar', icon: 'printer' });
-        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 10000);
-      } catch (e) {
-        setToast({ message: 'Não foi possível gerar o PDF. Tente novamente.', icon: 'alert-circle' });
-      }
-      return;
-    }
-
-    // Desktop/Android: nova aba + print
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-      setTimeout(() => { try { win.print(); } catch (_) {} }, 500);
-      // Sessão 28.53 — feedback após exportar PDF
-      setToast({ message: 'PDF aberto em nova aba', icon: 'printer' });
+    // M-3: defense-in-depth XSS — gerar via Blob URL (origem opaca) em vez de
+    // window.open('', '_blank') + document.write (que herdaria origin do app
+    // e exporia localStorage/token Supabase caso algum escape falhasse).
+    const ok = openPrintableHTML(html, `lista-compras-${Date.now()}.html`);
+    if (ok) {
+      setToast({
+        message: isIOSSafari()
+          ? 'PDF gerado · use Compartilhar para Imprimir/Salvar'
+          : 'PDF aberto em nova aba · use Ctrl+P para imprimir',
+        icon: 'printer',
+      });
     } else {
-      // Popup bloqueado — fallback Blob/download
-      try {
-        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `lista-compras-${Date.now()}.html`;
-        a.rel = 'noopener';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setToast({ message: 'PDF baixado · verifique sua pasta Downloads', icon: 'download' });
-        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 10000);
-      } catch (e) {
-        setToast({ message: 'Não foi possível gerar o PDF.', icon: 'alert-circle' });
-      }
+      setToast({ message: 'Não foi possível gerar o PDF.', icon: 'alert-circle' });
     }
   }
 

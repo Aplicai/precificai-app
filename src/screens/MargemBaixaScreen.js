@@ -4,14 +4,8 @@ import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida } from '../utils/calculations';
+import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, safeNum } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
-
-// Helper: extrai número finito ou 0
-const safeNum = (v) => {
-  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-};
 
 // Calcula preço sugerido para atingir meta de margem.
 // Fórmula: novoPreco = CMV / (1 - meta - dfPerc - varPerc)

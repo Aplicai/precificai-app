@@ -18,7 +18,7 @@ import {
   CATEGORIAS_PREPAROS_POR_SEGMENTO,
   CATEGORIAS_EMBALAGENS_POR_SEGMENTO,
 } from '../data/templates';
-import { calcPrecoBase, calcFatorCorrecao } from '../utils/calculations';
+import { calcPrecoBase, calcFatorCorrecao, safeNum } from '../utils/calculations';
 import { getPrecoReferencia } from '../data/precosReferencia';
 // D-27/D-28: aplica fatores de correção de referência (TACO) automaticamente
 import { getFatorCorrecaoReferencia, estimarQuantidadeLiquida } from '../data/fatoresCorrecao';
@@ -34,12 +34,6 @@ export const MARCA_VALOR_ESTIMADO = '__VALOR_ESTIMADO_KIT__';
 // removemos o passo salvo para evitar reabrir o usuário no meio do tour caso
 // volte para a tela de welcome em algum cenário de fluxo.
 const WELCOMETOUR_STEP_KEY_PREFIX = 'welcometour_step_';
-
-// Audit P0: helper defensivo para formatação de valores numéricos vindos do template.
-function safeNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-}
 
 const SEGMENT_ICONS = {
   confeitaria: { set: 'material', name: 'cake-variant' },

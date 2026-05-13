@@ -11,7 +11,7 @@ import Chip from '../components/Chip';
 import EmptyState from '../components/EmptyState';
 import InviabilidadeModal from '../components/InviabilidadeModal';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum } from '../utils/calculations';
 // Sprint 2 S3 — fórmula canônica única em src/utils/deliveryPricing.js
 import { calcPrecoBreakEven, calcResultadoDelivery, calcSugestaoDeliveryCompleta, compararDeliveryVsBalcao } from '../utils/deliveryPricing';
 // APP-25: extrair imposto separado das demais variáveis (maquininha não entra no delivery)
@@ -21,11 +21,6 @@ import usePersistedState from '../hooks/usePersistedState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 // Numeric helpers (defesa contra NaN/Infinity em precificação)
-function safeNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-}
-
 function parseInputNumber(raw) {
   if (raw === null || raw === undefined || raw === '') return null;
   const parsed = parseFloat(String(raw).replace(',', '.'));

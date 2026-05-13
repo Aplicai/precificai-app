@@ -37,18 +37,11 @@ import {
   calcDespesasFixasPercentual, calcMarkup, calcPrecoSugerido,
   calcCustoIngrediente, calcCustoPreparo, calcCustoEmbalagem,
   calcLucroLiquido, calcCMVPercentual, calcMargem, calcMargemLiquida,
+  safeNum,
 } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 // Área 4 (Preparos) — toast de confirmação ao salvar preparo via modal
 import { showToast } from '../utils/toastBus';
-
-function safeNum(v) {
-  // APP-07: aceitar string com vírgula ('0,25') tanto quanto ponto ('0.25')
-  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
-  if (v === null || v === undefined) return 0;
-  const n = parseFloat(String(v).replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-}
 
 function parseInputValue(raw) {
   if (raw === null || raw === undefined) return 0;

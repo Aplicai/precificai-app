@@ -11,7 +11,7 @@ import InputField from '../components/InputField';
 import SaveStatus from '../components/SaveStatus';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum } from '../utils/calculations';
 import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
 // APP-22: usar engine unificada também para combos (antes era markup fixo 35% sem contar fixos/variáveis)
 import { calcularPrecoCombo } from '../utils/precificacao';
@@ -19,11 +19,6 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 
 // ─── Numeric helpers (audit P0 — defesa contra NaN/Infinity) ─────────────
-function safeNum(v) {
-  const n = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-}
-
 function parseInputNumber(raw) {
   if (raw === null || raw === undefined) return null;
   const str = String(raw).trim().replace(',', '.');

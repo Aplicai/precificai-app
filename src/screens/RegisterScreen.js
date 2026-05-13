@@ -8,10 +8,12 @@ import useListDensity from '../hooks/useListDensity';
 import useRateLimit from '../hooks/useRateLimit';
 import { mapAuthError } from '../utils/authErrors';
 import { parseRateLimitSeconds } from '../utils/parseRateLimit';
+import { MIN_PASSWORD_LENGTH, validatePassword } from '../utils/passwordPolicy';
 
 // D-01: alinhar com checklist visual exibido ao usuário (8 chars + maiúscula + minúscula + número).
 // Símbolo é recomendado mas não obrigatório.
-const MIN_PASSWORD_LENGTH = 8;
+// Sessão 28.68 (L-3): MIN_PASSWORD_LENGTH e validatePassword agora vêm de
+// `utils/passwordPolicy.js` (compartilhado com ResetPasswordScreen).
 // Sessão 28.9 — APP-03: relaxado de 2→1 (zxcvbn 0..4). Antes "teste2026*" era
 // bloqueado, frustrando user. Score 1 = "weak mas aceitável" (deixa user
 // decidir), bloqueia só score 0 (top-100 senhas comuns tipo "123456").
@@ -127,17 +129,13 @@ export default function RegisterScreen({ navigation }) {
       setError('Email inválido. Verifique se está no formato nome@dominio.com');
       return;
     }
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setError(`A senha precisa de pelo menos ${MIN_PASSWORD_LENGTH} caracteres.`);
+    // D-01 + Sessão 28.17 + Sessão 28.68 (L-3): política única em passwordPolicy.js
+    // (compartilhada com ResetPasswordScreen). Todos os 5 critérios são obrigatórios.
+    const pol = validatePassword(password);
+    if (!pol.ok) {
+      setError(pol.error);
       return;
     }
-    // D-01 + Sessão 28.17: validação reforçada — antes só MIN_PASSWORD_SCORE >= 1 e símbolo opcional.
-    // Daniele reclamou que validação ainda passava senhas fracas. Agora todos os 5 critérios visuais
-    // são OBRIGATÓRIOS (incluindo símbolo).
-    if (!/[A-Z]/.test(password)) { setError('A senha precisa ter pelo menos 1 letra MAIÚSCULA.'); return; }
-    if (!/[a-z]/.test(password)) { setError('A senha precisa ter pelo menos 1 letra minúscula.'); return; }
-    if (!/[0-9]/.test(password)) { setError('A senha precisa ter pelo menos 1 número.'); return; }
-    if (!/[^A-Za-z0-9]/.test(password)) { setError('A senha precisa ter pelo menos 1 símbolo (ex.: !@#$%&*).'); return; }
     if (passwordStrength && passwordStrength.score < 2) {
       setError('Senha muito fraca — evite sequências óbvias (ex.: "abc123", "qwerty"). Use uma combinação imprevisível.');
       return;
