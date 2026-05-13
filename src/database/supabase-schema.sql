@@ -388,3 +388,32 @@ CREATE INDEX IF NOT EXISTS idx_materias_primas_user_updated  ON public.materias_
 CREATE INDEX IF NOT EXISTS idx_embalagens_user_updated       ON public.embalagens(user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_preparos_user_updated         ON public.preparos(user_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_produtos_user_updated         ON public.produtos(user_id, updated_at DESC);
+
+-- ============================================================
+-- FEATURE BETA: Fluxo de Caixa + DRE (gated por whitelist por email)
+-- Para aplicar em base existente, rode `migration-fluxo-caixa.sql`.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS fluxo_caixa_movimentos (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  data DATE NOT NULL,
+  tipo TEXT NOT NULL CHECK (tipo IN ('entrada','saida')),
+  categoria TEXT,
+  descricao TEXT,
+  valor REAL NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE fluxo_caixa_movimentos ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'fluxo_caixa_movimentos' AND policyname = 'users_own_data_select') THEN
+    EXECUTE 'CREATE POLICY "users_own_data_select" ON fluxo_caixa_movimentos FOR SELECT USING (auth.uid() = user_id)';
+    EXECUTE 'CREATE POLICY "users_own_data_insert" ON fluxo_caixa_movimentos FOR INSERT WITH CHECK (auth.uid() = user_id)';
+    EXECUTE 'CREATE POLICY "users_own_data_update" ON fluxo_caixa_movimentos FOR UPDATE USING (auth.uid() = user_id)';
+    EXECUTE 'CREATE POLICY "users_own_data_delete" ON fluxo_caixa_movimentos FOR DELETE USING (auth.uid() = user_id)';
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_fluxo_caixa_user_data ON fluxo_caixa_movimentos(user_id, data DESC);

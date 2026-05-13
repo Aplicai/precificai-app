@@ -3,6 +3,8 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-nati
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useFeatureFlag from '../hooks/useFeatureFlag';
+import useFeatureFlags from '../hooks/useFeatureFlags';
+import usePersistedState from '../hooks/usePersistedState';
 import useListDensity from '../hooks/useListDensity';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
@@ -173,6 +175,11 @@ export default function MaisScreen({ navigation }) {
   const [analiseAvancada] = useFeatureFlag('modo_avancado_analise');
   // Sessão 28.8 — Combos como recurso avançado opcional
   const [combosAvancado] = useFeatureFlag('modo_avancado_combos');
+  // Feature flags SISTEMA (whitelist por email + toggle local de ativação).
+  // Item de menu Fluxo de Caixa + DRE só aparece se: tem o flag E ativou o toggle.
+  const featureFlags = useFeatureFlags();
+  const [dreActive] = usePersistedState('feature_dre_fluxo_caixa_active', false);
+  const showDre = !!featureFlags.dreFluxoCaixa && !!dreActive;
   // Sessão 28.6 — densidade aplicada em cards e títulos
   const { isCompact, cardPadding, sectionGap, titleFontSize, iconSize, listItemSubtitleFontSize, bodyLineHeight } = useListDensity();
   // Área 9 — esconder itens marcados como desktopOnly quando em mobile
@@ -192,10 +199,25 @@ export default function MaisScreen({ navigation }) {
   };
   const visibleGroups = MENU_GROUPS
     .filter((g) => flagOn(g.flag))
-    .map((g) => ({
-      ...g,
-      items: g.items.filter((it) => flagOn(it.flag) && (!it.desktopOnly || isDesktop)),
-    }))
+    .map((g) => {
+      let items = g.items.filter((it) => flagOn(it.flag) && (!it.desktopOnly || isDesktop));
+      // Feature beta: injeta "Fluxo de Caixa + DRE" no grupo Análise quando o
+      // usuário tem o flag (whitelist por email) E ativou o toggle no Config.
+      if (g.key === 'analise' && showDre) {
+        items = [
+          ...items,
+          {
+            key: 'fluxo_dre',
+            title: 'Fluxo de Caixa + DRE',
+            desc: 'Movimentações mensais e demonstrativo de resultados',
+            icon: 'trending-up',
+            set: 'feather',
+            screen: 'FluxoCaixaDRE',
+          },
+        ];
+      }
+      return { ...g, items };
+    })
     .filter((g) => g.items.length > 0);
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>

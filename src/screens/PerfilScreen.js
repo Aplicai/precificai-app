@@ -316,10 +316,9 @@ export default function PerfilScreen({ navigation, route }) {
         </View>
       </View>
 
-      {/* Sessão 28.22: Multi-loja — gerenciar lojas + selecionar a atual
-          Sessão 29: oculto no mobile via flag (feature em standby; ver
-          backlog.md "Multi-loja wiring"). NÃO REMOVER — só esconder. */}
-      {!isSetup && !isMobile && <LojasSection userId={user?.id} />}
+      {/* TODO: hidden feature — reativar quando user pedir explicitamente.
+          Componente e service (useLojas, lojaContext) preservados para uso futuro. */}
+      {/* {!isSetup && !isMobile && <LojasSection userId={user?.id} />} */}
 
       {isSetup && (
         <TouchableOpacity

@@ -255,20 +255,10 @@ export default function SuporteScreen({ navigation }) {
         </View>
       </View>
 
-      {/* APP-54 — link WhatsApp + email lado a lado */}
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+      {/* APP-54 — atalho de e-mail (WhatsApp removido a pedido do user) */}
+      <View style={{ marginBottom: 12 }}>
         <TouchableOpacity
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#25D366' + '15', borderRadius: 10, paddingVertical: 12, borderWidth: 1, borderColor: '#25D366' + '40' }}
-          onPress={() => handleLink('https://wa.me/5511999999999?text=Ol%C3%A1!%20Preciso%20de%20ajuda%20com%20o%20Precifica%C3%AD')}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel="Abrir WhatsApp do suporte"
-        >
-          <Feather name="message-circle" size={16} color="#25D366" />
-          <Text style={{ fontSize: 13, color: '#25D366', fontFamily: fontFamily.semiBold }}>WhatsApp</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.primary + '15', borderRadius: 10, paddingVertical: 12, borderWidth: 1, borderColor: colors.primary + '40' }}
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.primary + '15', borderRadius: 10, paddingVertical: 12, borderWidth: 1, borderColor: colors.primary + '40' }}
           onPress={() => handleLink('mailto:contato@precificaiapp.com')}
           activeOpacity={0.7}
           accessibilityRole="button"

@@ -334,7 +334,7 @@ export default function ListaComprasScreen({ navigation }) {
       .map(p => `<li>${escapeHtml(p.nome)}${p.isCombo ? ' (Combo)' : ''} — ${quantidades[p.id]} un</li>`).join('');
 
     let html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-    <title>Lista de Compras - PrecificaÍ</title>
+    <title>Lista de Compras - Precificaí</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { font-family: 'Segoe UI', sans-serif; padding: 40px; color: #333; max-width: 800px; margin: 0 auto; }
