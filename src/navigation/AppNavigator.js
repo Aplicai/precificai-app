@@ -302,10 +302,53 @@ function FinanceiroStack() {
   );
 }
 
+// Whitelist de screens do MaisStack que podem ser restauradas no refresh.
+// Mantém só telas "pousáveis" (que o user pode estar consultando) — exclui
+// forms modais e telas que dependem de params (ex.: BCGProdutoForm).
+const RESTORABLE_MAIS_SCREENS = new Set([
+  'MaisMain',
+  'FinanceiroMain',
+  'MatrizBCG',
+  'DeliveryHub',
+  'DeliveryPlataformas',
+  'DeliveryPrecos',
+  'DeliveryProdutosScreen',
+  'SimuladorLote',
+  'Configuracoes',
+  'Perfil',
+  'AtualizarPrecos',
+  'Simulador',
+  'Relatorios',
+  'Fornecedores',
+  'PrecosPlataforma',
+  'SimulacaoProduto',
+  'ListaCompras',
+  'KitInicio',
+  'Sobre',
+  'ContaSeguranca',
+  'ExportPDF',
+  'Suporte',
+  'Notificacoes',
+  'Termos',
+  'Privacidade',
+  'FluxoCaixaDRE',
+]);
+
+// Sessão 28.X — Persistência do screen interno da tab Mais.
+// Antes só persistíamos LAST_TAB_KEY (qual tab estava ativa). Refresh em
+// /Configuracoes (que vive no MaisStack) abria o MaisMain (lista de
+// Ferramentas), parecendo que a tela "não existia mais". Agora também
+// persistimos o screen ativo dentro do MaisStack e usamos como
+// initialRouteName via module-level var (lida no mount de MaisStack).
+let __initialMaisScreen = 'MaisMain';
+
 function MaisStack() {
   return (
     <StackWithBanner>
-    <Stack.Navigator screenOptions={screenOptions}>
+    <Stack.Navigator
+      screenOptions={screenOptions}
+      initialRouteName={RESTORABLE_MAIS_SCREENS.has(__initialMaisScreen) ? __initialMaisScreen : 'MaisMain'}
+    >
       {/* Sprint 1 Q3 — display "Ferramentas" mas mantém route name "Mais" para preservar AsyncStorage LAST_TAB_KEY e refs cross-tab. */}
       <Stack.Screen name="MaisMain" component={MaisScreen} options={({ navigation }) => ({ title: 'Ferramentas', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="FinanceiroMain" component={ConfiguracaoScreen} options={{ title: 'Financeiro' }} />
@@ -346,6 +389,7 @@ function MaisStack() {
 }
 
 const LAST_TAB_KEY = 'precificai_last_tab';
+const LAST_MAIS_SCREEN_KEY = 'precificai_last_mais_screen';
 // Ordem segue o fluxo de composição (audit P1-08): Insumos→Preparos→Embalagens→Produtos.
 const VALID_TABS = ['Início', 'Insumos', 'Preparos', 'Embalagens', 'Produtos', 'Mais'];
 
@@ -398,9 +442,21 @@ function MainTabs({ route }) {
           checkFinanceiro();
           // Save last active tab
           const state = navigation.getState();
-          const currentTab = state?.routes?.[state.index]?.name;
+          const tabRoute = state?.routes?.[state.index];
+          const currentTab = tabRoute?.name;
           if (currentTab && VALID_TABS.includes(currentTab)) {
             AsyncStorage.setItem(LAST_TAB_KEY, currentTab).catch(() => {});
+          }
+          // Sessão 28.X — também persistimos o screen ativo dentro do MaisStack
+          // para que refresh em /Configuracoes, /AtualizarPrecos etc. restaure
+          // exatamente a tela onde o user estava. Sem isso o user caía sempre
+          // em MaisMain (lista de Ferramentas), parecendo "tela que sumiu".
+          if (currentTab === 'Mais' && tabRoute?.state) {
+            const innerStack = tabRoute.state;
+            const innerScreen = innerStack?.routes?.[innerStack.index]?.name;
+            if (innerScreen && RESTORABLE_MAIS_SCREENS.has(innerScreen)) {
+              AsyncStorage.setItem(LAST_MAIS_SCREEN_KEY, innerScreen).catch(() => {});
+            }
           }
         },
         // Sessão 28.60 — fix: ao tocar na tab Mais (ou qualquer outra) quando
@@ -501,6 +557,14 @@ function AppContent() {
     // Load last active tab
     AsyncStorage.getItem(LAST_TAB_KEY).then(tab => {
       if (tab && VALID_TABS.includes(tab)) setSavedTab(tab);
+    }).catch(() => {});
+    // Sessão 28.X — restaurar screen interno do MaisStack para que refresh
+    // em telas como /Configuracoes não caia em MaisMain. O valor é lido pelo
+    // MaisStack via module-level var no momento do mount (initialRouteName).
+    AsyncStorage.getItem(LAST_MAIS_SCREEN_KEY).then(screen => {
+      if (screen && RESTORABLE_MAIS_SCREENS.has(screen)) {
+        __initialMaisScreen = screen;
+      }
     }).catch(() => {});
     return () => { cancelled = true; clearTimeout(timeout); };
   }, [attempt]);

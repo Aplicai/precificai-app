@@ -122,18 +122,9 @@ const MENU_GROUPS = [
         screen: 'DeliveryHub',
         flag: 'usa_delivery',
       },
-      {
-        key: 'comparativo_canais',
-        title: 'Comparativo Canais',
-        desc: 'Compare a margem do balcão vs cada plataforma de delivery',
-        icon: 'bar-chart',
-        set: 'feather',
-        screen: 'ComparativoCanais',
-        flag: 'usa_delivery',
-        // Área 9 — Comparativo de Canais só faz sentido em desktop (tabelas largas).
-        // No mobile fica oculto pra alinhar com o desktop: só "Delivery" aparece.
-        desktopOnly: true,
-      },
+      // Item "Comparativo Canais" removido do menu (mobile e desktop). A rota
+      // ComparativoCanais segue registrada no MaisStack para preservar deep-links
+      // antigos, mas não há mais entrada de menu apontando para ela.
     ],
   },
   {

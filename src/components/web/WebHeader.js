@@ -76,9 +76,13 @@ const MODAL_FORM_ROUTES = new Set([
 ]);
 
 function getPageTitle(navState) {
-  if (!navState) return 'Painel Geral';
+  // Sessão 28.X — antes retornávamos 'Painel Geral' como fallback global, o que
+  // causava título errado no primeiro render (ex.: refresh em /Configuracoes
+  // mostrava "Painel Geral" no header por um frame). Agora preferimos o título
+  // da própria tab ativa quando o inner stack ainda não montou.
+  if (!navState) return 'Ferramentas';
   const tabRoute = navState.routes?.[navState.index];
-  if (!tabRoute) return 'Painel Geral';
+  if (!tabRoute) return 'Ferramentas';
 
   // Check nested stack
   const stackState = tabRoute.state;
