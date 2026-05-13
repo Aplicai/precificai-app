@@ -4,6 +4,9 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigationState, CommonActions, StackActions } from '@react-navigation/native';
 import { colors, spacing, fontFamily, webLayout } from '../../utils/theme';
 import useFeatureFlag from '../../hooks/useFeatureFlag';
+// Feature beta — DRE/Fluxo de Caixa gated por whitelist + toggle local
+import useFeatureFlags from '../../hooks/useFeatureFlags';
+import usePersistedState from '../../hooks/usePersistedState';
 // Sessão 28.8 — alinha altura do logoArea com WebHeader.container (mesmo token)
 import useListDensity from '../../hooks/useListDensity';
 
@@ -78,6 +81,7 @@ function getActiveKey(navState) {
     if (screenName === 'FinanceiroMain') return 'financeiro';
     if (screenName === 'DeliveryHub' || screenName?.startsWith('Delivery')) return 'delivery';
     if (screenName === 'MatrizBCG' || screenName === 'BCGProdutoForm') return 'bcg';
+    if (screenName === 'FluxoCaixaDRE') return 'fluxocaixadre';
     if (screenName === 'AtualizarPrecos') return 'precos';
     if (screenName === 'Simulador') return 'simulador';
     if (screenName === 'RelatorioSimples' || screenName === 'RelatorioInsumos' || screenName === 'Relatorios') return 'relatorio';
@@ -145,6 +149,11 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
   const [analiseAvancada] = useFeatureFlag('modo_avancado_analise');
   // Sessão 28.8 — Combos como recurso avançado opcional (independente de delivery)
   const [combosAvancado] = useFeatureFlag('modo_avancado_combos');
+  // Feature beta — Fluxo de Caixa + DRE (whitelist por email + toggle local).
+  // Aparece SOMENTE quando email tem permissão E user ativou o toggle em Configurações.
+  const featureFlags = useFeatureFlags();
+  const [dreActive] = usePersistedState('feature_dre_fluxo_caixa_active', false);
+  const showDre = !!featureFlags.dreFluxoCaixa && !!dreActive;
   const _isFlagOn = (name) => {
     if (!name) return true;
     if (name === 'usa_delivery') return !!usaDelivery;
@@ -158,7 +167,24 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
     if (Array.isArray(flag)) return flag.some(_isFlagOn);
     return _isFlagOn(flag);
   };
-  const filteredSections = NAV_SECTIONS
+  // Injeta item "Fluxo de Caixa + DRE" logo após "Ranking de Produtos" (bcg)
+  // somente quando o user tem a feature liberada + toggle ativo.
+  const fluxoDreItem = {
+    key: 'fluxocaixadre',
+    label: 'Fluxo de Caixa + DRE',
+    icon: 'trending-up',
+    iconSet: 'feather',
+    tab: 'Mais',
+    screen: 'FluxoCaixaDRE',
+  };
+  const sectionsWithDre = NAV_SECTIONS.map((sec) => {
+    const bcgIdx = sec.items.findIndex((it) => it.key === 'bcg');
+    if (bcgIdx === -1 || !showDre) return sec;
+    const items = [...sec.items];
+    items.splice(bcgIdx + 1, 0, fluxoDreItem);
+    return { ...sec, items };
+  });
+  const filteredSections = sectionsWithDre
     .map((sec) => ({ ...sec, items: sec.items.filter((it) => flagOn(it.flag)) }))
     .filter((sec) => sec.items.length > 0);
 
