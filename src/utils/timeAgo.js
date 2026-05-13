@@ -31,33 +31,4 @@ export function formatTimeAgo(input) {
   return year === 1 ? 'há 1 ano' : `há ${year} anos`;
 }
 
-/**
- * Compact, fixed-width variant for inline badges.
- * Examples: "5min", "3h", "2d", "1mes", "1ano"
- */
-export function formatTimeAgoShort(input) {
-  if (!input) return '';
-  let date;
-  try {
-    date = input instanceof Date ? input : new Date(input);
-    if (isNaN(date.getTime())) return '';
-  } catch {
-    return '';
-  }
-  const diffMs = Date.now() - date.getTime();
-  if (diffMs < 0) return 'agora';
-  const sec = Math.floor(diffMs / 1000);
-  if (sec < 60) return `${sec}s`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}min`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h`;
-  const day = Math.floor(hr / 24);
-  if (day < 30) return `${day}d`;
-  const month = Math.floor(day / 30);
-  if (month < 12) return `${month}mes`;
-  const year = Math.floor(day / 365);
-  return `${year}ano`;
-}
-
 export default formatTimeAgo;

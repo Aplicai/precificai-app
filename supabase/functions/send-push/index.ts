@@ -8,9 +8,15 @@
 //
 // Variáveis de ambiente esperadas:
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (auto-injetadas pelo Supabase)
+//   SUPABASE_ANON_KEY (auto-injetada — usada para validar JWT do caller)
+//   INTERNAL_CRON_TOKEN (opcional — habilita disparos administrativos via header
+//     X-Internal-Cron-Token; usado pelo cron de notificações de margem baixa, etc)
 //
-// Auth: requer JWT do user (RLS) OU chamada interna via service role
-// (cron jobs disparam via DB function que usa SUPABASE_SERVICE_ROLE_KEY).
+// Auth (Sessão 28.68 — security hardening C-1):
+//   1) Chamadas autenticadas de usuário final: JWT é validado, user_id do payload
+//      DEVE bater com o sub do JWT, senão 403.
+//   2) Chamadas internas (cron jobs): devem enviar header X-Internal-Cron-Token
+//      igual ao secret INTERNAL_CRON_TOKEN. Nesse modo qualquer user_id é aceito.
 
 import { serve } from 'https://deno.land/std@0.192.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -51,6 +57,39 @@ serve(async (req) => {
 
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
   const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  const INTERNAL_CRON_TOKEN = Deno.env.get('INTERNAL_CRON_TOKEN') ?? '';
+
+  // === Sessão 28.68 — security gate (C-1) ===
+  // Aceita 1) chamada interna autenticada via X-Internal-Cron-Token, OU
+  // 2) JWT de usuário cujo sub == payload.user_id.
+  const internalToken = req.headers.get('X-Internal-Cron-Token') ?? '';
+  const isInternal = !!INTERNAL_CRON_TOKEN && internalToken === INTERNAL_CRON_TOKEN;
+
+  if (!isInternal) {
+    const authHeader = req.headers.get('Authorization') ?? '';
+    if (!authHeader || !SUPABASE_ANON_KEY) {
+      return json({ error: 'unauthorized' }, 401);
+    }
+    let authedUserId: string | null = null;
+    try {
+      const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: u, error: uErr } = await userClient.auth.getUser();
+      if (uErr || !u?.user) {
+        return json({ error: 'unauthorized' }, 401);
+      }
+      authedUserId = u.user.id;
+    } catch {
+      return json({ error: 'unauthorized' }, 401);
+    }
+    if (authedUserId !== user_id) {
+      return json({ error: 'forbidden', detail: 'Cannot send push to another user' }, 403);
+    }
+  }
+  // === fim do security gate ===
+
   const supa = createClient(SUPABASE_URL, SERVICE_ROLE);
 
   // 1. Checa preferências (skip se bypass)
@@ -114,6 +153,6 @@ function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST,OPTIONS',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-cron-token',
   };
 }

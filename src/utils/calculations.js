@@ -49,26 +49,6 @@ export function parseDecimalBROrZero(input) {
   return Number.isFinite(n) ? n : 0;
 }
 
-// ========== MARGEM DE SEGURANÇA ==========
-
-/**
- * @deprecated Sessão 28.9 — Auditoria P2-07. Função sem call sites. Mantida pra
- * eventual rehabilitação do conceito de "margem de segurança no custo do insumo"
- * (ex: comprou 1kg, perde 5% no manuseio). Hoje o app usa fator_correcao no insumo
- * cadastrado em vez disso. NÃO USE em código novo.
- */
-export async function getMargemSeguranca() {
-  const db = await getDatabase();
-  const configs = await db.getAllAsync('SELECT margem_seguranca FROM configuracao');
-  return configs?.[0]?.margem_seguranca || 0;
-}
-
-/** @deprecated Ver getMargemSeguranca acima. */
-export function aplicarMargemSeguranca(custo, margemDecimal) {
-  if (!margemDecimal || margemDecimal <= 0) return custo;
-  return custo * (1 + margemDecimal);
-}
-
 // ========== SISTEMA DE UNIDADES ==========
 
 // Tipos de unidade e suas conversões para a base (g, mL, un)
@@ -111,11 +91,6 @@ export function getLabelPrecoBase(unidade) {
 /**
  * Calcula o preço por unidade base (Kg, Litro ou Unidade).
  *
- * @deprecated Sessão 28.9 — Auditoria P2-07. Função sem call sites ativos:
- * o app guarda `preco_por_kg` direto no DB ao salvar o insumo (calculado lá).
- * Mantida pois a fórmula é correta e pode ser útil em futuro recálculo em massa
- * ou migration. NÃO REMOVER sem migration plan.
- *
  * valorPago: quanto pagou pelo produto
  * quantidadeLiquida: quantidade aproveitável na unidade original
  * unidade: unidade de medida selecionada
@@ -134,15 +109,10 @@ export function calcPrecoBase(valorPago, quantidadeLiquida, unidade) {
   return (valor / qtBaseGramas) * 1000;
 }
 
-/** @deprecated Use calcPrecoBase. Mantido por compat com possíveis call sites futuros. */
-export function calcPrecoKg(valorPago, quantidadeLiquida, unidade) {
-  return calcPrecoBase(valorPago, quantidadeLiquida, unidade || 'g');
-}
-
 /**
- * @deprecated Sessão 28.9 — Auditoria P2-07. Sem call sites. Cálculo do fator
- * de correção (perda no manuseio) que hoje é feito inline em MateriaPrimaFormScreen.
- * Mantido pra eventual centralização.
+ * Calcula o fator de correção (perda no manuseio): liquida / bruta.
+ * Atualmente o cálculo é feito inline em MateriaPrimaFormScreen — mantido aqui
+ * pra eventual centralização.
  */
 export function calcFatorCorrecao(quantidadeBruta, quantidadeLiquida) {
   const bruta = _safeNum(quantidadeBruta);
@@ -222,21 +192,6 @@ export function calcMarkup(despesasFixasPerc, despesasVariaveisPerc, lucroDeseja
 // Calcula preço sugerido via mark-up
 export function calcPrecoSugerido(custoTotal, markup) {
   return _safeNum(custoTotal) * _safeNum(markup);
-}
-
-/**
- * Calcula o custo unitário do produto.
- *
- * @deprecated Sessão 28.9 — Auditoria P2-07. Sem call sites: o app sempre usa
- * `custoTotal / getDivisorRendimento(produto)` inline porque o divisor depende
- * do tipo de venda (un/kg/L) que vem do produto inteiro. Mantida como helper
- * disponível pra casos onde já se tem o divisor pronto.
- */
-export function calcCustoUnitario(custoTotal, rendimentoUnidades) {
-  const custo = _safeNum(custoTotal);
-  const rend = _safeNum(rendimentoUnidades);
-  if (rend <= 0) return custo;
-  return custo / rend;
 }
 
 /**
@@ -347,23 +302,6 @@ export function calcLucroLiquido(precoVenda, custoTotal, despesasFixasValor, des
     - _safeNum(despesasVariaveisValor);
 }
 
-/**
- * Classifica o produto na Engenharia de Cardápio (matriz BCG).
- *
- * @deprecated Sessão 28.9 — Auditoria P2-07. Sem call sites: MatrizBCGScreen
- * implementa a classificação inline com cores próprias do design system.
- * Mantida como referência da regra de negócio (≥50% para "alta").
- */
-export function classificarBCG(participacaoMercado, crescimentoVendas) {
-  const altaParticipacao = participacaoMercado >= 50;
-  const altoCrescimento = crescimentoVendas >= 50;
-
-  if (altaParticipacao && altoCrescimento) return { nome: 'Estrela', cor: '#FFD700', emoji: '⭐' };
-  if (altaParticipacao && !altoCrescimento) return { nome: 'Vaca Leiteira', cor: '#4CAF50', emoji: '🐄' };
-  if (!altaParticipacao && altoCrescimento) return { nome: 'Interrogação', cor: '#2196F3', emoji: '❓' };
-  return { nome: 'Abacaxi', cor: '#F44336', emoji: '🍍' };
-}
-
 // Normaliza string removendo acentos/diacríticos para busca
 export function normalizeSearch(str) {
   // Sess\u00e3o 28.19: ANTES o NFD n\u00e3o decompunha \u00e7 (n\u00e3o tem diacr\u00edtico Unicode separado),
@@ -401,11 +339,3 @@ export function safeNum(v) {
   return parseDecimalBROrZero(v);
 }
 
-/**
- * Formata número com separadores BR (sem prefixo R$). Útil pra quantidades,
- * estoque, contadores que não são moeda.
- */
-export function formatNumber(value, maxDecimals = 2) {
-  if (value === null || value === undefined || isNaN(value)) return '0';
-  return Number(value).toLocaleString('pt-BR', { maximumFractionDigits: maxDecimals });
-}

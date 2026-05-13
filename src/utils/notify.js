@@ -28,36 +28,3 @@ export function notifySuccess(title, message, onDismiss) {
   ]);
 }
 
-/**
- * Versão para erros — mesma garantia de execução do callback no web.
- */
-export function notifyError(title, message, onDismiss) {
-  if (Platform.OS === 'web') {
-    try { window.alert(`${title}\n\n${message}`); } catch {}
-    if (typeof onDismiss === 'function') onDismiss();
-    return;
-  }
-  Alert.alert(title, message, [
-    { text: 'OK', onPress: typeof onDismiss === 'function' ? onDismiss : undefined },
-  ]);
-}
-
-/**
- * Confirmação binária (sim/não). No web usa window.confirm (também síncrono).
- * Use para fluxos destrutivos curtos. Para 3+ opções use Modal customizado.
- */
-export function notifyConfirm(title, message, onConfirm, onCancel) {
-  if (Platform.OS === 'web') {
-    const ok = (() => { try { return window.confirm(`${title}\n\n${message}`); } catch { return false; } })();
-    if (ok) {
-      if (typeof onConfirm === 'function') onConfirm();
-    } else if (typeof onCancel === 'function') {
-      onCancel();
-    }
-    return;
-  }
-  Alert.alert(title, message, [
-    { text: 'Cancelar', style: 'cancel', onPress: typeof onCancel === 'function' ? onCancel : undefined },
-    { text: 'Confirmar', onPress: typeof onConfirm === 'function' ? onConfirm : undefined },
-  ]);
-}

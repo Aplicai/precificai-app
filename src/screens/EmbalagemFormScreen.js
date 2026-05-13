@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ScrollView, View, StyleSheet, TouchableOpacity, Text, Alert, Modal, TextInput, Keyboard, TouchableWithoutFeedback, Platform } from 'react-native';
+import { ScrollView, View, StyleSheet, TouchableOpacity, Text, Alert, Modal, TextInput, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import InputField from '../components/InputField';

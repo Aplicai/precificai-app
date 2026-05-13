@@ -18,9 +18,40 @@
 //   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 
 import { serve } from 'https://deno.land/std@0.192.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = 'claude-sonnet-4-5';
+
+// === Sessão 28.68 — security hardening (H-1) ===
+// Rate-limit in-memory por user.id (persiste enquanto a edge function estiver
+// quente). Suficiente pra evitar abuso massivo da ANTHROPIC_API_KEY. Em caso
+// de scale-out o pior cenário é N * MAX por hora — ainda aceitável pra MVP.
+const MAX_REQUESTS_PER_HOUR = 30;
+const WINDOW_MS = 60 * 60 * 1000;
+const rateLimitMap = new Map<string, number[]>();
+
+function checkRateLimit(userId: string): { allowed: boolean; resetAt?: number; remaining: number } {
+  const now = Date.now();
+  const prev = rateLimitMap.get(userId) ?? [];
+  const requests = prev.filter((t) => now - t < WINDOW_MS);
+  if (requests.length >= MAX_REQUESTS_PER_HOUR) {
+    const oldest = requests[0];
+    rateLimitMap.set(userId, requests);
+    return { allowed: false, resetAt: oldest + WINDOW_MS, remaining: 0 };
+  }
+  requests.push(now);
+  rateLimitMap.set(userId, requests);
+  return { allowed: true, remaining: MAX_REQUESTS_PER_HOUR - requests.length };
+}
+
+// Limites de tamanho do payload (defesa contra prompt-bombing).
+const MAX_OBSERVACOES_LEN = 2000;
+const MAX_CMV = 99999;
+const MAX_PRODUTO_NOME_LEN = 200;
+const MAX_CATEGORIA_LEN = 100;
+const MAX_HISTORICO_ITEMS = 5;
+// === fim ===
 
 interface SuggestRequest {
   produto_nome: string;
@@ -58,6 +89,43 @@ serve(async (req) => {
   }
   const model = Deno.env.get('ANTHROPIC_MODEL') ?? DEFAULT_MODEL;
 
+  // === Sessão 28.68 — security gate (H-1) ===
+  // Identifica o user.id via JWT pra aplicar rate-limit por usuário.
+  const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+  const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  const authHeader = req.headers.get('Authorization') ?? '';
+  if (!authHeader || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return json({ error: 'unauthorized' }, 401);
+  }
+  let userId: string;
+  try {
+    const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: u, error: uErr } = await userClient.auth.getUser();
+    if (uErr || !u?.user) return json({ error: 'unauthorized' }, 401);
+    userId = u.user.id;
+  } catch {
+    return json({ error: 'unauthorized' }, 401);
+  }
+
+  const rl = checkRateLimit(userId);
+  if (!rl.allowed) {
+    const retryAfterSec = Math.max(1, Math.ceil(((rl.resetAt ?? Date.now()) - Date.now()) / 1000));
+    return new Response(
+      JSON.stringify({ error: 'rate_limited', detail: `Limite de ${MAX_REQUESTS_PER_HOUR} req/h atingido.`, reset_at: rl.resetAt }),
+      {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/json',
+          'Retry-After': String(retryAfterSec),
+          ...corsHeaders(),
+        },
+      },
+    );
+  }
+  // === fim do security gate ===
+
   let payload: SuggestRequest;
   try {
     payload = await req.json();
@@ -68,6 +136,24 @@ serve(async (req) => {
   if (!payload?.produto_nome || typeof payload.cmv !== 'number' || payload.cmv < 0) {
     return json({ error: 'missing_fields', detail: 'produto_nome e cmv (>=0) são obrigatórios' }, 400);
   }
+
+  // === Sessão 28.68 — payload size validation (H-1) ===
+  if (typeof payload.produto_nome !== 'string' || payload.produto_nome.length > MAX_PRODUTO_NOME_LEN) {
+    return json({ error: 'payload_too_large', detail: `produto_nome > ${MAX_PRODUTO_NOME_LEN} chars` }, 400);
+  }
+  if (payload.cmv > MAX_CMV) {
+    return json({ error: 'payload_invalid', detail: `cmv > ${MAX_CMV}` }, 400);
+  }
+  if (typeof payload.categoria === 'string' && payload.categoria.length > MAX_CATEGORIA_LEN) {
+    payload.categoria = payload.categoria.slice(0, MAX_CATEGORIA_LEN);
+  }
+  if (typeof payload.observacoes === 'string' && payload.observacoes.length > MAX_OBSERVACOES_LEN) {
+    return json({ error: 'payload_too_large', detail: `observacoes > ${MAX_OBSERVACOES_LEN} chars` }, 400);
+  }
+  if (Array.isArray(payload.historico) && payload.historico.length > MAX_HISTORICO_ITEMS) {
+    payload.historico = payload.historico.slice(0, MAX_HISTORICO_ITEMS);
+  }
+  // === fim payload validation ===
 
   const prompt = buildPrompt(payload);
 
