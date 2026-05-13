@@ -11,6 +11,8 @@ import useFeatureFlags from '../hooks/useFeatureFlags';
 import usePersistedState from '../hooks/usePersistedState';
 // D-02: botão sair da conta no mobile
 import { useAuth } from '../contexts/AuthContext';
+// Sessão 28.63: botão de instalar PWA (reentrada manual depois de desinstalar).
+import InstallAppButton from '../components/InstallAppButton';
 
 // Versão dinâmica via expoConfig (em vez de hardcoded — evita desync após release).
 const APP_VERSION = Constants?.expoConfig?.version || Constants?.manifest?.version || '1.0.0';
@@ -110,6 +112,14 @@ export default function ConfiguracoesScreen({ navigation }) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.subtitle}>Ajustes gerais do aplicativo</Text>
+
+      {/* Sessão 28.63: botão manual de instalar/reinstalar PWA.
+          Só renderiza no web; em iOS/Android nativo o próprio componente
+          retorna null (já existe app nativo). Posicionado no topo porque
+          esse é justamente o problema que o user reportou — não achava
+          como reinstalar depois de desinstalar. */}
+      {Platform.OS === 'web' && <InstallAppButton />}
+
       {OPCOES.map((op) => (
         <TouchableOpacity
           key={op.key}
