@@ -337,20 +337,44 @@ const RESTORABLE_MAIS_SCREENS = new Set([
 // Sessão 28.X — Persistência do screen interno da tab Mais.
 // Antes só persistíamos LAST_TAB_KEY (qual tab estava ativa). Refresh em
 // /Configuracoes (que vive no MaisStack) abria o MaisMain (lista de
-// Ferramentas), parecendo que a tela "não existia mais". Agora também
-// persistimos o screen ativo dentro do MaisStack e usamos como
-// initialRouteName via module-level var (lida no mount de MaisStack).
-let __initialMaisScreen = 'MaisMain';
+// Ferramentas), parecendo que a tela "não existia mais". Por um tempo
+// resolvemos via initialRouteName dinâmico, mas isso quebrou o botão
+// voltar e o double-tap em "Mais" (a tela restaurada ficava sozinha
+// no topo do stack, sem MaisMain abaixo). Agora SEMPRE montamos com
+// MaisMain no root e empurramos a tela salva por cima via navigate
+// no primeiro render — assim o stack fica [MaisMain, ScreenSalva]
+// e voltar/double-tap voltam ao MaisMain naturalmente.
+let __pendingMaisRestore = null;
+
+// Wrapper que empurra a tela salva por cima de MaisMain no primeiro mount.
+// Substituí o initialRouteName dinâmico antigo (Sessão 28.65 — bug fix:
+// botão voltar não funcionava em /Configuracoes em mobile, e double-tap
+// na tab Mais não voltava pra MaisMain).
+function MaisMainWithRestore(props) {
+  React.useEffect(() => {
+    const target = __pendingMaisRestore;
+    if (target && target !== 'MaisMain' && RESTORABLE_MAIS_SCREENS.has(target)) {
+      __pendingMaisRestore = null;
+      // Empurra a tela salva no topo do stack. MaisMain fica embaixo
+      // pra que o botão voltar e o popToTop continuem funcionando.
+      props.navigation.navigate(target);
+    } else {
+      __pendingMaisRestore = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return <MaisScreen {...props} />;
+}
 
 function MaisStack() {
   return (
     <StackWithBanner>
     <Stack.Navigator
       screenOptions={screenOptions}
-      initialRouteName={RESTORABLE_MAIS_SCREENS.has(__initialMaisScreen) ? __initialMaisScreen : 'MaisMain'}
+      initialRouteName="MaisMain"
     >
       {/* Sprint 1 Q3 — display "Ferramentas" mas mantém route name "Mais" para preservar AsyncStorage LAST_TAB_KEY e refs cross-tab. */}
-      <Stack.Screen name="MaisMain" component={MaisScreen} options={({ navigation }) => ({ title: 'Ferramentas', ...backToHomeOption(navigation) })} />
+      <Stack.Screen name="MaisMain" component={MaisMainWithRestore} options={({ navigation }) => ({ title: 'Ferramentas', ...backToHomeOption(navigation) })} />
       <Stack.Screen name="FinanceiroMain" component={FinanceiroConfigScreen} options={{ title: 'Financeiro' }} />
       {/* Sprint 1 Q4 — display "Ranking de Produtos" (route name MatrizBCG mantido). */}
       <Stack.Screen name="MatrizBCG" component={MatrizBCGScreen} options={{ title: 'Ranking de Produtos' }} />
@@ -563,7 +587,7 @@ function AppContent() {
     // MaisStack via module-level var no momento do mount (initialRouteName).
     AsyncStorage.getItem(LAST_MAIS_SCREEN_KEY).then(screen => {
       if (screen && RESTORABLE_MAIS_SCREENS.has(screen)) {
-        __initialMaisScreen = screen;
+        __pendingMaisRestore = screen;
       }
     }).catch(() => {});
     return () => { cancelled = true; clearTimeout(timeout); };
