@@ -2,6 +2,8 @@
   "buildCommand": "rm -rf dist node_modules/.cache .expo && npx expo export --platform web --clear",
   "outputDirectory": "dist",
   "rewrites": [
+    { "source": "/privacy", "destination": "/privacy/index.html" },
+    { "source": "/terms", "destination": "/terms/index.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
