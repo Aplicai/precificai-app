@@ -100,18 +100,3 @@ export async function setCategoriasPadraoDaEmbalagem(db, embalagemId, categoriaI
   }
 }
 
-/**
- * Busca o NOME da categoria pra qual essa embalagem é padrão (pra UI badge).
- */
-export async function getNomesCategoriasPadrao(db, embalagemId, canal = 'balcao') {
-  const ids = await getCategoriasPadraoDaEmbalagem(db, embalagemId, canal);
-  if (ids.length === 0) return [];
-  try {
-    const placeholders = ids.map(() => '?').join(',');
-    const rows = await db.getAllAsync(
-      `SELECT nome FROM categorias_produtos WHERE id IN (${placeholders})`,
-      ids
-    );
-    return (rows || []).map(r => r.nome);
-  } catch (_) { return []; }
-}

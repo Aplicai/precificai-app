@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ScrollView, View, TouchableOpacity, Text, Alert, Modal, TextInput, TouchableWithoutFeedback, KeyboardAvoidingView, Platform } from 'react-native';
+import { ScrollView, View, TouchableOpacity, Text, Alert, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 // Sessão 28.29: styles extraídos pra arquivo dedicado (eram 366 linhas inline)
 import { materiaPrimaFormStyles as styles } from './styles/materiaPrimaForm.styles';
 import { Feather } from '@expo/vector-icons';

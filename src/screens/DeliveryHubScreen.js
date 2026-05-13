@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, Switch,
-  ActivityIndicator, Platform, TextInput, Alert, Modal,
+  ActivityIndicator, Platform, TextInput, Modal,
 } from 'react-native';
 // Sessão 28.29: styles extraídos pra arquivo dedicado (eram 238 linhas inline)
 import { deliveryHubStyles as styles } from './styles/deliveryHub.styles';

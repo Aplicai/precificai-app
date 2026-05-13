@@ -29,7 +29,3 @@ export function hasFeature(flagName, email) {
   return list.includes(String(email).toLowerCase().trim());
 }
 
-export function listFeatures(email) {
-  if (!email) return [];
-  return Object.keys(FLAGS).filter(k => hasFeature(k, email));
-}

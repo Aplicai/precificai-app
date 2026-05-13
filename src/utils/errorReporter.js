@@ -8,7 +8,6 @@
  * API pública:
  *   initErrorReporter()                 — chamar 1× em App.js
  *   captureException(err, ctx)          — erro com tags
- *   captureMessage(msg, level)          — mensagem informativa
  *   addBreadcrumb({category,message,…}) — contexto histórico
  *   setUser(user)                       — associa user.id (sem PII)
  *   wrap(Component)                     — HOC para boundary global
@@ -51,9 +50,64 @@ function sanitize(obj) {
   return out;
 }
 
+// Sessão 28.68 — security hardening (H-2):
+// Chaves de domínio (financeiro / PII) que NÃO devem vazar em breadcrumbs.
+// Mantido separado de SENSITIVE_KEYS (que cobre auth/tokens) porque a
+// função sanitize() casa por substring — colocar "nome" lá redactaria
+// nomes de campo neutros como "nome_categoria".
+const BREADCRUMB_REDACT_KEYS = [
+  'email',
+  'nome_negocio',
+  'cpf',
+  'cnpj',
+  'telefone',
+  'whatsapp',
+  'valor_pago',
+  'preco_venda',
+  'preco_por_kg',
+  'arguments',
+];
+
+// Regex pré-compilada — aplicada a strings de breadcrumb.message
+// (logs do console integration costumam serializar payloads inteiros).
+const BREADCRUMB_REDACT_RE_STR = new RegExp(
+  `"(${BREADCRUMB_REDACT_KEYS.filter(k => k !== 'arguments').join('|')})":\\s*"[^"]*"`,
+  'g'
+);
+const BREADCRUMB_REDACT_RE_NUM = new RegExp(
+  `"(${BREADCRUMB_REDACT_KEYS.filter(k => k !== 'arguments').join('|')})":\\s*[\\d.]+`,
+  'g'
+);
+
+function sanitizeBreadcrumb(bc) {
+  if (!bc) return bc;
+  try {
+    const cleaned = { ...bc };
+    if (cleaned.message && typeof cleaned.message === 'string') {
+      cleaned.message = cleaned.message
+        .replace(BREADCRUMB_REDACT_RE_STR, '"$1":"[REDACTED]"')
+        .replace(BREADCRUMB_REDACT_RE_NUM, '"$1":[REDACTED]');
+    }
+    if (cleaned.data && typeof cleaned.data === 'object') {
+      const safeData = Array.isArray(cleaned.data) ? [...cleaned.data] : { ...cleaned.data };
+      BREADCRUMB_REDACT_KEYS.forEach((k) => {
+        if (k in safeData) safeData[k] = '[REDACTED]';
+      });
+      cleaned.data = safeData;
+    }
+    return cleaned;
+  } catch {
+    return bc;
+  }
+}
+
 /**
  * Filtra eventos antes de enviar — remove headers de auth e
  * outros campos sensíveis no payload do request, se existirem.
+ *
+ * Sessão 28.68 (H-2): também limpa breadcrumbs — o console integration
+ * do Sentry serializa logs de erro do supabaseDb com tabela/payload
+ * que vazariam dados financeiros e PII.
  */
 function beforeSend(event) {
   try {
@@ -64,6 +118,18 @@ function beforeSend(event) {
     }
     if (event.extra) event.extra = sanitize(event.extra);
     if (event.contexts) event.contexts = sanitize(event.contexts);
+
+    // Breadcrumbs podem estar no nível root do event OU dentro de event.breadcrumbs.values
+    // (formato SDK do Sentry). Cobrimos ambos.
+    if (Array.isArray(event.breadcrumbs)) {
+      event.breadcrumbs = event.breadcrumbs.map(sanitizeBreadcrumb);
+    }
+    if (event.breadcrumbs && Array.isArray(event.breadcrumbs.values)) {
+      event.breadcrumbs = {
+        ...event.breadcrumbs,
+        values: event.breadcrumbs.values.map(sanitizeBreadcrumb),
+      };
+    }
   } catch {}
   return event;
 }
@@ -94,7 +160,6 @@ export function initErrorReporter() {
       // Não enviar eventos em desenvolvimento (evita poluir o projeto Sentry)
       enabled: !isDev,
       beforeSend,
-      // Anexa stack traces a captureMessage também
       attachStacktrace: true,
     });
     enabled = true;
@@ -118,17 +183,6 @@ export function captureException(error, context = {}) {
   if (!enabled) return;
   try {
     Sentry.captureException(error, { tags: safeContext });
-  } catch {}
-}
-
-export function captureMessage(msg, level = 'info') {
-  if (isDev) {
-    // eslint-disable-next-line no-console
-    console.log(`[errorReporter:${level}]`, msg);
-  }
-  if (!enabled) return;
-  try {
-    Sentry.captureMessage(msg, level);
   } catch {}
 }
 

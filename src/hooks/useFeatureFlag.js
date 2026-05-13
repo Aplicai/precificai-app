@@ -122,10 +122,6 @@ export async function setFeatureFlag(name, next) {
   _notify();
 }
 
-export async function getFeatureFlag(name) {
-  return _ensureLoaded(name);
-}
-
 /**
  * Hook reativo. Retorna `[value, setValue, loaded]`.
  */

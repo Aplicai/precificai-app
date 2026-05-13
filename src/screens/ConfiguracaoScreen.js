@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal, Keyboard, TextInput, Switch, RefreshControl, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal, TextInput, Switch, RefreshControl, Platform } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import CurrencyInputModal from '../components/CurrencyInputModal';
 import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
