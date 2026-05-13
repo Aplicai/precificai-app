@@ -8,8 +8,10 @@
  *
  * Bump CACHE_VERSION sempre que mudar este arquivo OU os assets críticos.
  */
-// Sessão 28.61: bump pra invalidar cache antigo após reativar PWA bootstrap
-const CACHE_VERSION = 'precificai-v2';
+// Sessão 28.64: bump pra invalidar cache antigo após atualizar TODOS os ícones
+// com o avatar oficial (Logomarca/LOGO-NOVA/AVATAR). Browsers e PWA instalados
+// vão re-baixar ícones na próxima visita.
+const CACHE_VERSION = 'precificai-v3';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const HTML_CACHE = `${CACHE_VERSION}-html`;
