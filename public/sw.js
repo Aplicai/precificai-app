@@ -8,10 +8,10 @@
  *
  * Bump CACHE_VERSION sempre que mudar este arquivo OU os assets críticos.
  */
-// Sessão 28.64: bump pra invalidar cache antigo após atualizar TODOS os ícones
-// com o avatar oficial (Logomarca/LOGO-NOVA/AVATAR). Browsers e PWA instalados
-// vão re-baixar ícones na próxima visita.
-const CACHE_VERSION = 'precificai-v3';
+// Sessão 28.65: bump pra invalidar bundle antigo — fix do localStorage
+// `pwa_installed` que travava o botão "Instalar app" em Configurações
+// mostrando "✓ App instalado" mesmo após o user desinstalar.
+const CACHE_VERSION = 'precificai-v4';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const HTML_CACHE = `${CACHE_VERSION}-html`;

@@ -105,6 +105,19 @@ if (typeof document !== 'undefined') {
     } catch (_) {}
     window.dispatchEvent(new CustomEvent('pwa-installed'));
   });
+
+  // Limpa flag `pwa_installed` quando carregamos NÃO-standalone — o usuário
+  // desinstalou (browsers não disparam evento de uninstall, então o flag
+  // ficaria preso "true" pra sempre, fazendo o botão "Instalar app" em
+  // Configurações mostrar erradamente "✓ App instalado").
+  try {
+    const inStandalone =
+      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      window.navigator.standalone === true;
+    if (!inStandalone && localStorage.getItem('pwa_installed') === '1') {
+      localStorage.removeItem('pwa_installed');
+    }
+  } catch (_) {}
 }
 
 registerRootComponent(App);
