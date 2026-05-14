@@ -474,7 +474,7 @@ export default function RegisterScreen({ navigation }) {
                 '5. LGPD\nEm conformidade com a Lei Geral de Proteção de Dados (Lei 13.709/2018), você tem direito a: acessar, corrigir, excluir e portar seus dados. A base legal para o tratamento dos dados é o consentimento do titular (Art. 7°, I) e a execução de contrato (Art. 7°, V).\n\n' +
                 '6. EXCLUSÃO E RETENÇÃO DE DADOS\nVocê pode solicitar a exclusão da sua conta a qualquer momento. Após a solicitação, os dados serão retidos por 30 (trinta) dias para fins de auditoria, cumprimento de obrigações legais e exercício regular de direitos (LGPD, Art. 16, I e II). Decorrido esse prazo, todos os dados pessoais serão eliminados definitivamente.\n\n' +
                 '7. COOKIES\nUtilizamos apenas cookies essenciais para funcionamento.\n\n' +
-                '8. CONTATO\nPara questões sobre privacidade: suporte@precificaiapp.com\n\n' +
+                '8. CONTATO\nPara questões sobre privacidade: contato@precificaiapp.com\n\n' +
                 'Última atualização: Março 2026'}
               </Text>
             </ScrollView>

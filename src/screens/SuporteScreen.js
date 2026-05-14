@@ -258,14 +258,14 @@ export default function SuporteScreen({ navigation }) {
       {/* APP-54 — atalho de e-mail (WhatsApp removido a pedido do user) */}
       <View style={{ marginBottom: 12 }}>
         <TouchableOpacity
-          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.primary + '15', borderRadius: 10, paddingVertical: 12, borderWidth: 1, borderColor: colors.primary + '40' }}
-          onPress={() => handleLink('mailto:contato@precificaiapp.com')}
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primary + '15', borderRadius: 10, paddingVertical: 12, borderWidth: 1, borderColor: colors.primary + '40' }}
+          onPress={() => handleLink('mailto:contato@precificaiapp.com?subject=Suporte%20Precifica%C3%AD')}
           activeOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel="Enviar email para o suporte"
+          accessibilityLabel="Enviar email para contato@precificaiapp.com"
         >
           <Feather name="mail" size={16} color={colors.primary} />
-          <Text style={{ fontSize: 13, color: colors.primary, fontFamily: fontFamily.semiBold }}>E-mail</Text>
+          <Text style={{ fontSize: 13, color: colors.primary, fontFamily: fontFamily.semiBold }}>Enviar e-mail · resposta em até 1 dia útil</Text>
         </TouchableOpacity>
       </View>
 
@@ -377,35 +377,16 @@ export default function SuporteScreen({ navigation }) {
         <TouchableOpacity
           style={styles.contactRow}
           activeOpacity={0.7}
-          onPress={() => handleLink('mailto:suporte@precificaiapp.com')}
+          onPress={() => handleLink('mailto:contato@precificaiapp.com?subject=Suporte%20Precifica%C3%AD')}
           accessibilityRole="link"
-          accessibilityLabel="Enviar e-mail para suporte@precificaiapp.com"
+          accessibilityLabel="Enviar e-mail para contato@precificaiapp.com"
         >
           <View style={[styles.contactIcon, { backgroundColor: colors.primary + '12' }]}>
             <Feather name="mail" size={18} color={colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.contactLabel}>E-mail</Text>
-            <Text style={styles.contactValue}>suporte@precificaiapp.com</Text>
-          </View>
-          <Feather name="external-link" size={16} color={colors.textSecondary} />
-        </TouchableOpacity>
-
-        <View style={styles.faqDivider} />
-
-        <TouchableOpacity
-          style={styles.contactRow}
-          activeOpacity={0.7}
-          onPress={() => handleLink('https://www.precificaiapp.com')}
-          accessibilityRole="link"
-          accessibilityLabel="Abrir site www.precificaiapp.com"
-        >
-          <View style={[styles.contactIcon, { backgroundColor: colors.accent + '12' }]}>
-            <Feather name="globe" size={18} color={colors.accent} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.contactLabel}>Website</Text>
-            <Text style={styles.contactValue}>www.precificaiapp.com</Text>
+            <Text style={styles.contactValue}>contato@precificaiapp.com</Text>
           </View>
           <Feather name="external-link" size={16} color={colors.textSecondary} />
         </TouchableOpacity>
