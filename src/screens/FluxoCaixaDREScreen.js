@@ -87,7 +87,11 @@ function monthRange(monthKey) {
 function formatMonthLabel(monthKey) {
   const [y, m] = monthKey.split('-').map(Number);
   const date = new Date(y, m - 1, 1);
-  return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const s = date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  // Capitaliza só a 1ª letra ("maio de 2026" → "Maio de 2026").
+  // Antes usávamos CSS `textTransform: capitalize` no style, mas isso capitaliza
+  // CADA palavra inclusive "de" → "Maio De 2026" (incorreto em português).
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 function shiftMonth(monthKey, delta) {
   const [y, m] = monthKey.split('-').map(Number);
@@ -1105,7 +1109,7 @@ const styles = StyleSheet.create({
   },
   monthLabel: {
     fontSize: fonts.large, fontFamily: fontFamily.bold,
-    color: colors.text, textTransform: 'capitalize',
+    color: colors.text,
   },
   monthArrow: {
     width: 40, height: 40, borderRadius: 20,
