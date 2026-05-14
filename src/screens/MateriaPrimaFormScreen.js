@@ -339,7 +339,15 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     // Sessão 28.9 — APP-04: garantia defensiva pra unidade nunca regredir.
     // Se unidade_medida vier vazia/inválida, NÃO faz auto-save (evita corromper
     // o valor salvo). Loga pra debug.
-    const unidadeValida = ['g','kg','mL','L','un'].includes(f.unidade_medida);
+    // BUG FIX (Vinho Branco): primeiro tenta normalizar case (dicionário tem "ml"
+    // mas app canônico é "mL") antes de bloquear o auto-save.
+    const UNIT_CANONICAL_AUTOSAVE = { 'ml': 'mL', 'ML': 'mL', 'l': 'L', 'kg': 'kg', 'KG': 'kg', 'Kg': 'kg', 'G': 'g', 'UN': 'un', 'Un': 'un' };
+    let unidadeValida = ['g','kg','mL','L','un'].includes(f.unidade_medida);
+    if (!unidadeValida && UNIT_CANONICAL_AUTOSAVE[f.unidade_medida]) {
+      f.unidade_medida = UNIT_CANONICAL_AUTOSAVE[f.unidade_medida];
+      setForm(p => ({ ...p, unidade_medida: f.unidade_medida }));
+      unidadeValida = true;
+    }
     if (!unidadeValida) {
       if (typeof console !== 'undefined' && console.warn) {
         console.warn('[MateriaPrimaForm.autoSave] BLOQUEADO: unidade inválida =', f.unidade_medida, '(form completo)', f);
@@ -522,8 +530,19 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     }
     // APP-04: valida unidade no save manual também
     const VALID_UNITS_SAVE = ['g','kg','mL','L','un'];
+    // BUG FIX (Vinho Branco): se a unidade veio com case diferente do canonical
+    // (ex.: dicionário tem "ml" mas app espera "mL"), normaliza antes de bloquear.
+    // Antes: Alert "Unidade inválida" travava save de TODOS os 72 itens com "ml".
+    const UNIT_CANONICAL = { 'ml': 'mL', 'ML': 'mL', 'l': 'L', 'kg': 'kg', 'KG': 'kg', 'Kg': 'kg', 'G': 'g', 'UN': 'un', 'Un': 'un' };
     if (!VALID_UNITS_SAVE.includes(form.unidade_medida)) {
-      return Alert.alert('Unidade inválida', 'Selecione uma unidade de medida válida antes de salvar.');
+      const canonical = UNIT_CANONICAL[form.unidade_medida];
+      if (canonical) {
+        // Auto-corrige silenciosamente — user nem precisa saber
+        form.unidade_medida = canonical;
+        setForm(p => ({ ...p, unidade_medida: canonical }));
+      } else {
+        return Alert.alert('Unidade inválida', 'Selecione uma unidade de medida válida antes de salvar.');
+      }
     }
     setErrors({});
     // Sessão 28.18 BUG FIX: handle de erro com Alert claro pra o user.
@@ -782,7 +801,9 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                   }
                   // Sessão 28.17: aplica FC de referência (TACO) ao adotar a sugestão
                   // Antes: bruta == líquida (FC=1) → user precisava ajustar manualmente
-                  let qtdBruta = sugestao.qtd_tipica_compra ? String(sugestao.qtd_tipica_compra) : p.quantidade_bruta;
+                  // BUG FIX (Vinho Branco): `p.quantidade_bruta` referenciava `p` fora do
+                  // escopo do `setForm(p => ...)` — usa form.quantidade_bruta como fallback.
+                  let qtdBruta = sugestao.qtd_tipica_compra ? String(sugestao.qtd_tipica_compra) : form.quantidade_bruta;
                   let qtdLiquida = qtdBruta;
                   try {
                     const { estimarQuantidadeLiquida, getFatorCorrecaoReferencia } = await import('../data/fatoresCorrecao');
@@ -792,18 +813,31 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                       if (liquidaCalc > 0) qtdLiquida = String(Math.round(liquidaCalc));
                     }
                   } catch {}
+                  // BUG FIX (Vinho Branco e 71 outros itens com "ml"):
+                  // Dicionário usa "ml"/"l"/"kg" (lowercase) mas o app valida só os
+                  // valores canônicos ['g','kg','mL','L','un']. Sem normalização,
+                  // salvarNovo dispara Alert "Unidade inválida" e bloqueia o save.
+                  // Normaliza pra forma canônica antes de aplicar no form.
+                  const UNIT_CANONICAL_MAP = {
+                    'ml': 'mL', 'ML': 'mL', 'mL': 'mL',
+                    'l': 'L', 'L': 'L',
+                    'g': 'g', 'G': 'g',
+                    'kg': 'kg', 'KG': 'kg', 'Kg': 'kg',
+                    'un': 'un', 'UN': 'un', 'Un': 'un',
+                  };
+                  const unidadeBruta = sugestao.unidade_padrao || form.unidade_medida;
+                  const unidadeNormalizada = UNIT_CANONICAL_MAP[unidadeBruta] || unidadeBruta;
                   // Sessão 28.34: também sugere PREÇO DE MERCADO se houver match
                   // na base curada de marketPrices.js. User pode editar antes de salvar.
                   let valorPagoMercado = null;
                   try {
                     const { getMarketPrice } = await import('../data/marketPrices');
-                    const unidadeFinal = sugestao.unidade_padrao || form.unidade_medida;
-                    valorPagoMercado = getMarketPrice(sugestao.nome_canonico, parseFloat(qtdBruta) || 0, unidadeFinal);
+                    valorPagoMercado = getMarketPrice(sugestao.nome_canonico, parseFloat(qtdBruta) || 0, unidadeNormalizada);
                   } catch {}
                   setForm(p => ({
                     ...p,
                     nome: sugestao.nome_canonico,
-                    unidade_medida: sugestao.unidade_padrao || p.unidade_medida,
+                    unidade_medida: unidadeNormalizada || p.unidade_medida,
                     quantidade_bruta: qtdBruta,
                     quantidade_liquida: qtdLiquida,
                     categoria_id: categoria_id || p.categoria_id,
