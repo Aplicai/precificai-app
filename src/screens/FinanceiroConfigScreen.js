@@ -3,6 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal, Tex
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import CurrencyInputModal from '../components/CurrencyInputModal';
 import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getDatabase } from '../database/database';
 import InfoTooltip from '../components/InfoTooltip';
 import Chip from '../components/Chip';
@@ -53,6 +54,11 @@ export default function FinanceiroConfigScreen() {
   const { isDesktop } = useResponsiveLayout();
   const isFocused = useIsFocused();
   const navigation = useNavigation();
+  // Bug-fix (Agent 4): no iOS o home indicator + BottomTab tampavam os botões
+  // "+" inline (fim de "Custos mensais" / "Custos por venda") e o footer
+  // "Salvar e voltar". Usamos insets.bottom para somar ao padding base.
+  const insets = useSafeAreaInsets();
+  const scrollPaddingBottom = 100 + (insets?.bottom || 0);
   const [loadError, setLoadError] = useState(false);
   const [lucroDesejado, setLucroDesejado] = useState('');
   const [despesasFixas, setDespesasFixas] = useState([]);
@@ -1273,7 +1279,7 @@ export default function FinanceiroConfigScreen() {
     <View style={{ flex: 1 }}>
       <ScrollView
         style={s.container}
-        contentContainerStyle={s.content}
+        contentContainerStyle={[s.content, { paddingBottom: scrollPaddingBottom }]}
         keyboardShouldPersistTaps="handled"
         refreshControl={Platform.OS !== 'web' ? (
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
@@ -1453,7 +1459,11 @@ export default function FinanceiroConfigScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, width: '100%' },
   // Sessão 28.15: footer agora inline, padding normal
-  content: { padding: spacing.md, width: '100%', paddingBottom: spacing.lg, maxWidth: 960, alignSelf: 'center' },
+  // Bug-fix (Agent 4): paddingBottom era spacing.lg (24), insuficiente —
+  // os botões "+" inline (adicionar custo mensal / custo por venda) e o
+  // botão "Salvar e voltar" ficavam encobertos pelo BottomTab (~66pt)
+  // + safe-area do home indicator no iOS. Padrão do projeto = 100.
+  content: { padding: spacing.md, width: '100%', paddingBottom: 120, maxWidth: 960, alignSelf: 'center' },
 
   // APP-30 — microcopy + warning inline
   fieldMicroCopy: {

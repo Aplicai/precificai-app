@@ -3,7 +3,10 @@ import { View, Text, TextInput, StyleSheet, Modal, TouchableOpacity, KeyboardAvo
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, borderRadius, fontFamily } from '../utils/theme';
 
-export default function CurrencyInputModal({ visible, title, value, prefix, suffix, placeholder, onConfirm, onCancel, keyboardType = 'numeric' }) {
+// Bug-fix (Agent 4): default era 'numeric', que no Android só mostra dígitos
+// (sem vírgula/ponto). Para campos de moeda/percentual usamos 'decimal-pad'
+// — Android exibe vírgula, iOS exibe ponto decimal. Caller pode sobrescrever.
+export default function CurrencyInputModal({ visible, title, value, prefix, suffix, placeholder, onConfirm, onCancel, keyboardType = 'decimal-pad' }) {
   const [inputValue, setInputValue] = useState('');
   const [saving, setSaving] = useState(false);
   const inputRef = useRef(null);
@@ -16,10 +19,32 @@ export default function CurrencyInputModal({ visible, title, value, prefix, suff
     }
   }, [visible, value]);
 
+  // Normaliza o que o usuário digita: aceita tanto ',' quanto '.', remove
+  // caracteres não-numéricos (mantém um separador decimal). Não arredonda
+  // nem trunca — preserva precisão. Caller faz parseFloat depois.
+  function handleChange(raw) {
+    if (raw == null) {
+      setInputValue('');
+      return;
+    }
+    // Mantém apenas dígitos, vírgula e ponto
+    let s = String(raw).replace(/[^0-9.,]/g, '');
+    // Se digitou ponto e vírgula, mantém apenas o último separador como decimal
+    const lastSep = Math.max(s.lastIndexOf(','), s.lastIndexOf('.'));
+    if (lastSep >= 0) {
+      const intPart = s.slice(0, lastSep).replace(/[.,]/g, '');
+      const decPart = s.slice(lastSep + 1).replace(/[.,]/g, '');
+      s = intPart + ',' + decPart;
+    }
+    setInputValue(s);
+  }
+
   async function handleConfirm() {
     if (saving) return;
     setSaving(true);
     try {
+      // Mantém formato com vírgula (PT-BR) — parseNum dos callers já
+      // converte ',' → '.' antes de parseFloat. Não arredonda aqui.
       await onConfirm(inputValue);
     } catch (e) {
       if (__DEV__) console.warn('CurrencyInputModal save error:', e);
@@ -51,7 +76,7 @@ export default function CurrencyInputModal({ visible, title, value, prefix, suff
                 suffix && { borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRightWidth: 0 },
               ]}
               value={inputValue}
-              onChangeText={setInputValue}
+              onChangeText={handleChange}
               placeholder={placeholder || '0,00'}
               placeholderTextColor={colors.disabled}
               keyboardType={keyboardType}
