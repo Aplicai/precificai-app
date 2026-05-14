@@ -5,7 +5,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { useNavigation } from '@react-navigation/native';
 import BackToSettings from '../components/BackToSettings';
 
-const ULTIMA_ATUALIZACAO = '11 de maio de 2026';
+const ULTIMA_ATUALIZACAO = '13 de maio de 2026';
 
 // Sessão 28.51: Termos reforçados — linguagem mais robusta e protetiva,
 // alinhada à LGPD (Lei 13.709/2018), CDC (Lei 8.078/1990) e Marco Civil
@@ -140,6 +140,7 @@ const SECOES = [
     paragrafos: [
       'Para dúvidas, sugestões, solicitações relacionadas a estes Termos, exercício de direitos da LGPD ou ao uso do Aplicativo, entre em contato pelo e-mail: contato@precificaiapp.com.',
       'O Encarregado de Proteção de Dados (DPO) pode ser acionado pelo mesmo endereço, com o assunto "LGPD".',
+      'Suporte oficial: apenas por e-mail (contato@precificaiapp.com) e pela aba "Suporte" do aplicativo. A Aplicais não presta atendimento por WhatsApp, Telegram, SMS, ligação telefônica ou redes sociais — qualquer contato por esses canais deve ser desconsiderado.',
     ],
   },
 ];

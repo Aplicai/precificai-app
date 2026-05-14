@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Política de Privacidade do Precificaí — app de precificação para pequenos negócios alimentícios." />
+  <meta name="description" content="Política de Privacidade do Precificaí — aplicativo de precificação para pequenos negócios alimentícios. LGPD-compliant." />
   <meta name="theme-color" content="#004d47" />
-  <link rel="icon" href="/favicon.ico" />
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="icon" href="https://app.precificaiapp.com/favicon.ico" />
+  <link rel="apple-touch-icon" href="https://app.precificaiapp.com/apple-touch-icon.png" />
   <title>Política de Privacidade — Precificaí</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
@@ -41,20 +41,29 @@
       opacity: 0.85;
     }
     .container {
-      max-width: 760px;
+      max-width: 800px;
       margin: 0 auto;
       padding: 32px 24px 64px;
     }
     .updated {
       color: #6B7D7B;
       font-size: 14px;
-      margin-bottom: 32px;
+      margin-bottom: 24px;
       text-align: center;
+    }
+    .lead {
+      background: #FFFFFF;
+      border-left: 4px solid #004d47;
+      padding: 16px 18px;
+      border-radius: 4px;
+      margin-bottom: 32px;
+      font-size: 15px;
+      color: #2A3D3B;
     }
     h2 {
       color: #004d47;
       font-size: 20px;
-      margin-top: 32px;
+      margin-top: 36px;
       margin-bottom: 12px;
     }
     h3 {
@@ -63,11 +72,11 @@
       margin-top: 20px;
       margin-bottom: 8px;
     }
-    p, ul {
+    p, ul, ol {
       font-size: 16px;
       margin: 0 0 12px;
     }
-    ul { padding-left: 22px; }
+    ul, ol { padding-left: 22px; }
     li { margin-bottom: 6px; }
     a {
       color: #265bb0;
@@ -91,12 +100,31 @@
       color: #6B7D7B;
     }
     .footer a { margin: 0 8px; }
+    table.legal {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 20px;
+      font-size: 14px;
+    }
+    table.legal th, table.legal td {
+      text-align: left;
+      vertical-align: top;
+      padding: 10px 12px;
+      border: 1px solid #D8E0DE;
+    }
+    table.legal th {
+      background: #EEF3F2;
+      color: #1A2B2A;
+      font-weight: 600;
+    }
     @media (max-width: 600px) {
       .header { padding: 24px 16px; }
       .header h1 { font-size: 24px; }
       .container { padding: 24px 16px 48px; }
       h2 { font-size: 18px; }
-      p, ul { font-size: 15px; }
+      p, ul, ol { font-size: 15px; }
+      table.legal { font-size: 13px; }
+      table.legal th, table.legal td { padding: 8px; }
     }
   </style>
 </head>
@@ -104,113 +132,241 @@
   <header class="header">
     <a href="https://precificaiapp.com" class="back-link">&larr; Voltar para Precificaí</a>
     <div>
-      <img src="/icon-192.png" alt="Logo Precificaí" />
+      <img src="https://app.precificaiapp.com/icon-192.png" alt="Logo Precificaí" />
     </div>
     <h1>Política de Privacidade</h1>
     <div class="subtitle">Precificaí App &middot; Aplicaí Consultoria</div>
   </header>
 
   <main class="container">
-    <p class="updated">Última atualização: 13 de maio de 2026</p>
+    <p class="updated">Versão 2.0 &middot; Última atualização: 13 de maio de 2026</p>
 
-    <h2>1. Quem somos</h2>
+    <div class="lead">
+      Esta Política de Privacidade descreve como a <strong>Aplicaí Consultoria</strong> (&ldquo;Aplicaí&rdquo;, &ldquo;nós&rdquo;)
+      coleta, utiliza, armazena, compartilha e protege dados pessoais tratados no aplicativo
+      <strong>Precificaí</strong> (web, iOS e Android), em estrita observância à
+      <strong>Lei Geral de Proteção de Dados Pessoais &mdash; LGPD (Lei nº 13.709/2018)</strong>,
+      ao Marco Civil da Internet (Lei nº 12.965/2014) e ao Código de Defesa do Consumidor (Lei nº 8.078/1990).
+      Ao criar uma conta ou utilizar o Serviço, você declara ter lido, compreendido e aceito esta Política.
+    </div>
+
+    <h2>1. Controlador e Encarregado (DPO)</h2>
     <p>
-      O <strong>Precificaí</strong> é um aplicativo de precificação voltado para pequenos negócios alimentícios
-      (confeitarias, lanchonetes, restaurantes, food trucks e produtores artesanais), desenvolvido e mantido pela
-      <strong>Aplicaí Consultoria</strong>. Esta Política de Privacidade descreve como coletamos, usamos e protegemos
-      suas informações pessoais, em conformidade com a Lei Geral de Proteção de Dados Pessoais (LGPD &mdash; Lei nº 13.709/2018).
+      O <strong>Controlador</strong> dos dados pessoais tratados no Precificaí é a
+      <strong>Aplicaí Consultoria</strong>, pessoa jurídica de direito privado responsável pela operação
+      do aplicativo de precificação para pequenos negócios alimentícios &mdash; confeitarias, lanchonetes,
+      restaurantes, food trucks, marmitarias, pizzarias e produtores artesanais.
+    </p>
+    <p>
+      O <strong>Encarregado pelo Tratamento de Dados Pessoais (Data Protection Officer &mdash; DPO)</strong>,
+      conforme art. 41 da LGPD, pode ser contatado pelo e-mail
+      <a href="mailto:contato@precificaiapp.com">contato@precificaiapp.com</a>,
+      com o assunto &ldquo;LGPD&rdquo;.
     </p>
 
-    <h2>2. Dados que coletamos</h2>
-    <h3>2.1 Dados fornecidos por você</h3>
+    <h2>2. Definições</h2>
     <ul>
-      <li><strong>Cadastro:</strong> nome e endereço de e-mail (quando você cria conta com e-mail/senha).</li>
-      <li><strong>Login com Google:</strong> nome, e-mail e foto de perfil (quando você opta por entrar com sua conta Google).</li>
-      <li><strong>Dados do seu negócio:</strong> insumos, fichas técnicas, custos, preços, fornecedores, vendas, despesas e
-        demais informações que você insere no app para uso da ferramenta de precificação.</li>
+      <li><strong>Dado pessoal:</strong> informação relacionada a pessoa natural identificada ou identificável (art. 5º, I, LGPD).</li>
+      <li><strong>Titular:</strong> pessoa natural a quem se referem os dados pessoais (art. 5º, V).</li>
+      <li><strong>Tratamento:</strong> toda operação realizada com dados pessoais, da coleta à eliminação (art. 5º, X).</li>
+      <li><strong>Controlador:</strong> a Aplicaí, responsável pelas decisões sobre o tratamento (art. 5º, VI).</li>
+      <li><strong>Operador:</strong> terceiros que realizam tratamento por conta da Aplicaí (Supabase, Sentry, Vercel etc.).</li>
     </ul>
-    <h3>2.2 Dados coletados automaticamente</h3>
+
+    <h2>3. Dados pessoais tratados</h2>
+
+    <h3>3.1 Dados fornecidos diretamente pelo Titular</h3>
+    <table class="legal">
+      <thead>
+        <tr><th>Categoria</th><th>Dados</th><th>Finalidade</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Cadastro</td>
+          <td>Nome, endereço de e-mail, senha (armazenada em hash bcrypt), telefone (opcional).</td>
+          <td>Autenticação, identificação e operação do Serviço.</td>
+        </tr>
+        <tr>
+          <td>Login social (opcional)</td>
+          <td>Nome, e-mail e foto de perfil obtidos via OAuth do Google.</td>
+          <td>Login simplificado, mediante consentimento expresso.</td>
+        </tr>
+        <tr>
+          <td>Perfil do negócio</td>
+          <td>Nome do estabelecimento, segmento, cidade/UF (opcionais).</td>
+          <td>Personalização da experiência e recomendações de mercado.</td>
+        </tr>
+        <tr>
+          <td>Dados comerciais inseridos</td>
+          <td>Insumos, fichas técnicas, custos, preços, fornecedores, vendas, despesas, fluxo de caixa.</td>
+          <td>Execução das funcionalidades de precificação. Estes dados <strong>pertencem ao Titular</strong> &mdash; a Aplicaí atua como operadora.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>3.2 Dados coletados automaticamente</h3>
+    <table class="legal">
+      <thead>
+        <tr><th>Categoria</th><th>Dados</th><th>Finalidade</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Telemetria de uso</td>
+          <td>Telas acessadas, ações realizadas, versão do app, sistema operacional, idioma.</td>
+          <td>Melhoria contínua do produto e diagnóstico de problemas.</td>
+        </tr>
+        <tr>
+          <td>Diagnóstico de erros</td>
+          <td>Stack traces, mensagens de erro, contexto técnico e <em>IP truncado</em> (via Sentry).</td>
+          <td>Identificação e correção de falhas; segurança da informação.</td>
+        </tr>
+        <tr>
+          <td>Logs de acesso</td>
+          <td>Data, hora e IP de autenticação (Marco Civil &mdash; art. 15).</td>
+          <td>Cumprimento de obrigação legal; segurança.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>4. Bases legais do tratamento (art. 7º da LGPD)</h2>
     <ul>
-      <li><strong>Uso do app:</strong> telas acessadas, ações realizadas e preferências (para melhorar a experiência).</li>
-      <li><strong>Diagnóstico de erros:</strong> mensagens de erro, stack traces e contexto técnico (versão do app, sistema
-        operacional) quando ocorre uma falha, para corrigirmos bugs.</li>
+      <li><strong>Execução de contrato (art. 7º, V):</strong> dados estritamente necessários à prestação do Serviço contratado mediante criação da conta.</li>
+      <li><strong>Consentimento (art. 7º, I):</strong> tratamentos opcionais &mdash; em especial o login com Google, telefone e dados adicionais de perfil.</li>
+      <li><strong>Legítimo interesse (art. 7º, IX):</strong> prevenção a fraude, segurança da informação, telemetria agregada e melhoria do Serviço, sempre observados os direitos fundamentais do Titular.</li>
+      <li><strong>Cumprimento de obrigação legal (art. 7º, II):</strong> guarda de logs de acesso (Marco Civil) e atendimento a requisições judiciais.</li>
     </ul>
 
-    <h2>3. Como usamos seus dados</h2>
-    <ul>
-      <li>Autenticar você no aplicativo e manter sua sessão segura.</li>
-      <li>Fornecer as funcionalidades do Precificaí (cálculo de preços, fichas técnicas, controle de delivery e estoque etc.).</li>
-      <li>Sincronizar seus dados entre dispositivos (mobile e web).</li>
-      <li>Identificar e corrigir falhas técnicas.</li>
-      <li>Comunicar atualizações importantes do serviço.</li>
-    </ul>
-
-    <h2>4. Compartilhamento com terceiros</h2>
+    <h2>5. Compartilhamento com terceiros (operadores)</h2>
     <p>
-      Não vendemos seus dados. Compartilhamos informações estritamente necessárias com os seguintes provedores
-      de infraestrutura, que operam como nossos operadores de dados:
+      A Aplicaí <strong>não comercializa, aluga, cede ou licencia</strong> dados pessoais a anunciantes, agregadores, brokers ou
+      plataformas de marketing. Compartilhamos dados estritamente necessários com os seguintes operadores, contratualmente
+      vinculados a sigilo e às finalidades descritas:
     </p>
     <ul>
-      <li><strong>Supabase</strong> &mdash; autenticação e armazenamento dos dados do seu negócio.</li>
-      <li><strong>Google</strong> &mdash; apenas quando você opta por usar &ldquo;Entrar com Google&rdquo;.</li>
-      <li><strong>Sentry</strong> &mdash; monitoramento de erros e estabilidade do aplicativo.</li>
-      <li><strong>Vercel</strong> &mdash; hospedagem da versão web do app.</li>
+      <li><strong>Supabase, Inc.</strong> &mdash; provedor de autenticação, banco de dados PostgreSQL e sincronização (servidores nos Estados Unidos).</li>
+      <li><strong>Functional Software, Inc. (Sentry)</strong> &mdash; monitoramento de erros e estabilidade (servidores nos Estados Unidos).</li>
+      <li><strong>Google LLC</strong> &mdash; somente quando o Titular opta por &ldquo;Entrar com Google&rdquo; (OAuth).</li>
+      <li><strong>Vercel Inc.</strong> &mdash; hospedagem da versão web do aplicativo.</li>
     </ul>
     <p>
-      Também podemos divulgar dados quando exigido por lei, ordem judicial ou para proteger direitos, segurança e propriedade.
+      Poderemos divulgar dados quando exigido por lei, ordem judicial ou determinação de autoridade competente
+      (art. 7º, VI, e art. 11, II, &ldquo;a&rdquo; da LGPD), bem como para proteger direitos, segurança e propriedade da Aplicaí ou de terceiros.
     </p>
 
-    <h2>5. Armazenamento e segurança</h2>
+    <h2>6. Transferência internacional de dados</h2>
     <p>
-      Seus dados são armazenados em servidores seguros e transmitidos via HTTPS. Adotamos medidas técnicas e
-      organizacionais para proteger suas informações contra acesso não autorizado, alteração ou exclusão indevida.
-      Ainda assim, nenhum sistema é 100% seguro, e recomendamos que você proteja sua senha e dispositivos.
+      Considerando que parte dos operadores está sediada fora do Brasil (Estados Unidos, principalmente),
+      poderá haver transferência internacional de dados pessoais, com fundamento no art. 33 da LGPD.
+      Adotamos salvaguardas adequadas, incluindo:
     </p>
-
-    <h2>6. Seus direitos (LGPD)</h2>
-    <p>Você pode, a qualquer momento, solicitar:</p>
     <ul>
-      <li>Acesso aos seus dados pessoais que tratamos.</li>
-      <li>Correção de dados incompletos, inexatos ou desatualizados.</li>
-      <li>Anonimização, bloqueio ou eliminação de dados desnecessários.</li>
-      <li>Portabilidade dos seus dados.</li>
-      <li>Exclusão dos dados tratados com base no seu consentimento.</li>
-      <li>Informação sobre com quem compartilhamos seus dados.</li>
-      <li>Revogação do consentimento.</li>
+      <li>Cláusulas contratuais padrão (Standard Contractual Clauses) com cada operador;</li>
+      <li>Compromisso contratual dos operadores em observar nível de proteção compatível com a LGPD;</li>
+      <li>Criptografia em trânsito (TLS 1.2+) e em repouso (AES-256) durante a transferência e armazenamento.</li>
+    </ul>
+
+    <h2>7. Armazenamento, segurança e retenção</h2>
+    <p>
+      Adotamos medidas técnicas e administrativas razoáveis e proporcionais ao risco, incluindo:
+    </p>
+    <ul>
+      <li>Criptografia em trânsito por <strong>HTTPS/TLS 1.2+</strong> em todos os endpoints;</li>
+      <li>Criptografia em repouso (AES-256) nos bancos de dados do Supabase;</li>
+      <li><strong>Row-Level Security (RLS)</strong> no PostgreSQL &mdash; cada Titular acessa apenas seus próprios registros;</li>
+      <li>Senhas armazenadas com hash <strong>bcrypt</strong>; ninguém na Aplicaí tem acesso à senha em texto claro;</li>
+      <li>Disponibilidade de <strong>autenticação multifator (MFA)</strong> opcional;</li>
+      <li>Controle de acesso administrativo restrito ao mínimo necessário (princípio do menor privilégio);</li>
+      <li>Monitoramento contínuo de incidentes de segurança via Sentry e logs do Supabase.</li>
     </ul>
     <p>
-      Para exercer qualquer um desses direitos, envie um e-mail para
-      <a href="mailto:contato@aplicaiconsultoria.com.br">contato@aplicaiconsultoria.com.br</a>.
+      <strong>Retenção:</strong> dados pessoais são mantidos enquanto a conta estiver ativa. Após solicitação de exclusão,
+      promovemos <em>soft delete</em> em até 30 dias e a eliminação definitiva dos backups em até 90 dias, ressalvadas
+      hipóteses legais de guarda obrigatória (Marco Civil da Internet &mdash; logs de acesso por 6 meses;
+      legislação fiscal &mdash; até 5 anos quando aplicável).
+    </p>
+    <p>
+      Em caso de incidente de segurança que implique risco ou dano relevante aos Titulares, a Aplicaí comunicará
+      a Autoridade Nacional de Proteção de Dados (ANPD) e os Titulares afetados, em prazo razoável, nos termos do art. 48 da LGPD.
     </p>
 
-    <h2>7. Retenção de dados</h2>
+    <h2>8. Direitos do Titular (art. 18 da LGPD)</h2>
+    <p>O Titular pode, a qualquer momento e gratuitamente, solicitar:</p>
+    <ol>
+      <li>Confirmação da existência de tratamento;</li>
+      <li>Acesso aos dados;</li>
+      <li>Correção de dados incompletos, inexatos ou desatualizados;</li>
+      <li>Anonimização, bloqueio ou eliminação de dados desnecessários, excessivos ou tratados em desconformidade;</li>
+      <li>Portabilidade dos dados a outro fornecedor de serviço, observados segredo comercial e industrial;</li>
+      <li>Eliminação dos dados tratados com consentimento;</li>
+      <li>Informação sobre entidades públicas e privadas com as quais a Aplicaí compartilhou seus dados;</li>
+      <li>Informação sobre a possibilidade de não fornecer consentimento e as consequências da negativa;</li>
+      <li>Revogação do consentimento;</li>
+      <li>Oposição a tratamento realizado com fundamento em uma das hipóteses de dispensa de consentimento, em caso de descumprimento da LGPD.</li>
+    </ol>
     <p>
-      Mantemos seus dados enquanto sua conta estiver ativa. Você pode excluir sua conta a qualquer momento pelo app
-      ou solicitando por e-mail; após a exclusão, removemos seus dados pessoais em até 30 dias, exceto quando
-      precisarmos retê-los por obrigação legal.
+      Para exercer qualquer destes direitos, envie e-mail para
+      <a href="mailto:contato@precificaiapp.com">contato@precificaiapp.com</a> com o assunto &ldquo;LGPD &mdash; Direitos do Titular&rdquo;,
+      informando: (i) seu nome e e-mail cadastrado; (ii) o direito que deseja exercer; (iii) descrição do pedido.
+      Por questões de segurança, poderemos solicitar informações adicionais para confirmar sua identidade.
+      Atendemos requisições no prazo legal, em regra inferior a 15 dias úteis.
     </p>
 
-    <h2>8. Crianças e adolescentes</h2>
+    <h2>9. Cookies e armazenamento local</h2>
+    <p>Na versão web, utilizamos exclusivamente armazenamento técnico estritamente necessário:</p>
+    <ul>
+      <li><strong>Cookies/localStorage de sessão</strong> &mdash; para manter o Titular autenticado;</li>
+      <li><strong>localStorage de preferências</strong> &mdash; densidade de listas, tema e configurações da interface.</li>
+    </ul>
     <p>
-      O Precificaí não é destinado a menores de 18 anos. Não coletamos intencionalmente dados de menores. Caso
-      identifique que isso ocorreu, entre em contato para que possamos excluir as informações.
+      <strong>Não utilizamos</strong> cookies de rastreamento publicitário, Google Analytics, pixels de redes sociais
+      ou quaisquer trackers de terceiros para fins de marketing.
     </p>
 
-    <h2>9. Alterações nesta política</h2>
+    <h2>10. Crianças e adolescentes</h2>
     <p>
-      Podemos atualizar esta Política de Privacidade periodicamente. Quando houver mudanças relevantes, avisaremos
-      pelo app ou por e-mail. A data da última atualização sempre estará no topo desta página.
+      O Precificaí é destinado exclusivamente a pessoas com 18 anos completos ou mais. Não coletamos intencionalmente
+      dados de menores. Caso seja identificado tratamento envolvendo menor, os dados serão excluídos imediatamente e,
+      quando aplicável, o responsável legal será notificado. Solicitações nesse sentido devem ser enviadas a
+      <a href="mailto:contato@precificaiapp.com">contato@precificaiapp.com</a>.
     </p>
 
-    <h2>10. Contato</h2>
+    <h2>11. Decisões automatizadas</h2>
     <p>
-      Dúvidas, solicitações ou reclamações sobre privacidade?<br />
-      E-mail: <a href="mailto:contato@aplicaiconsultoria.com.br">contato@aplicaiconsultoria.com.br</a><br />
-      Encarregado de Proteção de Dados (DPO): Aplicaí Consultoria.
+      As sugestões de preço apresentadas pelo Precificaí são geradas por regras determinísticas (CMV, margem alvo,
+      taxas de marketplace etc.) com base nos dados informados pelo próprio Titular, e não constituem decisão
+      automatizada com efeitos jurídicos relevantes no sentido do art. 20 da LGPD. As decisões finais de precificação
+      são, em qualquer caso, de responsabilidade exclusiva do Titular.
+    </p>
+
+    <h2>12. Alterações desta Política</h2>
+    <p>
+      Esta Política pode ser atualizada a qualquer momento para refletir mudanças no Serviço, melhores práticas ou
+      exigências legais. Em alterações materiais, notificaremos o Titular por e-mail e/ou notificação no aplicativo,
+      com antecedência mínima de 15 dias da entrada em vigor. A data da &ldquo;Última atualização&rdquo; ao topo desta página
+      sempre indicará a versão vigente.
+    </p>
+
+    <h2>13. Lei aplicável e foro</h2>
+    <p>
+      Esta Política é regida pelas leis da República Federativa do Brasil. Eventuais controvérsias serão resolvidas,
+      preferencialmente, por tratativa amigável. Não havendo composição, fica eleito o foro do domicílio do Titular
+      consumidor, nos termos do Código de Defesa do Consumidor.
+    </p>
+
+    <h2>14. Contato</h2>
+    <p>
+      Dúvidas, solicitações ou reclamações sobre privacidade e proteção de dados:<br />
+      E-mail: <a href="mailto:contato@precificaiapp.com">contato@precificaiapp.com</a><br />
+      Encarregado de Proteção de Dados (DPO): <a href="mailto:contato@precificaiapp.com">contato@precificaiapp.com</a> (assunto &ldquo;LGPD&rdquo;).<br />
+      <em>O suporte ao usuário ocorre exclusivamente por e-mail e pela aba &ldquo;Suporte&rdquo; do aplicativo. Não atendemos por WhatsApp ou redes sociais.</em>
+    </p>
+    <p>
+      O Titular também pode peticionar diretamente à Autoridade Nacional de Proteção de Dados (ANPD) em
+      <a href="https://www.gov.br/anpd" target="_blank" rel="noopener noreferrer">https://www.gov.br/anpd</a>.
     </p>
 
     <div class="footer">
-      <a href="/terms">Termos de Serviço</a> &middot;
+      <a href="https://app.precificaiapp.com/terms">Termos de Serviço</a> &middot;
       <a href="https://precificaiapp.com">Voltar para Precificaí</a>
       <p>&copy; 2026 Aplicaí Consultoria &middot; Precificaí App</p>
     </div>

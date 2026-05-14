@@ -5,7 +5,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { useNavigation } from '@react-navigation/native';
 import BackToSettings from '../components/BackToSettings';
 
-const ULTIMA_ATUALIZACAO = '11 de maio de 2026';
+const ULTIMA_ATUALIZACAO = '13 de maio de 2026';
 
 const SECOES = [
   {
@@ -84,7 +84,7 @@ const SECOES = [
   {
     titulo: '8. Como Exercer Seus Direitos',
     paragrafos: [
-      'Para exercer qualquer dos direitos acima, envie um e-mail para privacidade@precificaiapp.com indicando: (i) o seu nome e e-mail cadastrado no Aplicativo; (ii) qual direito você deseja exercer; (iii) descrição da solicitação.',
+      'Para exercer qualquer dos direitos acima, envie um e-mail para contato@precificaiapp.com (assunto "LGPD — Direitos do Titular") indicando: (i) o seu nome e e-mail cadastrado no Aplicativo; (ii) qual direito você deseja exercer; (iii) descrição da solicitação.',
       'Responderemos em prazo razoável, observados os limites legais. Poderemos solicitar informações adicionais para confirmar a sua identidade antes de atender o pedido, como medida de segurança.',
     ],
   },
@@ -114,8 +114,8 @@ const SECOES = [
     titulo: '12. Encarregado pelo Tratamento de Dados (DPO)',
     paragrafos: [
       'Para questões específicas relacionadas à proteção dos seus dados pessoais, fale com o nosso Encarregado pelo Tratamento de Dados (DPO):',
-      'E-mail: dpo@precificaiapp.com',
-      'Para outras solicitações sobre exercício de direitos LGPD, utilize: privacidade@precificaiapp.com.',
+      'E-mail: contato@precificaiapp.com (assunto "LGPD").',
+      'O suporte oficial ocorre apenas por e-mail e pela aba "Suporte" do aplicativo — não atendemos por WhatsApp, Telegram ou redes sociais.',
     ],
   },
 ];
