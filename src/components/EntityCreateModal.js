@@ -21,7 +21,7 @@
  *   defaultCategoriaId: number | null
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Platform } from 'react-native';
 // Sessão 28.29: styles extraídos pra arquivo dedicado (eram 611 linhas inline)
 import { entityCreateModalStyles as styles } from './styles/entityCreateModal.styles';
@@ -100,6 +100,10 @@ export default function EntityCreateModal({
   // produto pai quando user fizer cascata "+ Insumo" / "+ Embalagem" de
   // dentro do nested preparo. Antes: produto pai era perdido nessa cascata.
   parentEntity = null,
+  // Bug A fix — callback opcional pra excluir a entidade direto do modal
+  // (modo edição). Se passado, exibe botão "Excluir" no footer. A tela mãe
+  // é quem decide como confirmar / cascade / usar undo toast.
+  onRequestDelete,
 }) {
   const { isDesktop, isMobile } = useResponsiveLayout();
   const navigation = useNavigation();
@@ -120,11 +124,26 @@ export default function EntityCreateModal({
   // Itens
   const [itens, setItens] = useState([]);
 
+  // Snapshot dos valores no momento em que o form foi montado/carregado.
+  // Usado pra dirty check inteligente — só pergunta "descartar mudanças?" se
+  // o valor ATUAL diferir do snapshot inicial (não só "algum campo preenchido").
+  // Reverter um campo ao valor original NÃO conta como dirty.
+  const initialSnapshotRef = useRef(null);
+  // Flag pra ignorar o primeiro render após carregar (evita race onde
+  // setState async ainda não refletiu no snapshot).
+  const snapshotReadyRef = useRef(false);
+
   // Categoria picker
   const [categorias, setCategorias] = useState([]);
   const [showCatPicker, setShowCatPicker] = useState(false);
   const [novaCatNome, setNovaCatNome] = useState('');
   const [novaCatMode, setNovaCatMode] = useState(false);
+  // Bug B fix — edição/exclusão de categoria custom DENTRO do picker.
+  // editingCat: { id, nome } | null  → quando setado, mostra input pra renomear
+  // confirmDeleteCat: { id, nome, count } | null  → confirmação com cascade
+  const [editingCat, setEditingCat] = useState(null);
+  const [editingCatNome, setEditingCatNome] = useState('');
+  const [confirmDeleteCat, setConfirmDeleteCat] = useState(null);
 
   // Picker
   const [allMaterias, setAllMaterias] = useState([]);
@@ -200,9 +219,39 @@ export default function EntityCreateModal({
     markup: 0,
   });
 
+  // Constrói um snapshot estável dos valores do form pra comparar com o estado atual.
+  // Bug C fix: igualdade só leva em conta os campos QUE O USUÁRIO PODE EDITAR.
+  // Strings vazias '' equivalem a null/undefined; números são normalizados via String.
+  function buildFormSnapshot() {
+    const normStr = (v) => (v === null || v === undefined ? '' : String(v));
+    return JSON.stringify({
+      nome: normStr(nome).trim(),
+      categoriaId: categoriaId == null ? null : categoriaId,
+      precoVenda: normStr(precoVenda).trim(),
+      tipoVenda: normStr(tipoVenda),
+      rendimentoUnidades: normStr(rendimentoUnidades).trim(),
+      rendimentoTotalProd: normStr(rendimentoTotalProd).trim(),
+      rendimentoTotalPrep: normStr(rendimentoTotalPrep).trim(),
+      unidadeMedidaPrep: normStr(unidadeMedidaPrep),
+      itens: (itens || []).map(it => ({
+        tipo: it.tipo,
+        id: it.id,
+        quantidade: normStr(it.quantidade).trim(),
+      })),
+    });
+  }
+
   // Reset / load on open
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      // Modal fechou — invalida snapshot pra próxima abertura recapturar do zero.
+      snapshotReadyRef.current = false;
+      initialSnapshotRef.current = null;
+      return;
+    }
+    // Invalida snapshot antigo no início de cada nova abertura.
+    snapshotReadyRef.current = false;
+    initialSnapshotRef.current = null;
     setBusca('');
     setFiltroTipo(null);
     // Preparo só tem 1 categoria (insumos) → começa expandida.
@@ -217,6 +266,9 @@ export default function EntityCreateModal({
     setErro(null);
     setNovaCatMode(false);
     setNovaCatNome('');
+    setEditingCat(null);
+    setEditingCatNome('');
+    setConfirmDeleteCat(null);
     if (isEditing) {
       loadForEdit();
     } else {
@@ -292,6 +344,25 @@ export default function EntityCreateModal({
     }
     loadPickerAndCategorias();
   }, [visible, editId]);
+
+  // Bug C fix — captura o snapshot inicial UMA VEZ por abertura, depois que
+  // todos os setState do load assentaram. Roda em todo render enquanto visible
+  // mas só captura na primeira oportunidade em que !loading. Isso garante que
+  // edições subsequentes do user sejam comparadas contra os valores carregados
+  // (não contra o estado vazio anterior à carga).
+  useEffect(() => {
+    if (!visible) return;
+    if (loading) return;
+    if (snapshotReadyRef.current) return;
+    // Aguarda o próximo tick pra capturar APÓS qualquer setState pendente.
+    const handle = setTimeout(() => {
+      if (!snapshotReadyRef.current) {
+        initialSnapshotRef.current = buildFormSnapshot();
+        snapshotReadyRef.current = true;
+      }
+    }, 0);
+    return () => clearTimeout(handle);
+  }, [visible, loading, nome, categoriaId, precoVenda, tipoVenda, rendimentoUnidades, rendimentoTotalProd, rendimentoTotalPrep, unidadeMedidaPrep, itens]);
 
   async function loadPickerAndCategorias() {
     try {
@@ -1017,6 +1088,63 @@ export default function EntityCreateModal({
     }
   }
 
+  // Bug B fix — renomeia categoria no DB e recarrega lista.
+  async function renomearCategoria(catId, novoNome) {
+    const nomeFinal = String(novoNome || '').trim();
+    if (!nomeFinal) return;
+    try {
+      const db = await getDatabase();
+      const tabela = isProduto ? 'categorias_produtos' : 'categorias_preparos';
+      await db.runAsync(`UPDATE ${tabela} SET nome = ? WHERE id = ?`, [nomeFinal, catId]);
+      const cats = await db.getAllAsync(`SELECT * FROM ${tabela} ORDER BY nome`);
+      setCategorias(cats || []);
+      setEditingCat(null);
+      setEditingCatNome('');
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[EntityCreateModal.renomearCategoria]', e);
+    }
+  }
+
+  // Bug B fix — solicita exclusão de categoria. Conta quantos itens estão
+  // dentro pra mostrar prompt de cascade ("Mover X para Sem categoria?").
+  async function solicitarExclusaoCategoria(catId, catNome) {
+    try {
+      const db = await getDatabase();
+      const tabelaItens = isProduto ? 'produtos' : 'preparos';
+      const rows = await db.getAllAsync(
+        `SELECT COUNT(*) as count FROM ${tabelaItens} WHERE categoria_id = ?`,
+        [catId]
+      );
+      const count = (rows && rows[0] && rows[0].count) || 0;
+      setConfirmDeleteCat({ id: catId, nome: catNome, count });
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[EntityCreateModal.solicitarExclusaoCategoria]', e);
+      setConfirmDeleteCat({ id: catId, nome: catNome, count: 0 });
+    }
+  }
+
+  // Bug B fix — exclui categoria e move itens órfãos pra "Sem categoria".
+  async function confirmarExclusaoCategoria() {
+    if (!confirmDeleteCat) return;
+    const catId = confirmDeleteCat.id;
+    try {
+      const db = await getDatabase();
+      const tabela = isProduto ? 'categorias_produtos' : 'categorias_preparos';
+      const tabelaItens = isProduto ? 'produtos' : 'preparos';
+      // Move itens da categoria removida pra "Sem categoria" (NULL).
+      await db.runAsync(`UPDATE ${tabelaItens} SET categoria_id = NULL WHERE categoria_id = ?`, [catId]);
+      await db.runAsync(`DELETE FROM ${tabela} WHERE id = ?`, [catId]);
+      const cats = await db.getAllAsync(`SELECT * FROM ${tabela} ORDER BY nome`);
+      setCategorias(cats || []);
+      // Se a categoria recém-excluída estava selecionada no form, limpa a seleção.
+      if (categoriaId === catId) setCategoriaId(null);
+      setConfirmDeleteCat(null);
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[EntityCreateModal.confirmarExclusaoCategoria]', e);
+      setConfirmDeleteCat(null);
+    }
+  }
+
   // Picker filter
   // Sessão 28.19: normaliza busca pra ignorar acentos e cedilha (açaí ↔ acai, ç ↔ c, etc)
   const _normalize = (s) => String(s || '').replace(/[çÇ]/g, (c) => (c === 'Ç' ? 'C' : 'c')).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
@@ -1085,14 +1213,22 @@ export default function EntityCreateModal({
   const iconModal = isProduto ? 'tag' : 'pot-steam-outline';
   const usaMaterialIcon = !isProduto;
 
-  // Sessão 28.50 — proteção contra perda de dados:
-  // se o user tem algo preenchido e clica FORA do modal, pergunta antes de descartar.
-  const hasUnsavedDraft = !!(
-    (nome && nome.trim()) ||
-    categoriaId != null ||
-    (precoVenda && String(precoVenda).trim()) ||
-    (itens && itens.length > 0)
-  );
+  // Sessão 28.50 + Bug C fix — proteção contra perda de dados (dirty check
+  // inteligente). ANTES: qualquer campo preenchido disparava o alerta, mesmo
+  // em modo edição (onde os campos JÁ estão preenchidos sem o user ter
+  // tocado em nada). Também não detectava "reverter ao valor original".
+  // AGORA: compara snapshot inicial (capturado após mount/load) com o estado
+  // atual via deep-equal (JSON.stringify de objeto normalizado). Reverter um
+  // campo ao valor inicial NÃO conta mais como dirty.
+  const hasUnsavedDraft = (() => {
+    if (!snapshotReadyRef.current) return false; // ainda carregando
+    if (initialSnapshotRef.current == null) return false;
+    try {
+      return buildFormSnapshot() !== initialSnapshotRef.current;
+    } catch {
+      return false;
+    }
+  })();
   const handleBackdropPress = () => {
     if (!hasUnsavedDraft) { onClose && onClose(); return; }
     const msg = 'Você tem mudanças não salvas. Deseja descartar?';
@@ -1475,6 +1611,40 @@ export default function EntityCreateModal({
             </View>
           )}
           <View style={styles.footer}>
+            {/* Bug A fix — botão "Excluir" só visível em modo edição quando a
+                tela mãe passa onRequestDelete. Fica à esquerda, separado dos
+                botões Cancelar/Salvar pra não ser clicado por engano. */}
+            {isEditing && typeof onRequestDelete === 'function' && (
+              <TouchableOpacity
+                style={{
+                  paddingHorizontal: spacing.sm + 2,
+                  paddingVertical: spacing.sm + 2,
+                  borderRadius: borderRadius.sm,
+                  borderWidth: 1,
+                  borderColor: (colors.error || '#dc2626') + '55',
+                  backgroundColor: (colors.error || '#dc2626') + '0d',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  marginRight: 'auto',
+                }}
+                onPress={() => {
+                  try {
+                    onRequestDelete({ id: editId, nome: nome || '' });
+                  } catch (e) {
+                    if (typeof console !== 'undefined') console.warn('[EntityCreateModal.onRequestDelete]', e);
+                  }
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={isProduto ? 'Excluir produto' : 'Excluir preparo'}
+                disabled={saving}
+              >
+                <Feather name="trash-2" size={14} color={colors.error || '#dc2626'} />
+                <Text style={{ color: colors.error || '#dc2626', fontFamily: fontFamily.semiBold, fontWeight: '600', fontSize: fonts.small }}>
+                  {isProduto ? 'Excluir produto' : 'Excluir preparo'}
+                </Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.btnSecondary}
               onPress={onClose}
@@ -1505,7 +1675,7 @@ export default function EntityCreateModal({
         <TouchableOpacity
           style={styles.catModalOverlay}
           activeOpacity={1}
-          onPress={() => { setShowCatPicker(false); setNovaCatMode(false); }}
+          onPress={() => { setShowCatPicker(false); setNovaCatMode(false); setEditingCat(null); }}
         >
           <TouchableOpacity activeOpacity={1} style={styles.catModalContent} onPress={() => {}}>
             {!novaCatMode ? (
@@ -1524,16 +1694,71 @@ export default function EntityCreateModal({
                   {categorias.map((c, idx) => {
                     const dotColor = CATEGORY_COLORS[idx % CATEGORY_COLORS.length];
                     const isActive = categoriaId === c.id;
+                    const isEditingThis = editingCat && editingCat.id === c.id;
+                    // Bug B fix — modo edição inline: substitui a row pelo input.
+                    if (isEditingThis) {
+                      return (
+                        <View key={c.id} style={[styles.catRow, { flexDirection: 'row', alignItems: 'center', gap: 6 }]}>
+                          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: dotColor, marginRight: 4 }} />
+                          <TextInput
+                            style={[styles.catNovaInput, { flex: 1, marginTop: 0, paddingVertical: 6 }]}
+                            value={editingCatNome}
+                            onChangeText={setEditingCatNome}
+                            autoFocus
+                            onSubmitEditing={() => renomearCategoria(c.id, editingCatNome)}
+                          />
+                          <TouchableOpacity
+                            onPress={() => renomearCategoria(c.id, editingCatNome)}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                            accessibilityLabel="Salvar nome"
+                          >
+                            <Feather name="check" size={16} color={colors.primary} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => { setEditingCat(null); setEditingCatNome(''); }}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                            accessibilityLabel="Cancelar"
+                          >
+                            <Feather name="x" size={16} color={colors.textSecondary} />
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    }
                     return (
-                      <TouchableOpacity
-                        key={c.id}
-                        style={[styles.catRow, isActive && styles.catRowActive]}
-                        onPress={() => { setCategoriaId(c.id); setShowCatPicker(false); }}
-                      >
-                        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: dotColor, marginRight: 4 }} />
-                        <Text style={[styles.catRowText, { flex: 1 }, isActive && { color: colors.primary, fontFamily: fontFamily.bold }]}>{c.nome}</Text>
-                        {isActive && <Feather name="check" size={14} color={colors.primary} />}
-                      </TouchableOpacity>
+                      <View key={c.id} style={[styles.catRow, isActive && styles.catRowActive, { flexDirection: 'row', alignItems: 'center' }]}>
+                        <TouchableOpacity
+                          style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+                          onPress={() => { setCategoriaId(c.id); setShowCatPicker(false); }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Selecionar ${c.nome}`}
+                        >
+                          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: dotColor, marginRight: 4 }} />
+                          <Text style={[styles.catRowText, { flex: 1 }, isActive && { color: colors.primary, fontFamily: fontFamily.bold }]}>{c.nome}</Text>
+                          {isActive && <Feather name="check" size={14} color={colors.primary} />}
+                        </TouchableOpacity>
+                        {/* Bug B fix — botões lápis e X só pra categorias criadas pelo
+                            usuário (todas vivem na tabela categorias_*, sem flag de
+                            built-in no schema atual, então tratamos todas como
+                            editáveis). */}
+                        <TouchableOpacity
+                          onPress={() => { setEditingCat({ id: c.id, nome: c.nome }); setEditingCatNome(c.nome); }}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          style={{ padding: 4, marginLeft: 4 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Renomear ${c.nome}`}
+                        >
+                          <Feather name="edit-2" size={13} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => solicitarExclusaoCategoria(c.id, c.nome)}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          style={{ padding: 4 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Excluir ${c.nome}`}
+                        >
+                          <Feather name="trash-2" size={13} color={colors.error || '#dc2626'} />
+                        </TouchableOpacity>
+                      </View>
                     );
                   })}
                 </ScrollView>
@@ -1562,6 +1787,41 @@ export default function EntityCreateModal({
                 </View>
               </>
             )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Bug B fix — modal de confirmação de exclusão de categoria, com
+          mensagem de cascade se houver itens dentro. */}
+      <Modal visible={!!confirmDeleteCat} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.catModalOverlay}
+          activeOpacity={1}
+          onPress={() => setConfirmDeleteCat(null)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.catModalContent} onPress={() => {}}>
+            <Text style={styles.catModalTitle}>Excluir categoria</Text>
+            <Text style={{ color: colors.text, fontSize: fonts.regular, marginTop: spacing.sm, fontFamily: fontFamily.regular }}>
+              Tem certeza que deseja excluir a categoria
+              {confirmDeleteCat?.nome ? ` "${confirmDeleteCat.nome}"` : ''}?
+            </Text>
+            {confirmDeleteCat && confirmDeleteCat.count > 0 && (
+              <Text style={{ color: colors.textSecondary, fontSize: fonts.small, marginTop: spacing.sm, fontFamily: fontFamily.regular }}>
+                {confirmDeleteCat.count} {confirmDeleteCat.count === 1 ? (isProduto ? 'produto será movido' : 'preparo será movido') : (isProduto ? 'produtos serão movidos' : 'preparos serão movidos')} para "Sem categoria".
+              </Text>
+            )}
+            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+              <TouchableOpacity style={[styles.btnSecondary, { flex: 1 }]} onPress={() => setConfirmDeleteCat(null)}>
+                <Text style={styles.btnSecondaryText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btnPrimary, { flex: 1, backgroundColor: colors.error || '#dc2626' }]}
+                onPress={confirmarExclusaoCategoria}
+              >
+                <Feather name="trash-2" size={14} color="#fff" />
+                <Text style={styles.btnPrimaryText}>Excluir</Text>
+              </TouchableOpacity>
+            </View>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>

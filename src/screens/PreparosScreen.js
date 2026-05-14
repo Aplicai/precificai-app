@@ -679,6 +679,29 @@ export default function PreparosScreen({ navigation }) {
                   <Text style={styles.gridCardPrice}>
                     Rende {formatRendimento(item.rendimento_total, item.unidade_medida)}
                   </Text>
+                  {/* Bug A fix — botões duplicar / excluir visíveis no desktop
+                      grid. Antes só estavam na lista mobile, então no desktop
+                      não havia como excluir um preparo direto da tela. */}
+                  {!bulk.active && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 6, gap: 2 }}>
+                      <TouchableOpacity
+                        onPress={(e) => { e.stopPropagation && e.stopPropagation(); duplicarPreparo(item); }}
+                        style={{ padding: 4 }}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        accessibilityLabel="Duplicar preparo"
+                      >
+                        <Feather name="copy" size={12} color={colors.disabled} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={(e) => { e.stopPropagation && e.stopPropagation(); solicitarExclusao(item.id, item.nome); }}
+                        style={{ padding: 4 }}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        accessibilityLabel="Excluir preparo"
+                      >
+                        <Feather name="trash-2" size={12} color={colors.error || '#dc2626'} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </TouchableOpacity>
                 );
               })}
@@ -1042,6 +1065,15 @@ export default function PreparosScreen({ navigation }) {
         defaultCategoriaId={filtroCategoria}
         onClose={() => { setShowCreateModal(false); setEditingId(null); }}
         onSaved={() => loadData()}
+        // Bug A fix — botão Excluir no footer do modal (modo edit). Fecha o
+        // modal primeiro pra ConfirmDeleteModal ficar visível por cima sem
+        // empilhar duas Modals do RN-web (que pode ter z-index issue).
+        onRequestDelete={({ id, nome }) => {
+          setShowCreateModal(false);
+          setEditingId(null);
+          // microtask: deixa o modal de edit fechar antes de abrir o confirm
+          setTimeout(() => { solicitarExclusao(id, nome); }, 50);
+        }}
       />
 
       {/* Modal nova categoria */}
