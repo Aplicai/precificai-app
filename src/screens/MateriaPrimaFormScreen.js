@@ -92,7 +92,11 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         navigation.goBack();
       }
     } else {
-      navigation.navigate('MateriasPrimas');
+      // Sem returnTo explícito: volta pra tela anterior do stack (geralmente
+      // MateriasPrimas quando aberto pela tab Insumos, ou outra tela quando
+      // aberto via cross-tab nav que NÃO passou returnTo — nesse caso
+      // goBack() é mais correto que hard-coded p/ MateriasPrimas).
+      navigation.goBack();
     }
   }
   const isFocused = useIsFocused();

@@ -657,7 +657,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
               if (returnTo) {
                 navigation.navigate(returnTo);
               } else {
-                navigation.navigate('Embalagens');
+                navigation.goBack();
               }
             }, 200);
           }}>
