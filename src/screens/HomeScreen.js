@@ -14,6 +14,7 @@ import Loader from '../components/Loader';
 import MobileOnboardingOverlay from '../components/MobileOnboardingOverlay';
 import MobileDesktopHint from '../components/MobileDesktopHint';
 import InstallPWABanner from '../components/InstallPWABanner';
+import HomeInstallBanner from '../components/HomeInstallBanner';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { useAuth } from '../contexts/AuthContext';
 import useFeatureFlag from '../hooks/useFeatureFlag';
@@ -513,6 +514,15 @@ export default function HomeScreen({ navigation }) {
       ) : undefined}
     >
 
+      {/* Banner PROEMINENTE de instalação PWA — topo absoluto da Home.
+          Foco em conversão: aparece imediatamente em web mobile (não
+          espera 2ª visita como o InstallPWABanner antigo) e tem CTA grande.
+          TODO: avaliar remover o InstallPWABanner abaixo agora que este
+          ocupa o slot principal. Mantido por enquanto pra não quebrar
+          fluxo caso usuário já tenha dispensado este e ainda queira o
+          discreto. */}
+      <HomeInstallBanner />
+
       {/* Mobile-only onboarding overlay — explica a ordem correta de uso
           (Financeiro → Insumos → Preparos → Embalagens → Produtos → Análise).
           O componente decide internamente quando aparecer (flag dismiss +
@@ -523,8 +533,10 @@ export default function HomeScreen({ navigation }) {
           cada 5 sessões em mobile (e no 1º uso). Dismissível. */}
       <MobileDesktopHint />
 
-      {/* Sessão 28.61 — banner "Instalar como app". Aparece na 2ª visita mobile
-          web; some quando já está instalado (display-mode standalone). */}
+      {/* Sessão 28.61 — banner "Instalar como app" (versão discreta).
+          Mantido como fallback caso user já tenha dismissed o
+          HomeInstallBanner principal. TODO: remover quando o novo banner
+          provar conversão suficiente. */}
       <InstallPWABanner />
 
       {/* Greeting */}
