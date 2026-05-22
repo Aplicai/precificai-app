@@ -2,27 +2,25 @@ import React from 'react';
 import { View, Text, Modal, Pressable, StyleSheet, Platform, ScrollView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { PLAN_LABELS, PLAN_PRICES } from '../config/plans';
+import { PLAN_LABELS, PLAN_PRICES, PLAN_PRICES_ANNUAL, PLAN_BENEFITS } from '../config/plans';
 
 /**
  * UpgradeModal — popup de upgrade reutilizável (Fase 0).
  *
- * Estratégia (regra do fundador): empurrar o usuário a assinar no momento de
- * MAIOR intenção (bateu o limite / tocou num recurso pago). Persistente, mas
- * não chato: sempre dá a saída "Agora não".
+ * Estratégia (regra do fundador): sempre que a pessoa tocar num recurso fora do
+ * plano dela, mostrar de forma CLARA as VANTAGENS de assinar, no momento de maior
+ * intenção. Persistente mas não chato (sempre há "Agora não").
  *
- * RN Web-safe: usa Modal + Pressable (NÃO Alert.alert, que no web só renderiza
- * ≤2 botões e tem callback não-confiável).
+ * RN Web-safe: Modal + Pressable (não Alert.alert).
  *
  * Props:
  *   visible       bool
- *   onClose       fn   — fechar (botão "Agora não" / clique no backdrop)
- *   requiredPlan  'pro' | 'ilimitado'  — plano que desbloqueia (default 'pro')
+ *   onClose       fn
+ *   requiredPlan  'pro' | 'ilimitado'  (default 'pro')
  *   title         string — ex: "Delivery é um recurso Pro"
- *   message       string — explicação curta
- *   highlights    string[] — bullets do que a assinatura desbloqueia (opcional)
- *   onSubscribe   fn   — ação do botão "Assinar" (FASE 1: abre checkout Asaas).
- *                        Na Fase 0 pode ser undefined → mostra aviso "em breve".
+ *   message       string — frase curta de contexto (opcional)
+ *   highlights    string[] — bullets de vantagens. Se vazio, usa PLAN_BENEFITS[plano].
+ *   onSubscribe   fn — ação do botão "Assinar" (Fase 1: checkout Asaas). Stub por ora.
  */
 export default function UpgradeModal({
   visible,
@@ -30,20 +28,23 @@ export default function UpgradeModal({
   requiredPlan = 'pro',
   title,
   message,
-  highlights = [],
+  highlights,
   onSubscribe,
 }) {
   const planLabel = PLAN_LABELS[requiredPlan] || 'Pro';
-  const price = PLAN_PRICES[requiredPlan];
-  const priceStr = price != null
-    ? `R$ ${price.toFixed(2).replace('.', ',')}/mês`
-    : '';
+  const monthly = PLAN_PRICES[requiredPlan];
+  const annual = PLAN_PRICES_ANNUAL[requiredPlan];
+  const fmt = (v) => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
+
+  // Vantagens: usa as passadas ou cai no padrão do plano (sempre comunica valor).
+  const benefits = (highlights && highlights.length > 0)
+    ? highlights
+    : (PLAN_BENEFITS[requiredPlan] || []);
 
   const handleSubscribe = () => {
     if (onSubscribe) {
       onSubscribe();
     } else if (Platform.OS === 'web') {
-      // Fase 0 — checkout ainda não plugado (Asaas é Fase 1).
       window.alert('Assinatura em breve! Estamos finalizando o pagamento.');
     }
   };
@@ -51,33 +52,48 @@ export default function UpgradeModal({
   return (
     <Modal visible={!!visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
-        {/* Pressable interno bloqueia o fechamento ao clicar dentro do card */}
         <Pressable style={styles.card} onPress={() => {}}>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center' }}>
-            <View style={styles.iconCircle}>
-              <Feather name="lock" size={26} color="#fff" />
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ alignItems: 'stretch' }}>
+            {/* Header */}
+            <View style={styles.header}>
+              <View style={styles.iconCircle}>
+                <Feather name="lock" size={22} color="#fff" />
+              </View>
+              <View style={styles.planTag}>
+                <Feather name="zap" size={11} color={colors.primary} />
+                <Text style={styles.planTagText}>{planLabel.toUpperCase()}</Text>
+              </View>
             </View>
 
             <Text style={styles.title}>{title || `Recurso do plano ${planLabel}`}</Text>
-
             {!!message && <Text style={styles.message}>{message}</Text>}
 
-            {highlights.length > 0 && (
-              <View style={styles.highlights}>
-                {highlights.map((h, i) => (
-                  <View key={i} style={styles.highlightRow}>
-                    <Feather name="check" size={15} color={colors.success} />
-                    <Text style={styles.highlightText}>{h}</Text>
+            {/* Vantagens */}
+            <View style={styles.benefitsCard}>
+              <Text style={styles.benefitsTitle}>O que você desbloqueia com o {planLabel}</Text>
+              {benefits.map((b, i) => (
+                <View key={i} style={styles.benefitRow}>
+                  <View style={styles.benefitCheck}>
+                    <Feather name="check" size={12} color="#fff" />
                   </View>
-                ))}
-              </View>
-            )}
-
-            <View style={styles.planBadge}>
-              <Text style={styles.planBadgeText}>{planLabel}</Text>
-              {!!priceStr && <Text style={styles.planBadgePrice}>{priceStr}</Text>}
+                  <Text style={styles.benefitText}>{b}</Text>
+                </View>
+              ))}
             </View>
 
+            {/* Preço */}
+            <View style={styles.priceBlock}>
+              <Text style={styles.priceMain}>
+                {fmt(monthly)}<Text style={styles.pricePer}>/mês</Text>
+              </Text>
+              {annual > 0 && (
+                <Text style={styles.priceAnnual}>
+                  ou {fmt(annual)}/ano no Pix · economize 10%
+                </Text>
+              )}
+            </View>
+
+            {/* CTA */}
             <Pressable
               style={({ pressed }) => [styles.btnPrimary, pressed && { opacity: 0.85 }]}
               onPress={handleSubscribe}
@@ -88,12 +104,7 @@ export default function UpgradeModal({
               <Text style={styles.btnPrimaryText}>Assinar {planLabel}</Text>
             </Pressable>
 
-            <Pressable
-              style={styles.btnSecondary}
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel="Agora não"
-            >
+            <Pressable style={styles.btnSecondary} onPress={onClose} accessibilityRole="button">
               <Text style={styles.btnSecondaryText}>Agora não</Text>
             </Pressable>
           </ScrollView>
@@ -113,79 +124,117 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 380,
-    maxHeight: '90%',
+    maxWidth: 400,
+    maxHeight: '92%',
     backgroundColor: colors.surface,
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     ...Platform.select({
-      web: { boxShadow: '0 20px 60px rgba(0,0,0,0.25)' },
+      web: { boxShadow: '0 24px 70px rgba(0,0,0,0.28)' },
       default: { elevation: 16 },
     }),
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
   iconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.sm,
+  },
+  planTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary + '14',
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  planTagText: {
+    fontSize: 11,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.primary,
+    letterSpacing: 0.5,
   },
   title: {
     fontSize: fonts.title,
     fontFamily: fontFamily.bold,
     fontWeight: '700',
     color: colors.text,
-    textAlign: 'center',
     marginTop: spacing.xs,
   },
   message: {
     fontSize: fonts.small,
     fontFamily: fontFamily.regular,
     color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: spacing.xs,
+    marginTop: 4,
     lineHeight: 20,
   },
-  highlights: {
-    width: '100%',
+  benefitsCard: {
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
     marginTop: spacing.md,
-    gap: 8,
+    gap: 10,
   },
-  highlightRow: {
+  benefitsTitle: {
+    fontSize: fonts.small,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  benefitRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'flex-start',
+    gap: 10,
   },
-  highlightText: {
+  benefitCheck: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.success,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  benefitText: {
     flex: 1,
     fontSize: fonts.small,
     fontFamily: fontFamily.regular,
     color: colors.text,
+    lineHeight: 19,
   },
-  planBadge: {
-    flexDirection: 'row',
+  priceBlock: {
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.primary + '12',
-    borderWidth: 1,
-    borderColor: colors.primary + '30',
-    borderRadius: borderRadius.md,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
     marginTop: spacing.md,
   },
-  planBadgeText: {
-    fontSize: fonts.regular,
+  priceMain: {
+    fontSize: 30,
     fontFamily: fontFamily.bold,
-    fontWeight: '700',
+    fontWeight: '800',
     color: colors.primary,
   },
-  planBadgePrice: {
-    fontSize: fonts.small,
-    fontFamily: fontFamily.semiBold,
-    color: colors.primary,
+  pricePer: {
+    fontSize: fonts.regular,
+    fontFamily: fontFamily.medium,
+    color: colors.textSecondary,
+  },
+  priceAnnual: {
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.medium,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   btnPrimary: {
     flexDirection: 'row',
@@ -195,9 +244,9 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: colors.primary,
     borderRadius: borderRadius.md,
-    paddingVertical: 14,
-    minHeight: 48,
-    marginTop: spacing.lg,
+    paddingVertical: 15,
+    minHeight: 50,
+    marginTop: spacing.md,
   },
   btnPrimaryText: {
     fontSize: fonts.regular,
@@ -207,7 +256,7 @@ const styles = StyleSheet.create({
   },
   btnSecondary: {
     paddingVertical: 12,
-    marginTop: spacing.xs,
+    marginTop: 4,
     alignItems: 'center',
   },
   btnSecondaryText: {

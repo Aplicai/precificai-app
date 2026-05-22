@@ -5,7 +5,6 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useListDensity from '../hooks/useListDensity';
-import useFeatureFlag from '../hooks/useFeatureFlag';
 import usePlan from '../hooks/usePlan';
 import { PLANS, PLAN_LABELS } from '../config/plans';
 // Sistema de feature flags por email (whitelist) — features beta/sistema.
@@ -93,12 +92,9 @@ export default function ConfiguracoesScreen({ navigation }) {
       setSigningOut(false);
     }
   }
-  // Sessão 26: feature flags do modo avançado.
-  const [estoqueOn, setEstoqueOn] = useFeatureFlag('modo_avancado_estoque');
-  const [analiseOn, setAnaliseOn] = useFeatureFlag('modo_avancado_analise');
-  const [deliveryOn, setDeliveryOn] = useFeatureFlag('usa_delivery');
-  // Sessão 28.8 — flag opcional pra exibir o CRUD de combos sem depender de delivery
-  const [combosOn, setCombosOn] = useFeatureFlag('modo_avancado_combos');
+  // Planos — os toggles de Delivery / Análise avançada / Combos foram removidos
+  // daqui (a seção "Recursos avançados" saiu); essas flags agora são forçadas
+  // ON em useFeatureFlag e o gating passou a ser por plano (cadeado 🔒).
   // Planos (Fase 0) — seletor DEV pra testar os gates/limites sem Asaas.
   const { plano, setPlan } = usePlan();
 
@@ -307,62 +303,11 @@ export default function ConfiguracoesScreen({ navigation }) {
         </Text>
       </View>
 
-      {/* Recursos avançados — flags que ligam módulos opcionais */}
-      <View style={styles.advancedSection}>
-        <View style={styles.backupHeader}>
-          <View style={[styles.iconBox, { backgroundColor: colors.coral + '12' }]}>
-            <Feather name="sliders" size={18} color={colors.coral} />
-          </View>
-          <View style={styles.rowBody}>
-            <Text style={styles.rowLabel}>Recursos avançados</Text>
-            <Text style={styles.rowDesc}>Ative módulos extras conforme sua operação</Text>
-          </View>
-        </View>
-
-        {/* Sessão 27 — Toggle de "Controle de estoque" oculto a pedido do usuário.
-            UX não fechou (botões pequenos, navegação confusa). Código continua
-            no repo (FABMenu, EntradaEstoque, AjusteEstoque, services/estoque)
-            para reativação futura — basta descomentar este bloco. */}
-        {false && (
-          <FlagToggleRow
-            icon="package"
-            label="Controle de estoque"
-            desc="Saldos, entradas, ajustes e alertas de estoque baixo nos insumos"
-            value={estoqueOn}
-            onChange={setEstoqueOn}
-          />
-        )}
-        <FlagToggleRow
-          icon="moped-outline"
-          materialIcon
-          label="Trabalha com delivery"
-          desc="Mostra Delivery e Combos"
-          value={deliveryOn}
-          onChange={setDeliveryOn}
-        />
-        <FlagToggleRow
-          icon="bar-chart-2"
-          label="Análise avançada"
-          desc="Ranking de Produtos (BCG), Margem Crítica, Comparador de Fornecedores. Parâmetros configuráveis no Painel."
-          value={analiseOn}
-          onChange={setAnaliseOn}
-        />
-        {/* APP-46 — quando análise avançada ativa, atalho pra ajustar parâmetros */}
-        {analiseOn && (
-          <View style={{ marginLeft: 36, marginTop: -6, marginBottom: 8 }}>
-            <Text style={{ fontSize: 11, color: colors.textSecondary, lineHeight: 14 }}>
-              💡 Ajuste os limites no Painel: clique em qualquer KPI (CMV, Margem Líquida) pra abrir o modal e mudar a meta.
-            </Text>
-          </View>
-        )}
-        <FlagToggleRow
-          icon="layers"
-          label="Combos / Kits"
-          desc="Vender pacotes de produtos juntos (ex: combo executivo, kit lanche, café da manhã)"
-          value={combosOn}
-          onChange={setCombosOn}
-        />
-      </View>
+      {/* Planos — a antiga seção "Recursos avançados" (toggles de Delivery /
+          Análise avançada / Combos) foi removida. Essas features agora são
+          gated por PLANO e ficam sempre visíveis com cadeado 🔒 quando o plano
+          não inclui — os toggles opt-in viraram redundantes/confusos. As flags
+          correspondentes são forçadas ON em useFeatureFlag (_forcedOn). */}
 
       {/* Recursos Beta — só aparece pra emails com whitelist (featureFlags.dreFluxoCaixa).
           Toggle local controla se o item de menu correspondente em "Mais" fica visível.

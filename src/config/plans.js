@@ -23,6 +23,29 @@ export const PLAN_PRICES = {
   ilimitado: 49.9,
 };
 
+// Preço anual via Pix (10% off vs 12x mensal). Usado no popup de upgrade.
+export const PLAN_PRICES_ANNUAL = {
+  free: 0,
+  pro: 322.9,
+  ilimitado: 538.9,
+};
+
+// Bullets de venda por plano — exibidos no UpgradeModal pra deixar claras as
+// VANTAGENS sempre que a pessoa tocar num recurso fora do plano dela.
+export const PLAN_BENEFITS = {
+  pro: [
+    'Até 30 produtos e 30 combos',
+    'Módulo Delivery completo (iFood, Rappi, próprio)',
+    'Lista de compras automática',
+    'Relatório de insumos + Exportação de fichas em PDF',
+  ],
+  ilimitado: [
+    'Produtos e combos ilimitados',
+    'Tudo do plano Pro incluído',
+    'Ranking de Produtos · Engenharia de Cardápio (Matriz BCG)',
+  ],
+};
+
 // Ranking pra comparar planos (quanto maior, mais inclui).
 const RANK = { free: 0, pro: 1, ilimitado: 2 };
 

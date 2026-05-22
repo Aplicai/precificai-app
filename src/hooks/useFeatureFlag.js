@@ -48,6 +48,24 @@ const _forcedOff = {
   modo_avancado_estoque: true, // UX da Sessão 27 não fechou; código segue dormente
 };
 
+/**
+ * Planos — flags travadas em ON (kill-switch invertido).
+ *
+ * Essas features agora são gated por PLANO (mostradas com cadeado 🔒 quando o
+ * plano não inclui), então os antigos toggles opt-in de "Recursos avançados"
+ * viraram redundantes. Forçar ON faz a UI sempre exibir Delivery / Análise
+ * avançada (BCG/Fornecedores) / Combos pra todos descobrirem — o gating real
+ * acontece no plano. Leituras retornam `true` ignorando storage; setters são
+ * no-op.
+ *
+ * Para reverter ao opt-in: tirar a chave deste objeto.
+ */
+const _forcedOn = {
+  usa_delivery: true,
+  modo_avancado_analise: true,
+  modo_avancado_combos: true,
+};
+
 const _values = { ...FLAG_DEFAULTS };
 const _loaded = new Set();
 const _loadingPromises = {};
@@ -70,6 +88,12 @@ async function _ensureLoaded(name) {
     _values[name] = false;
     _loaded.add(name);
     return false;
+  }
+  // Planos — kill-switch invertido: leitura sempre true, ignora storage.
+  if (_forcedOn[name]) {
+    _values[name] = true;
+    _loaded.add(name);
+    return true;
   }
   if (_loaded.has(name)) return _values[name];
   if (_loadingPromises[name]) return _loadingPromises[name];
@@ -110,6 +134,12 @@ export async function setFeatureFlag(name, next) {
   // Sessão 27 — kill-switch: setter no-op, valor permanece false.
   if (_forcedOff[name]) {
     _values[name] = false;
+    _notify();
+    return;
+  }
+  // Planos — kill-switch invertido: setter no-op, valor permanece true.
+  if (_forcedOn[name]) {
+    _values[name] = true;
     _notify();
     return;
   }

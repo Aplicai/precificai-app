@@ -936,6 +936,26 @@ export default function EntityCreateModal({
       setErro('Nome é obrigatório');
       return;
     }
+    // Produto: campos obrigatórios pra não criar ficha sem custo/preço.
+    if (isProduto) {
+      if (itens.length === 0) {
+        setErro('Adicione pelo menos um item (insumo ou preparo) à ficha.');
+        return;
+      }
+      const rendOk = tipoVenda === 'unidade'
+        ? (parseInputValue(rendimentoUnidades) || 0) > 0
+        : (parseInputValue(rendimentoTotalProd) || 0) > 0;
+      if (!rendOk) {
+        setErro(tipoVenda === 'unidade'
+          ? 'Informe quantas unidades a receita rende.'
+          : 'Informe o rendimento total da receita.');
+        return;
+      }
+      if (!(precoVendaNum > 0)) {
+        setErro('Informe o preço de venda do produto.');
+        return;
+      }
+    }
     setSaving(true);
     setErro(null);
     try {
