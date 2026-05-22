@@ -36,6 +36,10 @@ const STORAGE_KEY = '@plan';
 let _plan = 'free';
 let _loaded = false;
 let _loadingPromise = null;
+// Detalhes da assinatura (linha de `subscriptions`) pra UI tipo "Meu Plano".
+// Diferente de `_plan` (entitlement efetivo): aqui guardamos o estado bruto do
+// servidor (status, vencimento, ciclo) pra renderizar o card sem refetch.
+let _sub = { status: null, expiresAt: null, ciclo: null };
 const _listeners = new Set();
 
 function _notify() {
@@ -80,10 +84,17 @@ export async function syncPlanFromServer() {
     // A tabela usa colunas `plan` e `expires_at` (schema oficial).
     const { data, error } = await supabase
       .from('subscriptions')
-      .select('plan,status,expires_at')
+      .select('plan,status,expires_at,ciclo')
       .eq('user_id', user.id)
       .maybeSingle();
-    if (error || !data) return _plan; // sem assinatura → mantém local
+    if (error || !data) {
+      // sem assinatura → mantém local; limpa detalhes (usuário sem linha = grátis)
+      _sub = { status: null, expiresAt: null, ciclo: null };
+      _notify();
+      return _plan;
+    }
+    // Guarda os detalhes brutos do servidor pra UI (card "Meu Plano").
+    _sub = { status: data.status, expiresAt: data.expires_at || null, ciclo: data.ciclo || null };
     const status = data.status;
     const now = new Date();
     const hasFutureEnd = !!data.expires_at && new Date(data.expires_at) > now;
@@ -102,8 +113,10 @@ export async function syncPlanFromServer() {
     if (serverPlan !== _plan) {
       _plan = serverPlan;
       try { await AsyncStorage.setItem(STORAGE_KEY, serverPlan); } catch {}
-      _notify();
     }
+    // Notifica sempre: o plano efetivo pode não mudar, mas os detalhes (_sub)
+    // sim (ex.: status virou past_due, ou ciclo mudou) e o card precisa refletir.
+    _notify();
   } catch {
     // rede caiu / erro → mantém o que já tinha
   }
@@ -117,6 +130,7 @@ try {
       syncPlanFromServer().catch(() => {});
     } else if (event === 'SIGNED_OUT') {
       _plan = 'free';
+      _sub = { status: null, expiresAt: null, ciclo: null };
       AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
       _notify();
     }
@@ -137,20 +151,34 @@ export function getPlan() {
   return _plan;
 }
 
+/** Detalhes brutos da assinatura (status/vencimento/ciclo) p/ leitura síncrona. */
+export function getSubscriptionInfo() {
+  return _sub;
+}
+
 export default function usePlan() {
   const [plano, setPlanoLocal] = useState(_plan);
   const [loaded, setLoadedLocal] = useState(_loaded);
+  // Snapshot dos detalhes da assinatura; re-render junto com o broadcast do plano.
+  const [sub, setSubLocal] = useState(_sub);
 
   useEffect(() => {
     let cancelled = false;
     setPlanoLocal(_plan);
     setLoadedLocal(_loaded);
-    const listener = (p) => { if (!cancelled) setPlanoLocal(p); };
+    setSubLocal(_sub);
+    const listener = (p) => {
+      if (cancelled) return;
+      setPlanoLocal(p);
+      // _sub é atualizado antes de cada _notify(); lê o valor atual do módulo.
+      setSubLocal(_sub);
+    };
     _listeners.add(listener);
     _ensureLoaded().then((p) => {
       if (cancelled) return;
       setPlanoLocal(p);
       setLoadedLocal(true);
+      setSubLocal(_sub);
     });
     return () => {
       cancelled = true;
@@ -170,5 +198,9 @@ export default function usePlan() {
     canAdd,
     upgradeTo: nextPlan(plano),
     setPlan,
+    // Detalhes da assinatura p/ UI (card "Meu Plano").
+    planStatus: sub.status,
+    planExpiresAt: sub.expiresAt,
+    planCiclo: sub.ciclo,
   };
 }

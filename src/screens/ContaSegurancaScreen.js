@@ -13,6 +13,7 @@ import BackToSettings from '../components/BackToSettings';
 import usePlan, { syncPlanFromServer } from '../hooks/usePlan';
 import { cancelSubscription } from '../services/checkout';
 import { PLAN_LABELS } from '../config/plans';
+import UpgradeModal from '../components/UpgradeModal';
 
 // Mapeia mensagens cruas do Supabase auth para textos amigáveis (sem expor stack/tokens)
 function mapAuthError(rawMsg) {
@@ -33,12 +34,24 @@ function isValidEmail(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || '').trim());
 }
 
+// Formata uma data ISO (expires_at) em DD/MM/AAAA pt-BR; null/ inválida → null.
+function formatDateBR(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('pt-BR');
+}
+
+// Rótulo do ciclo de cobrança.
+const CICLO_LABELS = { mensal: 'Mensal', anual: 'Anual' };
+
 export default function ContaSegurancaScreen({ navigation }) {
   const { user } = useAuth();
-  const { plano } = usePlan();
+  const { plano, planStatus, planExpiresAt, planCiclo } = usePlan();
   const { isCompact, buttonHeight } = useListDensity();
   const [section, setSection] = useState(null); // 'email' | 'senha' | null
   const [cancelling, setCancelling] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [confirmEmail, setConfirmEmail] = useState('');
   const [currentPass, setCurrentPass] = useState('');
@@ -302,6 +315,83 @@ export default function ContaSegurancaScreen({ navigation }) {
       {/* APP-13: Botão voltar pra Configurações sempre visível no topo */}
       <BackToSettings navigation={navigation} />
 
+      {/* Fase 2 — "Meu Plano": status da assinatura no topo da tela.
+          Free → CTA upgrade (abre UpgradeModal). Pago → ciclo + renovação.
+          Cancelado-mas-válido → aviso de acesso até a data.
+          Cancelamento continua DISCRETO (link no rodapé) — sem botão aqui. */}
+      {(() => {
+        const isPaid = plano && plano !== 'free';
+        const venc = formatDateBR(planExpiresAt);
+        const cicloLabel = CICLO_LABELS[planCiclo] || null;
+        const isCanceledValid = isPaid && planStatus === 'canceled';
+
+        // Plano grátis → comunica limite + CTA de upgrade.
+        if (!isPaid) {
+          return (
+            <View style={[styles.planCard, { borderColor: colors.border }]}>
+              <View style={styles.planHeader}>
+                <View style={[styles.iconBox, { backgroundColor: colors.primary + '12' }]}>
+                  <Feather name="zap" size={18} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.planTitle}>Plano Grátis</Text>
+                  <Text style={styles.planSubtitle}>5 produtos e 5 combos</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.planCtaBtn}
+                onPress={() => setShowUpgrade(true)}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Ver planos e fazer upgrade"
+              >
+                <Feather name="arrow-up-circle" size={16} color="#fff" />
+                <Text style={styles.planCtaText}>Ver planos</Text>
+              </TouchableOpacity>
+            </View>
+          );
+        }
+
+        // Plano pago (ativo / past_due / cancelado-mas-válido).
+        const planLabel = PLAN_LABELS[plano] || 'Pago';
+        return (
+          <View style={[styles.planCard, { borderColor: colors.primary + '33' }]}>
+            <View style={styles.planHeader}>
+              <View style={[styles.iconBox, { backgroundColor: colors.primary + '12' }]}>
+                <Feather name="award" size={18} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.planTitle}>Plano {planLabel}</Text>
+                {cicloLabel && <Text style={styles.planSubtitle}>{cicloLabel}</Text>}
+              </View>
+            </View>
+
+            {isCanceledValid ? (
+              <View style={styles.planNoticeRow}>
+                <Feather name="info" size={14} color={colors.textSecondary} />
+                <Text style={styles.planNoticeText}>
+                  {venc ? `Plano cancelado · acesso até ${venc}` : 'Plano cancelado'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.planNoticeRow}>
+                <Feather name="calendar" size={14} color={colors.textSecondary} />
+                <Text style={styles.planNoticeText}>
+                  {venc ? `Renova em ${venc}` : 'Acesso vitalício'}
+                </Text>
+              </View>
+            )}
+
+            {planStatus === 'past_due' && (
+              <View style={styles.planWarnRow}>
+                <Feather name="alert-circle" size={14} color={colors.coral} />
+                <Text style={styles.planWarnText}>Pagamento pendente</Text>
+              </View>
+            )}
+          </View>
+        );
+      })()}
+
       {/* Current email info */}
       <View style={styles.infoCard}>
         <Feather name="mail" size={18} color={colors.primary} />
@@ -440,6 +530,14 @@ export default function ContaSegurancaScreen({ navigation }) {
         <Text style={{ fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.regular, marginTop: 2, textAlign: 'center' }}>Seus dados serão retidos por 30 dias e depois excluídos permanentemente (LGPD)</Text>
       </TouchableOpacity>
 
+      {/* Fase 2 — popup de upgrade (acionado pelo card "Plano Grátis").
+          O próprio modal cuida do checkout (Asaas). */}
+      <UpgradeModal
+        visible={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        requiredPlan="pro"
+      />
+
       {/* Delete Confirmation Modal */}
       <Modal visible={showDeleteModal} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
@@ -531,6 +629,26 @@ const styles = StyleSheet.create({
   },
   infoLabel: { fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.medium },
   infoValue: { fontSize: fonts.body, color: colors.text, fontFamily: fontFamily.semiBold, marginTop: 2 },
+  // Fase 2 — card "Meu Plano"
+  planCard: {
+    backgroundColor: colors.surface, borderRadius: borderRadius.md,
+    padding: spacing.md, marginBottom: spacing.md,
+    borderWidth: 1,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 1,
+  },
+  planHeader: { flexDirection: 'row', alignItems: 'center' },
+  planTitle: { fontSize: fonts.body, color: colors.text, fontFamily: fontFamily.semiBold },
+  planSubtitle: { fontSize: 12, color: colors.textSecondary, fontFamily: fontFamily.medium, marginTop: 2 },
+  planNoticeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.sm },
+  planNoticeText: { fontSize: 13, color: colors.textSecondary, fontFamily: fontFamily.regular },
+  planWarnRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
+  planWarnText: { fontSize: 12, color: colors.coral, fontFamily: fontFamily.medium },
+  planCtaBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: colors.primary, borderRadius: borderRadius.sm,
+    paddingVertical: 10, marginTop: spacing.md,
+  },
+  planCtaText: { color: '#fff', fontSize: fonts.body, fontFamily: fontFamily.semiBold },
   optionCard: {
     backgroundColor: colors.surface, borderRadius: borderRadius.md,
     padding: spacing.md, marginBottom: 2,
