@@ -572,7 +572,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
       } catch (_) {}
     }
 
-    const ok = openPrintableHTML(html, `relatorio-${Date.now()}.html`);
+    const ok = openPrintableHTML(html, `relatorio-${Date.now()}`);
     if (ok) {
       showToastSafe(
         isIOSSafari

@@ -1356,7 +1356,7 @@ function exportarPDF(htmlContent, preOpenedWindow) {
   // Aqui tratamos APENAS Platform.OS === 'web'.
   if (Platform.OS !== 'web') return;
 
-  const filename = `ficha-${Date.now()}.html`;
+  const filename = `ficha-tecnica-${Date.now()}`;
 
   // M-3 defense-in-depth XSS:
   // Antes:  `win.document.write(htmlContent)` em window.open('', '_blank') —

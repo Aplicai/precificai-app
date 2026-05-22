@@ -380,7 +380,7 @@ export default function ListaComprasScreen({ navigation }) {
     // M-3: defense-in-depth XSS — gerar via Blob URL (origem opaca) em vez de
     // window.open('', '_blank') + document.write (que herdaria origin do app
     // e exporia localStorage/token Supabase caso algum escape falhasse).
-    const ok = openPrintableHTML(html, `lista-compras-${Date.now()}.html`);
+    const ok = openPrintableHTML(html, `lista-compras-${Date.now()}`);
     if (ok) {
       setToast({
         message: isIOSSafari()
