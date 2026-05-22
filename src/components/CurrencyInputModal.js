@@ -78,7 +78,7 @@ export default function CurrencyInputModal({ visible, title, value, prefix, suff
               value={inputValue}
               onChangeText={handleChange}
               placeholder={placeholder || '0,00'}
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
               keyboardType={keyboardType}
               selectTextOnFocus
               onSubmitEditing={handleConfirm}

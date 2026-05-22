@@ -120,11 +120,11 @@ export default function ConfiguracoesScreen({ navigation }) {
           como reinstalar depois de desinstalar. */}
       {Platform.OS === 'web' && <InstallAppButton />}
 
-      {/* Planos (Fase 0) — seletor DEV de plano. Visível em dev local, pra contas
-          com acesso beta, OU quando localStorage['__devplan']==='1' (pra testar no
-          app publicado: rodar localStorage.setItem('__devplan','1') no console).
-          REMOVER/blindar antes do lançamento real. */}
-      {((typeof __DEV__ !== 'undefined' && __DEV__) || featureFlags.dreFluxoCaixa || (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage?.getItem('__devplan') === '1')) && (
+      {/* Planos (Fase 0) — seletor DEV de plano. SOMENTE em dev local (__DEV__).
+          SEC F-3: removidos os ramos `featureFlags.dreFluxoCaixa` e
+          `localStorage['__devplan']` — eram backdoor no app publicado (qualquer
+          usuário ativava e mexia no plano). Em produção este bloco NUNCA renderiza. */}
+      {(typeof __DEV__ !== 'undefined' && __DEV__) && (
         <View style={{ backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B', borderRadius: 12, padding: 14, marginBottom: 16 }}>
           <Text style={{ fontSize: 14, fontFamily: fontFamily.bold, color: '#92400E', marginBottom: 2 }}>🧪 Teste de planos (DEV)</Text>
           <Text style={{ fontSize: 12, color: '#92400E', marginBottom: 10 }}>

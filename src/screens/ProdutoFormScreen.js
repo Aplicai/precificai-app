@@ -1134,7 +1134,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
             <TextInput
               style={[styles.searchInput, { flex: 1 }]}
               placeholder="Adicionar preparo..."
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
               value={buscaPreparo}
               onChangeText={(v) => { setBuscaPreparo(v); setActiveSearch('preparo'); }}
               onFocus={() => setActiveSearch('preparo')}
@@ -1243,7 +1243,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
             <TextInput
               style={[styles.searchInput, { flex: 1 }]}
               placeholder="Adicionar insumo..."
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
               value={buscaIng}
               onChangeText={(v) => { setBuscaIng(v); setActiveSearch('ingrediente'); }}
               onFocus={() => setActiveSearch('ingrediente')}
@@ -1327,7 +1327,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
             <TextInput
               style={[styles.searchInput, { flex: 1 }]}
               placeholder="Adicionar embalagem..."
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
               value={buscaEmb}
               onChangeText={(v) => { setBuscaEmb(v); setActiveSearch('embalagem'); }}
               onFocus={() => setActiveSearch('embalagem')}
@@ -1890,7 +1890,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 <Text style={styles.modalTitle}>Nova Categoria</Text>
                 <Text style={styles.modalLabel}>Nome</Text>
                 <TextInput style={styles.modalInput} value={novaCatNome} onChangeText={setNovaCatNome}
-                  placeholder="Ex: Sobremesas, Lanches..." placeholderTextColor={colors.disabled} autoFocus />
+                  placeholder="Ex: Sobremesas, Lanches..." placeholderTextColor={colors.placeholder} autoFocus />
                 <View style={styles.modalActions}>
                   <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setNovaCatMode(false)}>
                     <Text style={styles.modalCancelText}>Voltar</Text>

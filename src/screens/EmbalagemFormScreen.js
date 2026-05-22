@@ -722,7 +722,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
                   value={novaCatNome}
                   onChangeText={setNovaCatNome}
                   placeholder="Ex: Descartáveis, Caixas..."
-                  placeholderTextColor={colors.disabled}
+                  placeholderTextColor={colors.placeholder}
                   autoFocus
                 />
 

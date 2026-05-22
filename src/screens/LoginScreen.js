@@ -188,7 +188,7 @@ export default function LoginScreen({ navigation }) {
             textContentType="emailAddress"
             returnKeyType="next"
             onSubmitEditing={() => passwordRef.current?.focus()}
-            placeholderTextColor={colors.disabled}
+            placeholderTextColor={colors.placeholder}
           />
 
           <Text style={styles.label}>Senha</Text>
@@ -204,7 +204,7 @@ export default function LoginScreen({ navigation }) {
               textContentType="password"
               returnKeyType="done"
               onSubmitEditing={handleLogin}
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
             />
             <TouchableOpacity
               style={styles.eyeBtn}

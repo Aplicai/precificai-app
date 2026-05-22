@@ -545,7 +545,7 @@ export default function DeliveryHubScreen({ navigation }) {
                             keyboardType="numeric"
                             onBlur={(e) => savePlatField(plat.id, 'comissao_app', e.nativeEvent.text)}
                             placeholder="0"
-                            placeholderTextColor={colors.disabled}
+                            placeholderTextColor={colors.placeholder}
                           />
                         </View>
                         <View style={styles.platField}>
@@ -556,7 +556,7 @@ export default function DeliveryHubScreen({ navigation }) {
                             keyboardType="numeric"
                             onBlur={(e) => savePlatField(plat.id, 'taxa_entrega', e.nativeEvent.text)}
                             placeholder="0"
-                            placeholderTextColor={colors.disabled}
+                            placeholderTextColor={colors.placeholder}
                           />
                         </View>
                         <View style={styles.platField}>
@@ -567,7 +567,7 @@ export default function DeliveryHubScreen({ navigation }) {
                             keyboardType="numeric"
                             onBlur={(e) => savePlatField(plat.id, 'desconto_promocao', e.nativeEvent.text)}
                             placeholder="0"
-                            placeholderTextColor={colors.disabled}
+                            placeholderTextColor={colors.placeholder}
                           />
                         </View>
                         <View style={styles.platField}>
@@ -578,7 +578,7 @@ export default function DeliveryHubScreen({ navigation }) {
                             keyboardType="numeric"
                             onBlur={(e) => savePlatField(plat.id, 'embalagem_extra', e.nativeEvent.text)}
                             placeholder="0"
-                            placeholderTextColor={colors.disabled}
+                            placeholderTextColor={colors.placeholder}
                           />
                         </View>
                       </View>
@@ -629,7 +629,7 @@ export default function DeliveryHubScreen({ navigation }) {
                   value={newPlatNome}
                   onChangeText={setNewPlatNome}
                   placeholder="Ex: iFood, Rappi..."
-                  placeholderTextColor={colors.disabled}
+                  placeholderTextColor={colors.placeholder}
                 />
                 <TouchableOpacity style={styles.addBtn} onPress={addPlataforma}>
                   <Feather name="plus" size={18} color="#fff" />
@@ -853,7 +853,7 @@ export default function DeliveryHubScreen({ navigation }) {
                                 onChangeText={setPrecoCustom}
                                 keyboardType="numeric"
                                 placeholder={simResult.precoSugerido ? simResult.precoSugerido.toFixed(2) : '0,00'}
-                                placeholderTextColor={colors.disabled}
+                                placeholderTextColor={colors.placeholder}
                                 accessibilityLabel="Preço mínimo do produto em reais"
                               />
                             </View>
@@ -1131,7 +1131,7 @@ export default function DeliveryHubScreen({ navigation }) {
                             fontFamily: tem ? fontFamily.bold : fontFamily.regular,
                           }}
                           placeholder="0,00"
-                          placeholderTextColor={colors.disabled}
+                          placeholderTextColor={colors.placeholder}
                           keyboardType="numeric"
                           value={valorAtual}
                           onChangeText={(v) => handlePrecoChange(p.id, v)}

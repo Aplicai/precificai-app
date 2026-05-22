@@ -578,7 +578,7 @@ export default function ExportPDFScreen({ navigation }) {
         <TextInput
           style={styles.searchInput}
           placeholder={activeTab === 'produtos' ? "Buscar produto..." : "Buscar preparo..."}
-          placeholderTextColor={colors.disabled}
+          placeholderTextColor={colors.placeholder}
           value={busca}
           onChangeText={setBusca}
         />

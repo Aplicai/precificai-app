@@ -1092,7 +1092,7 @@ export default function FinanceiroConfigScreen() {
                 value={novaFixa.descricao}
                 onChangeText={(v) => setNovaFixa(prev => ({ ...prev, descricao: v }))}
                 placeholder="Descrição (ex: Aluguel)"
-                placeholderTextColor={colors.disabled}
+                placeholderTextColor={colors.placeholder}
               />
               <TouchableOpacity
                 style={s.addValueBtn}
@@ -1237,7 +1237,7 @@ export default function FinanceiroConfigScreen() {
                 value={novaVariavel.descricao}
                 onChangeText={(v) => setNovaVariavel(prev => ({ ...prev, descricao: v }))}
                 placeholder="Descrição (ex: Impostos)"
-                placeholderTextColor={colors.disabled}
+                placeholderTextColor={colors.placeholder}
               />
               <TouchableOpacity
                 style={s.addValueBtn}
@@ -1406,7 +1406,7 @@ export default function FinanceiroConfigScreen() {
                 value={editModal?.descricao || ''}
                 onChangeText={(v) => setEditModal(prev => prev ? { ...prev, descricao: v } : null)}
                 placeholder="Descrição"
-                placeholderTextColor={colors.disabled}
+                placeholderTextColor={colors.placeholder}
               />
             </View>
             <View style={{ marginBottom: spacing.md }}>
@@ -1417,7 +1417,7 @@ export default function FinanceiroConfigScreen() {
                 onChangeText={(v) => setEditModal(prev => prev ? { ...prev, valor: v } : null)}
                 keyboardType="numeric"
                 placeholder="0,00"
-                placeholderTextColor={colors.disabled}
+                placeholderTextColor={colors.placeholder}
               />
             </View>
             <View style={s.modalActions}>

@@ -428,7 +428,7 @@ export default function ContaSegurancaScreen({ navigation }) {
               onChangeText={setCurrentPass}
               placeholder="••••••••"
               secureTextEntry={!showCurrentPass}
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
             />
             <TouchableOpacity
               onPress={() => setShowCurrentPass(!showCurrentPass)}
@@ -449,7 +449,7 @@ export default function ContaSegurancaScreen({ navigation }) {
               onChangeText={setNewPass}
               placeholder="Mín. 8 caracteres"
               secureTextEntry={!showNewPass}
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
             />
             <TouchableOpacity
               onPress={() => setShowNewPass(!showNewPass)}
@@ -470,7 +470,7 @@ export default function ContaSegurancaScreen({ navigation }) {
               onChangeText={setConfirmPass}
               placeholder="Repita a nova senha"
               secureTextEntry={!showConfirmPass}
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
               accessibilityLabel="Confirmar nova senha"
             />
             <TouchableOpacity
@@ -556,7 +556,7 @@ export default function ContaSegurancaScreen({ navigation }) {
               onChangeText={setDeleteConfirmText}
               placeholder="Digite EXCLUIR"
               autoCapitalize="characters"
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
               accessibilityLabel="Campo de confirmação de exclusão. Digite a palavra EXCLUIR em maiúsculas."
             />
             {/* Sprint 2 S13 — reautenticação obrigatória antes do DELETE definitivo. */}
@@ -567,7 +567,7 @@ export default function ContaSegurancaScreen({ navigation }) {
               placeholder="Sua senha atual"
               secureTextEntry
               autoCapitalize="none"
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
               accessibilityLabel="Confirme sua senha atual para autorizar a exclusão"
             />
             {deleteConfirmText.length > 0 && deleteConfirmText !== 'EXCLUIR' && (

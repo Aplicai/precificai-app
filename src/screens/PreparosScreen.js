@@ -1091,7 +1091,7 @@ export default function PreparosScreen({ navigation }) {
               value={novaCategoria}
               onChangeText={setNovaCategoria}
               placeholder="Ex: Recheios, Caldas..."
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
               autoFocus
             />
 

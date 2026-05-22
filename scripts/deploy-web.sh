@@ -52,6 +52,11 @@ if [ "$SYNCED_BUNDLE" != "$NEW_BUNDLE" ]; then
 fi
 echo "    .vercel/output/static/ contém: $SYNCED_BUNDLE"
 
+# SEC F-2: --prebuilt ignora vercel.json, então garantimos os headers de
+# segurança/CSP direto no .vercel/output/config.json (idempotente).
+echo "==> [3.5/6] Garante headers de segurança no config.json"
+node scripts/ensure-vercel-headers.js
+
 echo "==> [4/6] Deploy --prebuilt --prod"
 DEPLOY_OUTPUT=$(npx vercel deploy --prebuilt --prod --yes 2>&1)
 DEPLOY_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://precificai-[a-z0-9]+-aplicais-projects\.vercel\.app' | head -1)

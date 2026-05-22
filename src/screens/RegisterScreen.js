@@ -273,7 +273,7 @@ export default function RegisterScreen({ navigation }) {
             textContentType="emailAddress"
             returnKeyType="next"
             onSubmitEditing={() => passwordRef.current?.focus()}
-            placeholderTextColor={colors.disabled}
+            placeholderTextColor={colors.placeholder}
           />
 
           <Text style={styles.label}>Senha</Text>
@@ -289,7 +289,7 @@ export default function RegisterScreen({ navigation }) {
               textContentType="newPassword"
               returnKeyType="done"
               onSubmitEditing={handleRegister}
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
             />
             <TouchableOpacity
               style={styles.eyeBtn}

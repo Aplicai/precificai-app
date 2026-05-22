@@ -945,7 +945,7 @@ export default function EmbalagensScreen({ navigation }) {
               value={novaCategoria}
               onChangeText={setNovaCategoria}
               placeholder="Ex: Caixas, Potes..."
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
               autoFocus
             />
 

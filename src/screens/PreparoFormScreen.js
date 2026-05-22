@@ -782,14 +782,14 @@ export default function PreparoFormScreen({ route, navigation }) {
                   value={form[c.tempKey]}
                   onChangeText={(v) => setForm(p => ({ ...p, [c.tempKey]: v }))}
                   placeholder="Temp."
-                  placeholderTextColor={colors.disabled}
+                  placeholderTextColor={colors.placeholder}
                 />
                 <TextInput
                   style={styles.conservInput}
                   value={form[c.tempoKey]}
                   onChangeText={(v) => setForm(p => ({ ...p, [c.tempoKey]: v }))}
                   placeholder="Duração"
-                  placeholderTextColor={colors.disabled}
+                  placeholderTextColor={colors.placeholder}
                 />
               </View>
             ))}
@@ -917,7 +917,7 @@ export default function PreparoFormScreen({ route, navigation }) {
                   value={novaCatNome}
                   onChangeText={setNovaCatNome}
                   placeholder="Ex: Recheios, Caldas..."
-                  placeholderTextColor={colors.disabled}
+                  placeholderTextColor={colors.placeholder}
                   autoFocus
                 />
 
@@ -963,7 +963,7 @@ export default function PreparoFormScreen({ route, navigation }) {
                   onChangeText={(v) => setQuantityPrompt(prev => prev ? { ...prev, quantidade: v } : null)}
                   keyboardType="decimal-pad"
                   placeholder="Ex: 200 ou 0,25"
-                  placeholderTextColor={colors.disabled}
+                  placeholderTextColor={colors.placeholder}
                   autoFocus
                   onSubmitEditing={confirmQuantity}
                   returnKeyType="done"

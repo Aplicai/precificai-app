@@ -1278,7 +1278,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                   value={novaCatNome}
                   onChangeText={setNovaCatNome}
                   placeholder="Ex: Laticínios, Temperos..."
-                  placeholderTextColor={colors.disabled}
+                  placeholderTextColor={colors.placeholder}
                   autoFocus
                 />
 

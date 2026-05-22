@@ -60,7 +60,7 @@ export default function SearchBar({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={colors.disabled}
+        placeholderTextColor={colors.placeholder}
         autoFocus={autoFocus}
       />
       {value ? (

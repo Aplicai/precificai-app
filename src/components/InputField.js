@@ -69,7 +69,7 @@ export default function InputField({
           value={String(value ?? '')}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor={colors.disabled}
+          placeholderTextColor={colors.placeholder}
           keyboardType={keyboardType}
           inputMode={inputMode}
           editable={editable}

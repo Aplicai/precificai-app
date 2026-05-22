@@ -498,7 +498,7 @@ export default function MatrizBCGScreen({ navigation }) {
                           onChangeText={(v) => handleVendaChange(p.id, v)}
                           keyboardType="numeric"
                           placeholder={prevQty > 0 ? String(prevQty) : '0'}
-                          placeholderTextColor={colors.disabled}
+                          placeholderTextColor={colors.placeholder}
                         />
                         <Text style={styles.vendasCardUnit}>un</Text>
                       </View>
@@ -569,7 +569,7 @@ export default function MatrizBCGScreen({ navigation }) {
               <TextInput
                 style={[styles.searchInput, Platform.OS === 'web' && { outlineStyle: 'none' }]}
                 placeholder="Buscar produto..."
-                placeholderTextColor={colors.disabled}
+                placeholderTextColor={colors.placeholder}
                 value={searchText}
                 onChangeText={setSearchText}
               />

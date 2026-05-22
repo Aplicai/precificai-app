@@ -437,7 +437,7 @@ export default function ListaComprasScreen({ navigation }) {
               <TextInput
                 style={styles.searchInput}
                 placeholder="Buscar produto..."
-                placeholderTextColor={colors.disabled}
+                placeholderTextColor={colors.placeholder}
                 value={busca}
                 onChangeText={setBusca}
               />

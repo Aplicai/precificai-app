@@ -1255,7 +1255,7 @@ export default function ProdutosListScreen({ navigation }) {
               value={novaCategoria}
               onChangeText={setNovaCategoria}
               placeholder="Ex: Bolos, Salgados..."
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
               autoFocus
             />
 

@@ -280,7 +280,7 @@ export default function PerfilScreen({ navigation, route }) {
             value={perfil.nome_negocio}
             onChangeText={(v) => updateField('nome_negocio', v)}
             placeholder="Ex: Doces da Maria"
-            placeholderTextColor={colors.disabled}
+            placeholderTextColor={colors.placeholder}
             accessibilityLabel="Nome do negócio"
             accessibilityHint={showNameError ? 'Campo obrigatório' : undefined}
           />
@@ -299,7 +299,7 @@ export default function PerfilScreen({ navigation, route }) {
             value={perfil.segmento}
             onChangeText={(v) => updateField('segmento', v)}
             placeholder="Ex: Confeitaria, Marmitas..."
-            placeholderTextColor={colors.disabled}
+            placeholderTextColor={colors.placeholder}
           />
         </View>
 
@@ -310,7 +310,7 @@ export default function PerfilScreen({ navigation, route }) {
             value={perfil.telefone}
             onChangeText={(v) => updateField('telefone', v)}
             placeholder="(00) 00000-0000"
-            placeholderTextColor={colors.disabled}
+            placeholderTextColor={colors.placeholder}
             keyboardType="phone-pad"
           />
         </View>
@@ -563,7 +563,7 @@ function LojasSection({ userId }) {
         <TextInput
           style={lojasStyles.input}
           placeholder="Nome da nova loja (ex: Filial Centro)"
-          placeholderTextColor={colors.disabled}
+          placeholderTextColor={colors.placeholder}
           value={novaNome}
           onChangeText={setNovaNome}
           onSubmitEditing={async () => {

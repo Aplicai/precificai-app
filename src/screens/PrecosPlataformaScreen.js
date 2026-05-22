@@ -105,7 +105,7 @@ export default function PrecosPlataformaScreen({ route, navigation }) {
           <TextInput
             style={styles.searchInput}
             placeholder="Buscar produto..."
-            placeholderTextColor={colors.disabled}
+            placeholderTextColor={colors.placeholder}
             value={busca}
             onChangeText={setBusca}
           />
@@ -137,7 +137,7 @@ export default function PrecosPlataformaScreen({ route, navigation }) {
                   <TextInput
                     style={styles.input}
                     placeholder="0,00"
-                    placeholderTextColor={colors.disabled}
+                    placeholderTextColor={colors.placeholder}
                     keyboardType="numeric"
                     value={precos[p.id] || ''}
                     onChangeText={(v) => handleChange(p.id, v)}

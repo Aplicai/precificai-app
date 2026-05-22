@@ -966,7 +966,7 @@ export default function MateriasPrimasScreen({ navigation }) {
               value={novaCategoria}
               onChangeText={setNovaCategoria}
               placeholder="Ex: Laticínios, Temperos..."
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
               autoFocus
             />
 

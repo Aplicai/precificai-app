@@ -23,6 +23,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Platform } from 'react-native';
+import usePushPermissions from '../hooks/usePushPermissions';
 // Sessão 28.29: styles extraídos pra arquivo dedicado (eram 611 linhas inline)
 import { entityCreateModalStyles as styles } from './styles/entityCreateModal.styles';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -108,6 +109,8 @@ export default function EntityCreateModal({
   const { isDesktop, isMobile } = useResponsiveLayout();
   const navigation = useNavigation();
   const isProduto = mode === 'produto';
+  // R1 — pedido de permissão de push em "earned moment" (após 1º produto salvo).
+  const { askIfNotAsked } = usePushPermissions();
   const isEditing = !!editId;
 
   // Form state
@@ -1079,6 +1082,12 @@ export default function EntityCreateModal({
       // a cargo da Área que cuida dele.
       if (!isProduto) {
         try { showToast('Preparo salvo', 'check-circle'); } catch (_) {}
+      }
+      if (isProduto && savedId) {
+        // R1 — earned moment: pede permissão de push após o 1º produto salvo.
+        // askIfNotAsked self-limita por reasonKey (só pede uma vez na vida) e
+        // é no-op em plataforma sem suporte. Fire-and-forget pra não travar o close.
+        try { askIfNotAsked('primeiro_produto'); } catch (_) {}
       }
       onSaved && onSaved(savedId);
       onClose && onClose();

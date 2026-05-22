@@ -282,7 +282,7 @@ export default function SuporteScreen({ navigation }) {
         <TextInput
           style={[styles.searchInput, Platform.OS === 'web' && { outlineStyle: 'none' }]}
           placeholder="Buscar nas perguntas frequentes..."
-          placeholderTextColor={colors.disabled}
+          placeholderTextColor={colors.placeholder}
           value={searchText}
           onChangeText={setSearchText}
           accessibilityLabel="Buscar nas perguntas frequentes"
@@ -405,7 +405,7 @@ export default function SuporteScreen({ navigation }) {
           <TextInput
             style={[styles.suggestionInput, Platform.OS === 'web' && { outlineStyle: 'none' }]}
             placeholder="O que podemos melhorar?"
-            placeholderTextColor={colors.disabled}
+            placeholderTextColor={colors.placeholder}
             value={suggestion}
             onChangeText={setSuggestion}
             multiline

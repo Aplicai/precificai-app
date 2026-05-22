@@ -126,6 +126,14 @@ export default function UpgradeModal({
               </Pressable>
             </View>
 
+            {/* Reasseguramento — reduz risco percebido na decisão (conversão). */}
+            <View style={styles.reassureRow}>
+              <Feather name="shield" size={12} color={colors.success} />
+              <Text style={styles.reassureText}>
+                Cancele quando quiser · você mantém o acesso até o fim do período pago
+              </Text>
+            </View>
+
             {!!erro && <Text style={styles.errText}>{erro}</Text>}
 
             {/* CTA */}
@@ -324,9 +332,24 @@ const styles = StyleSheet.create({
   errText: {
     fontSize: fonts.small,
     fontFamily: fontFamily.regular,
-    color: colors.danger || '#e11d48',
+    color: colors.error || colors.danger || '#e11d48',
     marginTop: spacing.sm,
     textAlign: 'center',
+  },
+  reassureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+  },
+  reassureText: {
+    flex: 1,
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
+    lineHeight: 16,
   },
   btnPrimary: {
     flexDirection: 'row',

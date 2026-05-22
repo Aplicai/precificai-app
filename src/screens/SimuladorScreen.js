@@ -467,7 +467,7 @@ export default function SimuladorScreen({ navigation }) {
               onChangeText={onChangeMeta}
               keyboardType="numeric"
               placeholder="0"
-              placeholderTextColor={colors.disabled}
+              placeholderTextColor={colors.placeholder}
             />
           </View>
 

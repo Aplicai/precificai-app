@@ -126,7 +126,7 @@ export default function ForgotPasswordScreen({ navigation }) {
                 textContentType="emailAddress"
                 returnKeyType="done"
                 onSubmitEditing={handleReset}
-                placeholderTextColor={colors.disabled}
+                placeholderTextColor={colors.placeholder}
               />
 
               <TouchableOpacity

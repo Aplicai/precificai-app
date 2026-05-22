@@ -317,7 +317,12 @@ BEGIN
     'produtos', 'produto_ingredientes', 'produto_preparos',
     'produto_embalagens', 'vendas', 'delivery_config',
     'delivery_adicionais', 'delivery_produtos', 'delivery_produto_itens',
-    'delivery_combos', 'delivery_combo_itens', 'subscriptions'
+    'delivery_combos', 'delivery_combo_itens'
+    -- ATENÇÃO: `subscriptions` foi REMOVIDA deste loop de propósito (SEC F-1).
+    -- O loop concede INSERT/UPDATE/DELETE ao próprio usuário, o que numa tabela
+    -- de assinatura permitiria auto-upgrade GRÁTIS (upsert plan='ilimitado').
+    -- subscriptions recebe SOMENTE a policy de SELECT abaixo; a escrita é
+    -- EXCLUSIVA da Edge Function asaas-webhook (service_role, ignora RLS).
   ] LOOP
     EXECUTE format('
       CREATE POLICY "users_own_data_select" ON %I FOR SELECT USING (auth.uid() = user_id);
@@ -327,6 +332,10 @@ BEGIN
     ', t, t, t, t);
   END LOOP;
 END $$;
+
+-- subscriptions: usuário só LÊ a própria assinatura. NUNCA conceder write ao
+-- cliente aqui (vide SEC F-1). A escrita vem só do webhook do Asaas (service_role).
+CREATE POLICY "users_own_data_select" ON subscriptions FOR SELECT USING (auth.uid() = user_id);
 
 -- ============================================================
 -- TRIGGER: Setup automático ao criar novo usuário

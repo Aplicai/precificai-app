@@ -203,7 +203,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
           onChangeText={setQuantidade}
           keyboardType="decimal-pad"
           placeholder="0,00"
-          placeholderTextColor={colors.disabled}
+          placeholderTextColor={colors.placeholder}
         />
         {qtdInvalida && (
           <Text numberOfLines={2} style={styles.fieldError}>Informe uma quantidade maior que zero.</Text>
@@ -216,7 +216,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
           onChangeText={setCustoUnitario}
           keyboardType="decimal-pad"
           placeholder="0,00"
-          placeholderTextColor={colors.disabled}
+          placeholderTextColor={colors.placeholder}
         />
         {custoInvalido && (
           <Text numberOfLines={2} style={styles.fieldError}>Custo deve ser maior que zero. Para zerar custo use Ajuste de estoque.</Text>
@@ -235,7 +235,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
           value={motivo}
           onChangeText={setMotivo}
           placeholder='Ex: "NF 1234"'
-          placeholderTextColor={colors.disabled}
+          placeholderTextColor={colors.placeholder}
           maxLength={200}
         />
 
