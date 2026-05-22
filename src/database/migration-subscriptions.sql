@@ -1,75 +1,54 @@
 -- ============================================================
 -- ============================================================
 --
---   ATENCAO! MIGRATION MANUAL — RODAR NO SUPABASE SQL EDITOR
+--   MIGRATION — Asaas (Fase 1) — JÁ APLICADA via Management API
+--   em 2026-05-22 (projeto lwznqpxzmqptrpbifvka).
 --
---   Painel do Supabase -> SQL Editor -> colar -> Run.
+--   Contexto: a tabela `subscriptions` JÁ EXISTIA (schema oficial em
+--   src/database/supabase-schema.sql, era Stripe) com as colunas
+--   `plan`, `status`, `started_at`, `expires_at`, `stripe_subscription_id`,
+--   UNIQUE(user_id), e um trigger de signup que insere (user_id, plan, status).
 --
---   Objetivo (Fase 1 — Planos/Asaas):
---   Tabela `subscriptions` com o plano atual de cada usuario.
---   O app (usePlan) le essa tabela; a Edge Function `asaas-webhook`
---   escreve nela ao receber eventos de pagamento do Asaas.
+--   Por isso NÃO recriamos a tabela. Esta migration é ADITIVA e
+--   NÃO-DESTRUTIVA: adiciona as colunas do Asaas e ALARGA o CHECK do
+--   `plan` para aceitar os planos novos. Mantém os nomes existentes
+--   (`plan`, `expires_at`) — o webhook e o usePlan escrevem/leem esses.
 --
 --   Modelo de cobranca (regra oficial):
 --     - Mensal via cartao:  Pro R$29,90 / Ilimitado R$49,90
 --     - Anual via Pix -10%: Pro R$322,90 / Ilimitado R$538,90
 --     - Sem trial. Upgrade Pro->Ilimitado proporcional.
 --
---   RLS: cada user le SOMENTE a propria assinatura. Ninguem
---   escreve via cliente — so a Edge Function (service_role).
---   Downgrade/cancelamento volta plano para 'free' (excedentes
---   de produtos/combos viram read-only no app, nunca apagados).
+--   RLS: cada user le SOMENTE a propria assinatura (policy
+--   `users_own_data_select` ja existente). Ninguem escreve via cliente —
+--   so a Edge Function `asaas-webhook` (service_role, ignora RLS).
+--   Downgrade/cancelamento volta `plan` para 'free' (excedentes de
+--   produtos/combos viram read-only no app, nunca apagados).
+--
+--   status usado pelo webhook: 'active' | 'past_due' | 'canceled'
+--   (todos ja permitidos pelo CHECK existente subscriptions_status_check).
 --
 -- ============================================================
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS subscriptions (
-  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  -- Plano vigente. Espelha src/config/plans.js.
-  plano TEXT NOT NULL DEFAULT 'free' CHECK (plano IN ('free', 'pro', 'ilimitado')),
-  -- active | pending | overdue | canceled
-  status TEXT NOT NULL DEFAULT 'active',
-  -- mensal | anual (null no free)
-  ciclo TEXT CHECK (ciclo IN ('mensal', 'anual')),
-  -- Referencias do Asaas (pra reconciliar webhooks).
-  asaas_customer_id TEXT,
-  asaas_subscription_id TEXT,
-  -- Fim do periodo pago atual (apos isso, sem renovacao -> volta free).
-  current_period_end TIMESTAMPTZ,
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  created_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(user_id)
-);
+-- 1) Colunas do Asaas (aditivo).
+ALTER TABLE public.subscriptions
+  ADD COLUMN IF NOT EXISTS ciclo TEXT,
+  ADD COLUMN IF NOT EXISTS asaas_customer_id TEXT,
+  ADD COLUMN IF NOT EXISTS asaas_subscription_id TEXT;
 
-ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+-- 2) Alarga o CHECK do plano para os planos atuais (free/pro/ilimitado).
+--    Os nomes antigos (essencial/profissional) eram da era Stripe e nao
+--    sao mais usados. So existia 1 linha 'free', entao a troca e segura.
+ALTER TABLE public.subscriptions DROP CONSTRAINT IF EXISTS subscriptions_plan_check;
+ALTER TABLE public.subscriptions
+  ADD CONSTRAINT subscriptions_plan_check CHECK (plan IN ('free', 'pro', 'ilimitado'));
 
--- User le SOMENTE a propria assinatura. SEM policy de write de propósito:
--- so a Edge Function com service_role escreve (ela ignora RLS).
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE tablename = 'subscriptions' AND policyname = 'users_read_own_subscription'
-  ) THEN
-    EXECUTE 'CREATE POLICY "users_read_own_subscription" ON subscriptions FOR SELECT USING (auth.uid() = user_id)';
-  END IF;
-END $$;
+-- 3) CHECK do ciclo (nullable no free).
+ALTER TABLE public.subscriptions DROP CONSTRAINT IF EXISTS subscriptions_ciclo_check;
+ALTER TABLE public.subscriptions
+  ADD CONSTRAINT subscriptions_ciclo_check CHECK (ciclo IS NULL OR ciclo IN ('mensal', 'anual'));
 
-CREATE INDEX IF NOT EXISTS idx_subscriptions_user ON subscriptions(user_id);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_asaas_sub ON subscriptions(asaas_subscription_id);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_asaas_cus ON subscriptions(asaas_customer_id);
-
--- Trigger pra manter updated_at em sync.
-CREATE OR REPLACE FUNCTION set_subscriptions_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = now();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_subscriptions_updated_at ON subscriptions;
-CREATE TRIGGER trg_subscriptions_updated_at
-  BEFORE UPDATE ON subscriptions
-  FOR EACH ROW EXECUTE FUNCTION set_subscriptions_updated_at();
+-- 4) Indices p/ reconciliar webhooks do Asaas.
+CREATE INDEX IF NOT EXISTS idx_subscriptions_asaas_sub ON public.subscriptions(asaas_subscription_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_asaas_cus ON public.subscriptions(asaas_customer_id);

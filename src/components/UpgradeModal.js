@@ -1,8 +1,9 @@
-import React from 'react';
-import { View, Text, Modal, Pressable, StyleSheet, Platform, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Modal, Pressable, StyleSheet, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { PLAN_LABELS, PLAN_PRICES, PLAN_PRICES_ANNUAL, PLAN_BENEFITS } from '../config/plans';
+import { startCheckout } from '../services/checkout';
 
 /**
  * UpgradeModal — popup de upgrade reutilizável (Fase 0).
@@ -36,16 +37,30 @@ export default function UpgradeModal({
   const annual = PLAN_PRICES_ANNUAL[requiredPlan];
   const fmt = (v) => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
 
+  const [ciclo, setCiclo] = useState('mensal'); // 'mensal' | 'anual'
+  const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState('');
+
   // Vantagens: usa as passadas ou cai no padrão do plano (sempre comunica valor).
   const benefits = (highlights && highlights.length > 0)
     ? highlights
     : (PLAN_BENEFITS[requiredPlan] || []);
 
-  const handleSubscribe = () => {
+  const handleSubscribe = async () => {
+    setErro('');
+    // onSubscribe (override opcional) recebe o ciclo escolhido.
     if (onSubscribe) {
-      onSubscribe();
-    } else if (Platform.OS === 'web') {
-      window.alert('Assinatura em breve! Estamos finalizando o pagamento.');
+      onSubscribe(ciclo);
+      return;
+    }
+    setLoading(true);
+    const r = await startCheckout(requiredPlan, ciclo);
+    setLoading(false);
+    if (r.ok) {
+      // Checkout aberto em nova aba/navegador. Fecha o modal.
+      if (onClose) onClose();
+    } else {
+      setErro(r.error || 'Não foi possível iniciar a assinatura. Tente novamente.');
     }
   };
 
@@ -81,30 +96,57 @@ export default function UpgradeModal({
               ))}
             </View>
 
-            {/* Preço */}
-            <View style={styles.priceBlock}>
-              <Text style={styles.priceMain}>
-                {fmt(monthly)}<Text style={styles.pricePer}>/mês</Text>
-              </Text>
-              {annual > 0 && (
-                <Text style={styles.priceAnnual}>
-                  ou {fmt(annual)}/ano no Pix · economize 10%
+            {/* Seleção de ciclo */}
+            <View style={styles.cycleRow}>
+              <Pressable
+                style={[styles.cycleCard, ciclo === 'mensal' && styles.cycleCardActive]}
+                onPress={() => setCiclo('mensal')}
+                accessibilityRole="button"
+                accessibilityState={{ selected: ciclo === 'mensal' }}
+              >
+                <Text style={[styles.cycleLabel, ciclo === 'mensal' && styles.cycleLabelActive]}>Mensal</Text>
+                <Text style={[styles.cyclePrice, ciclo === 'mensal' && styles.cyclePriceActive]}>
+                  {fmt(monthly)}<Text style={styles.cyclePer}>/mês</Text>
                 </Text>
-              )}
+                <Text style={styles.cycleHint}>no cartão</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.cycleCard, ciclo === 'anual' && styles.cycleCardActive]}
+                onPress={() => setCiclo('anual')}
+                accessibilityRole="button"
+                accessibilityState={{ selected: ciclo === 'anual' }}
+              >
+                <View style={styles.cycleBadge}><Text style={styles.cycleBadgeText}>-10%</Text></View>
+                <Text style={[styles.cycleLabel, ciclo === 'anual' && styles.cycleLabelActive]}>Anual</Text>
+                <Text style={[styles.cyclePrice, ciclo === 'anual' && styles.cyclePriceActive]}>
+                  {fmt(annual)}<Text style={styles.cyclePer}>/ano</Text>
+                </Text>
+                <Text style={styles.cycleHint}>no Pix · economize 10%</Text>
+              </Pressable>
             </View>
+
+            {!!erro && <Text style={styles.errText}>{erro}</Text>}
 
             {/* CTA */}
             <Pressable
-              style={({ pressed }) => [styles.btnPrimary, pressed && { opacity: 0.85 }]}
+              style={({ pressed }) => [styles.btnPrimary, (pressed || loading) && { opacity: 0.85 }]}
               onPress={handleSubscribe}
+              disabled={loading}
               accessibilityRole="button"
               accessibilityLabel={`Assinar plano ${planLabel}`}
             >
-              <Feather name="zap" size={16} color="#fff" />
-              <Text style={styles.btnPrimaryText}>Assinar {planLabel}</Text>
+              {loading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Feather name="zap" size={16} color="#fff" />
+                  <Text style={styles.btnPrimaryText}>Assinar {planLabel}</Text>
+                </>
+              )}
             </Pressable>
 
-            <Pressable style={styles.btnSecondary} onPress={onClose} accessibilityRole="button">
+            <Pressable style={styles.btnSecondary} onPress={onClose} disabled={loading} accessibilityRole="button">
               <Text style={styles.btnSecondaryText}>Agora não</Text>
             </Pressable>
           </ScrollView>
@@ -215,26 +257,76 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 19,
   },
-  priceBlock: {
-    alignItems: 'center',
+  cycleRow: {
+    flexDirection: 'row',
+    gap: 10,
     marginTop: spacing.md,
   },
-  priceMain: {
-    fontSize: 30,
-    fontFamily: fontFamily.bold,
-    fontWeight: '800',
-    color: colors.primary,
+  cycleCard: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    alignItems: 'center',
+    backgroundColor: colors.surface,
   },
-  pricePer: {
-    fontSize: fonts.regular,
-    fontFamily: fontFamily.medium,
+  cycleCardActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '0F',
+  },
+  cycleBadge: {
+    position: 'absolute',
+    top: -9,
+    backgroundColor: colors.success,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  cycleBadgeText: {
+    fontSize: 10,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  cycleLabel: {
+    fontSize: fonts.small,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
     color: colors.textSecondary,
   },
-  priceAnnual: {
+  cycleLabelActive: {
+    color: colors.primary,
+  },
+  cyclePrice: {
+    fontSize: 20,
+    fontFamily: fontFamily.bold,
+    fontWeight: '800',
+    color: colors.text,
+    marginTop: 2,
+  },
+  cyclePriceActive: {
+    color: colors.primary,
+  },
+  cyclePer: {
     fontSize: fonts.tiny,
     fontFamily: fontFamily.medium,
     color: colors.textSecondary,
+  },
+  cycleHint: {
+    fontSize: fonts.tiny,
+    fontFamily: fontFamily.regular,
+    color: colors.textSecondary,
     marginTop: 2,
+    textAlign: 'center',
+  },
+  errText: {
+    fontSize: fonts.small,
+    fontFamily: fontFamily.regular,
+    color: colors.danger || '#e11d48',
+    marginTop: spacing.sm,
+    textAlign: 'center',
   },
   btnPrimary: {
     flexDirection: 'row',

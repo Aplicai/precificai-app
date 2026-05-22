@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../config/supabase';
 import {
   normalizePlan,
   planIncludesFeature,
@@ -18,7 +19,9 @@ import {
  *
  * FASE 0: o plano é lido/escrito LOCALMENTE (AsyncStorage `@plan`, default 'free').
  * Dá pra testar todo o funil (cadeados, popups, limites) sem o Asaas.
- * FASE 1: `setPlan` passará a ser chamado pelo webhook/sync do Asaas.
+ * FASE 1: a FONTE DA VERDADE é a tabela `subscriptions` (escrita pelo webhook
+ * do Asaas). `syncPlanFromServer` lê de lá e sobrepõe o cache local. O local
+ * vira apenas cache/offline + DEV switcher (quando o usuário não tem assinatura).
  *
  * API:
  *   const { plano, loaded, hasFeature, limitFor, canAdd, upgradeTo, setPlan } = usePlan();
@@ -54,10 +57,59 @@ async function _ensureLoaded() {
       _loaded = true;
       _notify();
     }
+    // Não bloqueia o carregamento inicial: o cache local pinta a UI na hora,
+    // e o servidor (fonte da verdade) reconcilia em seguida.
+    syncPlanFromServer().catch(() => {});
     return _plan;
   })();
   return _loadingPromise;
 }
+
+/**
+ * Lê o plano REAL da tabela `subscriptions` (escrita pelo webhook do Asaas) e
+ * sobrepõe o cache local. Regras:
+ *   - Sem usuário logado / sem linha → mantém o local (cache + DEV switcher).
+ *   - status active|overdue e período não vencido → usa o plano do servidor.
+ *   - status canceled / período vencido → cai pra 'free'.
+ * Pode ser chamada de novo após o checkout ou quando o app volta ao foco.
+ */
+export async function syncPlanFromServer() {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return _plan; // anônimo → mantém local
+    // A tabela usa colunas `plan` e `expires_at` (schema oficial).
+    const { data, error } = await supabase
+      .from('subscriptions')
+      .select('plan,status,expires_at')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (error || !data) return _plan; // sem assinatura → mantém local
+    const entitled = data.status === 'active' || data.status === 'past_due';
+    const notExpired = !data.expires_at || new Date(data.expires_at) > new Date();
+    const serverPlan = entitled && notExpired ? normalizePlan(data.plan) : 'free';
+    if (serverPlan !== _plan) {
+      _plan = serverPlan;
+      try { await AsyncStorage.setItem(STORAGE_KEY, serverPlan); } catch {}
+      _notify();
+    }
+  } catch {
+    // rede caiu / erro → mantém o que já tinha
+  }
+  return _plan;
+}
+
+// Re-sincroniza quando o usuário loga; reseta cache no logout.
+try {
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      syncPlanFromServer().catch(() => {});
+    } else if (event === 'SIGNED_OUT') {
+      _plan = 'free';
+      AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
+      _notify();
+    }
+  });
+} catch {}
 
 /** Setter global (testes locais na Fase 0; Asaas na Fase 1). */
 export async function setPlan(next) {

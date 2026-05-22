@@ -98,27 +98,29 @@ serve(async (req) => {
     switch (event) {
       case 'PAYMENT_CONFIRMED':
       case 'PAYMENT_RECEIVED': {
+        // NB: a tabela `subscriptions` usa as colunas `plan` e `expires_at`
+        // (schema oficial em src/database/supabase-schema.sql).
         row = {
           user_id: userId,
-          plano,
+          plan: plano,
           ciclo,
           status: 'active',
           asaas_customer_id: payment?.customer || null,
           asaas_subscription_id: payment?.subscription || null,
-          current_period_end: addDays(now, ciclo === 'anual' ? 365 : 30),
+          expires_at: addDays(now, ciclo === 'anual' ? 365 : 30),
         };
         break;
       }
       case 'PAYMENT_OVERDUE': {
-        // Mantém o plano mas marca overdue (o app pode dar uma graça curta).
-        row = { user_id: userId, status: 'overdue' };
+        // Mantém o plano mas marca past_due (o app dá uma graça curta).
+        row = { user_id: userId, status: 'past_due' };
         break;
       }
       case 'SUBSCRIPTION_DELETED':
       case 'SUBSCRIPTION_INACTIVATED':
       case 'PAYMENT_DELETED': {
         // Cancelamento -> volta pro free. Excedentes ficam read-only no app.
-        row = { user_id: userId, plano: 'free', status: 'canceled', ciclo: null };
+        row = { user_id: userId, plan: 'free', status: 'canceled', ciclo: null };
         break;
       }
       default:
