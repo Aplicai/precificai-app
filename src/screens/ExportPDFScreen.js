@@ -11,6 +11,8 @@ import { converterParaBase, formatCurrency, formatPercent, getDivisorRendimento,
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import Loader from '../components/Loader';
 import { openPrintableHTML } from '../utils/openPrintableHTML';
+import usePlan from '../hooks/usePlan';
+import UpgradeModal from '../components/UpgradeModal';
 
 const CATEGORY_COLORS = [
   '#004d47', '#265bb0', '#e3b842', '#e3704d', '#6a4fb0',
@@ -103,6 +105,20 @@ export default function ExportPDFScreen({ navigation }) {
   // Audit P0: estados de erro (catches eram silent — usuário não sabia que falhou)
   const [loadError, setLoadError] = useState(null);
   const [exportError, setExportError] = useState(null);
+  // Planos (Fase 0) — exportar PDF é Pro+. Produzir/ver a ficha é livre (no form do produto).
+  const { hasFeature } = usePlan();
+  const [upgradeModal, setUpgradeModal] = useState(null);
+  // Retorna true (e abre o popup) quando o plano NÃO inclui exportação em PDF.
+  function gateExport() {
+    if (hasFeature('export_pdf')) return false;
+    setUpgradeModal({
+      requiredPlan: 'pro',
+      title: 'Exportar PDF é um recurso Pro',
+      message: 'Montar e ver suas fichas técnicas é grátis. Para exportar em PDF, assine:',
+      highlights: ['Exportação de fichas em PDF', 'Delivery, Lista de compras, Relatórios e mais'],
+    });
+    return true;
+  }
 
   useFocusEffect(useCallback(() => {
     loadProdutos();
@@ -193,6 +209,7 @@ export default function ExportPDFScreen({ navigation }) {
   const selectedCount = Object.values(selected).filter(Boolean).length;
 
   const handleExportPreparos = async () => {
+    if (gateExport()) return;
     if (selectedCount === 0) return;
     // Pré-abre a janela ANTES do await (dentro do handler de clique síncrono)
     // para evitar bloqueio de popup no mobile e desktop
@@ -262,6 +279,7 @@ export default function ExportPDFScreen({ navigation }) {
   };
 
   const handleExport = async () => {
+    if (gateExport()) return;
     if (activeTab === 'preparos') return handleExportPreparos();
     if (selectedCount === 0) return;
     // Pré-abre a janela ANTES do await para evitar bloqueio de popup
@@ -690,6 +708,16 @@ export default function ExportPDFScreen({ navigation }) {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Planos (Fase 0) — popup ao tentar exportar PDF sem plano Pro */}
+      <UpgradeModal
+        visible={!!upgradeModal}
+        onClose={() => setUpgradeModal(null)}
+        requiredPlan={upgradeModal?.requiredPlan}
+        title={upgradeModal?.title}
+        message={upgradeModal?.message}
+        highlights={upgradeModal?.highlights || []}
+      />
     </View>
   );
 }

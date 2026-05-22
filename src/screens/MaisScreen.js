@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
@@ -7,6 +7,9 @@ import useFeatureFlags from '../hooks/useFeatureFlags';
 import usePersistedState from '../hooks/usePersistedState';
 import useListDensity from '../hooks/useListDensity';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import usePlan from '../hooks/usePlan';
+import UpgradeModal from '../components/UpgradeModal';
+import { FEATURE_MIN_PLAN, PLAN_LABELS } from '../config/plans';
 
 /**
  * Hub "Ferramentas" reorganizado (audit S9 — Sprint 4).
@@ -55,8 +58,10 @@ const MENU_GROUPS = [
         icon: 'shopping-cart',
         set: 'feather',
         screen: 'ListaCompras',
+        feature: 'lista_compras', // Planos: Pro+
       },
-      // Sessão 28.8 — Combos como recurso opcional (delivery OU combos avançado)
+      // Combos: livre em todos os planos (limite numérico tratado dentro da tela).
+      // Planos Fase 0: visível por padrão (removida a flag opt-in modo_avancado_combos).
       {
         key: 'combos',
         title: 'Combos / Kits',
@@ -65,8 +70,6 @@ const MENU_GROUPS = [
         set: 'feather',
         tab: 'Produtos',
         screen: 'CombosScreen',
-        // D-05: combos controlado APENAS por modo_avancado_combos (antes era OR com delivery)
-        flag: 'modo_avancado_combos',
       },
       // Sessão 28.40: "Relatório de Insumos" unificado com "Relatório" geral
       // num único item "Relatórios" no grupo Análise (mais abaixo).
@@ -77,6 +80,8 @@ const MENU_GROUPS = [
         icon: 'file-text',
         set: 'feather',
         screen: 'ExportPDF',
+        // Planos: tela LIVRE (produzir/ver ficha). Só o botão "Exportar PDF"
+        // dentro da tela é Pro (gate em ExportPDFScreen).
       },
     ],
   },
@@ -92,7 +97,7 @@ const MENU_GROUPS = [
         icon: 'bar-chart-2',
         set: 'feather',
         screen: 'MatrizBCG',
-        flag: 'modo_avancado_analise',
+        feature: 'ranking_bcg', // Planos: exclusivo Ilimitado
       },
       // Sessão 28.40: Relatório geral + Relatório de Insumos unificados em
       // uma única página "Relatórios" com tabs internas (Geral / Insumos),
@@ -111,7 +116,6 @@ const MENU_GROUPS = [
     key: 'delivery_grp',
     title: 'Delivery',
     groupColor: colors.coral,
-    flag: 'usa_delivery',
     items: [
       {
         key: 'delivery',
@@ -120,7 +124,7 @@ const MENU_GROUPS = [
         icon: 'moped-outline',
         set: 'material',
         screen: 'DeliveryHub',
-        flag: 'usa_delivery',
+        feature: 'delivery', // Planos: Pro+ (módulo inteiro)
       },
       // Item "Comparativo Canais" removido do menu (mobile e desktop). A rota
       // ComparativoCanais segue registrada no MaisStack para preservar deep-links
@@ -175,6 +179,9 @@ export default function MaisScreen({ navigation }) {
   const { isCompact, cardPadding, sectionGap, titleFontSize, iconSize, listItemSubtitleFontSize, bodyLineHeight } = useListDensity();
   // Área 9 — esconder itens marcados como desktopOnly quando em mobile
   const { isDesktop } = useResponsiveLayout();
+  // Planos (Fase 0) — itens pagos aparecem com cadeado 🔒 e abrem o popup ao tocar.
+  const { hasFeature } = usePlan();
+  const [upgradeModal, setUpgradeModal] = useState(null);
   const _isFlagOn = (name) => {
     if (!name) return true;
     if (name === 'usa_delivery') return !!usaDelivery;
@@ -218,12 +225,27 @@ export default function MaisScreen({ navigation }) {
         return (
           <View key={group.key} style={[styles.group, gIdx > 0 && { marginTop: sectionGap }]}>
             <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }]}>{group.title}</Text>
-            {group.items.map((item) => (
+            {group.items.map((item) => {
+              // Planos: item bloqueado se tem feature paga que o plano atual não inclui.
+              const locked = item.feature && !hasFeature(item.feature);
+              const reqPlan = locked ? FEATURE_MIN_PLAN[item.feature] : null;
+              return (
               <TouchableOpacity
                 key={item.key}
-                style={[styles.menuCard, { padding: cardPadding, marginBottom: isCompact ? 6 : 10 }]}
+                style={[styles.menuCard, { padding: cardPadding, marginBottom: isCompact ? 6 : 10 }, locked && { opacity: 0.7 }]}
                 activeOpacity={0.6}
                 onPress={() => {
+                  if (locked) {
+                    setUpgradeModal({
+                      requiredPlan: reqPlan,
+                      title: `${item.title} é um recurso ${PLAN_LABELS[reqPlan]}`,
+                      message: 'Desbloqueie este recurso e muito mais:',
+                      highlights: reqPlan === 'ilimitado'
+                        ? ['Produtos e combos ilimitados', 'Ranking de Produtos (Matriz BCG)']
+                        : ['Delivery, Lista de compras, Relatórios e PDF', 'Até 30 produtos e 30 combos'],
+                    });
+                    return;
+                  }
                   // Sessão 28.8 — item.tab opcional pra cross-stack navigation (ex: Combos vive em Produtos)
                   if (item.tab) {
                     navigation.navigate(item.tab, { screen: item.screen });
@@ -232,7 +254,7 @@ export default function MaisScreen({ navigation }) {
                   }
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={`${item.title}. ${item.desc}`}
+                accessibilityLabel={locked ? `${item.title}. Disponível no plano ${PLAN_LABELS[reqPlan]}` : `${item.title}. ${item.desc}`}
               >
                 <View style={[styles.iconCircle, { backgroundColor: c + '12', borderWidth: 1, borderColor: c + '30', width: isCompact ? 36 : 44, height: isCompact ? 36 : 44, borderRadius: isCompact ? 18 : 22, marginRight: isCompact ? 10 : spacing.md }]}>
                   {item.set === 'material' ? (
@@ -243,16 +265,29 @@ export default function MaisScreen({ navigation }) {
                 </View>
                 <View style={styles.menuBody}>
                   <Text style={styles.menuTitle} numberOfLines={1}>{item.title}</Text>
-                  <Text style={[styles.menuDesc, { fontSize: listItemSubtitleFontSize, lineHeight: bodyLineHeight }]} numberOfLines={2}>{item.desc}</Text>
+                  <Text style={[styles.menuDesc, { fontSize: listItemSubtitleFontSize, lineHeight: bodyLineHeight }]} numberOfLines={2}>
+                    {locked ? `Disponível no ${PLAN_LABELS[reqPlan]}` : item.desc}
+                  </Text>
                 </View>
-                <Feather name="chevron-right" size={iconSize} color={colors.textSecondary} />
+                <Feather name={locked ? 'lock' : 'chevron-right'} size={iconSize} color={locked ? colors.primary : colors.textSecondary} />
               </TouchableOpacity>
-            ))}
+              );
+            })}
           </View>
         );
       })}
 
       <View style={{ height: 40 }} />
+
+      {/* Planos (Fase 0) — popup de upgrade ao tocar num item bloqueado */}
+      <UpgradeModal
+        visible={!!upgradeModal}
+        onClose={() => setUpgradeModal(null)}
+        requiredPlan={upgradeModal?.requiredPlan}
+        title={upgradeModal?.title}
+        message={upgradeModal?.message}
+        highlights={upgradeModal?.highlights || []}
+      />
     </ScrollView>
   );
 }

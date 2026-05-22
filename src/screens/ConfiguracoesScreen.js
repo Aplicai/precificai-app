@@ -6,6 +6,8 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import useListDensity from '../hooks/useListDensity';
 import useFeatureFlag from '../hooks/useFeatureFlag';
+import usePlan from '../hooks/usePlan';
+import { PLANS, PLAN_LABELS } from '../config/plans';
 // Sistema de feature flags por email (whitelist) — features beta/sistema.
 import useFeatureFlags from '../hooks/useFeatureFlags';
 import usePersistedState from '../hooks/usePersistedState';
@@ -97,6 +99,8 @@ export default function ConfiguracoesScreen({ navigation }) {
   const [deliveryOn, setDeliveryOn] = useFeatureFlag('usa_delivery');
   // Sessão 28.8 — flag opcional pra exibir o CRUD de combos sem depender de delivery
   const [combosOn, setCombosOn] = useFeatureFlag('modo_avancado_combos');
+  // Planos (Fase 0) — seletor DEV pra testar os gates/limites sem Asaas.
+  const { plano, setPlan } = usePlan();
 
   // Feature flags SISTEMA (whitelist por email) — controla visibilidade de
   // features beta. O toggle local (AsyncStorage) só aparece para quem tem o
@@ -119,6 +123,34 @@ export default function ConfiguracoesScreen({ navigation }) {
           esse é justamente o problema que o user reportou — não achava
           como reinstalar depois de desinstalar. */}
       {Platform.OS === 'web' && <InstallAppButton />}
+
+      {/* Planos (Fase 0) — seletor DEV de plano. Visível em dev local, pra contas
+          com acesso beta, OU quando localStorage['__devplan']==='1' (pra testar no
+          app publicado: rodar localStorage.setItem('__devplan','1') no console).
+          REMOVER/blindar antes do lançamento real. */}
+      {((typeof __DEV__ !== 'undefined' && __DEV__) || featureFlags.dreFluxoCaixa || (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage?.getItem('__devplan') === '1')) && (
+        <View style={{ backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B', borderRadius: 12, padding: 14, marginBottom: 16 }}>
+          <Text style={{ fontSize: 14, fontFamily: fontFamily.bold, color: '#92400E', marginBottom: 2 }}>🧪 Teste de planos (DEV)</Text>
+          <Text style={{ fontSize: 12, color: '#92400E', marginBottom: 10 }}>
+            Alterne o plano localmente pra testar cadeados e limites. Será removido na produção.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {PLANS.map((p) => {
+              const active = plano === p;
+              return (
+                <TouchableOpacity
+                  key={p}
+                  onPress={() => setPlan(p)}
+                  activeOpacity={0.7}
+                  style={{ flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center', borderWidth: 1.5, borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primary : colors.surface }}
+                >
+                  <Text style={{ fontSize: 13, fontFamily: fontFamily.semiBold, color: active ? '#fff' : colors.text }}>{PLAN_LABELS[p]}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
 
       {OPCOES.map((op) => (
         <TouchableOpacity

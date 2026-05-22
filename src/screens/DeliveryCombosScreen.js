@@ -17,6 +17,9 @@ import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
 import { calcularPrecoCombo } from '../utils/precificacao';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
+import usePlan from '../hooks/usePlan';
+import UpgradeModal from '../components/UpgradeModal';
+import { PLAN_LABELS } from '../config/plans';
 
 // ─── Numeric helpers (audit P0 — defesa contra NaN/Infinity) ─────────────
 function parseInputNumber(raw) {
@@ -51,6 +54,9 @@ export default function DeliveryCombosScreen() {
   const isFocused = useIsFocused();
   const { isDesktop } = useResponsiveLayout();
   const [combos, setCombos] = useState([]);
+  // Planos (Fase 0) — gate de limite de combos por plano.
+  const { canAdd, limitFor, plano, upgradeTo } = usePlan();
+  const [upgradeModal, setUpgradeModal] = useState(null);
   // APP-22: contexto financeiro pra alimentar a fórmula completa do combo
   const [contextoFin, setContextoFin] = useState({ lucroPerc: 0.15, fixoPerc: 0, variavelPerc: 0 });
   const [busca, setBusca] = usePersistedState('deliveryCombos.busca', '');
@@ -294,6 +300,19 @@ export default function DeliveryCombosScreen() {
 
   // Open modal for creating
   async function abrirCriarCombo() {
+    // Planos (Fase 0) — bloqueia criar combo acima do limite do plano.
+    if (!canAdd('combos', combos.length)) {
+      const next = upgradeTo || 'pro';
+      setUpgradeModal({
+        requiredPlan: next,
+        title: 'Você atingiu o limite de combos 🎉',
+        message: `No plano ${PLAN_LABELS[plano]} você cria até ${limitFor('combos')} combos. Faça upgrade pra montar mais:`,
+        highlights: next === 'ilimitado'
+          ? ['Produtos e combos ilimitados', 'Ranking de Produtos (Matriz BCG)']
+          : ['Até 30 produtos e 30 combos', 'Delivery, Lista de compras, relatórios e mais'],
+      });
+      return;
+    }
     setEditingCombo(null);
     setBuscaItem('');
     setShowIncompleteModal(false);
@@ -967,6 +986,16 @@ export default function DeliveryCombosScreen() {
         onConfirm={confirmRemove?.onConfirm}
         onCancel={() => setConfirmRemove(null)}
         confirmLabel="Remover"
+      />
+
+      {/* Planos (Fase 0) — popup de upgrade ao bater o limite de combos */}
+      <UpgradeModal
+        visible={!!upgradeModal}
+        onClose={() => setUpgradeModal(null)}
+        requiredPlan={upgradeModal?.requiredPlan}
+        title={upgradeModal?.title}
+        message={upgradeModal?.message}
+        highlights={upgradeModal?.highlights || []}
       />
 
       {/* Create / Edit modal — Sessão 28.8: full-sheet mobile, 2 colunas desktop */}

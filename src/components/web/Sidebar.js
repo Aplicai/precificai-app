@@ -9,6 +9,9 @@ import useFeatureFlags from '../../hooks/useFeatureFlags';
 import usePersistedState from '../../hooks/usePersistedState';
 // Sessão 28.8 — alinha altura do logoArea com WebHeader.container (mesmo token)
 import useListDensity from '../../hooks/useListDensity';
+import usePlan from '../../hooks/usePlan';
+import UpgradeModal from '../UpgradeModal';
+import { FEATURE_MIN_PLAN, PLAN_LABELS } from '../../config/plans';
 
 // Ordem segue o fluxo de composição (audit P1-08):
 // Insumos → Preparos (combina insumos) → Embalagens (wrapper) → Produtos (final).
@@ -22,20 +25,20 @@ const NAV_SECTIONS = [
       { key: 'produtos', label: 'Produtos', icon: 'tag', iconSet: 'feather', tab: 'Produtos', screen: 'ProdutosList' },
       // D-05 — Combos depende APENAS da flag modo_avancado_combos (antes era OR com delivery,
       // o que causava: ativar/desativar combos não tinha efeito quando delivery estava ON).
-      { key: 'combos', label: 'Combos / Kits', icon: 'layers', iconSet: 'feather', tab: 'Produtos', screen: 'CombosScreen', flag: 'modo_avancado_combos' },
+      { key: 'combos', label: 'Combos / Kits', icon: 'layers', iconSet: 'feather', tab: 'Produtos', screen: 'CombosScreen' },
     ],
   },
   {
     items: [
       { key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign', iconSet: 'feather', tab: 'Mais', screen: 'FinanceiroMain' },
-      { key: 'delivery', label: 'Delivery', icon: 'truck', iconSet: 'feather', tab: 'Mais', screen: 'DeliveryHub', flag: 'usa_delivery' },
+      { key: 'delivery', label: 'Delivery', icon: 'truck', iconSet: 'feather', tab: 'Mais', screen: 'DeliveryHub', feature: 'delivery' },
       // Sprint 1 Q4 — "Eng. do Cardápio" → "Ranking de Produtos" (linguagem clara para usuário leigo).
-      { key: 'bcg', label: 'Ranking de Produtos', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Mais', screen: 'MatrizBCG', flag: 'modo_avancado_analise' },
+      { key: 'bcg', label: 'Ranking de Produtos', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Mais', screen: 'MatrizBCG', feature: 'ranking_bcg' },
       { key: 'precos', label: 'Atualizar Preços', icon: 'refresh-cw', iconSet: 'feather', tab: 'Mais', screen: 'AtualizarPrecos' },
       // Sessão 26 — Simulador agora é CTA contextual dentro da Ficha Técnica
       // Sessão 28.40: relatórios unificados em uma única página com tabs internas
       { key: 'relatorio', label: 'Relatórios', icon: 'bar-chart-2', iconSet: 'feather', tab: 'Mais', screen: 'Relatorios' },
-      { key: 'listacompras', label: 'Lista de Compras', icon: 'shopping-cart', iconSet: 'feather', tab: 'Mais', screen: 'ListaCompras' },
+      { key: 'listacompras', label: 'Lista de Compras', icon: 'shopping-cart', iconSet: 'feather', tab: 'Mais', screen: 'ListaCompras', feature: 'lista_compras' },
       { key: 'exportpdf', label: 'Fichas Técnicas', icon: 'file-text', iconSet: 'feather', tab: 'Mais', screen: 'ExportPDF' },
     ],
   },
@@ -144,6 +147,9 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
   // Sessão 28.8 — Header da Sidebar deve ter MESMA altura do WebHeader.container
   // (que usa headerHeight do useListDensity: 52 compact / 64 comfortable).
   const { headerHeight } = useListDensity();
+  // Planos (Fase 0) — itens pagos aparecem com cadeado 🔒 e abrem o popup ao tocar.
+  const { hasFeature } = usePlan();
+  const [upgradeModal, setUpgradeModal] = useState(null);
   // Sessão 26 — feature flags filtram itens da sidebar para esconder Delivery/BCG/Fornecedores
   const [usaDelivery] = useFeatureFlag('usa_delivery');
   const [analiseAvancada] = useFeatureFlag('modo_avancado_analise');
@@ -252,16 +258,33 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
             {section.items.map((item) => {
               const isActive = activeKey === item.key;
               const IconComp = item.iconSet === 'material' ? MaterialCommunityIcons : Feather;
+              // Planos: item bloqueado se tem feature paga fora do plano atual.
+              const locked = item.feature && !hasFeature(item.feature);
+              const reqPlan = locked ? FEATURE_MIN_PLAN[item.feature] : null;
 
               return (
                 <SidebarButton
                   key={item.key}
-                  onPress={() => handlePress(item)}
-                  tooltip={collapsed ? item.label : undefined}
+                  onPress={() => {
+                    if (locked) {
+                      setUpgradeModal({
+                        requiredPlan: reqPlan,
+                        title: `${item.label} é um recurso ${PLAN_LABELS[reqPlan]}`,
+                        message: 'Desbloqueie este recurso e muito mais:',
+                        highlights: reqPlan === 'ilimitado'
+                          ? ['Produtos e combos ilimitados', 'Ranking de Produtos (Matriz BCG)']
+                          : ['Delivery, Lista de compras, Relatórios e PDF', 'Até 30 produtos e 30 combos'],
+                      });
+                      return;
+                    }
+                    handlePress(item);
+                  }}
+                  tooltip={collapsed ? (locked ? `${item.label} — ${PLAN_LABELS[reqPlan]}` : item.label) : undefined}
                   style={[
                     styles.navItem,
                     isActive && styles.navItemActive,
                     collapsed && styles.navItemCollapsed,
+                    locked && { opacity: 0.7 },
                   ]}
                 >
                   {isActive && <View style={styles.activeBar} />}
@@ -280,6 +303,9 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
                     >
                       {item.label}
                     </Text>
+                  )}
+                  {!collapsed && locked && (
+                    <Feather name="lock" size={14} color={colors.primary} style={{ marginLeft: 'auto' }} />
                   )}
                 </SidebarButton>
               );
@@ -305,6 +331,16 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
           )}
         </SidebarButton>
       </View>
+
+      {/* Planos (Fase 0) — popup de upgrade ao clicar num item bloqueado */}
+      <UpgradeModal
+        visible={!!upgradeModal}
+        onClose={() => setUpgradeModal(null)}
+        requiredPlan={upgradeModal?.requiredPlan}
+        title={upgradeModal?.title}
+        message={upgradeModal?.message}
+        highlights={upgradeModal?.highlights || []}
+      />
     </View>
   );
 }

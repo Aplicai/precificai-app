@@ -28,6 +28,9 @@ import ViewModeToggle from '../components/ViewModeToggle';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useUndoableDelete from '../hooks/useUndoableDelete';
 import useBulkSelection from '../hooks/useBulkSelection';
+import usePlan from '../hooks/usePlan';
+import UpgradeModal from '../components/UpgradeModal';
+import { PLAN_LABELS } from '../config/plans';
 // Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
 // Para produtos, o blocker crítico é "vendas registradas" — aviso de soft-delete recomendado.
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
@@ -116,7 +119,26 @@ export default function ProdutosListScreen({ navigation }) {
   // Sessão 28.9 — modal popup pra Novo / Editar Produto (substitui navegação à tela cheia)
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  function abrirCriacao() { setEditingId(null); setShowCreateModal(true); }
+  // Planos (Fase 0) — gate de limite de produtos por plano.
+  const { canAdd, limitFor, plano, upgradeTo } = usePlan();
+  const [upgradeModal, setUpgradeModal] = useState(null);
+  function abrirCriacao() {
+    // Bloqueia o cadastro acima do limite do plano → popup de upgrade.
+    if (!canAdd('produtos', totalProdutos)) {
+      const next = upgradeTo || 'pro';
+      setUpgradeModal({
+        requiredPlan: next,
+        title: 'Você atingiu o limite de produtos 🎉',
+        message: `No plano ${PLAN_LABELS[plano]} você cadastra até ${limitFor('produtos')} produtos. Faça upgrade pra continuar cadastrando:`,
+        highlights: next === 'ilimitado'
+          ? ['Produtos e combos ilimitados', 'Ranking de Produtos (Matriz BCG)']
+          : ['Até 30 produtos e 30 combos', 'Delivery, Lista de compras, relatórios e mais'],
+      });
+      return;
+    }
+    setEditingId(null);
+    setShowCreateModal(true);
+  }
   function abrirEdicao(id) { setEditingId(id); setShowCreateModal(true); }
 
   function toggleDesktopSection(key) { setCollapsedDesktop(prev => ({...prev, [key]: !prev[key]})); }
@@ -1206,6 +1228,16 @@ export default function ProdutosListScreen({ navigation }) {
           // microtask: deixa o modal de edit fechar antes de abrir o confirm
           setTimeout(() => { solicitarExclusao(id, nome); }, 50);
         }}
+      />
+
+      {/* Planos (Fase 0) — popup de upgrade ao bater o limite de produtos */}
+      <UpgradeModal
+        visible={!!upgradeModal}
+        onClose={() => setUpgradeModal(null)}
+        requiredPlan={upgradeModal?.requiredPlan}
+        title={upgradeModal?.title}
+        message={upgradeModal?.message}
+        highlights={upgradeModal?.highlights || []}
       />
 
       {/* Modal nova categoria */}
