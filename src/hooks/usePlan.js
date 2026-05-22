@@ -84,9 +84,21 @@ export async function syncPlanFromServer() {
       .eq('user_id', user.id)
       .maybeSingle();
     if (error || !data) return _plan; // sem assinatura → mantém local
-    const entitled = data.status === 'active' || data.status === 'past_due';
-    const notExpired = !data.expires_at || new Date(data.expires_at) > new Date();
-    const serverPlan = entitled && notExpired ? normalizePlan(data.plan) : 'free';
+    const status = data.status;
+    const now = new Date();
+    const hasFutureEnd = !!data.expires_at && new Date(data.expires_at) > now;
+    const notExpired = !data.expires_at || new Date(data.expires_at) > now;
+    let entitled;
+    if (status === 'active' || status === 'past_due') {
+      // Ativo (ou em graça por atraso): expires_at NULL = vitalício (ex.: conta de teste).
+      entitled = notExpired;
+    } else if (status === 'canceled') {
+      // Cancelado: mantém o plano só ATÉ o fim do período já pago.
+      entitled = hasFutureEnd;
+    } else {
+      entitled = false;
+    }
+    const serverPlan = entitled ? normalizePlan(data.plan) : 'free';
     if (serverPlan !== _plan) {
       _plan = serverPlan;
       try { await AsyncStorage.setItem(STORAGE_KEY, serverPlan); } catch {}

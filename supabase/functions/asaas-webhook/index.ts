@@ -77,7 +77,8 @@ serve(async (req) => {
   }
 
   const event: string = body?.event || '';
-  const payment = body?.payment || {};
+  // Eventos de cobrança trazem `payment`; eventos de assinatura trazem `subscription`.
+  const payment = body?.payment || body?.subscription || {};
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -119,8 +120,10 @@ serve(async (req) => {
       case 'SUBSCRIPTION_DELETED':
       case 'SUBSCRIPTION_INACTIVATED':
       case 'PAYMENT_DELETED': {
-        // Cancelamento -> volta pro free. Excedentes ficam read-only no app.
-        row = { user_id: userId, plan: 'free', status: 'canceled', ciclo: null };
+        // Cancelamento: NÃO rebaixa na hora. Mantém plano + expires_at — o acesso
+        // segue até o fim do período já pago. O usePlan calcula 'free' assim que
+        // expires_at passa. Excedentes ficam read-only no app, nunca apagados.
+        row = { user_id: userId, status: 'canceled' };
         break;
       }
       default:

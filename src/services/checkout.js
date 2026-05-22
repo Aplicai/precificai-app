@@ -66,4 +66,33 @@ export async function startCheckout(plano, ciclo) {
   }
 }
 
+/**
+ * Cancela a assinatura do usuário. As cobranças futuras param, mas o acesso
+ * continua até o fim do período já pago (expires_at retornado).
+ * @returns {Promise<{ok: boolean, expires_at?: string|null, plan?: string, error?: string}>}
+ */
+export async function cancelSubscription() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { ok: false, error: 'Você precisa estar logado.' };
+
+    const { data, error } = await supabase.functions.invoke('asaas-cancel-subscription', {
+      body: {},
+    });
+    if (error) {
+      let msg = error.message || 'Não foi possível cancelar agora.';
+      try {
+        const ctx = error.context && (await error.context.json?.());
+        if (ctx?.error) msg = ctx.error;
+      } catch (_) {}
+      return { ok: false, error: msg };
+    }
+    if (!data?.ok) return { ok: false, error: data?.error || 'Não foi possível cancelar agora.' };
+    return { ok: true, expires_at: data.expires_at, plan: data.plan };
+  } catch (e) {
+    if (typeof console !== 'undefined' && console.error) console.error('[cancelSubscription]', e);
+    return { ok: false, error: 'Erro ao cancelar. Tente novamente.' };
+  }
+}
+
 export default startCheckout;

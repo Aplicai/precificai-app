@@ -10,6 +10,9 @@ import useListDensity from '../hooks/useListDensity';
 // Sprint 1 Q9 — helper para Alert pós-sucesso confiável no web (Alert.alert com onPress não dispara no RN Web).
 import { notifySuccess } from '../utils/notify';
 import BackToSettings from '../components/BackToSettings';
+import usePlan, { syncPlanFromServer } from '../hooks/usePlan';
+import { cancelSubscription } from '../services/checkout';
+import { PLAN_LABELS } from '../config/plans';
 
 // Mapeia mensagens cruas do Supabase auth para textos amigáveis (sem expor stack/tokens)
 function mapAuthError(rawMsg) {
@@ -32,8 +35,10 @@ function isValidEmail(s) {
 
 export default function ContaSegurancaScreen({ navigation }) {
   const { user } = useAuth();
+  const { plano } = usePlan();
   const { isCompact, buttonHeight } = useListDensity();
   const [section, setSection] = useState(null); // 'email' | 'senha' | null
+  const [cancelling, setCancelling] = useState(false);
   const [newEmail, setNewEmail] = useState('');
   const [confirmEmail, setConfirmEmail] = useState('');
   const [currentPass, setCurrentPass] = useState('');
@@ -255,6 +260,43 @@ export default function ContaSegurancaScreen({ navigation }) {
     }
   }
 
+  async function handleCancelPlan() {
+    const planLabel = PLAN_LABELS[plano] || 'pago';
+    const aviso = `Você continua com acesso até o fim do período já pago. Não haverá novas cobranças.`;
+    let proceed;
+    if (Platform.OS === 'web') {
+      proceed = window.confirm(`Cancelar o plano ${planLabel}?\n\n${aviso}`);
+    } else {
+      proceed = await new Promise((resolve) => {
+        Alert.alert('Cancelar plano?', aviso, [
+          { text: 'Voltar', style: 'cancel', onPress: () => resolve(false) },
+          { text: 'Cancelar plano', style: 'destructive', onPress: () => resolve(true) },
+        ]);
+      });
+    }
+    if (!proceed) return;
+    setCancelling(true);
+    try {
+      const r = await cancelSubscription();
+      if (!r.ok) {
+        Alert.alert(t.alertError, r.error || 'Não foi possível cancelar agora.');
+        return;
+      }
+      await syncPlanFromServer().catch(() => {});
+      const ate = r.expires_at ? new Date(r.expires_at).toLocaleDateString('pt-BR') : null;
+      const msg = ate
+        ? `Plano cancelado. Você mantém o acesso até ${ate}.`
+        : 'Plano cancelado.';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Plano cancelado', msg);
+    } catch (e) {
+      console.error('[ContaSegurancaScreen.handleCancelPlan]', e);
+      Alert.alert(t.alertError, 'Não foi possível cancelar agora. Tente novamente.');
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* APP-13: Botão voltar pra Configurações sempre visível no topo */}
@@ -369,9 +411,26 @@ export default function ContaSegurancaScreen({ navigation }) {
         </View>
       )}
 
+      {/* Cancelar plano — discreto, só pra quem tem plano pago.
+          Acesso continua até o fim do período já pago (sem novas cobranças). */}
+      {plano && plano !== 'free' && (
+        <TouchableOpacity
+          style={{ marginTop: 32, alignItems: 'center', padding: 8 }}
+          onPress={handleCancelPlan}
+          disabled={cancelling}
+          accessibilityRole="button"
+          accessibilityLabel={`Cancelar plano ${PLAN_LABELS[plano] || ''}`}
+          accessibilityHint="Você mantém o acesso até o fim do período já pago"
+        >
+          <Text style={{ fontSize: 12, color: colors.textSecondary, fontFamily: fontFamily.regular, textDecorationLine: 'underline' }}>
+            {cancelling ? 'Cancelando…' : 'Cancelar plano'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {/* Excluir conta */}
       <TouchableOpacity
-        style={{ marginTop: 40, alignItems: 'center', padding: 12 }}
+        style={{ marginTop: 24, alignItems: 'center', padding: 12 }}
         onPress={handleDeleteAccount}
         accessibilityRole="button"
         accessibilityLabel="Excluir minha conta. Ação irreversível."
