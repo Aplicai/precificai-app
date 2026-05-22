@@ -29,6 +29,12 @@ import BackToSettings from '../components/BackToSettings';
 // Usar uma string única que o usuário não digitaria por acidente.
 export const MARCA_VALOR_ESTIMADO = '__VALOR_ESTIMADO_KIT__';
 
+// Planos: limite de PRODUTOS de exemplo criados pelo Kit de Início. Mantido
+// baixo (2) para não consumir os 5 slots do plano Grátis — a pessoa recebe
+// exemplos prontos e ainda tem espaço para cadastrar os produtos reais dela.
+// Insumos/preparos/embalagens NÃO são limitados (não contam no limite de produtos).
+export const MAX_PRODUTOS_KIT = 2;
+
 // F1-J1-01: prefixo da chave de step do WelcomeTour. Mantido em sync com
 // `WelcomeTourScreen.js` — chegando aqui o tour é considerado encerrado, então
 // removemos o passo salvo para evitar reabrir o usuário no meio do tour caso
@@ -567,7 +573,8 @@ export default function KitInicioScreen({ navigation, route }) {
       }
 
       // ===== Step 6: Produtos =====
-      const produtosTemplate = PRODUTOS_POR_SEGMENTO[selected] || [];
+      // Planos: cap em MAX_PRODUTOS_KIT pra não estourar o limite do plano Grátis.
+      const produtosTemplate = (PRODUTOS_POR_SEGMENTO[selected] || []).slice(0, MAX_PRODUTOS_KIT);
       const catProdTemplate = CATEGORIAS_PRODUTOS_POR_SEGMENTO[selected] || [];
       const catProdMap = {};
       let prodsCriados = 0;
@@ -686,6 +693,8 @@ export default function KitInicioScreen({ navigation, route }) {
   const segmentoInfo = selected ? SEGMENTOS.find(s => s.key === selected) : null;
   const insumosCount = selected ? (INSUMOS_POR_SEGMENTO[selected]?.length || 0) : 0;
   const categoriasCount = selected ? (CATEGORIAS_POR_SEGMENTO[selected]?.length || 0) : 0;
+  // Planos: preview reflete o cap real de produtos criados (MAX_PRODUTOS_KIT).
+  const produtosKit = selected ? (PRODUTOS_POR_SEGMENTO[selected] || []).slice(0, MAX_PRODUTOS_KIT) : [];
 
   return (
     <View style={styles.container}>
@@ -793,9 +802,9 @@ export default function KitInicioScreen({ navigation, route }) {
                   <Text style={styles.previewLabel}>Preparos</Text>
                 </View>
               )}
-              {(PRODUTOS_POR_SEGMENTO[selected] || []).length > 0 && (
+              {produtosKit.length > 0 && (
                 <View style={styles.previewItem}>
-                  <Text style={styles.previewNumber}>{(PRODUTOS_POR_SEGMENTO[selected] || []).length}</Text>
+                  <Text style={styles.previewNumber}>{produtosKit.length}</Text>
                   <Text style={styles.previewLabel}>Produtos</Text>
                 </View>
               )}
@@ -812,10 +821,10 @@ export default function KitInicioScreen({ navigation, route }) {
             </View>
 
             {/* Amostras de produtos prontos quando há kit completo */}
-            {(PRODUTOS_POR_SEGMENTO[selected] || []).length > 0 && (
+            {produtosKit.length > 0 && (
               <View style={styles.previewList}>
                 <Text style={styles.previewListTitle}>Produtos de exemplo</Text>
-                {(PRODUTOS_POR_SEGMENTO[selected] || []).map((p, i) => (
+                {produtosKit.map((p, i) => (
                   <View key={i} style={styles.previewListItem}>
                     <Text style={styles.previewListName} numberOfLines={1}>{p.nome}</Text>
                     <Text style={styles.previewListPrice}>R$ {safeNum(p.preco_venda).toFixed(2)}</Text>
