@@ -588,6 +588,14 @@ export default function ProdutoFormScreen({ route, navigation }) {
         preco_medio_categoria: precoMedioCat || undefined,
         historico,
       });
+      // 🔧 Sessão 28.73 (#17 opção C) — aviso de "preço rápido". Quando o
+      // Financeiro ainda não reflete custos fixos (despesas_fixas_pct = 0), o
+      // preço sugerido cobre CMV + margem mas NÃO os custos fixos do negócio →
+      // sugere baixo. NÃO mexemos no motor de preço; só deixamos o aviso claro.
+      if (!(Number(ctx?.despesas_fixas_pct) > 0)) {
+        const aviso = 'Este preço ainda não inclui seus custos fixos (aluguel, salários, etc.). Preencha o Financeiro para uma sugestão que cubra o custo real do seu negócio.';
+        result.alertas = Array.isArray(result.alertas) ? [aviso, ...result.alertas] : [aviso];
+      }
       setAiResult(result);
     } catch (e) {
       setAiError(e?.message || 'Erro ao calcular sugestão');
