@@ -22,18 +22,24 @@ export async function gatherFinancialContext(db) {
   if (!db) return { despesas_fixas_pct: 0, despesas_variaveis_pct: 0, margem_alvo: 0.3 };
 
   try {
-    const [config, fixas, variaveis] = await Promise.all([
+    const [config, fixas, variaveis, fatRows] = await Promise.all([
       db.getFirstAsync('SELECT * FROM configuracao LIMIT 1').catch(() => null),
       db.getAllAsync('SELECT * FROM despesas_fixas').catch(() => []),
       db.getAllAsync('SELECT * FROM despesas_variaveis').catch(() => []),
+      db.getAllAsync('SELECT valor FROM faturamento_mensal').catch(() => []),
     ]);
 
     const margem_alvo = Number(config?.lucro_desejado) || 0.3;
     const totalFixas = (fixas || []).reduce((s, f) => s + (Number(f.valor) || 0), 0);
-    // Sessão 28.44 — Contracts #2: coluna correta é `faturamento_mensal`
-    // (não `faturamento_estimado`). Antes: lia undefined → faturamento=0 →
-    // despesas_fixas_pct=0 → markup degradava → preços sugeridos errados.
-    const faturamento = Number(config?.faturamento_mensal) || 0;
+    // Sessão 28.72 — AUDITORIA: o faturamento NÃO está em `configuracao` (coluna
+    // sempre null) — mora na TABELA `faturamento_mensal` (12 linhas). Usamos a
+    // MÉDIA dos meses preenchidos (>0), idêntico a FinanceiroConfigScreen:473 e
+    // HomeScreen. Antes: faturamento=0 → despesas_fixas_pct=0 → preço sugerido
+    // nunca cobria os custos fixos.
+    const mesesComFat = (fatRows || []).filter((f) => Number(f.valor) > 0);
+    const faturamento = mesesComFat.length > 0
+      ? mesesComFat.reduce((s, f) => s + Number(f.valor), 0) / mesesComFat.length
+      : 0;
     const despesas_fixas_pct = faturamento > 0 ? totalFixas / faturamento : 0;
     const despesas_variaveis_pct = (variaveis || []).reduce(
       (s, v) => s + (Number(v.percentual) || 0),
@@ -56,8 +62,10 @@ export async function gatherFinancialContext(db) {
 export async function getCategoriaMedia(db, categoriaId, excludeProdutoId = null) {
   if (!db || !categoriaId) return null;
   try {
+    // AUDITORIA: precisa do `id` no SELECT, senão `r.id` é undefined e o filtro
+    // de exclusão nunca remove o próprio produto da média da categoria.
     const rows = await db.getAllAsync(
-      'SELECT preco_venda FROM produtos WHERE categoria_id = ? AND preco_venda > 0',
+      'SELECT id, preco_venda FROM produtos WHERE categoria_id = ? AND preco_venda > 0',
       [categoriaId],
     );
     const filtered = (rows || []).filter(

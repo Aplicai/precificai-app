@@ -165,15 +165,19 @@ export default function FluxoCaixaDREScreen() {
           'SELECT * FROM fluxo_caixa_movimentos WHERE data >= ? AND data <= ? ORDER BY data DESC',
           [start, end]
         ).catch((e) => { console.warn('[FluxoCaixaDRE.load]', e?.message || e); return []; }),
+        // Sessão 28.72 — AUDITORIA (Crítico): o wrapper SQL→Supabase do web
+        // IGNORA `SUM`/`GROUP BY` e cai em select('*') → `r.total` vinha undefined
+        // → saldo inicial SEMPRE 0 (saldo final == inicial). FIX: buscar as
+        // linhas anteriores com `SELECT *` (wrapper-safe) e somar no JS.
         db.getAllAsync(
-          'SELECT tipo, COALESCE(SUM(valor), 0) AS total FROM fluxo_caixa_movimentos WHERE data < ? GROUP BY tipo',
+          'SELECT * FROM fluxo_caixa_movimentos WHERE data < ?',
           [start]
         ).catch((e) => { console.warn('[FluxoCaixaDRE.saldoInicial]', e?.message || e); return []; }),
       ]);
       setMovimentos(rows || []);
       let saldo = 0;
       for (const r of (anteriores || [])) {
-        const v = safeNum(r.total);
+        const v = safeNum(r.valor);
         if (r.tipo === 'entrada') saldo += v;
         else saldo -= v;
       }
