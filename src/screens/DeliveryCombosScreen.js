@@ -397,7 +397,7 @@ export default function DeliveryCombosScreen() {
       for (const item of data.itens) {
         await db.runAsync(
           'INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
-          [combo.id, item.tipo, item.item_id, item.quantidade]
+          [combo.id, item.tipo, item.item_id, safeNum(item.quantidade) || 1]
         );
       }
       setSaveStatus('saved');
@@ -429,7 +429,7 @@ export default function DeliveryCombosScreen() {
       for (const item of data.itens) {
         await db.runAsync(
           'INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
-          [combo.id, item.tipo, item.item_id, item.quantidade]
+          [combo.id, item.tipo, item.item_id, safeNum(item.quantidade) || 1]
         );
       }
       setSaveStatus('saved');
@@ -456,7 +456,7 @@ export default function DeliveryCombosScreen() {
       for (const item of novoCombo.itens) {
         await db.runAsync(
           'INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
-          [comboId, item.tipo, item.item_id, item.quantidade]
+          [comboId, item.tipo, item.item_id, safeNum(item.quantidade) || 1]
         );
       }
       // APP-38 — otimistic update: insere o combo na lista local antes do reload completo
@@ -561,6 +561,20 @@ export default function DeliveryCombosScreen() {
   }
 
   async function duplicarCombo(combo) {
+    // 🔧 Sessão 28.73 — duplicar também conta pro limite de combos do plano
+    // (antes bypassava o gate da criação).
+    if (!canAdd('combos', combos.length)) {
+      const next = upgradeTo || 'pro';
+      setUpgradeModal({
+        requiredPlan: next,
+        title: 'Você atingiu o limite de combos 🎉',
+        message: `No plano ${PLAN_LABELS[plano]} você cria até ${limitFor('combos')} combos. Faça upgrade pra montar mais:`,
+        highlights: next === 'ilimitado'
+          ? ['Produtos e combos ilimitados', 'Ranking de Produtos (Matriz BCG)']
+          : ['Até 30 produtos e 30 combos', 'Delivery, Lista de compras, relatórios e mais'],
+      });
+      return;
+    }
     try {
       const db = await getDatabase();
       const result = await db.runAsync('INSERT INTO delivery_combos (nome, preco_venda) VALUES (?,?)', [combo.nome + ' (cópia)', combo.preco_venda]);
@@ -676,12 +690,15 @@ export default function DeliveryCombosScreen() {
   }
 
   function alterarQuantidadeItem(index, val) {
-    const parsed = parseInputNumber(val);
-    const valid = parsed !== null && parsed > 0 ? parsed : 1;
+    // 🔧 Sessão 28.73 — permite FRAÇÃO. Mantém o valor cru como STRING enquanto
+    // o usuário digita (preserva vírgula/ponto) em vez de coagir pra 1 a cada
+    // tecla (antes "0," virava "1" → impossível digitar 0,5). safeNum cuida do
+    // cálculo; os INSERTs coagem com safeNum(...)||1. (mesmo padrão do EntityCreateModal)
+    const cleaned = String(val).replace(/[^0-9.,]/g, '');
     setNovoCombo(prev => {
       const updated = {
         ...prev,
-        itens: prev.itens.map((it, i) => i === index ? { ...it, quantidade: valid } : it),
+        itens: prev.itens.map((it, i) => i === index ? { ...it, quantidade: cleaned } : it),
       };
       if (editingComboRef.current && loaded) {
         autoSaveImmediate(updated);

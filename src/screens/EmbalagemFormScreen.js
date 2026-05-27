@@ -241,6 +241,13 @@ export default function EmbalagemFormScreen({ route, navigation }) {
     const p = parseNum(f.preco_embalagem);
     const pu = calcPrecoUnitarioEmbalagem(p, q);
 
+    // 🔧 Sessão 28.73 — não persiste quantidade inválida. Sem este guard,
+    // limpar o campo qtd no meio da edição gravava quantidade=0 e
+    // preco_unitario=0 (calcPrecoUnitarioEmbalagem retorna 0 p/ qtd<=0),
+    // zerando o custo da embalagem e propagando custo errado pro cascade.
+    // Espelha a regra obrigatória do validateForm (qtd > 0).
+    if (q <= 0) { setSaveStatus(null); return; }
+
     setSaveStatus('saving');
     try {
       const db = await getDatabase();

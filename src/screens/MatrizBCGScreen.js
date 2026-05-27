@@ -262,7 +262,12 @@ export default function MatrizBCGScreen({ navigation }) {
       const classified = result.map(p => {
         const altaMargem = p.margemPerc >= medianaMargem;
         // Produto sem venda no mês anterior NUNCA é "alta venda".
-        const altaVenda = p.qtdVendidaRanking > 0 && p.qtdVendidaRanking >= medianaVendas;
+        // 🔧 Sessão 28.73 (B2 — empate): eixo de VENDAS usa `>` ESTRITO. Antes
+        // `>=` fazia clusters de venda na mediana (ex: 2,2,2,8 → mediana 2)
+        // virarem TODOS "alta venda", esvaziando os quadrantes de baixa venda.
+        // Com `>`, item exatamente na mediana conta como baixa venda. (Margem
+        // mantém `>=` — empate de margem conta como alta, por escolha de produto.)
+        const altaVenda = p.qtdVendidaRanking > 0 && p.qtdVendidaRanking > medianaVendas;
         let classificacao;
         if (altaMargem && altaVenda) classificacao = 'Estrela';
         else if (!altaMargem && altaVenda) classificacao = 'Cavalo de Batalha';
