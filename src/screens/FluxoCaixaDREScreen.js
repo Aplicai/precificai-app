@@ -153,6 +153,10 @@ export default function FluxoCaixaDREScreen() {
   const [useFixasFromFinanceiro, setUseFixasFromFinanceiro] = useState(true);
   const [showDespesasFixasDetail, setShowDespesasFixasDetail] = useState(false);
   const [despesasFixasList, setDespesasFixasList] = useState([]);
+  // AUDITORIA — a DRE agora é PERSISTIDA por mês (tabela dre_mensal). dreLoaded
+  // evita que o autosave dispare antes do load do mês concluir (senão salvaria
+  // estado vazio/antigo sob o mês novo).
+  const [dreLoaded, setDreLoaded] = useState(false);
 
   // ---------- LOAD FLUXO ----------
   const reloadMovimentos = useCallback(async () => {
@@ -215,6 +219,45 @@ export default function FluxoCaixaDREScreen() {
     }
   }, [useFixasFromFinanceiro, despesasFixasFromFinanceiro]);
 
+  // ---------- LOAD DRE do mês (persistência — tabela dre_mensal) ----------
+  // AUDITORIA: a DRE agora carrega os números salvos do mês selecionado, então
+  // o cabeçalho "DEMONSTRATIVO — {mês}" SEMPRE bate com o que está na tela.
+  // No nativo (SQLite sem a tabela) o catch deixa a DRE efêmera, sem quebrar.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setDreLoaded(false);
+      try {
+        const db = await getDatabase();
+        const row = await db.getFirstAsync('SELECT * FROM dre_mensal WHERE mes = ?', [monthKey]).catch(() => null);
+        if (cancelled) return;
+        if (row) {
+          const fmt = (n) => (safeNum(n) ? formatBRNumber(n) : '');
+          setDre({
+            receitaBruta: fmt(row.receita_bruta),
+            deducoes: fmt(row.deducoes),
+            devolucoes: fmt(row.devolucoes),
+            cmv: fmt(row.cmv),
+            despesasFixas: fmt(row.despesas_fixas),
+            despesasVariaveis: fmt(row.despesas_variaveis),
+            outrasDespesas: fmt(row.outras_despesas),
+            outrasReceitas: fmt(row.outras_receitas),
+          });
+          setUseFixasFromFinanceiro(row.usa_fixas_financeiro !== false);
+        } else {
+          setDre(emptyDre);
+          setUseFixasFromFinanceiro(true);
+        }
+      } catch (e) {
+        console.warn('[FluxoCaixaDRE.loadDre]', e?.message || e);
+      } finally {
+        if (!cancelled) setDreLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthKey]);
+
   // ---------- FLUXO sumário ----------
   const resumo = useMemo(() => {
     let entradas = 0, saidas = 0;
@@ -246,6 +289,39 @@ export default function FluxoCaixaDREScreen() {
     const lucroLiquido = lucroOperacional - dreNum.outrasDespesas + dreNum.outrasReceitas;
     return { receitaLiquida, lucroBruto, totalOperacionais, lucroOperacional, lucroLiquido };
   }, [dreNum]);
+
+  // ---------- AUTOSAVE da DRE no mês atual (persistência) ----------
+  // Debounce 800ms; só roda após o load do mês concluir (dreLoaded) pra não
+  // sobrescrever com estado vazio durante a troca de mês. UPSERT manual
+  // (SELECT→UPDATE/INSERT) porque o wrapper SQL→Supabase não suporta ON CONFLICT.
+  useEffect(() => {
+    if (!dreLoaded) return;
+    const t = setTimeout(async () => {
+      try {
+        const db = await getDatabase();
+        const cols = [
+          dreNum.receitaBruta, dreNum.deducoes, dreNum.devolucoes, dreNum.cmv,
+          dreNum.despesasFixas, dreNum.despesasVariaveis, dreNum.outrasDespesas,
+          dreNum.outrasReceitas, useFixasFromFinanceiro,
+        ];
+        const existing = await db.getFirstAsync('SELECT id FROM dre_mensal WHERE mes = ?', [monthKey]).catch(() => null);
+        if (existing && existing.id != null) {
+          await db.runAsync(
+            'UPDATE dre_mensal SET receita_bruta=?, deducoes=?, devolucoes=?, cmv=?, despesas_fixas=?, despesas_variaveis=?, outras_despesas=?, outras_receitas=?, usa_fixas_financeiro=? WHERE mes=?',
+            [...cols, monthKey]
+          );
+        } else {
+          await db.runAsync(
+            'INSERT INTO dre_mensal (mes, receita_bruta, deducoes, devolucoes, cmv, despesas_fixas, despesas_variaveis, outras_despesas, outras_receitas, usa_fixas_financeiro) VALUES (?,?,?,?,?,?,?,?,?,?)',
+            [monthKey, ...cols]
+          );
+        }
+      } catch (e) {
+        console.warn('[FluxoCaixaDRE.saveDre]', e?.message || e);
+      }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [dreNum, useFixasFromFinanceiro, dreLoaded, monthKey]);
 
   // ---------- FORM helpers ----------
   function abrirNovo() {
@@ -325,28 +401,45 @@ export default function FluxoCaixaDREScreen() {
   }
 
   // ---------- INTEGRAÇÃO Fluxo → DRE ----------
-  // "Importar do Fluxo": preenche Receita Bruta = soma de entradas do mês
-  // (exceto categoria "Outras Receitas") e Outras Receitas/Despesas das
-  // categorias específicas. NÃO toca CMV nem despesas variáveis.
+  // "Importar do Fluxo": mapeia TODAS as categorias do Fluxo do mês para as
+  // linhas da DRE (AUDITORIA — antes só trazia receita, deixando o lucro
+  // inflado). Mapeamento:
+  //   entradas Vendas* → Receita Bruta · "Outras Receitas" → Outras Receitas
+  //   saídas Insumos/Embalagens → CMV
+  //   saídas Salários/Aluguel/Energia/Internet/Manutenção → Despesas Fixas
+  //   saídas Marketing → Despesas Variáveis · Impostos → Deduções
+  //   saídas Outros (e demais) → Outras Despesas
+  const SAIDAS_FIXAS = ['Salários', 'Aluguel', 'Energia/Água', 'Internet/Telefone', 'Manutenção'];
   function importarDoFluxo() {
-    let receita = 0, outrasRec = 0, outrasDesp = 0;
+    let receita = 0, outrasRec = 0, cmv = 0, despFixas = 0, despVar = 0, deducoes = 0, outrasDesp = 0;
     for (const m of movimentos) {
       const cat = String(m.categoria || '');
       const v = safeNum(m.valor);
       if (m.tipo === 'entrada') {
         if (cat === 'Outras Receitas') outrasRec += v;
-        else receita += v;
+        else receita += v; // Vendas Balcão/Delivery/Combos
       } else {
-        if (cat === 'Outros') outrasDesp += v;
+        if (cat === 'Insumos' || cat === 'Embalagens') cmv += v;
+        else if (SAIDAS_FIXAS.includes(cat)) despFixas += v;
+        else if (cat === 'Marketing') despVar += v;
+        else if (cat === 'Impostos') deducoes += v;
+        else outrasDesp += v; // 'Outros' e qualquer categoria nova
       }
     }
     setDre(prev => ({
       ...prev,
       receitaBruta: receita > 0 ? formatBRNumber(receita) : prev.receitaBruta,
       outrasReceitas: outrasRec > 0 ? formatBRNumber(outrasRec) : prev.outrasReceitas,
+      cmv: cmv > 0 ? formatBRNumber(cmv) : prev.cmv,
+      despesasFixas: despFixas > 0 ? formatBRNumber(despFixas) : prev.despesasFixas,
+      despesasVariaveis: despVar > 0 ? formatBRNumber(despVar) : prev.despesasVariaveis,
+      deducoes: deducoes > 0 ? formatBRNumber(deducoes) : prev.deducoes,
       outrasDespesas: outrasDesp > 0 ? formatBRNumber(outrasDesp) : prev.outrasDespesas,
     }));
-    showToast('Valores importados do Fluxo de Caixa', 'download');
+    // Se trouxemos despesas fixas do Fluxo, desliga o toggle do Financeiro pra
+    // não somar duas vezes (Financeiro + Fluxo).
+    if (despFixas > 0) setUseFixasFromFinanceiro(false);
+    showToast('Receitas e custos importados do Fluxo de Caixa', 'download');
   }
 
   function setDreField(field, raw) {
