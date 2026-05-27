@@ -41,13 +41,18 @@ export default function PrecosZeradosBanner() {
 
         // 2. D-26: Conta insumos zerados OU com valor estimado pelo Kit
         // (após APP-14, kit popula com valores médios + marca = '__VALOR_ESTIMADO_KIT__')
+        // AUDITORIA: antes era COUNT(*) com WHERE ... OR ... OR ..., mas o wrapper
+        // SQL→Supabase (web) só entende AND no WHERE → a query degradava pra
+        // "valor_pago IS NULL" e descartava valor_pago=0 e a marca estimada,
+        // subcontando o banner. Agora buscamos as colunas e contamos no JS.
         const db = await getDatabase();
-        const rows = await db.getAllAsync(
-          "SELECT COUNT(*) as zerados FROM materias_primas WHERE valor_pago IS NULL OR valor_pago = 0 OR marca = '__VALOR_ESTIMADO_KIT__'"
-        );
-        const total = await db.getAllAsync('SELECT COUNT(*) as total FROM materias_primas');
-        const count = (rows && rows[0] && (rows[0].zerados ?? rows[0].count ?? 0)) || 0;
-        const totalCount = (total && total[0] && (total[0].total ?? total[0].count ?? 0)) || 0;
+        const rows = await db.getAllAsync('SELECT valor_pago, marca FROM materias_primas');
+        const lista = Array.isArray(rows) ? rows : [];
+        const totalCount = lista.length;
+        const count = lista.filter((r) => {
+          const v = r?.valor_pago;
+          return v == null || Number(v) === 0 || r?.marca === '__VALOR_ESTIMADO_KIT__';
+        }).length;
         if (!cancelled) {
           if (count > 0) setInfo({ count, total: totalCount });
           else setInfo(null);
