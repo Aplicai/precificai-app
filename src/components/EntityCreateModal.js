@@ -1372,7 +1372,7 @@ export default function EntityCreateModal({
             </View>
             <TouchableOpacity
               style={styles.closeBtn}
-              onPress={onClose}
+              onPress={handleBackdropPress}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
               accessibilityLabel="Fechar"

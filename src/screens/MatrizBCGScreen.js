@@ -137,9 +137,10 @@ export default function MatrizBCGScreen({ navigation }) {
   }
 
   function handleVendaChange(prodId, value) {
-    // Sessão 28.27: aceita "5", "5,5", "5.5" — parseInt antigo descartava decimais
+    // Sessão 28.27/28.72: aceita "5", "5,5", "5.5". parseInt descartava os decimais
+    // apesar do comentário — trocado por parseFloat (AUDITORIA B3).
     const cleaned = String(value).replace(',', '.').replace(/[^0-9.]/g, '');
-    const qty = parseInt(cleaned) || 0;
+    const qty = parseFloat(cleaned) || 0;
     setVendasMap(prev => ({ ...prev, [prodId]: qty }));
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => saveVenda(prodId, qty), 800);

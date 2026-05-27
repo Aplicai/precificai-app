@@ -41,15 +41,16 @@ export async function recalcularPreparo(db, preparoId) {
   );
   const custoTotal = (ings || []).reduce((a, i) => a + calcCustoIngrediente(i.preco_por_kg, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida), 0);
   const rendimento = safe(p.rendimento_total);
-  // Sessão 28.44 — bug #1: PreparoFormScreen e MateriaPrimaFormScreen calculam
-  // `custo_por_kg = (custoTotal / rendimento) * 1000` (rendimento em gramas → R$/kg).
-  // Antes: cascade usava `custoTotal / rendimento` (sem * 1000) → quando o user
-  // atualizava preço de insumo, todos os preparos ficavam 1000x menores.
-  // Agora: alinhado com a fórmula canônica.
-  const unidade = (p.unidade_medida || 'g');
-  const usaMultiplicadorPorKg = unidade === 'g' || unidade === 'mL';
+  // Sessão 28.72 — AUDITORIA: o form canônico (PreparoFormScreen / EntityCreateModal)
+  // SEMPRE faz `(custoTotal / rendimento) * 1000`, INDEPENDENTE da unidade. A versão
+  // anterior da cascata só multiplicava por 1000 quando unidade === 'g' || 'mL'
+  // (ternário usaMultiplicadorPorKg), divergindo do form para preparos em 'un' — e
+  // até para 'ml' minúsculo (case mismatch). Resultado: ao atualizar o preço de um
+  // insumo, esses preparos ficavam 1000x mais baratos que o salvo pelo form.
+  // FIX: usar EXATAMENTE a fórmula canônica do form (sempre * 1000) para garantir
+  // que form e cascade nunca divirjam.
   const custoPorKg = rendimento > 0
-    ? (custoTotal / rendimento) * (usaMultiplicadorPorKg ? 1000 : 1)
+    ? (custoTotal / rendimento) * 1000
     : custoTotal;
   await db.runAsync('UPDATE preparos SET custo_por_kg = ? WHERE id = ?', [custoPorKg, preparoId]);
   return { id: preparoId, custoTotal, custoPorKg };

@@ -307,6 +307,23 @@ export function AuthProvider({ children }) {
         const { clearQueryCache } = await import('../database/supabaseDb');
         clearQueryCache?.();
       } catch {}
+      // Sessão 28.72 — AUDITORIA #2/#3: limpa caches/drafts GLOBAIS que vazavam
+      // entre contas em máquina compartilhada. O cache de feature-flags beta do
+      // user anterior persistia (clearFeaturesCache nunca era chamado), e os
+      // drafts de criação (chaves AsyncStorage sem user_id) podiam reabrir/gravar
+      // na conta do próximo usuário.
+      try {
+        const { clearFeaturesCache } = await import('../utils/featureFlags');
+        clearFeaturesCache?.();
+      } catch {}
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        await AsyncStorage.multiRemove([
+          'entityDraftToRestore',
+          'reopenEntityModalAfterEdit',
+          'reopenNestedPreparoOnMount',
+        ]);
+      } catch {}
     } catch (err) {
       captureException(err, { action: 'signOut' });
       // Mesmo com erro, força limpeza local pra não deixar dados de outro user visíveis.
