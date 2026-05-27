@@ -45,6 +45,14 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   const returnTo = route.params?.returnTo;
   // Sessão 28.40: returnToParams pra propagar params (ex.: aba do RelatoriosHub)
   const returnToParams = route.params?.returnToParams;
+  // Sessão 28.71: quando a tela é renderizada DENTRO de um Modal empilhado
+  // (cascata do EntityCreateModal via ScreenInModal), `asModal` é true e o
+  // retorno do resultado é feito por callbacks em vez de navegar. Todo o resto
+  // (campos, validação, estoque, fornecedor, fator de perda) é idêntico.
+  const asModal = route.params?.asModal;
+  const onSavedModal = route.params?.onSavedModal;
+  const onCloseModal = route.params?.onCloseModal;
+  const defaultCategoriaId = route.params?.defaultCategoriaId;
   const { isDesktop, isMobile } = useResponsiveLayout();
   const { isCompact, buttonHeight } = useListDensity();
   // Sessão Forms-Mobile — agrupamentos 2/3-col viram coluna no mobile p/ não
@@ -69,6 +77,8 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   };
 
   function goBackSafe() {
+    // Sessão 28.71: modo modal empilhado — fecha o modal em vez de navegar.
+    if (asModal) { onCloseModal && onCloseModal(); return; }
     if (returnTo) {
       const parentTab = RETURN_TO_TABS[returnTo];
       if (parentTab) {
@@ -162,6 +172,16 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   // F2-J2-01: recarrega categorias ao voltar p/ a tela
   // (categoria criada em outro form precisa aparecer no picker sem reabrir)
   useFocusEffect(useCallback(() => { loadCategorias(); }, []));
+
+  // Sessão 28.71: no modo modal empilhado, pré-seleciona a categoria default
+  // herdada do produto/preparo pai (mesma ideia do defaultCategoriaId do
+  // EntityCreateModal). Só ao CRIAR (sem editId) e uma única vez.
+  useEffect(() => {
+    if (editId) return;
+    if (defaultCategoriaId == null) return;
+    setForm(p => (p.categoria_id == null ? { ...p, categoria_id: defaultCategoriaId } : p));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultCategoriaId, editId]);
 
   // Intercepta saída para validar campos
   useEffect(() => {
@@ -583,6 +603,16 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         const { notifyDataChanged } = await import('../utils/dataSync');
         notifyDataChanged('materias_primas');
       } catch (_) {}
+      // Sessão 28.71: modo modal empilhado (cascata) — devolve o id criado pro
+      // EntityCreateModal pai via callback e encerra. NÃO toca no fluxo de
+      // reopenEntityModalAfterEdit nem navega (esse caminho continua intacto
+      // pro modo tela cheia normal).
+      if (asModal) {
+        try { onSavedModal && onSavedModal(result?.lastInsertRowId); } catch (e) {
+          if (typeof console !== 'undefined') console.warn('[MateriaPrimaForm.onSavedModal]', e);
+        }
+        return;
+      }
       // Sessão 28.36/28.38: se o user veio de "+ Insumo" dentro do EntityCreateModal,
       // adiciona o insumo recém-criado à lista de itens do draft.
       // 28.38 BUG FIX: custoUnit precisa ser CUSTO PARA 1 UNIDADE da unidade_medida,

@@ -43,6 +43,12 @@ import {
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 // Área 4 (Preparos) — toast de confirmação ao salvar preparo via modal
 import { showToast } from '../utils/toastBus';
+// Sessão 28.71: cascata empilhada — insumo/embalagem abrem como modal
+// empilhado (igual o nested preparo), reaproveitando os formulários completos
+// via shim ScreenInModal em vez de navegar pra tela cheia.
+import ScreenInModal from './ScreenInModal';
+import MateriaPrimaFormScreen from '../screens/MateriaPrimaFormScreen';
+import EmbalagemFormScreen from '../screens/EmbalagemFormScreen';
 
 function parseInputValue(raw) {
   if (raw === null || raw === undefined) return 0;
@@ -213,6 +219,12 @@ export default function EntityCreateModal({
   // Sessão 28.38: cascata de popups — produto pode abrir modal de preparo
   // empilhado em cima sem fechar nem perder estado.
   const [nestedPreparoVisible, setNestedPreparoVisible] = useState(false);
+  // Sessão 28.71: cascata empilhada pra insumo/embalagem — abrem os formulários
+  // completos DENTRO de um Modal por cima deste, sem navegar nem perder o draft.
+  // Funciona recursivamente: como o nested preparo também é um EntityCreateModal,
+  // criar insumo/embalagem de dentro dele já fica empilhado automaticamente.
+  const [nestedInsumoVisible, setNestedInsumoVisible] = useState(false);
+  const [nestedEmbalagemVisible, setNestedEmbalagemVisible] = useState(false);
 
   // Config de markup/precificação (carregado do banco — só relevante pra Produto)
   const [pricingConfig, setPricingConfig] = useState({
@@ -663,6 +675,67 @@ export default function EntityCreateModal({
 
   function removerItem(idx) {
     setItens(prev => prev.filter((_, i) => i !== idx));
+  }
+
+  // Sessão 28.71: após criar um insumo no modal empilhado, busca a linha
+  // recém-criada no DB e adiciona aos itens com a MESMA forma usada quando o
+  // insumo é adicionado pela lista do picker (buildItem → calcCustoUnit +
+  // shortUnidade). Mantém recarregamento do picker pra ele aparecer lá também.
+  async function addCreatedInsumoToItens(novoId) {
+    if (!novoId) return;
+    try {
+      const db = await getDatabase();
+      const mp = await db.getFirstAsync(
+        'SELECT id, nome, preco_por_kg, unidade_medida FROM materias_primas WHERE id = ?',
+        [novoId]
+      );
+      if (!mp) return;
+      const novoItem = {
+        tipo: 'materia_prima',
+        id: mp.id,
+        nome: mp.nome,
+        quantidade: 1,
+        custoUnit: calcCustoUnit('materia_prima', { preco_por_kg: mp.preco_por_kg, unidade_medida: mp.unidade_medida }),
+        unidade: shortUnidade(mp.unidade_medida, 'materia_prima'),
+      };
+      setItens(prev => {
+        if (prev.some(i => i.tipo === 'materia_prima' && i.id === mp.id)) return prev;
+        return [...prev, novoItem];
+      });
+      // Atualiza a lista do picker pra incluir o novo insumo.
+      try { setAllMaterias(prev => (prev.some(m => m.id === mp.id) ? prev : [...prev, mp])); } catch (_) {}
+    } catch (e) {
+      if (typeof console !== 'undefined') console.warn('[EntityCreateModal.addCreatedInsumoToItens]', e);
+    }
+  }
+
+  // Sessão 28.71: idem pra embalagem — mesma forma do item adicionado via
+  // picker (tipo 'embalagem', custoUnit via calcCustoUnit, unidade real || 'un').
+  async function addCreatedEmbalagemToItens(novoId) {
+    if (!novoId) return;
+    try {
+      const db = await getDatabase();
+      const em = await db.getFirstAsync(
+        'SELECT id, nome, preco_unitario, unidade_medida FROM embalagens WHERE id = ?',
+        [novoId]
+      );
+      if (!em) return;
+      const novoItem = {
+        tipo: 'embalagem',
+        id: em.id,
+        nome: em.nome,
+        quantidade: 1,
+        custoUnit: calcCustoUnit('embalagem', { preco_unitario: em.preco_unitario }),
+        unidade: shortUnidade(em.unidade_medida, 'embalagem') || 'un',
+      };
+      setItens(prev => {
+        if (prev.some(i => i.tipo === 'embalagem' && i.id === em.id)) return prev;
+        return [...prev, novoItem];
+      });
+      try { setAllEmbalagens(prev => (prev.some(e => e.id === em.id) ? prev : [...prev, em])); } catch (_) {}
+    } catch (e) {
+      if (typeof console !== 'undefined') console.warn('[EntityCreateModal.addCreatedEmbalagemToItens]', e);
+    }
   }
 
   // Área 4 (Preparos) — render dos itens + resumo extraído pra função;
@@ -1532,12 +1605,12 @@ export default function EntityCreateModal({
                   <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
                     <TouchableOpacity
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '10' }}
-                      // Sessão 28.45: navega pra página completa do MateriaPrimaForm
-                      // (revertido o popup simplificado da Sessão 28.39 — user pediu
-                      // a página normal com todos os campos: estoque, fornecedor,
-                      // fator de perda, etc). Draft do produto é salvo em AsyncStorage
-                      // e restaurado ao voltar; insumo recém-criado é auto-adicionado.
-                      onPress={() => saveDraftAndNavigate('MateriaPrimaForm')}
+                      // Sessão 28.71: abre o formulário completo de insumo EMPILHADO
+                      // (modal por cima deste) em vez de navegar. Mantém todos os
+                      // campos (estoque, fornecedor, fator de perda) porque reaproveita
+                      // a MateriaPrimaFormScreen via ScreenInModal. O draft do
+                      // produto/preparo permanece intacto (modal pai segue montado).
+                      onPress={() => setNestedInsumoVisible(true)}
                       accessibilityLabel="Cadastrar novo insumo"
                     >
                       <Feather name="plus" size={11} color={colors.primary} />
@@ -1559,9 +1632,10 @@ export default function EntityCreateModal({
                     )}
                     <TouchableOpacity
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '10' }}
-                      // Sessão 28.45: navega pra página completa do EmbalagemForm
-                      // (revertido popup da Sessão 28.39 — mesmo motivo do "+ Insumo").
-                      onPress={() => saveDraftAndNavigate('EmbalagemForm')}
+                      // Sessão 28.71: abre o formulário completo de embalagem
+                      // EMPILHADO (modal por cima) em vez de navegar — mesmo motivo
+                      // do "+ Insumo". Reaproveita EmbalagemFormScreen via ScreenInModal.
+                      onPress={() => setNestedEmbalagemVisible(true)}
                       accessibilityLabel="Cadastrar nova embalagem"
                     >
                       <Feather name="plus" size={11} color={colors.primary} />
@@ -1904,11 +1978,36 @@ export default function EntityCreateModal({
         />
       )}
 
-      {/* Sessão 28.45: QuickInsumoForm popup removido. "+ Insumo" e "+ Embalagem"
-          navegam pras páginas completas (MateriaPrimaForm / EmbalagemForm) que têm
-          campos completos (estoque, fornecedor, fator de perda etc). Draft do
-          produto é salvo em AsyncStorage e restaurado ao voltar — o item recém
-          criado é auto-adicionado via flag pendingAddType. */}
+      {/* Sessão 28.71: cascata empilhada pra insumo e embalagem. Os formulários
+          COMPLETOS (MateriaPrimaFormScreen / EmbalagemFormScreen) são renderizados
+          dentro de um Modal por cima deste, via ScreenInModal. Ao salvar, o item
+          recém-criado é adicionado aos `itens` com a MESMA forma do picker. Como o
+          nested preparo também é um EntityCreateModal, a cascata de 3 níveis
+          (produto → preparo → insumo/embalagem) empilha recursivamente sozinha. */}
+      <ScreenInModal
+        visible={nestedInsumoVisible}
+        screen={MateriaPrimaFormScreen}
+        params={{
+          __name: 'MateriaPrimaForm',
+          asModal: true,
+          defaultCategoriaId: categoriaId ?? null,
+          onSavedModal: (id) => { setNestedInsumoVisible(false); addCreatedInsumoToItens(id); },
+          onCloseModal: () => setNestedInsumoVisible(false),
+        }}
+        onClose={() => setNestedInsumoVisible(false)}
+      />
+      <ScreenInModal
+        visible={nestedEmbalagemVisible}
+        screen={EmbalagemFormScreen}
+        params={{
+          __name: 'EmbalagemForm',
+          asModal: true,
+          defaultCategoriaId: categoriaId ?? null,
+          onSavedModal: (id) => { setNestedEmbalagemVisible(false); addCreatedEmbalagemToItens(id); },
+          onCloseModal: () => setNestedEmbalagemVisible(false),
+        }}
+        onClose={() => setNestedEmbalagemVisible(false)}
+      />
     </Modal>
   );
 }

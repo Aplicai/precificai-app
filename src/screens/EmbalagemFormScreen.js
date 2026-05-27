@@ -25,6 +25,13 @@ const UNIDADES_EMBALAGEM = [
 
 export default function EmbalagemFormScreen({ route, navigation }) {
   const editId = route.params?.id;
+  // Sessão 28.71: modo modal empilhado (cascata do EntityCreateModal via
+  // ScreenInModal). Quando true, o retorno do resultado é por callback em vez
+  // de navegar. Todos os campos/validações/padrão permanecem idênticos.
+  const asModal = route.params?.asModal;
+  const onSavedModal = route.params?.onSavedModal;
+  const onCloseModal = route.params?.onCloseModal;
+  const defaultCategoriaId = route.params?.defaultCategoriaId;
   const isFocused = useIsFocused();
   const { isDesktop, isMobile } = useResponsiveLayout();
   const { isCompact, buttonHeight } = useListDensity();
@@ -83,6 +90,15 @@ export default function EmbalagemFormScreen({ route, navigation }) {
   // F2-J2-01: recarrega categorias ao retornar para a tela
   // (categoria criada inline em outro form precisa aparecer aqui sem reabrir)
   useFocusEffect(useCallback(() => { loadCategorias(); }, []));
+
+  // Sessão 28.71: no modo modal empilhado, herda categoria default do pai (se
+  // houver). Só ao criar e uma vez.
+  useEffect(() => {
+    if (editId) return;
+    if (defaultCategoriaId == null) return;
+    setForm(p => (p.categoria_id == null ? { ...p, categoria_id: defaultCategoriaId } : p));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultCategoriaId, editId]);
 
   // Sessão Mobile-29 — bug fix tab Embalagens reabrindo form anterior.
   // Quando o usuário troca de tab estando dentro do form, ao voltar para
@@ -210,7 +226,11 @@ export default function EmbalagemFormScreen({ route, navigation }) {
   const temDadosCalculo = qtd > 0 && preco > 0;
 
   const formTitle = editId ? 'Editar Embalagem' : 'Nova Embalagem';
-  const goBack = () => navigation.goBack();
+  // Sessão 28.71: modo modal empilhado fecha o modal em vez de navegar.
+  const goBack = () => {
+    if (asModal) { onCloseModal && onCloseModal(); return; }
+    navigation.goBack();
+  };
 
   // Auto-save para modo edição
   async function autoSave() {
@@ -267,6 +287,21 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         const { setCategoriasPadraoDaEmbalagem } = await import('../services/embalagemPadrao');
         await setCategoriasPadraoDaEmbalagem(db, result.lastInsertRowId, categoriasPadraoSel, 'balcao');
       } catch (_) {}
+    }
+    // Sessão 28.71: modo modal empilhado (cascata) — notifica list screens,
+    // devolve o id criado pro EntityCreateModal pai via callback e encerra,
+    // sem mexer no fluxo de reopenEntityModalAfterEdit nem navegar (caminho
+    // tela cheia normal permanece intacto).
+    if (asModal) {
+      try {
+        const { notifyDataChanged } = await import('../utils/dataSync');
+        notifyDataChanged('embalagens');
+      } catch (_) {}
+      try { showToast('Embalagem salva', 'check-circle'); } catch (_) {}
+      try { onSavedModal && onSavedModal(result?.lastInsertRowId); } catch (e) {
+        if (typeof console !== 'undefined') console.warn('[EmbalagemForm.onSavedModal]', e);
+      }
+      return;
     }
     // Sessão 28.36: auto-add da embalagem recém-criada ao draft do EntityCreateModal pai.
     if (result?.lastInsertRowId) {
