@@ -464,7 +464,10 @@ export default function DeliveryCombosScreen() {
       if (elapsed > 3000 && typeof console !== 'undefined' && console.warn) {
         console.warn('[DeliveryCombos.salvarNovo] save lento:', elapsed, 'ms');
       }
-      setCombos(prev => [{ id: comboId, nome: novoCombo.nome.trim(), preco_venda: parseInputValue(novoCombo.preco_venda), itens: novoCombo.itens, custo: 0 }, ...prev]);
+      // AUDITORIA (D6): usa o custo JÁ calculado dos itens no modal em vez de 0.
+      // Antes `custo: 0` deixava o card com margem ~100% até o loadData() resolver
+      // (custoUnit dos itens já é conhecido aqui via calcSomaItens).
+      setCombos(prev => [{ id: comboId, nome: novoCombo.nome.trim(), preco_venda: parseInputValue(novoCombo.preco_venda), itens: novoCombo.itens, custo: calcSomaItens() }, ...prev]);
       setShowComboModal(false);
       setEditingCombo(null);
       setNovoCombo({ nome: '', preco_venda: '', itens: [] });
