@@ -157,9 +157,13 @@ export default function AtualizarPrecosScreen({ navigation }) {
         await db.runAsync(`UPDATE ${table} SET ${item.priceField} = ? WHERE id = ?`, [numericValue, item.id]);
         if (activeTab === 'embalagens') {
           const row = await db.getFirstAsync('SELECT * FROM embalagens WHERE id = ?', [item.id]);
-          const qtd = safeNum(row?.quantidade);
-          if (row && qtd > 0) {
-            await db.runAsync('UPDATE embalagens SET preco_unitario = ? WHERE id = ?', [safeNum(numericValue / qtd), item.id]);
+          if (row) {
+            // AUDITORIA: antes, se `quantidade` fosse 0/ausente, o preco_unitario
+            // NÃO era atualizado → produtos ficavam com custo de embalagem velho.
+            // Agora sempre atualiza: sem qtd, o preço do pacote = preço unitário.
+            const qtd = safeNum(row.quantidade);
+            const precoUnit = qtd > 0 ? numericValue / qtd : numericValue;
+            await db.runAsync('UPDATE embalagens SET preco_unitario = ? WHERE id = ?', [safeNum(precoUnit), item.id]);
           }
         }
       }

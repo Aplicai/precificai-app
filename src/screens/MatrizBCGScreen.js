@@ -296,17 +296,20 @@ export default function MatrizBCGScreen({ navigation }) {
   // Gera explicação didática para leigos
   function getExplicacaoItem(item) {
     const margem = item.margemPerc;
-    const vendas = item.qtdVendida;
+    // AUDITORIA B1: a classificação usa `qtdVendidaRanking` (mês anterior). O texto
+    // precisa usar a MESMA métrica — antes usava `qtdVendida` (mês atual), então o
+    // número podia contradizer o selo (ex.: "Abacaxi" dizendo "vende bem (15 un)").
+    const vendas = item.qtdVendidaRanking;
     const cls = item.classificacao;
 
     if (cls === 'Estrela') {
-      return `Margem de ${margem.toFixed(0)}% é alta e vende bem (${vendas} un/mês). Continue investindo nele!`;
+      return `Margem de ${margem.toFixed(0)}% é alta e vendeu bem (${vendas} un no mês anterior). Continue investindo nele!`;
     } else if (cls === 'Cavalo de Batalha') {
-      return `Vende bem (${vendas} un/mês), mas a margem de ${margem.toFixed(0)}% é baixa. Tente reduzir custos ou aumentar o preço.`;
+      return `Vendeu bem (${vendas} un no mês anterior), mas a margem de ${margem.toFixed(0)}% é baixa. Tente reduzir custos ou aumentar o preço.`;
     } else if (cls === 'Quebra-Cabeça') {
-      return `Margem de ${margem.toFixed(0)}% é boa, mas vende pouco (${vendas} un/mês). Divulgue mais ou crie combos com ele.`;
+      return `Margem de ${margem.toFixed(0)}% é boa, mas vendeu pouco (${vendas} un no mês anterior). Divulgue mais ou crie combos com ele.`;
     } else {
-      return `Margem baixa (${margem.toFixed(0)}%) e poucas vendas (${vendas} un/mês). Considere reformular, aumentar o preço ou retirar do cardápio.`;
+      return `Margem baixa (${margem.toFixed(0)}%) e poucas vendas (${vendas} un no mês anterior). Considere reformular, aumentar o preço ou retirar do cardápio.`;
     }
   }
 

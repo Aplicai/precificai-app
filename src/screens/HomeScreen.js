@@ -365,7 +365,13 @@ export default function HomeScreen({ navigation }) {
   function nav(tab) {
     if (tab === 'Configuracoes') { navigation.navigate('Configuracoes'); return; }
     if (tab === 'MargemBaixa') { navigation.navigate('MargemBaixa'); return; }
-    if (tab === 'ProdutoFormHome') { navigation.navigate('ProdutoFormHome'); return; }
+    if (tab === 'ProdutoFormHome') {
+      // AUDITORIA UX: unifica os 2 fluxos de criar produto — abre o MESMO
+      // EntityCreateModal da lista de Produtos (antes ia pra tela cheia
+      // ProdutoFormScreen, gerando inconsistência de experiência).
+      navigation.getParent()?.navigate('Produtos', { screen: 'ProdutosList', params: { openNovoProduto: true } });
+      return;
+    }
     if (tab === 'Onboarding') { navigation.getParent()?.navigate('Onboarding'); return; }
     const ferramentasScreens = ['Financeiro', 'BCG', 'Delivery', 'AtualizarPrecos', 'ListaCompras'];
     const screenMap = { 'Financeiro': 'FinanceiroMain', 'BCG': 'MatrizBCG', 'Delivery': 'DeliveryHub', 'AtualizarPrecos': 'AtualizarPrecos', 'ListaCompras': 'ListaCompras' };

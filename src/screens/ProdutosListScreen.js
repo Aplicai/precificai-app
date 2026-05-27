@@ -229,6 +229,12 @@ export default function ProdutosListScreen({ navigation }) {
         // Limpa o param pra não reabrir em focos futuros
         navigation.setParams({ openProductEdit: undefined });
       }
+      // AUDITORIA UX: unifica os 2 fluxos de criar produto — o "Novo Produto" do
+      // Painel agora abre ESTE modal (via openNovoProduto) em vez da tela cheia.
+      if (route?.params?.openNovoProduto) {
+        navigation.setParams({ openNovoProduto: undefined });
+        abrirCriacao();
+      }
     } catch {}
     return () => setConfirmDelete(null);
   }, [filtroCategoria, busca, sortBy, navigation, checkReopenAndOpen, loadDataThrottled]));

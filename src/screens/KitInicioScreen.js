@@ -204,13 +204,22 @@ export default function KitInicioScreen({ navigation, route }) {
           }
         }
       };
+      // AUDITORIA: ação destrutiva irreversível → dupla confirmação.
+      // Web: confirma + exige digitar "APAGAR". Nativo: confirmação em 2 etapas.
       if (Platform.OS === 'web') {
         if (!window.confirm(msgOutro)) return;
+        const t = (window.prompt('Para confirmar a exclusão DEFINITIVA, digite APAGAR (em maiúsculas):') || '').trim().toUpperCase();
+        if (t !== 'APAGAR') { window.alert('Confirmação não confere. Nada foi apagado.'); return; }
         await exec();
       } else {
         Alert.alert('Começar do zero', msgOutro, [
           { text: 'Cancelar', style: 'cancel' },
-          { text: 'Apagar tudo', style: 'destructive', onPress: exec },
+          { text: 'Continuar', style: 'destructive', onPress: () => {
+            Alert.alert('Tem certeza?', 'A exclusão é DEFINITIVA e não pode ser desfeita.', [
+              { text: 'Cancelar', style: 'cancel' },
+              { text: 'Apagar tudo', style: 'destructive', onPress: exec },
+            ]);
+          } },
         ]);
       }
       return;
@@ -226,13 +235,21 @@ export default function KitInicioScreen({ navigation, route }) {
 
     if (sobrescrever) {
       const msg = 'Sobrescrever vai APAGAR todos os insumos, preparos, produtos, embalagens e categorias atuais antes de aplicar o kit. Esta ação não pode ser desfeita. Deseja continuar?';
+      // AUDITORIA: dupla confirmação (web exige digitar APAGAR; nativo em 2 etapas).
       if (Platform.OS === 'web') {
         if (!window.confirm(msg)) return;
+        const t = (window.prompt('Para confirmar a exclusão DEFINITIVA, digite APAGAR (em maiúsculas):') || '').trim().toUpperCase();
+        if (t !== 'APAGAR') { window.alert('Confirmação não confere. Nada foi apagado.'); return; }
         await executarKit(true);
       } else {
         Alert.alert('Sobrescrever dados', msg, [
           { text: 'Cancelar', style: 'cancel' },
-          { text: 'Apagar e aplicar', style: 'destructive', onPress: () => executarKit(true) },
+          { text: 'Continuar', style: 'destructive', onPress: () => {
+            Alert.alert('Tem certeza?', 'A exclusão é DEFINITIVA e não pode ser desfeita.', [
+              { text: 'Cancelar', style: 'cancel' },
+              { text: 'Apagar e aplicar', style: 'destructive', onPress: () => executarKit(true) },
+            ]);
+          } },
         ]);
       }
       return;
