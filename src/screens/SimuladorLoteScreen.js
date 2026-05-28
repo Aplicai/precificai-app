@@ -22,7 +22,7 @@ import {
   formatCurrency, calcCustoIngrediente, calcCustoPreparo,
   getDivisorRendimento, safeNum,
 } from '../utils/calculations';
-import { calcSugestaoDeliveryCompleta } from '../utils/deliveryPricing';
+import { calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
 import { calcularPrecoBalcao } from '../utils/precificacao';
 import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
@@ -131,16 +131,13 @@ export default function SimuladorLoteScreen() {
   // - "MARGEM IGUAL" (preço delivery que entrega o MESMO LUCRO LÍQUIDO % do balcão)
   // - "SUGERIDO" (preço pra atingir o lucroPerc do financeiro)
   //
-  // SESSÃO 28.25 BUG FIX (formula audit): "MARGEM IGUAL" estava dobrando custos.
-  // Antes: passava `lucroPerc = (precoBalcao - cmv) / precoBalcao` (margem BRUTA)
-  //        para o engine de delivery — que adiciona fixo+imposto+comissão por cima.
-  //        Resultado: divisor virava (1 - margemBruta - fixo - imposto - comissao - ...)
-  //        → preço inflado em 100%+ (custos contados 2x: já estavam embutidos na
-  //        margemBruta + reaplicados pelo engine).
-  // Agora: lucroPercReal_balcao = margemBruta - fixoPerc - variavelPerc.
-  //        Esse é o LUCRO LÍQUIDO % de fato do balcão. Engine adiciona fixo + imposto
-  //        + comissão + taxa online por cima → preço delivery dá o MESMO % de lucro
-  //        líquido que o produto tem hoje no balcão.
+  // SESSÃO 28.34 BUG FIX — "MESMO LUCRO" agora casa o R$ de lucro (não a margem %).
+  // Histórico: 28.25 já tinha tirado o bug de "dobrar custos" (margem bruta como
+  // lucroPerc), passando a usar o lucro líquido % real. Mas ainda assim só PRESERVAVA
+  // a margem % no delivery — e como o delivery tem custos variáveis diferentes do
+  // balcão (entra comissão, sai maquininha), o R$ resultante divergia do balcão.
+  // Agora: calculamos o lucro líquido em R$ do balcão e invertemos a fórmula pra achar
+  // o preço delivery que rende EXATAMENTE esse mesmo R$ por venda (calcPrecoMesmoLucroReais).
   const linhasCalculadas = useMemo(() => {
     return produtos.map(prod => {
       const balcao = calcularPrecoBalcao({
@@ -154,25 +151,30 @@ export default function SimuladorLoteScreen() {
       const margemBrutaBalcao = prod.precoVendaBalcao > 0
         ? Math.max(0, (prod.precoVendaBalcao - prod.cmv) / prod.precoVendaBalcao)
         : 0;
-      // LUCRO LÍQUIDO % real do balcão (subtraindo custos fixos e variáveis)
+      // LUCRO LÍQUIDO % real do balcão (subtraindo custos fixos e variáveis) — exibição
       const lucroPercBalcaoReal = Math.max(
         0,
         margemBrutaBalcao - contexto.fixoPerc - contexto.variavelPerc
       );
+      // LUCRO LÍQUIDO em R$ do balcão — é o alvo que o "MESMO LUCRO" persegue
+      const lucroLiqBalcaoReais = prod.precoVendaBalcao > 0
+        ? Math.max(0, prod.precoVendaBalcao - prod.cmv - prod.precoVendaBalcao * (contexto.fixoPerc + contexto.variavelPerc))
+        : 0;
       const plataformaCells = plataformas.map(plat => {
         // V1: usando o lucroPerc do FINANCEIRO (configuração)
         const sugFinanceiro = calcSugestaoDeliveryCompleta({ cmv: prod.cmv, plat, contexto });
-        // V2: usando o lucro líquido REAL do balcão (mantém mesma rentabilidade)
-        const sugMantemMargem = (prod.precoVendaBalcao > 0 && lucroPercBalcaoReal > 0)
-          ? calcSugestaoDeliveryCompleta({
+        // V2: preço delivery que rende o MESMO R$ de lucro líquido por venda que o balcão
+        const sugMantemMargem = (prod.precoVendaBalcao > 0 && lucroLiqBalcaoReais > 0)
+          ? calcPrecoMesmoLucroReais({
               cmv: prod.cmv,
+              lucroAlvoReais: lucroLiqBalcaoReais,
               plat,
-              contexto: { ...contexto, lucroPerc: lucroPercBalcaoReal },
+              contexto,
             })
           : null;
         return { plat, sugFinanceiro, sugMantemMargem };
       });
-      return { prod, balcao, sugBalcao, margemBrutaBalcao, lucroPercBalcaoReal, plataformaCells };
+      return { prod, balcao, sugBalcao, margemBrutaBalcao, lucroPercBalcaoReal, lucroLiqBalcaoReais, plataformaCells };
     });
   }, [produtos, plataformas, contexto]);
 
@@ -461,9 +463,10 @@ export default function SimuladorLoteScreen() {
                             <Text style={[styles.cellValuePrimary, { color: colors.primary, fontSize: 12 }]}>
                               {formatCurrency(sugMantemMargem.preco)}
                             </Text>
-                            {/* Sessão 28.30: mostra lucro R$/un pra evidenciar que casa com o balcão */}
+                            {/* Sessão 28.34: lucro R$/un vem direto do cálculo (lucroReais),
+                                que por construção é o mesmo R$ do balcão. */}
                             <Text style={{ fontSize: 8, color: colors.textSecondary }}>
-                              lucro {formatCurrency(sugMantemMargem.preco * linha.lucroPercBalcaoReal)}
+                              lucro {formatCurrency(Number.isFinite(sugMantemMargem.lucroReais) ? sugMantemMargem.lucroReais : linha.lucroLiqBalcaoReais)}
                             </Text>
                           </View>
                         ) : (

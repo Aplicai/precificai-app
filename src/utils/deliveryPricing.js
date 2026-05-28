@@ -227,4 +227,70 @@ export function calcSugestaoDeliveryCompleta({ cmv, plat, contexto }) {
   });
 }
 
+/**
+ * Preço delivery que entrega o MESMO LUCRO LÍQUIDO em R$ por venda que o balcão.
+ *
+ * MOTIVAÇÃO (Sessão 28.34 — bug reportado pelo usuário):
+ * O card/coluna "MESMO LUCRO" antes passava o lucro % do balcão como `lucroPerc`
+ * alvo no delivery (via calcSugestaoDeliveryCompleta). Isso preserva a MARGEM %,
+ * NÃO o R$. Como o delivery tem custos variáveis diferentes do balcão (entra
+ * comissão da plataforma, sai a maquininha), o R$ resultante não batia com o do
+ * balcão — o usuário via "Pra ter R$ 1,83 de lucro" mas o preço só rendia R$ 1,39.
+ *
+ * Aqui invertemos a fórmula para fixar o LUCRO EM R$ (não a margem %):
+ *   lucro = preco − cmv − custosAbsolutos − preco×(fixo% + variavel%)
+ *   ⟹ preco = (lucroAlvoR$ + cmv + custosAbsolutos) / (1 − fixo% − variavel%)
+ *
+ * onde variavel% = imposto(+desconto) + comissão + outros (mesma base que o
+ * delivery usa em calcSugestaoDeliveryCompleta), garantindo que o preço gerado
+ * renda exatamente `lucroAlvoReais` de lucro líquido por venda.
+ *
+ * @param {object} params
+ * @param {number} params.cmv            - CMV em R$ (insumos + embalagem)
+ * @param {number} params.lucroAlvoReais - Lucro líquido em R$ que se quer igualar (o do balcão)
+ * @param {object} params.plat           - row delivery_config
+ * @param {object} params.contexto       - { fixoPerc, impostoPerc } em decimal
+ * @returns {{ preco:number, lucroReais:number, divisor:number, inviavel:boolean, validacao:{ok:boolean, nivel:string, mensagem:string} }}
+ */
+export function calcPrecoMesmoLucroReais({ cmv, lucroAlvoReais, plat, contexto }) {
+  const safe = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const descontoPct = safe(plat?.desconto_promocao) / 100;
+  const impostoPerc = safe(contexto?.impostoPerc) + descontoPct;
+  const comissaoPerc = safe(plat?.comissao_app ?? plat?.taxa_plataforma) / 100;
+  const outrosPerc = safe(plat?.outros_perc) / 100;
+  const fixoPerc = safe(contexto?.fixoPerc);
+  const cupomR = safe(plat?.embalagem_extra);
+  const freteR = safe(plat?.taxa_entrega);
+
+  const variavelPerc = impostoPerc + comissaoPerc + outrosPerc;
+  const custosAbsolutos = cupomR + freteR;
+  const divisor = 1 - fixoPerc - variavelPerc;
+  const lucroAlvo = safe(lucroAlvoReais);
+  const cmvR = safe(cmv);
+
+  if (!(divisor > 0)) {
+    return {
+      preco: 0,
+      lucroReais: 0,
+      divisor,
+      inviavel: true,
+      validacao: {
+        ok: false,
+        nivel: 'inviavel',
+        mensagem: `Custos fixos + variáveis (${((1 - divisor) * 100).toFixed(1)}%) já consomem 100% ou mais do preço.`,
+      },
+    };
+  }
+
+  const preco = (lucroAlvo + cmvR + custosAbsolutos) / divisor;
+  const inviavel = !(preco > 0);
+  return {
+    preco,
+    lucroReais: lucroAlvo, // por construção, o preço rende exatamente esse R$
+    divisor,
+    inviavel,
+    validacao: { ok: !inviavel, nivel: inviavel ? 'inviavel' : 'ok', mensagem: '' },
+  };
+}
+
 export const compararDeliveryVsBalcao = _engCompara;

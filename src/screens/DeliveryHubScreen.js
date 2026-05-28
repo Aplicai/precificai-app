@@ -19,7 +19,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import SearchBar from '../components/SearchBar';
 import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum } from '../utils/calculations';
 // Sprint 2 S3 — fonte única da verdade para precificação delivery (substitui fórmula inline duplicada).
-import { calcResultadoDelivery, sugerirPrecoDelivery, calcSugestaoDeliveryCompleta } from '../utils/deliveryPricing';
+import { calcResultadoDelivery, sugerirPrecoDelivery, calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
 // Sessão 28.12 (D-22b): adapter pra extrair imposto% das despesas variáveis
 import { buildContextoFinanceiro, normalizePlataforma } from '../utils/deliveryAdapter';
 // Sessão 28.26: service unificado de upsert do "preço delivery cobrado pelo user"
@@ -361,13 +361,17 @@ export default function DeliveryHubScreen({ navigation }) {
       contexto: contextoFin,
     });
 
-    // Sessão 28.16: SEGUNDA simulação — mantém a margem ATUAL do produto (do balcão)
-    // Override do contexto financeiro substituindo lucroPerc pela margem real do produto
-    const sugMantemMargem = (margemBalcao > 0 && precoBalcao > 0) ? calcSugestaoDeliveryCompleta({
-      cmv: custoUnit,
-      plat,
-      contexto: { ...contextoFin, lucroPerc: margemBalcao },
-    }) : null;
+    // Sessão 28.34 BUG FIX — "MESMO LUCRO" agora casa o R$ de lucro (não a margem %).
+    // Antes passava `margemBalcao` (margem BRUTA!) como lucroPerc alvo → preço muito
+    // inflado e R$ resultante divergente do balcão. Agora calculamos o lucro líquido em
+    // R$ do balcão (preço − CMV − custos fixos − variáveis) e invertemos a fórmula pra
+    // achar o preço delivery que rende EXATAMENTE esse mesmo R$ por venda.
+    const lucroLiqBalcaoReais = precoBalcao > 0
+      ? Math.max(0, precoBalcao - custoUnit - precoBalcao * ((contextoFin.fixoPerc || 0) + (contextoFin.variavelPerc || 0)))
+      : 0;
+    const sugMantemMargem = (precoBalcao > 0 && lucroLiqBalcaoReais > 0)
+      ? calcPrecoMesmoLucroReais({ cmv: custoUnit, lucroAlvoReais: lucroLiqBalcaoReais, plat, contexto: contextoFin })
+      : null;
 
     setSimResult({
       prodNome: isComboSel ? prod.nome + ' (Combo)' : prod.nome,
@@ -379,6 +383,7 @@ export default function DeliveryHubScreen({ navigation }) {
       cupomReais: cupomR$,
       taxaEntrega: taxaEntregaR$,
       margemBalcao,
+      lucroLiqBalcaoReais,
       receitaLiqDelivery,
       lucroDelivery,
       margemDelivery,
@@ -803,10 +808,9 @@ export default function DeliveryHubScreen({ navigation }) {
                             <View style={{ marginTop: spacing.md, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border }}>
                               <View style={[styles.suggestedRow, { borderTopWidth: 0, alignItems: 'center', paddingHorizontal: 0 }]}>
                                 <View style={{ flex: 1 }}>
-                                  <Text style={[styles.suggestedLabel, { fontSize: 13 }]}>Pra MANTER a margem atual do produto</Text>
+                                  <Text style={[styles.suggestedLabel, { fontSize: 13 }]}>Pra ganhar o MESMO lucro em R$ do balcão</Text>
                                   <Text style={styles.suggestedSub}>
-                                    Margem atual no balcão: {(simResult.margemBalcao * 100).toFixed(1)}%
-                                    {simResult.margemBalcao !== (contextoFin.lucroPerc || 0) && ' (diferente da margem do financeiro)'}
+                                    Preço pra sobrar {formatCurrency(simResult.lucroLiqBalcaoReais || 0)} líquido por venda — o mesmo que você ganha hoje no balcão
                                   </Text>
                                 </View>
                                 <Text style={[styles.suggestedPrice, { color: colors.primary, fontSize: 18 }]}>

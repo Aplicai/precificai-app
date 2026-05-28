@@ -24,7 +24,7 @@ import {
   formatCurrency, calcCustoIngrediente, calcCustoPreparo,
   getDivisorRendimento,
 } from '../utils/calculations';
-import { calcSugestaoDeliveryCompleta } from '../utils/deliveryPricing';
+import { calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
 import { buildContextoFinanceiro, normalizePlataforma } from '../utils/deliveryAdapter';
 // Sessão 28.26: service unificado de upsert do preço delivery
 import { upsertPrecoDelivery } from '../services/precoDeliveryService';
@@ -113,24 +113,32 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
       // Sugestão pela margem do financeiro
       const sugFinanceiro = calcSugestaoDeliveryCompleta({ cmv, plat, contexto });
 
-      // Sessão 28.26 BUG FIX (mesmo do SimuladorLote 28.25): MARGEM IGUAL
-      // estava usando margemBruta como lucroPerc → custos contados 2x.
-      // Agora usa lucro líquido REAL do balcão.
+      // Sessão 28.34 BUG FIX — "MESMO LUCRO" agora casa o R$ de lucro (não a margem %).
+      // Antes (28.26) passávamos o lucro % líquido do balcão como `lucroPerc` alvo do
+      // delivery → preservava a MARGEM %, não o R$. Como o delivery tem custos variáveis
+      // diferentes (entra comissão, sai maquininha), o R$ resultante divergia do balcão.
+      // Agora calculamos o lucro líquido em R$ do balcão e invertemos a fórmula pra
+      // achar o preço delivery que rende EXATAMENTE esse mesmo R$ por venda.
       const precoBalcao = safe(prod.preco_venda);
       const margemBrutaBalcao = precoBalcao > 0
         ? Math.max(0, (precoBalcao - cmv) / precoBalcao)
         : 0;
+      // Lucro líquido % do balcão (só pra exibição informativa)
       const lucroPercBalcaoReal = Math.max(
         0,
         margemBrutaBalcao - contexto.fixoPerc - contexto.variavelPerc
       );
-      const sugMantemMargem = (precoBalcao > 0 && lucroPercBalcaoReal > 0)
-        ? calcSugestaoDeliveryCompleta({ cmv, plat, contexto: { ...contexto, lucroPerc: lucroPercBalcaoReal } })
+      // Lucro líquido em R$ do balcão = preço − CMV − custos fixos − custos variáveis (R$)
+      const lucroLiqBalcaoReais = precoBalcao > 0
+        ? Math.max(0, precoBalcao - cmv - precoBalcao * (contexto.fixoPerc + contexto.variavelPerc))
+        : 0;
+      const sugMantemMargem = (precoBalcao > 0 && lucroLiqBalcaoReais > 0)
+        ? calcPrecoMesmoLucroReais({ cmv, lucroAlvoReais: lucroLiqBalcaoReais, plat, contexto })
         : null;
 
       setData({
         prod, plat, cmv, contexto, sugFinanceiro, sugMantemMargem,
-        margemBrutaBalcao, lucroPercBalcaoReal,
+        margemBrutaBalcao, lucroPercBalcaoReal, lucroLiqBalcaoReais,
         // Mantém `margemAtual` por compat com código de UI a jusante
         margemAtual: margemBrutaBalcao,
       });
@@ -192,12 +200,11 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
     );
   }
 
-  const { prod, plat, cmv, contexto, sugFinanceiro, sugMantemMargem, margemAtual, lucroPercBalcaoReal } = data;
-  // Sessão 28.27: lucro LÍQUIDO em R$ no balcão (pra dar evidência concreta ao user)
+  const { prod, plat, cmv, contexto, sugFinanceiro, sugMantemMargem, margemAtual, lucroPercBalcaoReal, lucroLiqBalcaoReais } = data;
+  // Sessão 28.27/28.34: lucro LÍQUIDO em R$ no balcão (pra dar evidência concreta ao user).
+  // Vem pronto do carregar() — é o MESMO R$ que a sugestão "MESMO LUCRO" persegue.
   const precoBalcaoNum = safe(prod.preco_venda);
-  const lucroLiqBalcaoR = precoBalcaoNum > 0
-    ? precoBalcaoNum * (lucroPercBalcaoReal || 0)
-    : 0;
+  const lucroLiqBalcaoR = lucroLiqBalcaoReais || 0;
   const numEscolhido = parseFloat(String(precoEscolhido).replace(',', '.'));
   const precoValido = Number.isFinite(numEscolhido) && numEscolhido > 0;
 
@@ -270,12 +277,12 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
             activeOpacity={0.7}
             disabled={!sugMantemMargem?.preco}
           >
-            {/* Sessão 28.27: rotulado por LUCRO LÍQUIDO real (não margem bruta).
-                Antes dizia "MESMA MARGEM DO BALCÃO" + "X% de lucro" usando margemAtual
-                (margem bruta) → user via 66.7% aqui mas 10.8% na composição → confusão. */}
-            <Text style={[styles.sugLabel, { color: colors.primary }]}>MESMO LUCRO LÍQUIDO</Text>
+            {/* Sessão 28.34: rotulado pelo LUCRO LÍQUIDO em R$ — e o preço agora
+                rende EXATAMENTE esse R$ (calcPrecoMesmoLucroReais). Antes o cálculo
+                perseguia a margem % do balcão, então o R$ prometido não batia. */}
+            <Text style={[styles.sugLabel, { color: colors.primary }]}>MESMO LUCRO EM R$</Text>
             <Text style={styles.sugSub}>
-              Pra ter {formatCurrency(lucroLiqBalcaoR)} de lucro por venda ({(lucroPercBalcaoReal * 100).toFixed(1)}%) — mesmo do balcão
+              Preço pra sobrar {formatCurrency(lucroLiqBalcaoR)} líquido por venda — o mesmo que você ganha hoje no balcão
             </Text>
             <Text style={[styles.sugPrice, { color: colors.primary }]}>
               {sugMantemMargem?.validacao?.ok ? formatCurrency(sugMantemMargem.preco) : '—'}
