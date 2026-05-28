@@ -577,7 +577,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
       showToastSafe(
         isIOSSafari
           ? 'Relatório gerado · use Compartilhar para Imprimir/Salvar'
-          : 'Relatório aberto em nova aba · use Ctrl+P para imprimir',
+          : 'Abrindo a impressão · escolha "Salvar como PDF"',
         'printer'
       );
     } else {

@@ -385,7 +385,7 @@ export default function ListaComprasScreen({ navigation }) {
       setToast({
         message: isIOSSafari()
           ? 'PDF gerado · use Compartilhar para Imprimir/Salvar'
-          : 'PDF aberto em nova aba · use Ctrl+P para imprimir',
+          : 'Abrindo a impressão · escolha "Salvar como PDF"',
         icon: 'printer',
       });
     } else {

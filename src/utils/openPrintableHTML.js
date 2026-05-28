@@ -9,23 +9,25 @@
 // Blob URLs criam uma origem opaca isolada — script no documento gerado NÃO
 // consegue ler localStorage/cookies da origem principal.
 //
-// Comportamento (gera PDF de verdade, não baixa .html):
+// Comportamento (gera PDF de verdade, não baixa .html; NÃO usa popup):
 //  1. Injeta um <title> (vira o nome sugerido em "Salvar como PDF")
 //  2. Injeta um <script> que chama window.print() ao carregar
-//  3. Cria Blob HTML + URL via URL.createObjectURL (origem opaca)
-//  4. window.open(url, '_blank') — nova aba isolada que se auto-imprime
-//  5. revokeObjectURL após 60s (tempo do diálogo de impressão ficar aberto)
+//  3. Cria Blob HTML + URL via URL.createObjectURL
+//  4. Renderiza num IFRAME OCULTO sandboxed (NÃO é popup → não dá pra bloquear)
+//     que se auto-imprime → abre DIRETO o diálogo de impressão
+//  5. remove o iframe + revokeObjectURL após 60s
 //
-// Substitui o padrão antigo:
-//     const win = window.open('', '_blank');
-//     win.document.write(html);
+// QA fix: o padrão anterior usava window.open(url,'_blank'), que os navegadores
+// BLOQUEIAM como popup (a chamada acontece após trabalho assíncrono de geração
+// do HTML, fora do "gesto do usuário"). O iframe oculto contorna isso e abre
+// direto na impressão.
 //
-// Sobre o auto-print: o <script> injetado roda DENTRO do documento Blob, na
-// origem OPACA — ele NÃO consegue ler localStorage/cookies da app, então a
-// defesa XSS por isolamento de origem continua intacta. O script é uma string
-// fixa controlada por nós (não vem de dados do usuário). No iOS Safari o
-// print() pode não disparar; nesse caso a aba abre com o conteúdo e o usuário
-// usa Compartilhar > Imprimir (o toast já orienta).
+// Segurança: o iframe usa sandbox="allow-scripts allow-modals" (SEM
+// allow-same-origin) → origem OPACA garantida. O <script> injetado roda nessa
+// origem isolada — NÃO lê localStorage/cookies/token da app, então a defesa XSS
+// por isolamento de origem é mantida (e até reforçada vs. blob top-level). O
+// script é string fixa controlada por nós. No iOS Safari o print() pode não
+// disparar automaticamente; o toast do caller orienta o usuário.
 
 export function openPrintableHTML(html, filename = 'documento') {
   if (typeof window === 'undefined' || typeof document === 'undefined') return false;
@@ -57,12 +59,40 @@ export function openPrintableHTML(html, filename = 'documento') {
     const blob = new Blob([out], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
 
-    // Abre em nova aba (origem opaca — defense-in-depth XSS). O script injetado
-    // chama window.print() → o usuário escolhe "Salvar como PDF".
-    try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (_) {}
+    // iOS Safari/WebKit: print() em iframe oculto é não-confiável E não haveria
+    // aba visível pra o usuário usar Compartilhar > Imprimir. Então no iOS
+    // mantemos a nova aba (window.open) + o toast orienta "Compartilhar".
+    const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || '';
+    const isIOS = /iP(hone|ad|od)/i.test(ua)
+      || (typeof navigator !== 'undefined' && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (isIOS) {
+      try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (_) {}
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+      return true;
+    }
 
-    // Mantém a URL viva tempo suficiente p/ o diálogo de impressão concluir.
-    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+    // QA fix: ANTES usava window.open(url) — bloqueado como POPUP pelo navegador
+    // (a chamada vinha depois de trabalho assíncrono, perdendo o "gesto do
+    // usuário"). Agora renderiza num IFRAME OCULTO na própria página: NÃO é
+    // popup (não dá pra bloquear) e o <script> injetado dispara window.print()
+    // → abre DIRETO o diálogo de impressão / "Salvar como PDF".
+    //
+    // Segurança: sandbox SEM allow-same-origin = origem opaca garantida → o doc
+    // gerado (que inclui dados livres do usuário) NÃO lê localStorage/token da
+    // app, mesmo se algum escape falhar. allow-scripts roda o auto-print;
+    // allow-modals permite o diálogo de impressão.
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.setAttribute('sandbox', 'allow-scripts allow-modals');
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;';
+    iframe.src = url;
+    document.body.appendChild(iframe);
+
+    // Remove o iframe + revoga a URL depois que o diálogo de impressão já abriu.
+    setTimeout(() => {
+      try { URL.revokeObjectURL(url); } catch (_) {}
+      try { iframe.remove(); } catch (_) {}
+    }, 60000);
     return true;
   } catch (e) {
     if (typeof console !== 'undefined' && console.error) {

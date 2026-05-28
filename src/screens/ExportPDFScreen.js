@@ -1387,10 +1387,9 @@ function exportarPDF(htmlContent, preOpenedWindow) {
       const { showToast } = require('../utils/toastBus');
       if (isIOSSafari()) {
         showToast('PDF gerado · use Compartilhar para Imprimir/Salvar', 'printer', 4000);
-      } else if (isMobileWeb()) {
-        showToast('PDF aberto · use o menu do navegador para imprimir', 'printer', 3500);
       } else {
-        showToast('PDF aberto em nova aba · use Ctrl+P para imprimir', 'printer', 3500);
+        // QA fix: agora abre direto o diálogo de impressão (iframe oculto, sem popup).
+        showToast('Abrindo a impressão · escolha "Salvar como PDF"', 'printer', 3500);
       }
     } catch (_) {}
   } catch (e) {
