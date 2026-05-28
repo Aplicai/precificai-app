@@ -3,15 +3,20 @@
  *
  * Strategies:
  *  - network-first  → /api/*, *supabase*  (sempre tentar rede; cache só fallback)
- *  - cache-first    → assets imutáveis (.js, .css, fonts, .png) com cache versionado
- *  - stale-while-revalidate → HTML, manifest
+ *  - cache-first    → assets imutáveis (.js, .css, fonts, .png) com hash no nome
+ *  - network-first  → HTML/navigate (sempre o index.html FRESCO → referencia o
+ *                     bundle novo do último deploy; cache só como fallback offline)
  *
  * Bump CACHE_VERSION sempre que mudar este arquivo OU os assets críticos.
  */
-// Sessão 28.65: bump pra invalidar bundle antigo — fix do localStorage
-// `pwa_installed` que travava o botão "Instalar app" em Configurações
-// mostrando "✓ App instalado" mesmo após o user desinstalar.
-const CACHE_VERSION = 'precificai-v4';
+// Sessão 28.65: bump pra invalidar bundle antigo — fix do localStorage `pwa_installed`.
+// Sessão QA (atual): bump p/ propagar a mudança de estratégia do HTML
+// (stale-while-revalidate → network-first). Antes o usuário ficava UMA visita
+// atrás: servia o index.html em cache (com hash de bundle velho), então
+// correções demoravam a chegar. Com network-first no HTML, cada deploy é pego
+// no próximo carregamento (o HTML fresco aponta pro bundle novo) — sem precisar
+// bumpar a versão a cada deploy.
+const CACHE_VERSION = 'precificai-v5';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const HTML_CACHE = `${CACHE_VERSION}-html`;
@@ -52,9 +57,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // HTML: stale-while-revalidate
+  // HTML: network-first (sempre o index.html mais recente → bundle do último
+  // deploy; cache só como fallback offline). Antes era stale-while-revalidate,
+  // que deixava o usuário uma visita atrás do bundle novo.
   if (req.mode === 'navigate' || req.headers.get('accept')?.includes('text/html')) {
-    event.respondWith(staleWhileRevalidate(req, HTML_CACHE));
+    event.respondWith(networkFirst(req, HTML_CACHE));
     return;
   }
 

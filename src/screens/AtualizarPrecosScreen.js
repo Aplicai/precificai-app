@@ -402,11 +402,15 @@ export default function AtualizarPrecosScreen({ navigation }) {
         </View>
       ) : null}
 
-      {/* Item count */}
+      {/* Item count + AUDITORIA UX: rótulo do que o valor representa, pra não
+          confundir com o preço por kg/unidade mostrado na tela de Insumos. */}
       {items.length > 0 && (
         <View style={[styles.countBar, isDesktop && styles.countBarDesktop]}>
           <Text style={styles.countText}>
             {items.length} {items.length === 1 ? 'item' : 'itens'}
+            {activeTab === 'insumos' || activeTab === 'embalagens'
+              ? ' · valores = o que você pagou no pacote'
+              : ' · valores = preço de venda'}
           </Text>
         </View>
       )}

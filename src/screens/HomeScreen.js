@@ -415,6 +415,14 @@ export default function HomeScreen({ navigation }) {
     statusBg = colors.coral;
     // Navigate to dedicated MargemBaixa screen within HomeStack
     statusOnPress = () => navToMargemBaixa();
+  } else if (d.produtosSemPreco.length > 0) {
+    // AUDITORIA QA: operação não é "saudável" enquanto houver produtos sem preço
+    // (não dá pra saber a margem deles). Antes caía direto no else "saudável".
+    StatusIcon = () => <Feather name="tag" size={20} color="#fff" />;
+    statusColor = colors.yellow;
+    statusText = `${d.produtosSemPreco.length} produto${d.produtosSemPreco.length > 1 ? 's' : ''} sem preço`;
+    statusBg = colors.yellow;
+    statusOnPress = () => nav('Produtos');
   } else {
     StatusIcon = () => <Feather name="check-circle" size={20} color="#fff" />;
     statusColor = colors.success; statusText = 'Operação saudável'; statusBg = colors.success;

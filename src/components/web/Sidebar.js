@@ -18,7 +18,11 @@ import { FEATURE_MIN_PLAN, PLAN_LABELS } from '../../config/plans';
 const NAV_SECTIONS = [
   {
     items: [
-      { key: 'home', label: 'Painel Geral', icon: 'home', iconSet: 'feather', tab: 'Início' },
+      // AUDITORIA QA: 'screen: HomeMain' faz o Painel usar o MESMO caminho de
+      // navegação dos demais itens (navigate com _t) — confiável em 1 clique.
+      // Antes (sem screen) caía no CommonActions.reset frágil → exigia 2 cliques
+      // no web (1º só destacava, conteúdo não trocava).
+      { key: 'home', label: 'Painel Geral', icon: 'home', iconSet: 'feather', tab: 'Início', screen: 'HomeMain' },
       { key: 'insumos', label: 'Insumos', icon: 'shopping-bag', iconSet: 'feather', tab: 'Insumos', screen: 'MateriasPrimas' },
       { key: 'preparos', label: 'Preparos', icon: 'pot-steam-outline', iconSet: 'material', tab: 'Preparos', screen: 'Preparos' },
       { key: 'embalagens', label: 'Embalagens', icon: 'package', iconSet: 'feather', tab: 'Embalagens', screen: 'Embalagens' },
