@@ -204,9 +204,12 @@ export default function HomeScreen({ navigation }) {
         }, 0);
 
         const custoUnit = (custoIng + custoPr + custoEmb) / getDivisorRendimento(p);
-        somaCustos += custoUnit;
 
         if (p.preco_venda > 0) {
+          // AUDITORIA QA: só produtos COM preço entram no CMV Médio. Antes
+          // somaCustos somava TODOS os produtos mas somaPrecos só os com preço,
+          // então produtos a R$0 (típico do Kit) inflavam o CMV (ex.: 244%).
+          somaCustos += custoUnit;
           somaPrecos += p.preco_venda;
           // Sessão 28.9 — Auditoria P0-02: usar funções centrais (calcLucroLiquido, calcMargemLiquida)
           const despFixasVal = p.preco_venda * dfPerc;
