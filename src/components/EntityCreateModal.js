@@ -1382,13 +1382,17 @@ export default function EntityCreateModal({
           </View>
 
           {/* Body */}
+          {/* Sessão 28.35: scrollbar visível (showsVerticalScrollIndicator removido)
+              — usuário no PC com touchpad não tinha affordance pra rolar a página
+              dentro do modal. RN-Web esconde a barra com `={false}`, e em alguns
+              touchpads Windows o gesto de dois dedos só funciona quando o browser
+              registra que existe scrollbar visível. */}
           <ScrollView
             style={styles.body}
             contentContainerStyle={[
               { paddingBottom: spacing.md },
               isDesktop && styles.bodyTwoCol,
             ]}
-            showsVerticalScrollIndicator={false}
           >
             {/* Coluna esquerda — Form */}
             <View style={isDesktop ? styles.colLeft : null}>
