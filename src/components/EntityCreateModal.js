@@ -38,7 +38,7 @@ import {
   calcDespesasFixasPercentual, calcMarkup, calcPrecoSugerido,
   calcCustoIngrediente, calcCustoPreparo, calcCustoEmbalagem,
   calcLucroLiquido, calcCMVPercentual, calcMargem, calcMargemLiquida,
-  safeNum,
+  safeNum, getTipoUnidade,
 } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 // Área 4 (Preparos) — toast de confirmação ao salvar preparo via modal
@@ -763,6 +763,37 @@ export default function EntityCreateModal({
           const badge = TIPO_BADGE[it.tipo];
           const qtd = safeNum(it.quantidade) || 0;
           const total = safeNum(it.custoUnit) * qtd;
+          // Sessão 28.35: label do preço-base do item (R$ X/kg, R$ X/L, R$ X/un).
+          // Sem isso o user via "1 g — R$ 0,02" e achava que tinha bug ("muito menor
+          // do que paguei"), porque não enxergava que o R$ 20/kg pago equivale a
+          // R$ 0,02 por grama. Mostrar a taxa-base elimina a confusão.
+          const rateLabel = (() => {
+            try {
+              if (it.tipo === 'materia_prima') {
+                const mp = allMaterias.find(m => m.id === it.id);
+                const preco = safeNum(mp?.preco_por_kg);
+                if (preco <= 0) return null;
+                const tipo = getTipoUnidade(mp?.unidade_medida || it.unidade || 'g');
+                const un = tipo === 'unidade' ? 'un' : (tipo === 'volume' ? 'L' : 'kg');
+                return `${formatCurrency(preco)}/${un}`;
+              }
+              if (it.tipo === 'preparo') {
+                const pr = allPreparos.find(p => p.id === it.id);
+                const custo = safeNum(pr?.custo_por_kg);
+                if (custo <= 0) return null;
+                const tipo = getTipoUnidade(pr?.unidade_medida || it.unidade || 'g');
+                const un = tipo === 'volume' ? 'L' : 'kg';
+                return `${formatCurrency(custo)}/${un}`;
+              }
+              if (it.tipo === 'embalagem') {
+                const em = allEmbalagens.find(e => e.id === it.id);
+                const preco = safeNum(em?.preco_unitario);
+                if (preco <= 0) return null;
+                return `${formatCurrency(preco)}/un`;
+              }
+            } catch (_) {}
+            return null;
+          })();
           return (
             <View key={`${it.tipo}-${it.id}-${index}`} style={styles.itemRow}>
               <View style={styles.itemRowHeader}>
@@ -805,6 +836,11 @@ export default function EntityCreateModal({
                   activeOpacity={0.6}
                 >
                   <Text style={styles.itemNome} numberOfLines={1}>{it.nome} <Feather name="edit-2" size={10} color={colors.primary} /></Text>
+                  {rateLabel && (
+                    <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 1 }} numberOfLines={1}>
+                      {rateLabel}
+                    </Text>
+                  )}
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => removerItem(index)}
