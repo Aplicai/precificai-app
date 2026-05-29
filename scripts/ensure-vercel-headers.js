@@ -30,6 +30,11 @@ const SECURITY_HEADERS = {
     "img-src 'self' data: blob: https:",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' data: https://fonts.gstatic.com",
+    // SEC F-3 (28.35): permitir iframe blob: para o exportador de PDF
+    // (openPrintableHTML.js usa iframe oculto + sandbox sem allow-same-origin
+    // → origem opaca, sem risco XSS). Sem isso o frame-src cai no default-src
+    // 'self' e bloqueia o iframe → diálogo de impressão NUNCA abre.
+    "frame-src 'self' blob:",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "object-src 'none'",
