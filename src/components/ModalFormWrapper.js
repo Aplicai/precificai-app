@@ -54,12 +54,19 @@ export default function ModalFormWrapper({ children, title, onClose }) {
   }
 
   // Desktop: modal popup overlay
+  // Sessão 28.35 BUG FIX: backdrop Pressable + card eram irmãos, e o Pressable
+  // (position: absolute fill) ficava ACIMA do card (estática) no z-stacking padrão.
+  // Cliques no card (incluindo Salvar Insumo na cascata) iam pro backdrop → onClose
+  // → fechava o modal sem chamar o handler do botão. Sintoma reportado: "salvar
+  // insumo via cascata não está indo" — o INSERT nunca acontecia, mas o modal fechava.
+  // FIX: zIndex explícito (card > backdrop) garante que cliques no card cheguem
+  // nos botões/inputs internos, e só cliques no backdrop fecham o modal.
   return (
     <View style={styles.overlay}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose}>
+      <Pressable style={[StyleSheet.absoluteFill, { zIndex: 1 }]} onPress={onClose}>
         <View style={styles.backdrop} />
       </Pressable>
-      <View style={styles.card}>
+      <View style={[styles.card, { zIndex: 2 }]}>
         <View style={styles.desktopHeader}>
           <Text style={styles.desktopTitle} numberOfLines={1}>{title}</Text>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
