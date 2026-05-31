@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ScrollView, View, TouchableOpacity, Text, Alert, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+// Sessão 28.36: showToast pra feedback de erro/validação que sobrevive a modal nested.
+// Alert.alert no RN-Web com 1 botão é no-op silencioso → usuário em cascata achava que
+// o save tinha funcionado mas validação tinha falhado silenciosamente.
+import { showToast } from '../utils/toastBus';
 // Sessão 28.29: styles extraídos pra arquivo dedicado (eram 366 linhas inline)
 import { materiaPrimaFormStyles as styles } from './styles/materiaPrimaForm.styles';
 import { Feather } from '@expo/vector-icons';
@@ -550,7 +554,10 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     const errs = validateForm(form);
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      return Alert.alert('Campos obrigatórios', 'Preencha todos os campos obrigatórios antes de salvar.');
+      // Sessão 28.36: toast em vez de Alert.alert (que silenciava em modal nested)
+      try { showToast('Preencha os campos em vermelho antes de salvar', 'alert-circle', 3500); } catch (_) {}
+      try { Alert.alert('Campos obrigatórios', 'Preencha todos os campos obrigatórios antes de salvar.'); } catch (_) {}
+      return;
     }
     // APP-04: valida unidade no save manual também
     const VALID_UNITS_SAVE = ['g','kg','mL','L','un'];
@@ -565,7 +572,9 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         form.unidade_medida = canonical;
         setForm(p => ({ ...p, unidade_medida: canonical }));
       } else {
-        return Alert.alert('Unidade inválida', 'Selecione uma unidade de medida válida antes de salvar.');
+        try { showToast('Unidade inválida — selecione g, kg, mL, L ou un', 'alert-circle', 3500); } catch (_) {}
+        try { Alert.alert('Unidade inválida', 'Selecione uma unidade de medida válida antes de salvar.'); } catch (_) {}
+        return;
       }
     }
     setErrors({});
@@ -703,6 +712,8 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
       allowExit.current = false;
       console.error('[MateriaPrimaForm.salvarNovo]', e);
       const msg = (e && e.message) ? e.message : 'Erro desconhecido';
+      // Sessão 28.36: toast também (sobrevive a modal nested)
+      try { showToast(`Erro ao salvar: ${msg}`, 'alert-circle', 4500); } catch (_) {}
       Alert.alert(
         'Erro ao salvar',
         `Não foi possível salvar o insumo:\n\n${msg}\n\nVerifique sua conexão e tente novamente.`,

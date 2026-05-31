@@ -71,6 +71,12 @@ function shortUnidade(rawUnidade, tipo) {
   if (u === 'l' || u.includes('litro')) return 'L';
   if (u === 'un' || u.includes('unid')) return 'un';
   if (u.includes('grama')) return 'g';
+  // Sessão 28.36: unidades específicas de embalagem (UNIDADES_EMBALAGEM tem
+  // 'Unidades', 'Metros', 'Rolos'). Antes caía no fallback e mostrava o
+  // valor cru ('Metros'), que ficava feio no row do item.
+  if (u === 'metros' || u === 'metro' || u === 'm') return 'm';
+  if (u === 'rolos' || u === 'rolo') return 'rolo';
+  if (u === 'unidades' || u === 'unidade') return 'un';
   return raw || 'un';
 }
 
@@ -338,7 +344,12 @@ export default function EntityCreateModal({
               if (rawNested) {
                 const nestedInfo = JSON.parse(rawNested);
                 await AsyncStorage.removeItem('reopenNestedPreparoOnMount');
-                if (nestedInfo?.draft && nestedInfo?.ts && (Date.now() - nestedInfo.ts) < 5 * 60 * 1000) {
+                // Sessão 28.36 BUG FIX: antes só checava ts (< 5 min). Se user abria
+                // OUTRO produto que não o original, o nested preparo abria com o draft
+                // antigo no produto errado. Agora exige match de produtoId (ou ambos null
+                // pra "novo produto") pra evitar cross-contamination.
+                const sameProduto = (nestedInfo?.parentProdutoId || null) === (editId || null);
+                if (sameProduto && nestedInfo?.draft && nestedInfo?.ts && (Date.now() - nestedInfo.ts) < 5 * 60 * 1000) {
                   // Persiste o draft do preparo nested pra o modal nested ler
                   await AsyncStorage.setItem('entityDraftToRestore', JSON.stringify({
                     mode: 'preparo',
@@ -1389,7 +1400,16 @@ export default function EntityCreateModal({
     if (Platform.OS === 'web') {
       if (typeof window !== 'undefined' && window.confirm(msg)) onClose && onClose();
     } else {
-      onClose && onClose();
+      // Sessão 28.36 BUG FIX: antes o branch mobile fechava DIRETO sem perguntar
+      // → user perdia mudanças silenciosamente. Agora alinha com web (confirma antes).
+      Alert.alert(
+        'Mudanças não salvas',
+        msg,
+        [
+          { text: 'Continuar editando', style: 'cancel' },
+          { text: 'Descartar', style: 'destructive', onPress: () => onClose && onClose() },
+        ]
+      );
     }
   };
 

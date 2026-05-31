@@ -260,7 +260,9 @@ export default function PreparoFormScreen({ route, navigation }) {
     const qtd = parseNum(quantityPrompt.quantidade);
     if (!Number.isFinite(qtd) || qtd <= 0) {
       // mantém modal aberto para o usuário corrigir
-      return Alert.alert('Quantidade', 'Informe uma quantidade válida (maior que zero).');
+      try { showToast('Informe uma quantidade válida (maior que zero)', 'alert-circle', 3500); } catch (_) {}
+      try { Alert.alert('Quantidade', 'Informe uma quantidade válida (maior que zero).'); } catch (_) {}
+      return;
     }
     // APP-06: modo edição — atualiza o ingrediente existente em vez de adicionar
     if (Number.isInteger(quantityPrompt.editIndex)) {
@@ -312,7 +314,11 @@ export default function PreparoFormScreen({ route, navigation }) {
   }
 
   function adicionarIngrediente() {
-    if (!novoIng.materia_prima_id) return Alert.alert('Selecione', 'Escolha um insumo antes de adicionar.');
+    if (!novoIng.materia_prima_id) {
+      try { showToast('Escolha um insumo antes de adicionar', 'alert-circle', 3000); } catch (_) {}
+      try { Alert.alert('Selecione', 'Escolha um insumo antes de adicionar.'); } catch (_) {}
+      return;
+    }
     openQuantityPrompt(novoIng.materia_prima_id);
     setNovoIng({ materia_prima_id: null, quantidade: '' });
   }
@@ -385,7 +391,9 @@ export default function PreparoFormScreen({ route, navigation }) {
     const errs = validateForm(form);
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      return Alert.alert('Campos obrigatórios', 'Preencha todos os campos obrigatórios antes de salvar.');
+      try { showToast('Preencha os campos em vermelho antes de salvar', 'alert-circle', 3500); } catch (_) {}
+      try { Alert.alert('Campos obrigatórios', 'Preencha todos os campos obrigatórios antes de salvar.'); } catch (_) {}
+      return;
     }
     setErrors({});
     allowExit.current = true;

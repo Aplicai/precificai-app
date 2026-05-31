@@ -278,7 +278,19 @@ export default function EmbalagemFormScreen({ route, navigation }) {
     const errs = validateForm(form);
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
-      return Alert.alert('Campos obrigatórios', 'Preencha todos os campos obrigatórios antes de salvar.');
+      try { showToast('Preencha os campos em vermelho antes de salvar', 'alert-circle', 3500); } catch (_) {}
+      try { Alert.alert('Campos obrigatórios', 'Preencha todos os campos obrigatórios antes de salvar.'); } catch (_) {}
+      return;
+    }
+    // Sessão 28.36: valida unidade_medida (mesmo padrão do MateriaPrimaForm).
+    // EmbalagemForm aceita Unidades/Metros/Rolos do dropdown — mas se algum
+    // ponto inicializar com valor não-canônico (import legado, copy), o item
+    // ficava com unidade inválida que o shortUnidade renderizava feio depois.
+    const VALID_EMBALAGEM_UNITS = ['Unidades', 'Metros', 'Rolos'];
+    if (form.unidade_medida && !VALID_EMBALAGEM_UNITS.includes(form.unidade_medida)) {
+      try { showToast('Unidade inválida — selecione Unidades, Metros ou Rolos', 'alert-circle', 3500); } catch (_) {}
+      try { Alert.alert('Unidade inválida', 'Selecione uma unidade válida (Unidades, Metros ou Rolos).'); } catch (_) {}
+      return;
     }
     setErrors({});
     allowExit.current = true;
@@ -665,7 +677,8 @@ export default function EmbalagemFormScreen({ route, navigation }) {
                 if (result?.lastInsertRowId) { allowExit.current = true; navigation.replace('EmbalagemForm', { id: result.lastInsertRowId }); }
               } catch (e) {
                 console.error('[EmbalagemForm.duplicate]', e);
-                Alert.alert('Erro', 'Não foi possível duplicar a embalagem. Tente novamente.');
+                try { showToast('Não foi possível duplicar a embalagem', 'alert-circle', 3500); } catch (_) {}
+                try { Alert.alert('Erro', 'Não foi possível duplicar a embalagem. Tente novamente.'); } catch (_) {}
               }
             }}>
               <Feather name="copy" size={13} color={colors.primary} style={{ marginRight: 5 }} />

@@ -177,8 +177,15 @@ export default function ProdutosListScreen({ navigation }) {
       }
       // Sessão 28.52: cascata 3 níveis — se vem com reopenNestedPreparo,
       // guarda em key separada pra EntityCreateModal abrir o nested ao montar.
+      // Sessão 28.36: incluir parentProdutoId pra escopo (evita reabrir em produto errado).
       if (info.reopenNestedPreparo) {
-        try { await AsyncStorage.setItem('reopenNestedPreparoOnMount', JSON.stringify({ ...info.reopenNestedPreparo, ts: Date.now() })); } catch {}
+        try {
+          await AsyncStorage.setItem('reopenNestedPreparoOnMount', JSON.stringify({
+            ...info.reopenNestedPreparo,
+            parentProdutoId: info.editId || null,
+            ts: Date.now(),
+          }));
+        } catch {}
       }
       setEditingId(info.editId || null);
       setShowCreateModal(true);

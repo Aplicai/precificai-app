@@ -151,5 +151,14 @@ export async function recalcularTodosCombos(db) {
 export async function cascadeFromInsumo(db) {
   const nPreparos = await recalcularTodosPreparos(db);
   const nCombos = await recalcularTodosCombos(db);
+  // Sessão 28.36: invalidação granular não bastava — chaves de cache do
+  // wrapper supabaseDb incluem o SQL inteiro, então 'SELECT * FROM preparos'
+  // NÃO incluía 'materias_primas' e ficava em cache mesmo após o cascade
+  // atualizar custo_por_kg. Resultado: tela Preparos mostrava custo antigo
+  // por até 2s após editar insumo. Clear total é simples e robusto.
+  try {
+    const { clearQueryCache } = await import('../database/supabaseDb');
+    clearQueryCache?.();
+  } catch (_) {}
   return { preparos: nPreparos, combos: nCombos };
 }
