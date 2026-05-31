@@ -343,21 +343,21 @@ export default function PreparoFormScreen({ route, navigation }) {
       const db = await getDatabase();
       await db.runAsync('UPDATE preparos SET nome=?, categoria_id=?, rendimento_total=?, unidade_medida=?, custo_total=?, custo_por_kg=?, modo_preparo=?, observacoes=?, validade_dias=?, temp_congelado=?, tempo_congelado=?, temp_refrigerado=?, tempo_refrigerado=?, temp_ambiente=?, tempo_ambiente=? WHERE id=?',
         [f.nome, f.categoria_id, rend, f.unidade_medida, ct, ck, f.modo_preparo || '', f.observacoes || '', validadeDias, f.temp_congelado || '', f.tempo_congelado || '', f.temp_refrigerado || '', f.tempo_refrigerado || '', f.temp_ambiente || '', f.tempo_ambiente || '', editId]);
-      // Re-save ingredientes — DELETE + bulk INSERT (single statement quando possível)
+      // Re-save ingredientes — DELETE + INSERT single-row em loop.
+      // Sessão 28.36 BUG FIX CRÍTICO: bulk INSERT (`VALUES (?,?,?,?),(?,?,?,?),...`) era
+      // silenciosamente quebrado no Supabase wrapper (`supabaseDb.js` linha 206 — regex
+      // captura SÓ a primeira tupla). Resultado: ao editar um preparo com 2+ ingredientes
+      // no web, todos os ingredientes APÓS o 1º sumiam do banco. INSERT single-row em loop
+      // é compatível com o wrapper (e com SQLite native), ao custo de N requests em vez de 1.
       await db.runAsync('DELETE FROM preparo_ingredientes WHERE preparo_id = ?', [editId]);
-      if (ings.length > 0) {
-        const placeholders = ings.map(() => '(?,?,?,?)').join(',');
-        const params = [];
-        for (const ing of ings) {
-          const mp = materiasPrimas.find(m => m.id === ing.materia_prima_id);
-          const precoBase = mp?.preco_por_kg || ing.preco_por_kg || 0;
-          const unidade = getUnidadeDoIngrediente(ing);
-          const custo = safeCusto(calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade));
-          params.push(editId, ing.materia_prima_id, ing.quantidade_utilizada, custo);
-        }
+      for (const ing of ings) {
+        const mp = materiasPrimas.find(m => m.id === ing.materia_prima_id);
+        const precoBase = mp?.preco_por_kg || ing.preco_por_kg || 0;
+        const unidade = getUnidadeDoIngrediente(ing);
+        const custo = safeCusto(calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade));
         await db.runAsync(
-          `INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES ${placeholders}`,
-          params
+          'INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
+          [editId, ing.materia_prima_id, ing.quantidade_utilizada, custo]
         );
       }
       // D-20: re-save embalagens (silencioso se schema não existir)

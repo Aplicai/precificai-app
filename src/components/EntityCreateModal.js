@@ -681,14 +681,23 @@ export default function EntityCreateModal({
   // recém-criada no DB e adiciona aos itens com a MESMA forma usada quando o
   // insumo é adicionado pela lista do picker (buildItem → calcCustoUnit +
   // shortUnidade). Mantém recarregamento do picker pra ele aparecer lá também.
-  async function addCreatedInsumoToItens(novoId) {
-    if (!novoId) return;
+  async function addCreatedInsumoToItens(novoIdOrRow) {
+    if (!novoIdOrRow) return;
     try {
-      const db = await getDatabase();
-      const mp = await db.getFirstAsync(
-        'SELECT id, nome, preco_por_kg, unidade_medida FROM materias_primas WHERE id = ?',
-        [novoId]
-      );
+      // Sessão 28.36: aceita tanto id (legado) quanto objeto { id, nome, preco_por_kg,
+      // unidade_medida } passado direto pelo MateriaPrimaForm. Esse modo "row direto"
+      // evita re-SELECT no Supabase logo após o INSERT, que ocasionalmente retorna data=null
+      // por causa de eventual consistency da read-replica → insumo aparecia com custo zero.
+      let mp = null;
+      if (typeof novoIdOrRow === 'object' && novoIdOrRow.preco_por_kg !== undefined) {
+        mp = novoIdOrRow;
+      } else {
+        const db = await getDatabase();
+        mp = await db.getFirstAsync(
+          'SELECT id, nome, preco_por_kg, unidade_medida FROM materias_primas WHERE id = ?',
+          [novoIdOrRow]
+        );
+      }
       if (!mp) return;
       const novoItem = {
         tipo: 'materia_prima',
@@ -711,14 +720,21 @@ export default function EntityCreateModal({
 
   // Sessão 28.71: idem pra embalagem — mesma forma do item adicionado via
   // picker (tipo 'embalagem', custoUnit via calcCustoUnit, unidade real || 'un').
-  async function addCreatedEmbalagemToItens(novoId) {
-    if (!novoId) return;
+  async function addCreatedEmbalagemToItens(novoIdOrRow) {
+    if (!novoIdOrRow) return;
     try {
-      const db = await getDatabase();
-      const em = await db.getFirstAsync(
-        'SELECT id, nome, preco_unitario, unidade_medida FROM embalagens WHERE id = ?',
-        [novoId]
-      );
+      // Sessão 28.36: aceita id (legado) ou row { id, nome, preco_unitario, unidade_medida }
+      // passado direto. Evita re-SELECT no Supabase pós-INSERT (read-after-write race).
+      let em = null;
+      if (typeof novoIdOrRow === 'object' && novoIdOrRow.preco_unitario !== undefined) {
+        em = novoIdOrRow;
+      } else {
+        const db = await getDatabase();
+        em = await db.getFirstAsync(
+          'SELECT id, nome, preco_unitario, unidade_medida FROM embalagens WHERE id = ?',
+          [novoIdOrRow]
+        );
+      }
       if (!em) return;
       const novoItem = {
         tipo: 'embalagem',

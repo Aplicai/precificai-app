@@ -305,7 +305,17 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         notifyDataChanged('embalagens');
       } catch (_) {}
       try { showToast('Embalagem salva', 'check-circle'); } catch (_) {}
-      try { onSavedModal && onSavedModal(result?.lastInsertRowId); } catch (e) {
+      // Sessão 28.36: passa o row completo pra evitar race com eventual consistency do
+      // Supabase no addCreatedEmbalagemToItens (antes só passávamos o id e o parent
+      // re-SELECTava — podia receber null se a read-replica não tinha propagado).
+      try {
+        onSavedModal && onSavedModal({
+          id: result?.lastInsertRowId,
+          nome: form.nome,
+          preco_unitario: precoUn,
+          unidade_medida: form.unidade_medida,
+        });
+      } catch (e) {
         if (typeof console !== 'undefined') console.warn('[EmbalagemForm.onSavedModal]', e);
       }
       return;

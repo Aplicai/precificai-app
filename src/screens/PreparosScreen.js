@@ -379,17 +379,14 @@ export default function PreparosScreen({ navigation }) {
       );
       const newId = result?.lastInsertRowId;
       if (newId) {
-        // Copy ingredients in single bulk INSERT
+        // Sessão 28.36 BUG FIX: bulk INSERT (`VALUES (?,?,?,?),(?,?,?,?)...`) é
+        // silenciosamente quebrado pelo Supabase wrapper (só insere a 1ª tupla).
+        // Loop single-row é compatível com web (Supabase) e mobile (SQLite).
         const ings = await db.getAllAsync('SELECT * FROM preparo_ingredientes WHERE preparo_id = ?', [item.id]);
-        if (ings.length > 0) {
-          const placeholders = ings.map(() => '(?,?,?,?)').join(',');
-          const params = [];
-          for (const ing of ings) {
-            params.push(newId, ing.materia_prima_id, ing.quantidade_utilizada, ing.custo);
-          }
+        for (const ing of ings) {
           await db.runAsync(
-            `INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES ${placeholders}`,
-            params
+            'INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
+            [newId, ing.materia_prima_id, ing.quantidade_utilizada, ing.custo]
           );
         }
         abrirEdicao(newId);

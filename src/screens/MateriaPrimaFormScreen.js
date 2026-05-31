@@ -608,7 +608,19 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
       // reopenEntityModalAfterEdit nem navega (esse caminho continua intacto
       // pro modo tela cheia normal).
       if (asModal) {
-        try { onSavedModal && onSavedModal(result?.lastInsertRowId); } catch (e) {
+        // Sessão 28.36: passa o row completo (id + dados) pra evitar race com eventual
+        // consistency do Supabase no addCreatedInsumoToItens. Antes só passávamos o id e
+        // o parent re-SELECTava — podia receber data=null se a read-replica não tinha
+        // propagado ainda, e o insumo aparecia com custo zero. Compat: addCreatedInsumoToItens
+        // aceita tanto id (legado) quanto objeto com {id, nome, preco_por_kg, unidade_medida}.
+        try {
+          onSavedModal && onSavedModal({
+            id: result?.lastInsertRowId,
+            nome: form.nome,
+            preco_por_kg: precoBase,
+            unidade_medida: form.unidade_medida,
+          });
+        } catch (e) {
           if (typeof console !== 'undefined') console.warn('[MateriaPrimaForm.onSavedModal]', e);
         }
         return;
