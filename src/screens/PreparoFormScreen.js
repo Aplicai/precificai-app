@@ -660,7 +660,8 @@ export default function PreparoFormScreen({ route, navigation }) {
 
         {/* Bloco 2 — Ingredientes */}
         <Card title="Ingredientes" style={{ marginTop: spacing.sm }}>
-          {/* Adicionar ingrediente */}
+          {/* Adicionar ingrediente — insumo OU preparo (sessão 28.37: usuário pediu
+              UNIFICAR — ambos são "ingredientes" do preparo, sem seção separada). */}
           <View style={styles.addIngSection}>
             <PickerSelect
               key={`pick-insumo-${pickerResetKey}`}
@@ -683,16 +684,57 @@ export default function PreparoFormScreen({ route, navigation }) {
               }}
               createLabel="Cadastrar novo insumo"
             />
+            {/* Sessão 28.37: picker de preparo na MESMA seção. Só aparece se há
+                preparos disponíveis no catálogo OU já tem algum adicionado. */}
+            {(preparosCatalogo.length > 0 || subpreparos.length > 0) && (
+              <View style={{ marginTop: spacing.sm }}>
+                <PickerSelect
+                  key={`pick-subpreparo-${pickerResetKey}`}
+                  label="Adicionar preparo (opcional)"
+                  value={null}
+                  onValueChange={(v) => {
+                    if (!v) return;
+                    if (subpreparos.some(sp => sp.sub_preparo_id === v)) {
+                      try { showToast('Esse preparo já foi adicionado', 'alert-circle', 2500); } catch (_) {}
+                      return;
+                    }
+                    const pr = preparosCatalogo.find(p => p.id === v);
+                    if (!pr) return;
+                    setSubpreparos(prev => [...prev, {
+                      sub_preparo_id: pr.id,
+                      sub_nome: pr.nome,
+                      sub_custo_por_kg: pr.custo_por_kg,
+                      sub_unidade_medida: pr.unidade_medida || 'g',
+                      quantidade_utilizada: 0,
+                    }]);
+                    setPickerResetKey(k => k + 1);
+                  }}
+                  options={preparosCatalogo.map(p => ({ label: `${p.nome} — ${formatCurrency(p.custo_por_kg || 0)}/kg`, value: p.id }))}
+                  placeholder={preparosCatalogo.length === 0 ? 'Crie outro preparo primeiro' : 'Use um preparo como ingrediente (ex: fermento na massa)'}
+                  onCreateNew={async () => {
+                    try {
+                      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                      await AsyncStorage.setItem('reopenPreparoFormAfterEdit', JSON.stringify({
+                        preparoId: editId || null,
+                        ts: Date.now(),
+                      }));
+                    } catch (_) {}
+                    navigation.navigate('PreparoForm', {});
+                  }}
+                  createLabel="Cadastrar novo preparo"
+                />
+              </View>
+            )}
             {ingAdicionado && (
               <Text style={styles.addFeedback}>Ingrediente adicionado!</Text>
             )}
           </View>
 
-          {/* Lista de ingredientes */}
-          {ingredientes.length > 0 && (
+          {/* Lista unificada — insumos + preparos (sessão 28.37) */}
+          {(ingredientes.length > 0 || subpreparos.length > 0) && (
             <View style={styles.ingListContainer}>
               <View style={styles.ingListHeader}>
-                <Text style={[styles.ingHeaderText, { flex: 2 }]}>Insumo</Text>
+                <Text style={[styles.ingHeaderText, { flex: 2 }]}>Item</Text>
                 <Text style={[styles.ingHeaderText, { flex: 1, textAlign: 'center' }]}>Qtd.</Text>
                 <Text style={[styles.ingHeaderText, { flex: 1, textAlign: 'center' }]}>Un.</Text>
                 <Text style={[styles.ingHeaderText, { flex: 1.2, textAlign: 'right', paddingRight: 28 }]}>Custo</Text>
@@ -704,16 +746,14 @@ export default function PreparoFormScreen({ route, navigation }) {
                 const unidade = getUnidadeDoIngrediente(ing);
                 const custo = calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade);
                 return (
-                  // APP-06: linha agora é touch-target — tap abre modal de edição (qtd / trocar insumo).
                   <TouchableOpacity
-                    key={idx}
+                    key={`ing-${idx}`}
                     style={[styles.ingRow, idx % 2 === 0 && styles.ingRowEven]}
                     onPress={() => editarIngrediente(idx)}
                     activeOpacity={0.6}
                     accessibilityRole="button"
                     accessibilityLabel={`Editar ${formatIngLabel(ing) || formatInsumoLabel(mp)}, ${ing.quantidade_utilizada} ${unidade}`}
                   >
-                    {/* D-16: nome em cima, marca embaixo em itálico — distingue insumos parecidos de marcas diferentes */}
                     <View style={{ flex: 2 }}>
                       <Text style={styles.ingCell} numberOfLines={1}>{ing.mp_nome || mp?.nome || ''}</Text>
                       {(ing.mp_marca || mp?.marca) ? (
@@ -732,83 +772,20 @@ export default function PreparoFormScreen({ route, navigation }) {
                 );
               })}
 
-              <View style={styles.ingFooter}>
-                <Text style={styles.ingFooterLabel}>Total dos ingredientes</Text>
-                <Text style={styles.ingFooterValue}>{formatCurrency(custoTotal)}</Text>
-              </View>
-            </View>
-          )}
-
-          {ingredientes.length === 0 && (
-            <View style={styles.ingEmpty}>
-              <Text style={styles.ingEmptyText}>Selecione insumos acima para montar o preparo.</Text>
-            </View>
-          )}
-        </Card>
-
-        {/* Sessão 28.37: Preparos como ingrediente (preparo dentro de preparo).
-            Ex.: massa de pizza usa fermento (que é outro preparo). Mostra catálogo
-            filtrado (sem o próprio preparo e sem preparos que já usam o atual,
-            evitando ciclos). Card só aparece se houver preparos no catálogo OU
-            algum já foi adicionado. */}
-        {(preparosCatalogo.length > 0 || subpreparos.length > 0) && (
-        <Card title={`Preparos como ingrediente${subpreparos.length > 0 ? ` (${subpreparos.length})` : ' (opcional)'}`} style={{ marginTop: spacing.sm }}>
-          <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
-            Use outro preparo como ingrediente (ex: massa de pizza usa fermento). O custo do preparo escolhido entra no total.
-          </Text>
-          <PickerSelect
-            key={`pick-subpreparo-${pickerResetKey}`}
-            label="Adicionar preparo"
-            value={null}
-            onValueChange={(v) => {
-              if (!v) return;
-              if (subpreparos.some(sp => sp.sub_preparo_id === v)) {
-                try { showToast('Esse preparo já foi adicionado', 'alert-circle', 2500); } catch (_) {}
-                return;
-              }
-              const pr = preparosCatalogo.find(p => p.id === v);
-              if (!pr) return;
-              setSubpreparos(prev => [...prev, {
-                sub_preparo_id: pr.id,
-                sub_nome: pr.nome,
-                sub_custo_por_kg: pr.custo_por_kg,
-                sub_unidade_medida: pr.unidade_medida || 'g',
-                quantidade_utilizada: 0,
-              }]);
-              setPickerResetKey(k => k + 1);
-            }}
-            options={preparosCatalogo.map(p => ({ label: `${p.nome} — ${formatCurrency(p.custo_por_kg || 0)}/kg`, value: p.id }))}
-            placeholder={preparosCatalogo.length === 0 ? 'Crie outro preparo primeiro' : 'Selecione um preparo'}
-            onCreateNew={async () => {
-              // Cascata: marca pra reabrir este preparo após criar o novo.
-              try {
-                const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-                await AsyncStorage.setItem('reopenPreparoFormAfterEdit', JSON.stringify({
-                  preparoId: editId || null,
-                  ts: Date.now(),
-                }));
-              } catch (_) {}
-              // Navega pra criar um novo preparo (mesmo formulário, sem editId).
-              navigation.navigate('PreparoForm', {});
-            }}
-            createLabel="Cadastrar novo preparo"
-          />
-          {subpreparos.length > 0 && (
-            <View style={[styles.ingListContainer, { marginTop: spacing.sm }]}>
-              <View style={styles.ingListHeader}>
-                <Text style={[styles.ingHeaderText, { flex: 2 }]}>Preparo</Text>
-                <Text style={[styles.ingHeaderText, { flex: 1, textAlign: 'center' }]}>Qtd</Text>
-                <Text style={[styles.ingHeaderText, { flex: 1, textAlign: 'center' }]}>Un.</Text>
-                <Text style={[styles.ingHeaderText, { flex: 1.2, textAlign: 'right', paddingRight: 28 }]}>Custo</Text>
-              </View>
+              {/* Sessão 28.37: preparos como ingrediente — mesmas linhas, com
+                  ícone pequeno discreto à esquerda do nome pra diferenciar. */}
               {subpreparos.map((sp, idx) => {
                 const live = preparosCatalogo.find(p => p.id === sp.sub_preparo_id);
                 const custoKg = live?.custo_por_kg ?? sp.sub_custo_por_kg ?? 0;
                 const unidade = live?.unidade_medida || sp.sub_unidade_medida || 'g';
                 const custo = calcCustoPreparo(custoKg, sp.quantidade_utilizada, unidade);
+                const rowIdx = ingredientes.length + idx;
                 return (
-                  <View key={sp.sub_preparo_id} style={[styles.ingRow, idx % 2 === 0 && styles.ingRowEven]}>
-                    <Text style={[styles.ingCell, { flex: 2 }]} numberOfLines={1}>{live?.nome || sp.sub_nome}</Text>
+                  <View key={`sub-${sp.sub_preparo_id}`} style={[styles.ingRow, rowIdx % 2 === 0 && styles.ingRowEven]}>
+                    <View style={{ flex: 2, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Feather name="layers" size={11} color={colors.textSecondary} />
+                      <Text style={[styles.ingCell, { flex: 1 }]} numberOfLines={1}>{live?.nome || sp.sub_nome}</Text>
+                    </View>
                     <TextInput
                       style={[styles.ingCell, { flex: 1, textAlign: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 4, paddingVertical: 4 }]}
                       value={String(sp.quantidade_utilizada || '')}
@@ -832,10 +809,22 @@ export default function PreparoFormScreen({ route, navigation }) {
                   </View>
                 );
               })}
+
+              <View style={styles.ingFooter}>
+                <Text style={styles.ingFooterLabel}>Total dos ingredientes</Text>
+                <Text style={styles.ingFooterValue}>{formatCurrency(custoTotal)}</Text>
+              </View>
+            </View>
+          )}
+
+          {ingredientes.length === 0 && subpreparos.length === 0 && (
+            <View style={styles.ingEmpty}>
+              <Text style={styles.ingEmptyText}>
+                Selecione insumos {preparosCatalogo.length > 0 ? 'ou preparos ' : ''}acima para montar o preparo.
+              </Text>
             </View>
           )}
         </Card>
-        )}
 
         {/* D-20: Embalagens opcionais (ex: pote pra armazenar a calda, saco pra massa) */}
         <Card title={`Embalagens${preparoEmbalagens.length > 0 ? ` (${preparoEmbalagens.length})` : ' (opcional)'}`} style={{ marginTop: spacing.sm }}>
