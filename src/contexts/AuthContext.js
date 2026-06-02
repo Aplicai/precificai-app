@@ -8,14 +8,18 @@ const AuthContext = createContext({});
 
 // Timeout de inatividade — configurável pelo usuário via checkbox
 // "Lembrar de mim" no LoginScreen (M-2):
-//  - Default (checkbox desmarcado, mais seguro p/ máquinas compartilhadas): 2 horas
-//  - "Lembrar de mim" marcado (dispositivo pessoal): 7 dias
+//  - Default (checkbox desmarcado): 24 horas — antes era 2h, mas usuário relatou
+//    deslogout frequente em uso real ("toda hora ficava deslogando"). Pequenos
+//    empreendedores deixam o app aberto em background entre clientes — 2h era
+//    agressivo demais. 24h é o equilíbrio: protege máquina compartilhada (sessão
+//    morre overnight) mas não interrompe um dia de trabalho.
+//  - "Lembrar de mim" marcado (dispositivo pessoal): 30 dias (antes 7d).
 //
 // A escolha é persistida em AsyncStorage chave `auth_remember_me` ('true' | 'false').
 // `getEffectiveTimeout()` lê o valor dinamicamente — o heartbeat e o handler de
 // AppState consultam a cada checagem, então mudanças entram em vigor imediatamente.
-const TIMEOUT_REMEMBER = 7 * 24 * 60 * 60 * 1000; // 7 dias
-const TIMEOUT_DEFAULT = 2 * 60 * 60 * 1000; // 2 horas
+const TIMEOUT_REMEMBER = 30 * 24 * 60 * 60 * 1000; // 30 dias
+const TIMEOUT_DEFAULT = 24 * 60 * 60 * 1000; // 24 horas
 const REMEMBER_ME_KEY = 'auth_remember_me';
 
 async function getEffectiveTimeout() {
@@ -92,8 +96,12 @@ export function AuthProvider({ children }) {
     events.forEach(ev => document.addEventListener(ev, bumpActivity, { passive: true }));
 
     const onVisibility = () => {
-      if (!document.hidden) checkInactivity();
+      // Sessão 28.38 BUG FIX: ordem invertida — bumpa ANTES de checar. Antes,
+      // ao voltar pra aba depois de tempo, checkInactivity rodava com lastActive
+      // velho → logout instantâneo. Agora bumpamos primeiro (representa o ato
+      // de voltar pra aba como "atividade") e só checa se ainda assim faz sentido.
       bumpActivity();
+      if (!document.hidden) checkInactivity();
     };
     document.addEventListener('visibilitychange', onVisibility);
 
