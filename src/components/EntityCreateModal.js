@@ -1352,7 +1352,20 @@ export default function EntityCreateModal({
   const termo = _normalize(busca);
   const tipoOn = (t) => !filtroTipo || filtroTipo === t;
   const filteredMaterias = tipoOn('materia_prima') ? allMaterias.filter(m => !termo || _normalize(m.nome).includes(termo) || _normalize(m.marca || '').includes(termo)) : [];
-  const filteredPreparos = (isProduto && tipoOn('preparo')) ? allPreparos.filter(p => !termo || _normalize(p.nome).includes(termo)) : [];
+  // Sessão 28.37 BUG FIX: antes só mostrava preparos em mode='produto' (guard
+  // `isProduto`). Resultado: ao criar/editar um preparo via cascada/popup, os
+  // próprios preparos do usuário não apareciam no picker — então a feature
+  // "preparo dentro de preparo" ficava invisível. Agora mostra em ambos os modos.
+  // Em mode='preparo' EDITANDO, exclui o próprio preparo (evita ciclo direto A→A;
+  // o backend tem CHECK constraint + showToast guard como backstop pra ciclos
+  // indiretos, mas o filtro na UI já remove o caso óbvio).
+  const filteredPreparos = tipoOn('preparo')
+    ? allPreparos.filter(p => {
+        if (!isProduto && isEditing && p.id === editId) return false;
+        if (termo && !_normalize(p.nome).includes(termo)) return false;
+        return true;
+      })
+    : [];
   // D-20 (sessão 28.13): embalagens disponíveis em produto E preparo (preparos que precisam armazenar — pote, saco, etc)
   const filteredEmbalagens = (tipoOn('embalagem')) ? allEmbalagens.filter(e => !termo || _normalize(e.nome).includes(termo)) : [];
 
