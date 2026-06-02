@@ -24,6 +24,7 @@ import {
   UNIDADES_MEDIDA,
   formatCurrency,
   calcCustoIngrediente,
+  calcCustoPreparo,
 } from '../utils/calculations';
 
 // Cores para categorias no picker
@@ -61,6 +62,15 @@ export default function PreparoFormScreen({ route, navigation }) {
   const [preparoEmbalagens, setPreparoEmbalagens] = useState([]); // selecionadas neste preparo
   const preparoEmbalagensRef = useRef(preparoEmbalagens);
   preparoEmbalagensRef.current = preparoEmbalagens;
+  // Sessão 28.37 — feature "preparo dentro de preparo".
+  // preparosCatalogo = catálogo de TODOS os preparos do usuário, filtrado pra
+  // remover (a) o próprio preparo sendo editado, (b) preparos que já usam o
+  // atual transitivamente — evita ciclos (A→B→A). O CHECK constraint do banco
+  // só bloqueia o caso direto (A→A); ciclos indiretos são prevenidos aqui.
+  const [preparosCatalogo, setPreparosCatalogo] = useState([]);
+  const [subpreparos, setSubpreparos] = useState([]); // { sub_preparo_id, sub_nome, sub_custo_por_kg, sub_unidade_medida, quantidade_utilizada }
+  const subpreparosRef = useRef(subpreparos);
+  subpreparosRef.current = subpreparos;
   const [embPickerVisible, setEmbPickerVisible] = useState(false);
   const qtyInputRef = useRef(null);
   const [catPickerVisible, setCatPickerVisible] = useState(false);
@@ -107,11 +117,13 @@ export default function PreparoFormScreen({ route, navigation }) {
 
   // Recarregar lista de insumos ao voltar (ex: após criar novo insumo)
   // F2-J2-01: também recarrega categorias (criada inline em outro form precisa aparecer)
+  // Sessão 28.37: também recarrega catálogo de preparos (pra incluir um recém-criado via cascata).
   useFocusEffect(useCallback(() => {
     loadMateriasPrimas();
     loadCategorias();
     loadEmbalagens();
-  }, []));
+    loadPreparosCatalogo();
+  }, [editId]));
 
   // Intercepta saída para validar campos
   useEffect(() => {
@@ -146,7 +158,7 @@ export default function PreparoFormScreen({ route, navigation }) {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [form, ingredientes, preparoEmbalagens, loaded]);
+  }, [form, ingredientes, preparoEmbalagens, subpreparos, loaded]);
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -154,6 +166,50 @@ export default function PreparoFormScreen({ route, navigation }) {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, []);
+
+  // Sessão 28.37: carrega catálogo de preparos disponíveis pra serem usados como
+  // ingrediente DENTRO deste preparo. Filtra:
+  //  - o próprio preparo sendo editado (CHECK do banco bloqueia A→A direto)
+  //  - preparos que JÁ USAM o atual transitivamente (evita ciclo B→A→B)
+  async function loadPreparosCatalogo() {
+    try {
+      const db = await getDatabase();
+      const all = await db.getAllAsync('SELECT id, nome, custo_por_kg, unidade_medida FROM preparos ORDER BY nome');
+      if (!editId) {
+        // criando novo preparo (sem id ainda) → todos disponíveis
+        setPreparosCatalogo(all || []);
+        return;
+      }
+      // BFS reverso: começa do editId, vai descobrindo preparos que dependem dele.
+      // Cada preparo dependente é excluído do catálogo (escolhê-lo criaria ciclo).
+      const dependentes = new Set([editId]);
+      let frontier = [editId];
+      // Limite de profundidade defensivo (10 níveis é mais do que real-world).
+      for (let depth = 0; depth < 10 && frontier.length > 0; depth++) {
+        const placeholders = frontier.map(() => '?').join(',');
+        const next = await db.getAllAsync(
+          `SELECT DISTINCT preparo_id FROM preparo_subpreparos WHERE sub_preparo_id IN (${placeholders})`,
+          frontier
+        ).catch(() => []);
+        const novos = [];
+        for (const r of (next || [])) {
+          if (!dependentes.has(r.preparo_id)) {
+            dependentes.add(r.preparo_id);
+            novos.push(r.preparo_id);
+          }
+        }
+        frontier = novos;
+      }
+      setPreparosCatalogo((all || []).filter(p => !dependentes.has(p.id)));
+    } catch (e) {
+      // Tabela preparo_subpreparos pode não existir em DB legado — fallback seguro.
+      try {
+        const db = await getDatabase();
+        const all = await db.getAllAsync('SELECT id, nome, custo_por_kg, unidade_medida FROM preparos ORDER BY nome');
+        setPreparosCatalogo((all || []).filter(p => p.id !== editId));
+      } catch (_) { setPreparosCatalogo([]); }
+    }
+  }
 
   async function loadMateriasPrimas() {
     const db = await getDatabase();
@@ -207,6 +263,20 @@ export default function PreparoFormScreen({ route, navigation }) {
       setIngredientes(ings);
       // D-20: carrega embalagens deste preparo (se schema existir)
       await loadPreparoEmbalagens(editId);
+      // Sessão 28.37: carrega subpreparos (preparos usados como ingrediente)
+      try {
+        const subs = await db.getAllAsync(
+          `SELECT ps.sub_preparo_id, ps.quantidade_utilizada,
+                  p.nome AS sub_nome, p.custo_por_kg AS sub_custo_por_kg, p.unidade_medida AS sub_unidade_medida
+           FROM preparo_subpreparos ps
+           JOIN preparos p ON p.id = ps.sub_preparo_id
+           WHERE ps.preparo_id = ?`, [editId]
+        );
+        setSubpreparos(subs || []);
+      } catch (_) {
+        // Schema legado sem a tabela — vai vazio.
+        setSubpreparos([]);
+      }
       // Marca como carregado após setar o form para evitar auto-save imediato
       setTimeout(() => setLoaded(true), 100);
     } else {
@@ -230,16 +300,27 @@ export default function PreparoFormScreen({ route, navigation }) {
     return mp?.unidade_medida || ing.mp_unidade || 'g';
   }
 
-  const custoTotal = ingredientes.reduce((acc, ing) => {
+  const custoInsumos = ingredientes.reduce((acc, ing) => {
     const mp = materiasPrimas.find(m => m.id === ing.materia_prima_id);
     const precoBase = mp?.preco_por_kg || ing.preco_por_kg || 0;
     const unidade = getUnidadeDoIngrediente(ing);
     return acc + safeCusto(calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade));
   }, 0);
 
+  // Sessão 28.37: custo dos sub-preparos usados como ingrediente.
+  // Usa custo_por_kg LIVE do catálogo (preparosCatalogo) com fallback pro snapshot
+  // gravado quando foi adicionado — mesmo padrão dos insumos (live > snapshot).
+  const custoSubpreparos = subpreparos.reduce((acc, sp) => {
+    const live = preparosCatalogo.find(p => p.id === sp.sub_preparo_id);
+    const custoKg = live?.custo_por_kg ?? sp.sub_custo_por_kg ?? 0;
+    const unidade = live?.unidade_medida || sp.sub_unidade_medida || 'g';
+    return acc + safeCusto(calcCustoPreparo(custoKg, sp.quantidade_utilizada, unidade));
+  }, 0);
+
+  const custoTotal = custoInsumos + custoSubpreparos;
   const rendimento = parseNum(form.rendimento_total);
   const custoKg = rendimento > 0 && Number.isFinite(custoTotal) ? (custoTotal / rendimento) * 1000 : 0;
-  const temCustos = ingredientes.length > 0;
+  const temCustos = ingredientes.length > 0 || subpreparos.length > 0;
 
   function openQuantityPrompt(mpId) {
     const mp = materiasPrimas.find(m => m.id === mpId);
@@ -334,13 +415,22 @@ export default function PreparoFormScreen({ route, navigation }) {
 
     const rend = parseNum(f.rendimento_total);
     const ings = ingredientesRef.current;
+    const subs = subpreparosRef.current || [];
 
-    const ct = ings.reduce((acc, ing) => {
+    const ctInsumos = ings.reduce((acc, ing) => {
       const mp = materiasPrimas.find(m => m.id === ing.materia_prima_id);
       const precoBase = mp?.preco_por_kg || ing.preco_por_kg || 0;
       const unidade = getUnidadeDoIngrediente(ing);
       return acc + safeCusto(calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade));
     }, 0);
+    // Sessão 28.37: também soma custo dos sub-preparos.
+    const ctSub = subs.reduce((acc, sp) => {
+      const live = preparosCatalogo.find(p => p.id === sp.sub_preparo_id);
+      const custoKg = live?.custo_por_kg ?? sp.sub_custo_por_kg ?? 0;
+      const unidade = live?.unidade_medida || sp.sub_unidade_medida || 'g';
+      return acc + safeCusto(calcCustoPreparo(custoKg, sp.quantidade_utilizada, unidade));
+    }, 0);
+    const ct = ctInsumos + ctSub;
     const ck = rend > 0 && Number.isFinite(ct) ? (ct / rend) * 1000 : 0;
     const validadeDias = parseNum(f.validade_dias);
 
@@ -378,6 +468,22 @@ export default function PreparoFormScreen({ route, navigation }) {
         }
       } catch (e) {
         if (typeof console !== 'undefined') console.warn('[PreparoForm.autoSave embalagens]', e?.message || e);
+      }
+      // Sessão 28.37: re-save sub-preparos (preparos usados como ingrediente)
+      try {
+        await db.runAsync('DELETE FROM preparo_subpreparos WHERE preparo_id = ?', [editId]);
+        for (const sp of subs) {
+          const live = preparosCatalogo.find(p => p.id === sp.sub_preparo_id);
+          const custoKg = live?.custo_por_kg ?? sp.sub_custo_por_kg ?? 0;
+          const unidade = live?.unidade_medida || sp.sub_unidade_medida || 'g';
+          const custo = safeCusto(calcCustoPreparo(custoKg, sp.quantidade_utilizada, unidade));
+          await db.runAsync(
+            'INSERT INTO preparo_subpreparos (preparo_id, sub_preparo_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
+            [editId, sp.sub_preparo_id, sp.quantidade_utilizada, custo]
+          );
+        }
+      } catch (e) {
+        if (typeof console !== 'undefined') console.warn('[PreparoForm.autoSave subpreparos]', e?.message || e);
       }
       setSaveStatus('saved');
     } catch (e) {
@@ -420,6 +526,21 @@ export default function PreparoFormScreen({ route, navigation }) {
       }
     } catch (e) {
       if (typeof console !== 'undefined') console.warn('[PreparoForm.salvarNovo embalagens]', e?.message || e);
+    }
+    // Sessão 28.37: salva sub-preparos
+    try {
+      for (const sp of subpreparos) {
+        const live = preparosCatalogo.find(p => p.id === sp.sub_preparo_id);
+        const custoKg = live?.custo_por_kg ?? sp.sub_custo_por_kg ?? 0;
+        const unidade = live?.unidade_medida || sp.sub_unidade_medida || 'g';
+        const custo = safeCusto(calcCustoPreparo(custoKg, sp.quantidade_utilizada, unidade));
+        await db.runAsync(
+          'INSERT INTO preparo_subpreparos (preparo_id, sub_preparo_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
+          [newId, sp.sub_preparo_id, sp.quantidade_utilizada, custo]
+        );
+      }
+    } catch (e) {
+      if (typeof console !== 'undefined') console.warn('[PreparoForm.salvarNovo subpreparos]', e?.message || e);
     }
     // Área 4 — toast de confirmação após salvar preparo novo
     try { showToast('Preparo salvo', 'check-circle'); } catch (_) {}
@@ -624,6 +745,97 @@ export default function PreparoFormScreen({ route, navigation }) {
             </View>
           )}
         </Card>
+
+        {/* Sessão 28.37: Preparos como ingrediente (preparo dentro de preparo).
+            Ex.: massa de pizza usa fermento (que é outro preparo). Mostra catálogo
+            filtrado (sem o próprio preparo e sem preparos que já usam o atual,
+            evitando ciclos). Card só aparece se houver preparos no catálogo OU
+            algum já foi adicionado. */}
+        {(preparosCatalogo.length > 0 || subpreparos.length > 0) && (
+        <Card title={`Preparos como ingrediente${subpreparos.length > 0 ? ` (${subpreparos.length})` : ' (opcional)'}`} style={{ marginTop: spacing.sm }}>
+          <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
+            Use outro preparo como ingrediente (ex: massa de pizza usa fermento). O custo do preparo escolhido entra no total.
+          </Text>
+          <PickerSelect
+            key={`pick-subpreparo-${pickerResetKey}`}
+            label="Adicionar preparo"
+            value={null}
+            onValueChange={(v) => {
+              if (!v) return;
+              if (subpreparos.some(sp => sp.sub_preparo_id === v)) {
+                try { showToast('Esse preparo já foi adicionado', 'alert-circle', 2500); } catch (_) {}
+                return;
+              }
+              const pr = preparosCatalogo.find(p => p.id === v);
+              if (!pr) return;
+              setSubpreparos(prev => [...prev, {
+                sub_preparo_id: pr.id,
+                sub_nome: pr.nome,
+                sub_custo_por_kg: pr.custo_por_kg,
+                sub_unidade_medida: pr.unidade_medida || 'g',
+                quantidade_utilizada: 0,
+              }]);
+              setPickerResetKey(k => k + 1);
+            }}
+            options={preparosCatalogo.map(p => ({ label: `${p.nome} — ${formatCurrency(p.custo_por_kg || 0)}/kg`, value: p.id }))}
+            placeholder={preparosCatalogo.length === 0 ? 'Crie outro preparo primeiro' : 'Selecione um preparo'}
+            onCreateNew={async () => {
+              // Cascata: marca pra reabrir este preparo após criar o novo.
+              try {
+                const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                await AsyncStorage.setItem('reopenPreparoFormAfterEdit', JSON.stringify({
+                  preparoId: editId || null,
+                  ts: Date.now(),
+                }));
+              } catch (_) {}
+              // Navega pra criar um novo preparo (mesmo formulário, sem editId).
+              navigation.navigate('PreparoForm', {});
+            }}
+            createLabel="Cadastrar novo preparo"
+          />
+          {subpreparos.length > 0 && (
+            <View style={[styles.ingListContainer, { marginTop: spacing.sm }]}>
+              <View style={styles.ingListHeader}>
+                <Text style={[styles.ingHeaderText, { flex: 2 }]}>Preparo</Text>
+                <Text style={[styles.ingHeaderText, { flex: 1, textAlign: 'center' }]}>Qtd</Text>
+                <Text style={[styles.ingHeaderText, { flex: 1, textAlign: 'center' }]}>Un.</Text>
+                <Text style={[styles.ingHeaderText, { flex: 1.2, textAlign: 'right', paddingRight: 28 }]}>Custo</Text>
+              </View>
+              {subpreparos.map((sp, idx) => {
+                const live = preparosCatalogo.find(p => p.id === sp.sub_preparo_id);
+                const custoKg = live?.custo_por_kg ?? sp.sub_custo_por_kg ?? 0;
+                const unidade = live?.unidade_medida || sp.sub_unidade_medida || 'g';
+                const custo = calcCustoPreparo(custoKg, sp.quantidade_utilizada, unidade);
+                return (
+                  <View key={sp.sub_preparo_id} style={[styles.ingRow, idx % 2 === 0 && styles.ingRowEven]}>
+                    <Text style={[styles.ingCell, { flex: 2 }]} numberOfLines={1}>{live?.nome || sp.sub_nome}</Text>
+                    <TextInput
+                      style={[styles.ingCell, { flex: 1, textAlign: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 4, paddingVertical: 4 }]}
+                      value={String(sp.quantidade_utilizada || '')}
+                      onChangeText={(v) => {
+                        const cleaned = String(v).replace(/[^0-9.,]/g, '');
+                        const num = parseFloat(cleaned.replace(',', '.'));
+                        setSubpreparos(prev => prev.map((it, i) => i === idx ? { ...it, quantidade_utilizada: Number.isFinite(num) ? num : 0 } : it));
+                      }}
+                      keyboardType="decimal-pad"
+                      placeholder="0"
+                    />
+                    <Text style={[styles.ingCell, { flex: 1, textAlign: 'center' }]}>{unidade}</Text>
+                    <Text style={[styles.ingCellCusto, { flex: 1.2, textAlign: 'right' }]}>{formatCurrency(safeCusto(custo))}</Text>
+                    <TouchableOpacity
+                      onPress={() => setSubpreparos(prev => prev.filter((_, i) => i !== idx))}
+                      style={styles.ingRemoveBtn}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Text style={styles.ingRemoveText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </Card>
+        )}
 
         {/* D-20: Embalagens opcionais (ex: pote pra armazenar a calda, saco pra massa) */}
         <Card title={`Embalagens${preparoEmbalagens.length > 0 ? ` (${preparoEmbalagens.length})` : ' (opcional)'}`} style={{ marginTop: spacing.sm }}>

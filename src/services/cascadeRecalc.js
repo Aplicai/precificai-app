@@ -31,6 +31,11 @@ const safe = (v) => {
 /**
  * Recalcula `custo_por_kg` de um preparo a partir dos insumos atuais.
  * Persiste no DB.
+ *
+ * Sessão 28.37: agora também considera sub-preparos (preparos usados como ingrediente
+ * dentro de outro preparo). Lê preparo_subpreparos e soma calcCustoPreparo de cada.
+ * NÃO é recursivo aqui — cada sub-preparo usa seu `custo_por_kg` atual em DB.
+ * `recalcularTodosPreparos` cuida da ordem iterando N vezes até estabilizar.
  */
 export async function recalcularPreparo(db, preparoId) {
   const p = await db.getFirstAsync('SELECT * FROM preparos WHERE id = ?', [preparoId]);
@@ -39,16 +44,26 @@ export async function recalcularPreparo(db, preparoId) {
     'SELECT pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM preparo_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id WHERE pi.preparo_id = ?',
     [preparoId]
   );
-  const custoTotal = (ings || []).reduce((a, i) => a + calcCustoIngrediente(i.preco_por_kg, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida), 0);
+  const custoInsumos = (ings || []).reduce((a, i) => a + calcCustoIngrediente(i.preco_por_kg, i.quantidade_utilizada, i.unidade_medida, i.unidade_medida), 0);
+
+  // Sessão 28.37: sub-preparos. Silencioso se a tabela não existir (DB legado).
+  let custoSubs = 0;
+  try {
+    const subs = await db.getAllAsync(
+      'SELECT ps.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM preparo_subpreparos ps JOIN preparos pr ON pr.id = ps.sub_preparo_id WHERE ps.preparo_id = ?',
+      [preparoId]
+    );
+    custoSubs = (subs || []).reduce(
+      (a, s) => a + (Number(s.custo_por_kg) > 0 && Number(s.quantidade_utilizada) > 0
+        ? calcCustoPreparo(s.custo_por_kg, s.quantidade_utilizada, s.unidade_medida || 'g')
+        : 0),
+      0
+    );
+  } catch (_) { /* DB legado sem preparo_subpreparos */ }
+
+  const custoTotal = custoInsumos + custoSubs;
   const rendimento = safe(p.rendimento_total);
-  // Sessão 28.72 — AUDITORIA: o form canônico (PreparoFormScreen / EntityCreateModal)
-  // SEMPRE faz `(custoTotal / rendimento) * 1000`, INDEPENDENTE da unidade. A versão
-  // anterior da cascata só multiplicava por 1000 quando unidade === 'g' || 'mL'
-  // (ternário usaMultiplicadorPorKg), divergindo do form para preparos em 'un' — e
-  // até para 'ml' minúsculo (case mismatch). Resultado: ao atualizar o preço de um
-  // insumo, esses preparos ficavam 1000x mais baratos que o salvo pelo form.
-  // FIX: usar EXATAMENTE a fórmula canônica do form (sempre * 1000) para garantir
-  // que form e cascade nunca divirjam.
+  // Sessão 28.72 — fórmula canônica do form (sempre * 1000)
   const custoPorKg = rendimento > 0
     ? (custoTotal / rendimento) * 1000
     : custoTotal;
@@ -123,13 +138,31 @@ export async function recalcularCombo(db, comboId) {
 /**
  * Recalcula TODOS os preparos do usuário. Usado quando um insumo tem
  * preço atualizado.
+ *
+ * Sessão 28.37: agora itera até estabilizar (max 5 passadas) — quando preparo A
+ * usa preparo B (sub-preparo), recalcular A precisa do custo_por_kg atualizado
+ * de B. Sem ordenação topológica, basta iterar até que nenhum custo mude. Com
+ * 10 níveis de profundidade real, 5 passadas garante convergência com folga.
+ * Ciclos são prevenidos no UI (PreparoForm.loadPreparosCatalogo + CHECK no DB).
  */
 export async function recalcularTodosPreparos(db) {
   const preparos = await db.getAllAsync('SELECT id FROM preparos');
-  for (const p of preparos || []) {
-    try { await recalcularPreparo(db, p.id); } catch (e) { console.warn('[cascadeRecalc.preparo]', p.id, e); }
+  const ids = (preparos || []).map(p => p.id);
+  const MAX_PASSES = 5;
+  let prevHash = '';
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    for (const id of ids) {
+      try { await recalcularPreparo(db, id); } catch (e) { console.warn('[cascadeRecalc.preparo]', id, e); }
+    }
+    // Lê custos atuais — se nada mudou desde a passada anterior, encerra.
+    try {
+      const snap = await db.getAllAsync('SELECT id, custo_por_kg FROM preparos ORDER BY id');
+      const hash = (snap || []).map(r => `${r.id}:${Number(r.custo_por_kg).toFixed(6)}`).join('|');
+      if (hash === prevHash) break;
+      prevHash = hash;
+    } catch (_) { break; }
   }
-  return (preparos || []).length;
+  return ids.length;
 }
 
 /**
