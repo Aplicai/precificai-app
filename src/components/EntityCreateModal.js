@@ -2054,20 +2054,20 @@ export default function EntityCreateModal({
         </TouchableOpacity>
       </Modal>
 
-      {/* Sessão 28.38: cascata — modal de preparo empilhado em cima do produto.
-          Quando o user salva, o preparo recém-criado é adicionado aos itens
-          do produto E o modal nested fecha. Se cancela, só fecha (produto
-          permanece igual). */}
-      {isProduto && (
-        <EntityCreateModal
+      {/* Sessão 28.38: cascata — modal de preparo empilhado em cima do pai
+          (que pode ser produto OU preparo). Quando o user salva, o preparo
+          recém-criado é adicionado aos itens do pai E o modal nested fecha.
+          Sessão 28.37: removido o guard `isProduto` — agora também monta em
+          mode='preparo' (cascada "+ Preparo" pra usar preparo dentro de preparo). */}
+      <EntityCreateModal
           visible={nestedPreparoVisible}
           mode="preparo"
           editId={null}
           onClose={() => setNestedPreparoVisible(false)}
-          // Sessão 28.52: passa estado do produto pai pro nested preparo.
-          // Se user fizer cascata "+ Insumo"/"+ Embalagem" lá, o produto é preservado.
+          // Sessão 28.52/28.37: passa estado do pai (produto OU preparo) pro nested.
+          // Se user fizer cascata "+ Insumo"/"+ Embalagem"/"+ Preparo" lá, o pai é preservado.
           parentEntity={{
-            mode: 'produto',
+            mode: isProduto ? 'produto' : 'preparo',
             editId,
             draft: {
               nome, categoriaId, precoVenda,
@@ -2101,7 +2101,6 @@ export default function EntityCreateModal({
             } catch (e) { console.warn('[EntityCreateModal.nestedPreparo.onSaved]', e); }
           }}
         />
-      )}
 
       {/* Sessão 28.71: cascata empilhada pra insumo e embalagem. Os formulários
           COMPLETOS (MateriaPrimaFormScreen / EmbalagemFormScreen) são renderizados
