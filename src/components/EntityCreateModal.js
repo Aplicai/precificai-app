@@ -609,6 +609,25 @@ export default function EntityCreateModal({
           custoUnit: calcCustoUnit('embalagem', { preco_unitario: e.preco_unitario }),
           unidade: shortUnidade(e.em_unidade, 'embalagem') || 'un',
         }));
+        // Sessão 28.37: carrega sub-preparos (preparo dentro de preparo).
+        // Silencioso se a tabela não existir (DB legado).
+        try {
+          const subs = await db.getAllAsync(
+            `SELECT ps.sub_preparo_id, ps.quantidade_utilizada,
+                    pr.nome AS sub_nome, pr.custo_por_kg AS sub_custo, pr.unidade_medida AS sub_un
+             FROM preparo_subpreparos ps JOIN preparos pr ON pr.id = ps.sub_preparo_id
+             WHERE ps.preparo_id = ?`, [editId]) || [];
+          subs.forEach(s => nextPrep.push({
+            tipo: 'preparo',
+            id: s.sub_preparo_id,
+            nome: s.sub_nome,
+            quantidade: s.quantidade_utilizada,
+            custoUnit: calcCustoUnit('preparo', { custo_por_kg: s.sub_custo }),
+            unidade: shortUnidade(s.sub_un, 'preparo'),
+          }));
+        } catch (e) {
+          if (typeof console !== 'undefined') console.warn('[EntityCreateModal preparo_subpreparos load]', e?.message || e);
+        }
         setItens(nextPrep);
       }
     } catch (e) {
@@ -1154,6 +1173,8 @@ export default function EntityCreateModal({
           await db.runAsync('DELETE FROM preparo_ingredientes WHERE preparo_id = ?', [editId]);
           // D-20 (sessão 28.13): também limpa embalagens (silencioso se schema não existir)
           try { await db.runAsync('DELETE FROM preparo_embalagens WHERE preparo_id = ?', [editId]); } catch (e) {}
+          // Sessão 28.37: limpa sub-preparos (silencioso se schema legado)
+          try { await db.runAsync('DELETE FROM preparo_subpreparos WHERE preparo_id = ?', [editId]); } catch (e) {}
         } else {
           const result = await db.runAsync(
             `INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg,
@@ -1163,6 +1184,12 @@ export default function EntityCreateModal({
           savedId = result.lastInsertRowId;
         }
         for (const it of itens) {
+          // Sessão 28.37: bloqueio anti-ciclo direto (CHECK do banco também bloqueia,
+          // mas damos feedback antes de mandar). Edição que tenta adicionar A→A.
+          if (it.tipo === 'preparo' && isEditing && it.id === editId) {
+            try { showToast('Um preparo não pode usar ele mesmo como ingrediente', 'alert-circle', 3500); } catch (_) {}
+            continue;
+          }
           if (it.tipo === 'materia_prima') {
             const cIng = safeNum(it.custoUnit) * safeNum(it.quantidade);
             await db.runAsync('INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
@@ -1174,6 +1201,15 @@ export default function EntityCreateModal({
                 [savedId, it.id, safeNum(it.quantidade)]);
             } catch (e) {
               if (typeof console !== 'undefined') console.warn('[EntityCreateModal preparo_embalagens]', e?.message || e);
+            }
+          } else if (it.tipo === 'preparo') {
+            // Sessão 28.37: sub-preparo (preparo dentro de preparo).
+            try {
+              const cSub = safeNum(it.custoUnit) * safeNum(it.quantidade);
+              await db.runAsync('INSERT INTO preparo_subpreparos (preparo_id, sub_preparo_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
+                [savedId, it.id, safeNum(it.quantidade), cSub]);
+            } catch (e) {
+              if (typeof console !== 'undefined') console.warn('[EntityCreateModal preparo_subpreparos]', e?.message || e);
             }
           }
         }
@@ -1693,19 +1729,19 @@ export default function EntityCreateModal({
                       <Feather name="shopping-bag" size={11} color={colors.primary} />
                       <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.primary }}>Insumo</Text>
                     </TouchableOpacity>
-                    {isProduto && (
-                      <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '10' }}
-                        // Sessão 28.38: cascata — abre modal de preparo EMPILHADO
-                        // (sem fechar este). Antes navegava pra Preparos screen.
-                        onPress={() => setNestedPreparoVisible(true)}
-                        accessibilityLabel="Cadastrar novo preparo"
-                      >
-                        <Feather name="plus" size={11} color={colors.primary} />
-                        <MaterialCommunityIcons name="pot-steam-outline" size={11} color={colors.primary} />
-                        <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.primary }}>Preparo</Text>
-                      </TouchableOpacity>
-                    )}
+                    {/* Sessão 28.37: "+ Preparo" também em mode='preparo' (cascade
+                        pra criar outro preparo que vai virar sub-ingrediente do atual).
+                        Em produto: cria um preparo pra usar no produto.
+                        Em preparo: cria um preparo pra usar dentro do preparo atual. */}
+                    <TouchableOpacity
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '10' }}
+                      onPress={() => setNestedPreparoVisible(true)}
+                      accessibilityLabel="Cadastrar novo preparo"
+                    >
+                      <Feather name="plus" size={11} color={colors.primary} />
+                      <MaterialCommunityIcons name="pot-steam-outline" size={11} color={colors.primary} />
+                      <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.primary }}>Preparo</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '10' }}
                       // Sessão 28.71: abre o formulário completo de embalagem
