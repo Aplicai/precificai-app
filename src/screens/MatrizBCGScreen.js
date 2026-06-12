@@ -388,7 +388,7 @@ export default function MatrizBCGScreen({ navigation }) {
         {/* Área 9 — texto compactado pra caber em 1 linha no mobile. Detalhe completo
             fica no InfoTooltip acima ("Como funciona?"). */}
         <Text style={styles.subtitle} numberOfLines={1}>
-          Baseado nas vendas do mês anterior. Mês atual entra a partir do dia 5.
+          Baseado nas vendas do mês anterior (mais estável que o mês em curso).
         </Text>
       </View>
 

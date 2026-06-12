@@ -957,14 +957,28 @@ export default function EntityCreateModal({
               <>
                 <View style={styles.resumoGrid}>
                   <View style={styles.resumoCell}>
-                    <Text style={styles.resumoLabel}>CMV {tipoVenda === 'unidade' ? 'unit.' : `/${tipoVenda === 'kg' ? 'kg' : 'L'}`}</Text>
+                    <Text style={styles.resumoLabel}>Custo {tipoVenda === 'unidade' ? 'unit.' : `/${tipoVenda === 'kg' ? 'kg' : 'L'}`} (CMV)</Text>
                     <Text style={styles.resumoValue}>{formatCurrency(cmvUnitario)}</Text>
                   </View>
                   <View style={styles.resumoCell}>
                     <Text style={styles.resumoLabel}>Sugerido</Text>
-                    <Text style={[styles.resumoValue, { color: colors.textSecondary }]}>
-                      {precoSugerido > 0 ? formatCurrency(precoSugerido) : '—'}
-                    </Text>
+                    {precoSugerido > 0 ? (
+                      <Text style={[styles.resumoValue, { color: colors.textSecondary }]}>
+                        {formatCurrency(precoSugerido)}
+                      </Text>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => {
+                          try { onClose && onClose(); } catch {}
+                          try { navigation.navigate('Mais', { screen: 'FinanceiroMain' }); } catch {}
+                        }}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <Text style={[styles.resumoValue, { color: colors.primary, fontSize: 12 }]}>
+                          Defina sua margem →
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                   <View style={styles.resumoCell}>
                     <Text style={styles.resumoLabel}>Lucro</Text>
