@@ -73,6 +73,11 @@ export default function KitInicioScreen({ navigation, route }) {
   const [progressStep, setProgressStep] = useState(null);
   const [progressMsg, setProgressMsg] = useState('');
   const [progressCount, setProgressCount] = useState({ categorias: 0, insumos: 0, embalagens: 0, preparos: 0, produtos: 0 });
+  // Redesenho de ativação: id do 1º produto-exemplo criado pelo Kit. É o destino
+  // do CTA primário do modal de sucesso ("Ver meu primeiro produto") — leva o
+  // usuário direto ao EntityCreateModal de edição, onde o Resumo de Custos
+  // (CMV/Margem/Lucro) já renderiza = "aha moment". null → fallback gracioso.
+  const [firstProdutoId, setFirstProdutoId] = useState(null);
 
   // F1-J1-01: usuário chegou no Kit de Início → o WelcomeTour ficou para trás.
   // Limpamos a chave de passo salvo (qualquer user_id) para garantir que uma
@@ -129,6 +134,36 @@ export default function KitInicioScreen({ navigation, route }) {
         })
       );
     }
+  }
+
+  // Redesenho de ativação: navega até a aba Insumos (CTA secundário do sucesso).
+  // KitInicio é pushed sobre RootStack → precisa subir 2 níveis pra alcançar o
+  // Tab navigator (mesmo padrão que o CTA original usava).
+  function irParaInsumos() {
+    try {
+      const parent = navigation.getParent();
+      const tabNav = parent?.getParent?.() || parent;
+      if (tabNav) tabNav.navigate('Insumos');
+      else navegarAposKit();
+    } catch { navegarAposKit(); }
+  }
+
+  // Redesenho de ativação: abre o 1º produto-exemplo do Kit direto no
+  // EntityCreateModal de edição (param `openProductEdit`, mesmo deep-link de
+  // Relatórios/BCG) — é onde o Resumo de Custos (CMV/Margem/Lucro) aparece, o
+  // "aha moment". Fallback gracioso: sem produto criado, abre a criação de
+  // produto (openNovoProduto) pra não deixar o usuário num beco sem saída.
+  function abrirPrimeiroProduto() {
+    try {
+      const parent = navigation.getParent();
+      const tabNav = parent?.getParent?.() || parent;
+      if (!tabNav) { navegarAposKit(); return; }
+      if (firstProdutoId) {
+        tabNav.navigate('Produtos', { screen: 'ProdutosList', params: { openProductEdit: firstProdutoId } });
+      } else {
+        tabNav.navigate('Produtos', { screen: 'ProdutosList', params: { openNovoProduto: true } });
+      }
+    } catch { navegarAposKit(); }
   }
 
   // Sessão 28.34: helper de wipe extraído pra reutilizar em "Começar do zero".
@@ -276,6 +311,7 @@ export default function KitInicioScreen({ navigation, route }) {
     setProgressStep('iniciando');
     setProgressMsg('Verificando autenticação...');
     setProgressCount({ categorias: 0, insumos: 0 });
+    setFirstProdutoId(null);
     try {
       const { data: authData, error: authErr } = await supabase.auth.getUser();
       if (authErr) throw new Error('Erro de autenticação: ' + authErr.message);
@@ -636,6 +672,9 @@ export default function KitInicioScreen({ navigation, route }) {
             continue;
           }
           prodsCriados++;
+          // Redesenho de ativação: guarda o 1º produto criado como destino do CTA
+          // de sucesso ("Ver meu primeiro produto").
+          if (prodsCriados === 1) setFirstProdutoId(prodData.id);
 
           // ⚠️ Sessão 28.9 fix: junction tables EXIGEM user_id (NOT NULL + RLS).
           // Sem isso, INSERTs falham silenciosamente (RLS recusa).
@@ -965,32 +1004,41 @@ export default function KitInicioScreen({ navigation, route }) {
                   </Text>
                 </View>
 
-                {/* CTAs explícitos — user TEM que clicar (não auto-fecha) */}
-                <View style={styles.sucessoActions}>
+                {/* CTAs explícitos — user TEM que clicar (não auto-fecha).
+                    Redesenho de ativação: o CTA primário leva ao 1º produto
+                    precificado (Resumo de Custos = aha moment), não mais à
+                    manutenção de preços. "Atualizar preços" continua disponível
+                    como ação secundária. */}
+                <View style={styles.sucessoActionsCol}>
                   <TouchableOpacity
-                    style={styles.sucessoBtnSecondary}
-                    onPress={() => { setProgressStep(null); navegarAposKit(); }}
+                    style={styles.sucessoBtnPrimaryFull}
+                    onPress={() => { setProgressStep(null); abrirPrimeiroProduto(); }}
                     activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel="Ver meu primeiro produto"
                   >
-                    <Text style={styles.sucessoBtnSecondaryText}>Depois</Text>
+                    <Feather name="eye" size={15} color="#fff" />
+                    <Text style={styles.sucessoBtnPrimaryText}>
+                      {firstProdutoId ? 'Ver meu primeiro produto' : 'Criar meu primeiro produto'}
+                    </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.sucessoBtnPrimary}
-                    onPress={() => {
-                      setProgressStep(null);
-                      // Vai pra Insumos pra atualizar preços
-                      try {
-                        const parent = navigation.getParent();
-                        const tabNav = parent?.getParent?.() || parent;
-                        if (tabNav) tabNav.navigate('Insumos');
-                        else navegarAposKit();
-                      } catch { navegarAposKit(); }
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Feather name="edit-3" size={14} color="#fff" />
-                    <Text style={styles.sucessoBtnPrimaryText}>Atualizar preços agora</Text>
-                  </TouchableOpacity>
+                  <View style={styles.sucessoActionsRow}>
+                    <TouchableOpacity
+                      style={styles.sucessoBtnSecondary}
+                      onPress={() => { setProgressStep(null); navegarAposKit(); }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.sucessoBtnSecondaryText}>Depois</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.sucessoBtnSecondary}
+                      onPress={() => { setProgressStep(null); irParaInsumos(); }}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="edit-3" size={13} color={colors.textSecondary} />
+                      <Text style={styles.sucessoBtnSecondaryText}>Atualizar preços</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </>
             ) : (
@@ -1280,11 +1328,19 @@ const styles = StyleSheet.create({
   sucessoActions: {
     flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md, width: '100%',
   },
+  // Redesenho de ativação: layout em coluna — CTA primário em destaque no topo,
+  // ações secundárias ("Depois" / "Atualizar preços") na linha de baixo.
+  sucessoActionsCol: {
+    marginTop: spacing.md, width: '100%', gap: spacing.sm,
+  },
+  sucessoActionsRow: {
+    flexDirection: 'row', gap: spacing.sm, width: '100%',
+  },
   sucessoBtnSecondary: {
     flex: 1,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     paddingVertical: 12, borderRadius: borderRadius.md,
     borderWidth: 1, borderColor: colors.border,
-    alignItems: 'center', justifyContent: 'center',
     backgroundColor: colors.surface,
   },
   sucessoBtnSecondaryText: {
@@ -1295,6 +1351,12 @@ const styles = StyleSheet.create({
     flex: 2,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     paddingVertical: 12, borderRadius: borderRadius.md,
+    backgroundColor: colors.primary,
+  },
+  sucessoBtnPrimaryFull: {
+    width: '100%',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 14, borderRadius: borderRadius.md,
     backgroundColor: colors.primary,
   },
   sucessoBtnPrimaryText: {
