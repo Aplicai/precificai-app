@@ -114,13 +114,13 @@ serve(async (req) => {
 
   // 2. Busca tokens
   const { data: tokens, error: tokErr } = await supa
-    .from('device_tokens').select('expo_push_token, platform').eq('user_id', user_id);
+    .from('device_tokens').select('token, platform').eq('user_id', user_id);
   if (tokErr) return json({ error: tokErr.message }, 500, req);
   if (!tokens || tokens.length === 0) return json({ skipped: 'no_tokens' }, 200, req);
 
   // 3. Monta mensagens batch p/ Expo Push API
   const messages = tokens.map((t) => ({
-    to: t.expo_push_token,
+    to: t.token,
     title, body, data,
     sound: 'default',
     channelId,
@@ -145,8 +145,8 @@ serve(async (req) => {
       if (r.status === 'error' && r.details?.error === 'DeviceNotRegistered') invalidIdx.push(i);
     });
     if (invalidIdx.length) {
-      const badTokens = invalidIdx.map((i) => tokens[i].expo_push_token);
-      await supa.from('device_tokens').delete().in('expo_push_token', badTokens);
+      const badTokens = invalidIdx.map((i) => tokens[i].token);
+      await supa.from('device_tokens').delete().in('token', badTokens);
     }
   }
 
