@@ -53,7 +53,10 @@ export async function determineInitialRoute({ skipWelcomeTour = false } = {}) {
       return 'MainTabs';
     }
 
-    // Verifica financeiro: se completo vai direto, senão guia pelo onboarding
+    // Item C (redesenho de ativação): o financeiro NÃO é mais um gate de 1º uso.
+    // Roteamos para 'Onboarding' como passo guiado (não-bloqueante: a tela tem
+    // saída para a Home sempre disponível e etapas desbloqueadas). Quem já tem
+    // financeiro completo pula direto pro app. A robustez de erro abaixo permanece.
     const status = await getSetupStatus();
     return status.financeiroCompleto ? 'MainTabs' : 'Onboarding';
   } catch (err) {

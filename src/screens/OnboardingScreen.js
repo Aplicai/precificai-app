@@ -277,15 +277,19 @@ export default function OnboardingScreen({ navigation }) {
           </View>
         )}
 
-        {/* Financeiro obrigatório - destaque */}
+        {/* Item C (redesenho de ativação): Financeiro deixou de ser GATE no
+            1º uso — agora é refinamento RECOMENDADO, não obrigatório. O usuário
+            chega ao 1º produto/Home sem precisar completar o financeiro antes.
+            Mantemos o destaque (é o passo de maior impacto em margem/preço),
+            mas sem travar o resto do fluxo. */}
         {!finStep.done && (
           <View style={styles.finAlert}>
             <View style={styles.finAlertHeader}>
-              <Feather name="alert-triangle" size={18} color="#E65100" style={{ marginRight: 6 }} />
+              <Feather name="trending-up" size={18} color="#E65100" style={{ marginRight: 6 }} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.finAlertTitle}>Financeiro é obrigatório</Text>
+                <Text style={styles.finAlertTitle}>Financeiro (recomendado)</Text>
                 <Text style={styles.finAlertDesc}>
-                  Esses dados definem markup, margem e preço sugerido de todos os seus produtos.
+                  Esses dados refinam markup, margem e preço sugerido dos seus produtos. Você pode configurar agora ou depois.
                 </Text>
               </View>
             </View>
@@ -316,7 +320,10 @@ export default function OnboardingScreen({ navigation }) {
 
         {status.etapas.map((etapa, index) => {
           if (etapa.key === 'financeiro' && !etapa.done) return null;
-          const locked = !finStep.done && etapa.key !== 'financeiro';
+          // Item C: etapas não ficam mais bloqueadas pelo financeiro. O usuário
+          // pode cadastrar insumos/produtos antes de configurar o financeiro
+          // (o cálculo só fica mais preciso depois). `locked` sempre false.
+          const locked = false;
 
           return (
             <TouchableOpacity
@@ -358,13 +365,16 @@ export default function OnboardingScreen({ navigation }) {
           );
         })}
 
-        {/* Skip */}
-        {finStep.done && (
-          <TouchableOpacity style={styles.skipBtn} onPress={skipToHome} activeOpacity={0.7}>
-            <Text style={styles.skipText}>Ir para a Home</Text>
-            <Feather name="arrow-right" size={16} color={colors.primary} style={{ marginLeft: 4 }} />
-          </TouchableOpacity>
-        )}
+        {/* Skip — Item C: saída para a Home SEMPRE disponível. Antes só
+            aparecia quando o financeiro estava completo, o que prendia o
+            usuário de 1º uso na tela (sem financeiro = sem saída). Agora o
+            financeiro é opcional, então o caminho para a Home nunca é bloqueado. */}
+        <TouchableOpacity style={styles.skipBtn} onPress={skipToHome} activeOpacity={0.7}>
+          <Text style={styles.skipText}>
+            {finStep.done ? 'Ir para a Home' : 'Pular por enquanto'}
+          </Text>
+          <Feather name="arrow-right" size={16} color={colors.primary} style={{ marginLeft: 4 }} />
+        </TouchableOpacity>
 
         <View style={{ height: 40 }} />
       </ScrollView>

@@ -961,23 +961,15 @@ export default function EntityCreateModal({
                     <Text style={styles.resumoValue}>{formatCurrency(cmvUnitario)}</Text>
                   </View>
                   <View style={styles.resumoCell}>
-                    <Text style={styles.resumoLabel}>Sugerido</Text>
+                    <Text style={styles.resumoLabel}>
+                      Sugerido{sugeridoSemFixos ? ' *' : ''}
+                    </Text>
                     {precoSugerido > 0 ? (
                       <Text style={[styles.resumoValue, { color: colors.textSecondary }]}>
                         {formatCurrency(precoSugerido)}
                       </Text>
                     ) : (
-                      <TouchableOpacity
-                        onPress={() => {
-                          try { onClose && onClose(); } catch {}
-                          try { navigation.navigate('Mais', { screen: 'FinanceiroMain' }); } catch {}
-                        }}
-                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                      >
-                        <Text style={[styles.resumoValue, { color: colors.primary, fontSize: 12 }]}>
-                          Defina sua margem →
-                        </Text>
-                      </TouchableOpacity>
+                      <Text style={[styles.resumoValue, { color: colors.textSecondary }]}>—</Text>
                     )}
                   </View>
                   <View style={styles.resumoCell}>
@@ -1041,13 +1033,29 @@ export default function EntityCreateModal({
                     </View>
                   </View>
                 )}
-                {pricingConfig.despFixasPerc === 0 && pricingConfig.despVarPerc === 0 && (
-                  <View style={styles.analiseHint}>
+                {/* Item B — aviso NÃO-bloqueante. Quando o "Sugerido" é a
+                    estimativa sem despesas fixas (Financeiro ainda não
+                    preenchido), deixamos claro que falta incluir os custos
+                    fixos, sem travar o fluxo. Tocar leva ao Financeiro pra
+                    refinar — mas é opcional, o preço já está calculado. */}
+                {sugeridoSemFixos && (
+                  <TouchableOpacity
+                    style={styles.analiseHint}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      try { onClose && onClose(); } catch {}
+                      try { navigation.navigate('Mais', { screen: 'FinanceiroMain' }); } catch {}
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Preencher Financeiro para incluir despesas fixas no preço sugerido"
+                  >
                     <Feather name="info" size={11} color={colors.textSecondary} />
                     <Text style={styles.analiseHintText}>
-                      Cadastre despesas fixas, variáveis e faturamento em "Configurações" para ver a análise completa de preço sugerido.
+                      <Text>* Estimativa sem suas despesas fixas (aluguel, salários, etc.). </Text>
+                      <Text style={{ color: colors.primary }}>Preencha o Financeiro</Text>
+                      <Text> para o preço completo.</Text>
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 )}
               </>
             ) : (
@@ -1085,10 +1093,38 @@ export default function EntityCreateModal({
         : Math.max(0.001, parseInputValue(rendimentoTotalProd)))
     : 1;
   const cmvUnitario = isProduto ? custoTotal / divisor : custoTotal;
-  // Preço sugerido baseado no markup configurado (despesas + lucro desejado)
-  const precoSugerido = isProduto && pricingConfig.markup > 0
-    ? calcPrecoSugerido(cmvUnitario, pricingConfig.markup)
+  // Item B (redesenho de ativação) — preço sugerido SEM gate de Financeiro.
+  //
+  // Antes: precoSugerido dependia de pricingConfig.markup > 0. Sem o Financeiro
+  // preenchido (sem faturamento → despFixasPerc = 0, ou sem lucro_desejado →
+  // markup = 0), o "Sugerido" caía em 0 e o usuário leigo via só um CTA
+  // "Defina sua margem →" ANTES de qualquer valor — um muro de jargão.
+  //
+  // Filosofia do app ("não inventa preços"): NÃO fabricamos um número arbitrário.
+  // Calculamos um sugerido VÁLIDO tratando os custos fixos como 0 (CMV + margem
+  // alvo + despesas variáveis). É uma estimativa honesta sem despesas fixas, e
+  // avisamos isso de forma NÃO-bloqueante (ver analiseHint abaixo).
+  //
+  // - Caminho com Financeiro: pricingConfig.markup já embute fixos reais →
+  //   usamos exatamente ele (não altera o motor correto).
+  // - Caminho sem Financeiro: fallback markup com fixos=0, mantendo o lucro
+  //   alvo (default 15% — mesmo default já usado em pricingConfig.lucroDesejado
+  //   e no ProdutoFormScreen) e as variáveis reais, se houver.
+  const temFinanceiro = isProduto && pricingConfig.despFixasPerc > 0;
+  const MARGEM_ALVO_DEFAULT = 0.15; // mesmo default existente no app
+  const lucroAlvoEfetivo = pricingConfig.lucroDesejado > 0 ? pricingConfig.lucroDesejado : MARGEM_ALVO_DEFAULT;
+  // Markup usado quando o Financeiro NÃO está preenchido: fixos forçados a 0.
+  const markupSemFixos = isProduto
+    ? calcMarkup(0, pricingConfig.despVarPerc, lucroAlvoEfetivo)
     : 0;
+  const markupParaSugerido = isProduto
+    ? (pricingConfig.markup > 0 ? pricingConfig.markup : markupSemFixos)
+    : 0;
+  const precoSugerido = isProduto && markupParaSugerido > 0
+    ? calcPrecoSugerido(cmvUnitario, markupParaSugerido)
+    : 0;
+  // true quando o "Sugerido" exibido é a estimativa sem despesas fixas.
+  const sugeridoSemFixos = isProduto && precoSugerido > 0 && !temFinanceiro;
   // Análise sobre o preço de venda informado (ou sugerido se vazio)
   // Sessão 28.9 — Auditoria P0-02: usar funções centrais (mesma fonte que telas)
   const precoEfetivo = precoVendaNum > 0 ? precoVendaNum : precoSugerido;
