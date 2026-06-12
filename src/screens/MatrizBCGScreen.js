@@ -10,6 +10,7 @@ import usePersistedState from '../hooks/usePersistedState';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, safeNum } from '../utils/calculations';
+import { classificarMatrizBCG } from '../utils/bcgClassify';
 
 // Classification config (audit P1-07): nomes afetivos em vez de jargão BCG.
 // Chaves mantidas em português gastronômico para compatibilidade com dados
@@ -212,11 +213,11 @@ export default function MatrizBCGScreen({ navigation }) {
         const custoUnitario = divisor > 0 ? safeNum((custoIng + custoPr + custoEmb) / divisor) : 0;
         const precoVenda = safeNum(p.preco_venda);
         const margemPerc = precoVenda > 0 ? safeNum(((precoVenda - custoUnitario) / precoVenda) * 100) : 0;
+        // `qtdVendida` = mês de referência (mês anterior já fechado), o mesmo que
+        // o usuário digita/vê e que a classificação usa. `currentMonth` já é o
+        // mês anterior (ver memo de datas no topo), então é estável p/ ranking.
         const qtdVendida = safeNum(vMap[p.id]);
-        // Sessão 28.47 — bug #6: classificação BCG usa vendas do MÊS ANTERIOR
-        // (mais estável; mês corrente está incompleto).
-        const qtdVendidaRanking = safeNum(pvMap[p.id]);
-        result.push({ ...p, custoUnitario, margemPerc, precoVenda, qtdVendida, qtdVendidaRanking, isCombo: false });
+        result.push({ ...p, custoUnitario, margemPerc, precoVenda, qtdVendida, isCombo: false });
       }
 
       // Add combos
@@ -234,49 +235,17 @@ export default function MatrizBCGScreen({ navigation }) {
         // Use negative ID for combo vendas to avoid collision with product IDs
         const comboVendaKey = -c.id;
         const qtdVendida = safeNum(vMap[comboVendaKey]);
-        const qtdVendidaRanking = safeNum(pvMap[comboVendaKey]);
         result.push({
           ...c, id: comboVendaKey, nome: c.nome + ' (Combo)', custoUnitario, margemPerc,
-          precoVenda, qtdVendida, qtdVendidaRanking, isCombo: true, comboId: c.id,
+          precoVenda, qtdVendida, isCombo: true, comboId: c.id,
         });
       }
 
-      // Classify using median
-      // Sessão 28.25 BUG FIX: produto SEM venda no mês NÃO pode virar Estrela/Cavalo de Batalha.
-      // Antes: mediana de vendas podia ser 0 quando ninguém cadastrou venda → todos viravam
-      // "altaVenda" pelo `>= 0` → produtos zerados eram classificados como Estrela.
-      // Agora: só entram na mediana produtos COM venda > 0; produtos com venda zero
-      // recebem classificação base por margem (Quebra-Cabeça se margem alta, Abacaxi se baixa).
-      const validItems = result.filter(p => p.precoVenda > 0);
-      if (validItems.length < 2) {
-        setProdutos(result.map(p => ({ ...p, classificacao: 'Quebra-Cabeça' })));
-        return;
-      }
-      const sorted = (arr) => [...arr].sort((a, b) => a - b);
-      const median = (arr) => { const s = sorted(arr); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
-      // Sessão 28.47 — bug #6: classificação usa qtdVendidaRanking (mês anterior).
-      const itensComVenda = validItems.filter(p => p.qtdVendidaRanking > 0);
-      const medianaVendas = itensComVenda.length > 0 ? median(itensComVenda.map(p => p.qtdVendidaRanking)) : 0;
-      const medianaMargem = median(validItems.map(p => p.margemPerc));
-
-      const classified = result.map(p => {
-        const altaMargem = p.margemPerc >= medianaMargem;
-        // Produto sem venda no mês anterior NUNCA é "alta venda".
-        // 🔧 Sessão 28.73 (B2 — empate): eixo de VENDAS usa `>` ESTRITO. Antes
-        // `>=` fazia clusters de venda na mediana (ex: 2,2,2,8 → mediana 2)
-        // virarem TODOS "alta venda", esvaziando os quadrantes de baixa venda.
-        // Com `>`, item exatamente na mediana conta como baixa venda. (Margem
-        // mantém `>=` — empate de margem conta como alta, por escolha de produto.)
-        const altaVenda = p.qtdVendidaRanking > 0 && p.qtdVendidaRanking > medianaVendas;
-        let classificacao;
-        if (altaMargem && altaVenda) classificacao = 'Estrela';
-        else if (!altaMargem && altaVenda) classificacao = 'Cavalo de Batalha';
-        else if (altaMargem && !altaVenda) classificacao = 'Quebra-Cabeça';
-        else classificacao = 'Abacaxi';
-        return { ...p, classificacao };
-      });
-
-      setProdutos(classified);
+      // Classificação BCG (margem x vendas via mediana) extraída para util puro
+      // testável (src/utils/bcgClassify.js). FIX sessão atual: classifica por
+      // `qtdVendida` (mês de referência que o usuário digita/vê) — antes lia o
+      // mês -2 (`qtdVendidaRanking`) e ignorava as vendas recém-cadastradas.
+      setProdutos(classificarMatrizBCG(result));
     } catch (e) {
       console.error('[MatrizBCG.loadData]', e);
       setLoadError('Não foi possível carregar a análise. Verifique seus dados e tente novamente.');
@@ -301,10 +270,10 @@ export default function MatrizBCGScreen({ navigation }) {
   // Gera explicação didática para leigos
   function getExplicacaoItem(item) {
     const margem = item.margemPerc;
-    // AUDITORIA B1: a classificação usa `qtdVendidaRanking` (mês anterior). O texto
-    // precisa usar a MESMA métrica — antes usava `qtdVendida` (mês atual), então o
-    // número podia contradizer o selo (ex.: "Abacaxi" dizendo "vende bem (15 un)").
-    const vendas = item.qtdVendidaRanking;
+    // O texto e a classificação usam a MESMA métrica: `qtdVendida` (mês de
+    // referência = mês anterior fechado, que o usuário digita/vê). Mantê-las
+    // alinhadas evita o selo contradizer o número (ex.: "Repensar" + "15 un").
+    const vendas = item.qtdVendida;
     const cls = item.classificacao;
 
     if (cls === 'Estrela') {
