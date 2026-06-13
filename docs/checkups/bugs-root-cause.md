@@ -26,6 +26,20 @@ popula defaults. O cache **não distingue `[]`-de-erro de `[]`-legítimo**.
 - **NÃO deployar sem QA** — `executeQuery` é usado por todas as telas; mudar o comportamento de
   cache/erro pode ter efeitos amplos.
 
+## ✅ "BUG" 2 — RESOLVIDO: NÃO era bug (insumo `un` calcula certo)
+
+> **VEREDITO (confirmado ao vivo 12/06):** NÃO é bug de cálculo. Um insumo `un`
+> legítimo (cadastrado pela UI, com `unidade_medida='un'` + `preco_por_kg`) calcula
+> custo corretamente. Teste ao vivo: adicionei **Ovo** (R$0,73/un real do Kit) a um
+> produto → custo **R$ 0,73** e CMV **R$ 0,73**, certinho. O R$0,00 observado antes
+> era 100% artefato do **insumo sintético** (inserido direto no DB via service_role
+> com `valor_pago=0/quantidade_liquida=0`, fora do fluxo `buildItem→calcCustoUnit`).
+> O cálculo `calcCustoIngrediente(preco_por_kg, 1, 'un', 'un') = preco × 1` está correto
+> e não passa por conversão de peso que zere. O fix defensivo #2 (reconciliação em
+> `EntityCreateModal`) foi DEPLOYADO, é inofensivo e sem regressão, mas mirou um
+> não-bug — pode ser mantido como blindagem ou revertido sem impacto.
+
+### (registro original — mantido para histórico)
 ## 🐛 BUG 2 — Insumo tipo `un` calcula custo R$ 0,00 no modal de produto
 
 **Sintoma:** insumo tipo `un` (preço por unidade) adicionado a um produto mostra custo R$ 0,00 no
