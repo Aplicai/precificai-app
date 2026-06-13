@@ -11,6 +11,46 @@ let currentUserId = null;
 const queryCache = new Map();
 const CACHE_TTL = 2000;
 
+// Sentinel: marks a result that came from a SWALLOWED Supabase error (not a
+// legitimate empty result). `getAllAsync` checks for it to SKIP caching, so a
+// transient error window (session refresh / RLS / network) doesn't poison the
+// 2s cache and zero-out every screen that reads the same tables.
+// BLAST RADIUS: this property is non-enumerable and is only ever read inside
+// this module by `isErrorResult`. Consumers (all screens) iterate the array
+// via .map/.forEach/index — they never see it. Legitimate empty results never
+// carry it, so they keep being cached normally (no perf regression).
+const ERROR_RESULT = Symbol('supabaseDbErrorResult');
+
+// Tag a fallback ([] or null) as coming from an error path.
+function markErrorResult(result) {
+  if (result == null) {
+    // null can't carry a property; return a boxed sentinel object that
+    // getFirstAsync/getAllAsync treat as "error, value is null".
+    return { [ERROR_RESULT]: true, value: null };
+  }
+  try {
+    Object.defineProperty(result, ERROR_RESULT, {
+      value: true, enumerable: false, configurable: true, writable: true,
+    });
+  } catch {
+    // Frozen/sealed objects: fall back to wrapper so we still skip cache.
+    return { [ERROR_RESULT]: true, value: result };
+  }
+  return result;
+}
+
+function isErrorResult(result) {
+  return !!(result && typeof result === 'object' && result[ERROR_RESULT]);
+}
+
+// Unwrap a possibly-boxed error result back to its plain value for consumers.
+function unwrapErrorResult(result) {
+  if (result && typeof result === 'object' && ERROR_RESULT in result && 'value' in result) {
+    return result.value;
+  }
+  return result;
+}
+
 function getCacheKey(sql, params) {
   return sql + '|' + JSON.stringify(params);
 }
@@ -78,6 +118,14 @@ export function createSupabaseDb(userId) {
       const cached = getCached(key);
       if (cached) return Promise.resolve(cached);
       return executeQuery(sql, params, 'all').then(result => {
+        // Swallowed-error fallback: do NOT cache (so the next read can recover
+        // once the transient condition clears) and propagate so the screen's
+        // .catch/setLoadError fires instead of silently rendering empty.
+        if (isErrorResult(result)) {
+          const err = new Error('[SupabaseDb] query falhou (resultado de erro não-cacheado)');
+          reportDbError('getAllAsync', sql, params, err);
+          throw err;
+        }
         setCache(key, result);
         return result;
       }).catch(err => {
@@ -85,7 +133,14 @@ export function createSupabaseDb(userId) {
         throw err;
       });
     },
-    getFirstAsync: (sql, params = []) => executeQuery(sql, params, 'first').catch(err => {
+    getFirstAsync: (sql, params = []) => executeQuery(sql, params, 'first').then(result => {
+      if (isErrorResult(result)) {
+        const err = new Error('[SupabaseDb] query falhou (resultado de erro)');
+        reportDbError('getFirstAsync', sql, params, err);
+        throw err;
+      }
+      return unwrapErrorResult(result);
+    }).catch(err => {
       reportDbError('getFirstAsync', sql, params, err);
       throw err;
     }),
@@ -138,8 +193,9 @@ async function executeQuery(sql, params, mode) {
     }
     const { count, error } = await query;
     if (error) {
-      if (__DEV__) console.error('[SupabaseDb] COUNT error:', error.message, sql);
-      return mode === 'first' ? null : [];
+      console.warn('[SupabaseDb] COUNT error (não-cacheado):', error.message);
+      // ERRO real → marca para não cachear e propagar; NÃO é vazio legítimo.
+      return markErrorResult(mode === 'first' ? null : []);
     }
     const row = { [countAlias]: count || 0 };
     return mode === 'first' ? row : [row];
@@ -192,8 +248,10 @@ async function executeQuery(sql, params, mode) {
 
   const { data, error } = await query;
   if (error) {
-    if (__DEV__) console.error('[SupabaseDb] Query error:', error.message, sql);
-    return mode === 'first' ? null : [];
+    console.warn('[SupabaseDb] Query error (não-cacheado):', error.message);
+    // ERRO real → marca para não cachear e propagar. Vazio legítimo (sem erro,
+    // 0 rows) cai no return abaixo SEM marca e segue cacheável normalmente.
+    return markErrorResult(mode === 'first' ? null : []);
   }
 
   return mode === 'first' ? (data?.[0] ?? null) : (data ?? []);
@@ -386,7 +444,13 @@ async function executeJoinQuery(sql, params, mode) {
   }
 
   const { data: mainRows, error: mainErr } = await mainQuery;
-  if (mainErr || !mainRows?.length) return mode === 'first' ? null : [];
+  if (mainErr) {
+    // ERRO real do Supabase no mainTable → não cachear, propagar.
+    console.warn('[SupabaseDb] JOIN main error (não-cacheado):', mainErr.message);
+    return markErrorResult(mode === 'first' ? null : []);
+  }
+  // Vazio legítimo (query ok, 0 rows): cacheável normalmente.
+  if (!mainRows?.length) return mode === 'first' ? null : [];
 
   // Sessão 28.31 BUG FIX: se o mainTable tem rows mas NENHUMA tem FK válido
   // (ex: insumos sem categoria_id), o LEFT JOIN deve retornar essas rows
@@ -401,7 +465,11 @@ async function executeJoinQuery(sql, params, mode) {
       .in(refCol, fkValues);
     if (joinErr) {
       // No LEFT JOIN, falha do join não invalida mainRows; INNER JOIN sim.
-      if (!isLeftJoin) return mode === 'first' ? null : [];
+      // ERRO real → marca para não cachear/propagar (só no INNER, que zeraria).
+      if (!isLeftJoin) {
+        console.warn('[SupabaseDb] JOIN error (não-cacheado):', joinErr.message);
+        return markErrorResult(mode === 'first' ? null : []);
+      }
     } else {
       (joinRows || []).forEach(r => { joinMap[r[refCol]] = r; });
     }

@@ -382,7 +382,7 @@ export default function MatrizBCGScreen({ navigation }) {
           <Text style={styles.title}>Ranking de Produtos</Text>
           <InfoTooltip
             title="Como funciona?"
-            text="Classifica cada produto pela margem de contribuição × popularidade (vendas do MÊS ANTERIOR — mais estável que o mês corrente, que ainda não fechou). A mediana divide os produtos em 4 quadrantes (também conhecido como Engenharia do Cardápio)."
+            text="Classifica cada produto pela margem de contribuição × popularidade (vendas do MÊS ANTERIOR — mais estável que o mês corrente, que ainda não fechou). A mediana divide os produtos em 4 quadrantes (também conhecido como Engenharia do Cardápio).\n\nA margem mostrada aqui é a BRUTA = (preço − custo do produto) ÷ preço, ou seja, só o que sobra depois dos ingredientes/embalagem, SEM descontar suas despesas fixas (aluguel, contas) nem taxas. Por isso ela costuma ser maior do que a margem líquida do Painel."
           />
         </View>
         {/* Área 9 — texto compactado pra caber em 1 linha no mobile. Detalhe completo
@@ -600,8 +600,12 @@ export default function MatrizBCGScreen({ navigation }) {
                   {renderSortIcon('nome')}
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.tableHeaderCell, { flex: 1, justifyContent: 'center' }]} onPress={() => handleSort('margem')} activeOpacity={0.7}>
-                  <Text style={styles.tableHeaderText}>Margem</Text>
+                  <Text style={styles.tableHeaderText}>Margem bruta</Text>
                   {renderSortIcon('margem')}
+                  <InfoTooltip
+                    title="Margem bruta"
+                    text="(preço − custo do produto) ÷ preço. Só o que sobra depois dos ingredientes/embalagem, SEM descontar despesas fixas (aluguel, contas) nem taxas. Por isso costuma ser maior que a margem líquida do Painel."
+                  />
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.tableHeaderCell, { flex: 1, justifyContent: 'center' }]} onPress={() => handleSort('vendas')} activeOpacity={0.7}>
                   <Text style={styles.tableHeaderText}>Vendas</Text>
@@ -655,7 +659,7 @@ export default function MatrizBCGScreen({ navigation }) {
                         </View>
                         <View style={[styles.marginBadge, { backgroundColor: marginColor + '18' }]}>
                           <Text style={[styles.marginText, { color: marginColor, fontSize: 14 }]}>
-                            {p.margemPerc.toFixed(0)}% margem
+                            {p.margemPerc.toFixed(0)}% margem bruta
                           </Text>
                         </View>
                       </View>

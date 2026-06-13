@@ -390,6 +390,55 @@ export default function EntityCreateModal({
     return () => clearTimeout(handle);
   }, [visible, loading, nome, categoriaId, precoVenda, tipoVenda, rendimentoUnidades, rendimentoTotalProd, rendimentoTotalPrep, unidadeMedidaPrep, itens]);
 
+  // BUG #2 (médio risco) — fix DEFENSIVO do "insumo/preparo com custo R$ 0,00".
+  // No caminho de carga por JOIN (loadForEdit) o supabaseDb wrapper pode devolver
+  // preco_por_kg/custo_por_kg stale ou nulo (parser de JOIN ignora colunas do SELECT
+  // + race read-after-write da read-replica), fazendo o item entrar com custoUnit 0
+  // e inflar a margem pra ~100%. allMaterias/allPreparos são carregados à parte via
+  // SELECT * (loadPickerAndCategorias) com os preços CORRETOS — o mesmo array usado
+  // no rateLabel. Aqui reconciliamos: se um item-insumo/preparo está com custoUnit 0
+  // MAS a entidade-fonte tem preço > 0 em memória, refazemos o lookup de
+  // preco_por_kg/unidade_medida (ou custo_por_kg/custo_total) e recalculamos.
+  // Reflete tanto no item individual quanto no cmvUnitario agregado (que deriva de
+  // it.custoUnit). Só toca itens já zerados — nunca altera custo já correto.
+  useEffect(() => {
+    if (!visible) return;
+    if (!itens.length) return;
+    if (!allMaterias.length && !allPreparos.length) return;
+    let mudou = false;
+    const reconciliados = itens.map(it => {
+      if (safeNum(it.custoUnit) > 0) return it; // já correto — não mexe
+      if (it.tipo === 'materia_prima') {
+        const mp = allMaterias.find(m => m.id === it.id);
+        if (mp && safeNum(mp.preco_por_kg) > 0) {
+          const custoUnit = calcCustoUnit('materia_prima', {
+            preco_por_kg: mp.preco_por_kg,
+            unidade_medida: mp.unidade_medida,
+          });
+          if (safeNum(custoUnit) > 0) {
+            mudou = true;
+            return { ...it, custoUnit, unidade: shortUnidade(mp.unidade_medida, 'materia_prima') };
+          }
+        }
+      } else if (it.tipo === 'preparo') {
+        const pr = allPreparos.find(p => p.id === it.id);
+        if (pr && (safeNum(pr.custo_por_kg) > 0 || safeNum(pr.custo_total) > 0)) {
+          const custoUnit = calcCustoUnit('preparo', {
+            custo_por_kg: pr.custo_por_kg,
+            custo_total: pr.custo_total,
+            unidade_medida: pr.unidade_medida,
+          });
+          if (safeNum(custoUnit) > 0) {
+            mudou = true;
+            return { ...it, custoUnit, unidade: shortUnidade(pr.unidade_medida, 'preparo') };
+          }
+        }
+      }
+      return it;
+    });
+    if (mudou) setItens(reconciliados);
+  }, [visible, itens, allMaterias, allPreparos]);
+
   async function loadPickerAndCategorias() {
     try {
       // Sessão 28.20: clear cache do supabaseDb wrapper antes de ler — garante que

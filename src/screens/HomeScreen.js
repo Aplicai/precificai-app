@@ -320,14 +320,14 @@ export default function HomeScreen({ navigation }) {
 
         // Priority: 1 = critical (color coral/red, push for action), 2 = warning, 3 = positive/info
         if (worstProd && worstMargem < 0) {
-          insights.push({ priority: 1, icon: 'alert-triangle', color: colors.error, title: 'Margem negativa detectada', text: `${worstProd.nome} está com margem de ${formatPercent(worstMargem)} — você está pagando para vender. Aumente o preço ou reduza custos.`, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ajustar preço' } });
+          insights.push({ priority: 1, icon: 'alert-triangle', color: colors.error, title: 'Margem negativa detectada', text: `${worstProd.nome} está com margem líquida de ${formatPercent(worstMargem)} (já com despesas e taxas) — você está pagando para vender. Aumente o preço ou reduza custos.`, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ajustar preço' } });
         } else if (worstProd && worstMargem < 0.10) {
-          insights.push({ priority: 1, icon: 'alert-triangle', color: colors.coral, title: 'Margem crítica', text: `${worstProd.nome} tem margem de apenas ${formatPercent(worstMargem)}. Considere aumentar o preço.`, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ajustar preço' } });
+          insights.push({ priority: 1, icon: 'alert-triangle', color: colors.coral, title: 'Margem crítica', text: `${worstProd.nome} tem margem líquida de apenas ${formatPercent(worstMargem)} (já com despesas e taxas). Considere aumentar o preço.`, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ajustar preço' } });
         } else if (worstProd && worstMargem < 0.15) {
-          insights.push({ priority: 2, icon: 'alert-triangle', color: colors.coral, title: 'Margem baixa', text: `${worstProd.nome} está com margem de ${formatPercent(worstMargem)}, abaixo do ideal (15%).`, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ver produto' } });
+          insights.push({ priority: 2, icon: 'alert-triangle', color: colors.coral, title: 'Margem baixa', text: `${worstProd.nome} está com margem líquida de ${formatPercent(worstMargem)}, abaixo do ideal (15%).`, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ver produto' } });
         }
         // Audit P1 (Fase 2 - Fix #5): TODO insight precisa de action navegável.
-        if (bestProd) insights.push({ priority: 3, icon: 'award', color: colors.success, title: 'Produto campeão', text: `${bestProd.nome} é seu mais lucrativo com margem de ${formatPercent(bestMargem)}.`, action: { tab: 'ProdutoFormHome', id: bestProd.id, label: 'Ver produto' } });
+        if (bestProd) insights.push({ priority: 3, icon: 'award', color: colors.success, title: 'Produto campeão', text: `${bestProd.nome} é seu mais lucrativo com margem líquida de ${formatPercent(bestMargem)} (margem real, já descontando despesas fixas e taxas).`, action: { tab: 'ProdutoFormHome', id: bestProd.id, label: 'Ver produto' } });
         insights.push({ priority: 3, icon: 'pie-chart', color: colors.accent, title: 'Carteira saudável', text: `${healthyCount} de ${prodsComPreco} produtos com margem saudável (>15%).`, action: { tab: 'Produtos', label: 'Ver produtos' } });
       }
       if (produtosSemPreco.length > 0) {
