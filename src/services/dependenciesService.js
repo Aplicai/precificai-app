@@ -38,7 +38,11 @@ const DEPENDENCY_QUERIES = Object.freeze({
   ],
   preparo: [
     { tabela: 'produto_preparos', label: 'produtos', sql: 'SELECT COUNT(*) AS n FROM produto_preparos WHERE preparo_id = ?' },
-    { tabela: 'preparo_ingredientes', label: 'sub-preparos (linhas)', sql: 'SELECT COUNT(*) AS n FROM preparo_ingredientes WHERE preparo_id = ?' },
+    // Conta quantas vezes ESTE preparo é usado COMO sub-preparo dentro de OUTROS
+    // preparos. A coluna correta é sub_preparo_id em preparo_subpreparos.
+    // (Antes: usava preparo_ingredientes WHERE preparo_id = ? — isso contava os
+    //  próprios ingredientes internos do preparo, gerando falso positivo de "uso".)
+    { tabela: 'preparo_subpreparos', label: 'preparos que o usam como sub-preparo', sql: 'SELECT COUNT(*) AS n FROM preparo_subpreparos WHERE sub_preparo_id = ?' },
   ],
   embalagem: [
     { tabela: 'produto_embalagens', label: 'produtos', sql: 'SELECT COUNT(*) AS n FROM produto_embalagens WHERE embalagem_id = ?' },
