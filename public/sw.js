@@ -17,9 +17,11 @@
 // no próximo carregamento (o HTML fresco aponta pro bundle novo) — sem precisar
 // bumpar a versão a cada deploy.
 // Sessão 17/06: bump v5→v6 pra apps instalados (PWA) detectarem o SW novo e o
-// novo registro com AUTO-UPDATE (index.web.js: controllerchange → reload). Sem
-// isso, apps antigos ficavam presos numa versão velha (ex.: "Preparaos").
-const CACHE_VERSION = 'precificai-v6';
+// novo registro com AUTO-UPDATE (index.js: controllerchange → reload). Sem isso,
+// apps antigos ficavam presos numa versão velha (ex.: "Preparaos").
+// Bump v6→v7: HTML agora usa fetch fresco (cache:'reload') → reabrir o app SEMPRE
+// traz a versão nova do último deploy (zero chance de HTML velho do cache HTTP).
+const CACHE_VERSION = 'precificai-v7';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const HTML_CACHE = `${CACHE_VERSION}-html`;
@@ -60,11 +62,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // HTML: network-first (sempre o index.html mais recente → bundle do último
-  // deploy; cache só como fallback offline). Antes era stale-while-revalidate,
-  // que deixava o usuário uma visita atrás do bundle novo.
+  // HTML: network-first com FETCH FRESCO (cache:'reload') → ignora o cache HTTP
+  // do navegador e SEMPRE busca o index.html do servidor. Garante que fechar e
+  // REABRIR o app (desktop/PWA) traga a versão NOVA do último deploy. Cache só
+  // como fallback offline.
   if (req.mode === 'navigate' || req.headers.get('accept')?.includes('text/html')) {
-    event.respondWith(networkFirst(req, HTML_CACHE));
+    event.respondWith(networkFirstFresh(req, HTML_CACHE));
     return;
   }
 
@@ -95,6 +98,21 @@ async function networkFirst(req, cacheName) {
   const cache = await caches.open(cacheName);
   try {
     const res = await fetch(req);
+    if (res && res.status === 200) cache.put(req, res.clone());
+    return res;
+  } catch {
+    const cached = await cache.match(req);
+    return cached || Response.error();
+  }
+}
+
+// Igual ao networkFirst, mas força `cache: 'reload'` → o fetch IGNORA o cache
+// HTTP do navegador e sempre vai à rede. Usado no HTML/navigate pra garantir que
+// reabrir o app pegue o index.html mais novo (→ bundle do último deploy).
+async function networkFirstFresh(req, cacheName) {
+  const cache = await caches.open(cacheName);
+  try {
+    const res = await fetch(req, { cache: 'reload' });
     if (res && res.status === 200) cache.put(req, res.clone());
     return res;
   } catch {
