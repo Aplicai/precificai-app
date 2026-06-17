@@ -390,24 +390,23 @@ export default function EntityCreateModal({
     return () => clearTimeout(handle);
   }, [visible, loading, nome, categoriaId, precoVenda, tipoVenda, rendimentoUnidades, rendimentoTotalProd, rendimentoTotalPrep, unidadeMedidaPrep, itens]);
 
-  // BUG #2 (médio risco) — fix DEFENSIVO do "insumo/preparo com custo R$ 0,00".
-  // No caminho de carga por JOIN (loadForEdit) o supabaseDb wrapper pode devolver
-  // preco_por_kg/custo_por_kg stale ou nulo (parser de JOIN ignora colunas do SELECT
-  // + race read-after-write da read-replica), fazendo o item entrar com custoUnit 0
-  // e inflar a margem pra ~100%. allMaterias/allPreparos são carregados à parte via
-  // SELECT * (loadPickerAndCategorias) com os preços CORRETOS — o mesmo array usado
-  // no rateLabel. Aqui reconciliamos: se um item-insumo/preparo está com custoUnit 0
-  // MAS a entidade-fonte tem preço > 0 em memória, refazemos o lookup de
-  // preco_por_kg/unidade_medida (ou custo_por_kg/custo_total) e recalculamos.
-  // Reflete tanto no item individual quanto no cmvUnitario agregado (que deriva de
-  // it.custoUnit). Só toca itens já zerados — nunca altera custo já correto.
+  // Reconciliação de custo dos itens (insumos/preparos) contra allMaterias/allPreparos.
+  // Corrige DOIS cenários:
+  //  - BUG A: ao editar um insumo "por dentro" (lápis) e voltar, o modal restaura o
+  //    rascunho (setItens(d.itens)) com o custoUnit CONGELADO (preço antigo). Aqui
+  //    re-derivamos o custoUnit do preço FRESCO em allMaterias/allPreparos (recarregados
+  //    por loadPickerAndCategorias) — então o preço novo passa a refletir no preparo.
+  //  - Custo R$ 0,00 por race/stale do JOIN (loadForEdit): também é corrigido.
+  // SEGURANÇA: só dá setItens quando o custoUnit/unidade REALMENTE muda (tolerância EPS).
+  // Como custoUnit NÃO depende da quantidade, editar o "valor utilizado" não dispara
+  // re-set nem atrapalha a digitação (não causa o Problema B).
   useEffect(() => {
     if (!visible) return;
     if (!itens.length) return;
     if (!allMaterias.length && !allPreparos.length) return;
     let mudou = false;
+    const EPS = 1e-6;
     const reconciliados = itens.map(it => {
-      if (safeNum(it.custoUnit) > 0) return it; // já correto — não mexe
       if (it.tipo === 'materia_prima') {
         const mp = allMaterias.find(m => m.id === it.id);
         if (mp && safeNum(mp.preco_por_kg) > 0) {
@@ -415,9 +414,11 @@ export default function EntityCreateModal({
             preco_por_kg: mp.preco_por_kg,
             unidade_medida: mp.unidade_medida,
           });
-          if (safeNum(custoUnit) > 0) {
+          const unidade = shortUnidade(mp.unidade_medida, 'materia_prima');
+          if (safeNum(custoUnit) > 0 &&
+              (Math.abs(safeNum(custoUnit) - safeNum(it.custoUnit)) > EPS || it.unidade !== unidade)) {
             mudou = true;
-            return { ...it, custoUnit, unidade: shortUnidade(mp.unidade_medida, 'materia_prima') };
+            return { ...it, custoUnit, unidade };
           }
         }
       } else if (it.tipo === 'preparo') {
@@ -428,9 +429,11 @@ export default function EntityCreateModal({
             custo_total: pr.custo_total,
             unidade_medida: pr.unidade_medida,
           });
-          if (safeNum(custoUnit) > 0) {
+          const unidade = shortUnidade(pr.unidade_medida, 'preparo');
+          if (safeNum(custoUnit) > 0 &&
+              (Math.abs(safeNum(custoUnit) - safeNum(it.custoUnit)) > EPS || it.unidade !== unidade)) {
             mudou = true;
-            return { ...it, custoUnit, unidade: shortUnidade(pr.unidade_medida, 'preparo') };
+            return { ...it, custoUnit, unidade };
           }
         }
       }
