@@ -74,33 +74,17 @@ if (typeof document !== 'undefined') {
     if (typeof injectMobileWebFixes === 'function') injectMobileWebFixes();
   } catch (_) {}
 
-  // === SERVICE WORKER (com AUTO-UPDATE) =========================
-  // Registra o SW e faz o app INSTALADO (PWA) se auto-atualizar: checa novas
-  // versões ao focar o app + periodicamente, e RECARREGA quando um SW novo assume
-  // (controllerchange) → pega o último deploy sozinho, sem reinstalar.
-  // Guards: não recarrega no 1º install nem em loop.
+  // === SERVICE WORKER ===========================================
+  // Registro SIMPLES (sem controllerchange→reload). O auto-reload causava LOOP de
+  // reload ("tela atualizando constantemente"). O "reabrir = versão nova" já é
+  // garantido pelo sw.js (HTML com cache:'reload' → busca fresco a cada abertura),
+  // SEM precisar recarregar a página com o app aberto.
   if ('serviceWorker' in navigator) {
     const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     if (!isLocal) {
-      const hadController = !!navigator.serviceWorker.controller;
-      let swReloading = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (!hadController || swReloading) return; // só em ATUALIZAÇÃO; 1x por carga
-        swReloading = true;
-        window.location.reload();
-      });
       window.addEventListener('load', () => {
         navigator.serviceWorker
           .register('/sw.js')
-          .then((reg) => {
-            const checkUpdate = () => { try { reg.update(); } catch (e) {} };
-            checkUpdate();
-            document.addEventListener('visibilitychange', () => {
-              if (document.visibilityState === 'visible') checkUpdate();
-            });
-            window.addEventListener('focus', checkUpdate);
-            setInterval(checkUpdate, 30 * 60 * 1000); // backstop p/ sessões longas
-          })
           .catch((err) => {
             if (typeof console !== 'undefined' && console.warn) console.warn('[SW] register failed', err);
           });
