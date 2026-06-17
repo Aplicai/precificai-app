@@ -118,31 +118,31 @@ export function createSupabaseDb(userId) {
       const cached = getCached(key);
       if (cached) return Promise.resolve(cached);
       return executeQuery(sql, params, 'all').then(result => {
-        // Swallowed-error fallback: do NOT cache (so the next read can recover
-        // once the transient condition clears) and propagate so the screen's
-        // .catch/setLoadError fires instead of silently rendering empty.
+        // Erro do Supabase: NÃO cacheia (a próxima leitura recupera), mas também
+        // NÃO lança. Lançar quebrava telas que não tratam o throw → TELA BRANCA
+        // (ex.: atualizar insumos). Retorna vazio (contrato original), e a tela
+        // se recupera no próximo load (sem cache poluído).
         if (isErrorResult(result)) {
-          const err = new Error('[SupabaseDb] query falhou (resultado de erro não-cacheado)');
-          reportDbError('getAllAsync', sql, params, err);
-          throw err;
+          reportDbError('getAllAsync', sql, params, new Error('query falhou (não-cacheado)'));
+          return unwrapErrorResult(result);
         }
         setCache(key, result);
         return result;
       }).catch(err => {
+        // Exceção inesperada: loga e devolve vazio — nunca derruba a tela.
         reportDbError('getAllAsync', sql, params, err);
-        throw err;
+        return [];
       });
     },
     getFirstAsync: (sql, params = []) => executeQuery(sql, params, 'first').then(result => {
+      // Erro: não cacheia, mas não lança (evita tela branca). Devolve null.
       if (isErrorResult(result)) {
-        const err = new Error('[SupabaseDb] query falhou (resultado de erro)');
-        reportDbError('getFirstAsync', sql, params, err);
-        throw err;
+        reportDbError('getFirstAsync', sql, params, new Error('query falhou'));
       }
       return unwrapErrorResult(result);
     }).catch(err => {
       reportDbError('getFirstAsync', sql, params, err);
-      throw err;
+      return null;
     }),
     runAsync: (sql, params = []) => {
       // Extract table name for targeted cache invalidation
