@@ -880,6 +880,13 @@ export default function EntityCreateModal({
                 const custo = safeNum(pr?.custo_por_kg);
                 if (custo <= 0) return null;
                 const tipo = getTipoUnidade(pr?.unidade_medida || it.unidade || 'g');
+                // Preparo medido em UNIDADE: custo_por_kg guarda (custoTotal/rendimento)×1000
+                // (ver PreparoFormScreen). Logo o custo por unidade real = custo_por_kg/1000.
+                // Sem este ramo, o rótulo mostrava o valor inflado ×1000 com "/kg" (bug:
+                // cliente cadastrou croissant em "un" e via o valor do kg no produto).
+                if (tipo === 'unidade') {
+                  return `${formatCurrency(custo / 1000)}/un`;
+                }
                 const un = tipo === 'volume' ? 'L' : 'kg';
                 return `${formatCurrency(custo)}/${un}`;
               }
