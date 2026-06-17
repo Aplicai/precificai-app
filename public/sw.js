@@ -16,7 +16,10 @@
 // correções demoravam a chegar. Com network-first no HTML, cada deploy é pego
 // no próximo carregamento (o HTML fresco aponta pro bundle novo) — sem precisar
 // bumpar a versão a cada deploy.
-const CACHE_VERSION = 'precificai-v5';
+// Sessão 17/06: bump v5→v6 pra apps instalados (PWA) detectarem o SW novo e o
+// novo registro com AUTO-UPDATE (index.web.js: controllerchange → reload). Sem
+// isso, apps antigos ficavam presos numa versão velha (ex.: "Preparaos").
+const CACHE_VERSION = 'precificai-v6';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const HTML_CACHE = `${CACHE_VERSION}-html`;
