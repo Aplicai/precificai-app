@@ -669,7 +669,7 @@ export default function DeliveryPrecosScreen() {
             <Text style={[styles.summaryValue, { color: summaryStats.lucroMedio >= 0 ? colors.success : colors.error }]}>
               {formatCurrency(summaryStats.lucroMedio)}
             </Text>
-            <Text style={styles.summaryLabel}>Lucro medio</Text>
+            <Text style={styles.summaryLabel}>Lucro médio</Text>
           </View>
           <View style={styles.summaryItem}>
             <View style={[styles.summaryIconCircle, { backgroundColor: (summaryStats.negativos > 0 ? colors.error : colors.success) + '14' }]}>
