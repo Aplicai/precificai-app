@@ -858,7 +858,7 @@ export default function EntityCreateModal({
           />
         )}
         {itens.map((it, index) => {
-          const badge = TIPO_BADGE[it.tipo];
+          const badge = TIPO_BADGE[it.tipo] || { label: it.tipo || 'Item', color: colors.textSecondary };
           const qtd = safeNum(it.quantidade) || 0;
           const total = safeNum(it.custoUnit) * qtd;
           // Sessão 28.35: label do preço-base do item (R$ X/kg, R$ X/L, R$ X/un).

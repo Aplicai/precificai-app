@@ -294,7 +294,7 @@ export default function MateriasPrimasScreen({ navigation }) {
         .sort((a, b) => {
           if (a.id === null) return 1;
           if (b.id === null) return -1;
-          return a.nome.localeCompare(b.nome);
+          return String(a.nome || '').localeCompare(String(b.nome || ''));
         })
         .map((g) => ({
           title: g.nome,

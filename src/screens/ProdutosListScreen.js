@@ -400,7 +400,7 @@ export default function ProdutosListScreen({ navigation }) {
       .sort((a, b) => {
         if (a.id === null) return 1;
         if (b.id === null) return -1;
-        return a.nome.localeCompare(b.nome);
+        return (a.nome || '').localeCompare(b.nome || '', 'pt-BR');
       })
       .map((g) => ({
         title: g.nome,
