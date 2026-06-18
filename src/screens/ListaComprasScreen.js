@@ -70,7 +70,7 @@ export default function ListaComprasScreen({ navigation }) {
       (comboItensRows || []).forEach(ci => { (itensByCombo[ci.combo_id] = itensByCombo[ci.combo_id] || []).push(ci); });
 
       const prods = rawProds.map(p => ({ ...p, categoria_nome: catMap[p.categoria_id] || null, isCombo: false }))
-        .sort((a, b) => (a.categoria_nome || 'zzz').localeCompare(b.categoria_nome || 'zzz') || a.nome.localeCompare(b.nome));
+        .sort((a, b) => (a.categoria_nome || 'zzz').localeCompare(b.categoria_nome || 'zzz') || (a.nome || '').localeCompare(b.nome || ''));
 
       // Add combos as items with categoria_nome "Combos Delivery"
       const comboItems = (comboRows || []).filter(c => safeNum(c.preco_venda) > 0).map(c => ({
@@ -280,7 +280,7 @@ export default function ListaComprasScreen({ navigation }) {
         if (!grouped[item.categoria]) grouped[item.categoria] = [];
         grouped[item.categoria].push(item);
       });
-      Object.keys(grouped).forEach(cat => grouped[cat].sort((a, b) => a.nome.localeCompare(b.nome)));
+      Object.keys(grouped).forEach(cat => grouped[cat].sort((a, b) => (a.nome || '').localeCompare(b.nome || '')));
 
       const custoTotal = items.reduce((a, i) => a + safeNum(i.custoEstimado), 0);
       const categorias = Object.keys(grouped).sort((a, b) => {

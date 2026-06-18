@@ -300,7 +300,7 @@ export default function MatrizBCGScreen({ navigation }) {
     const classOrder = { 'Estrela': 0, 'Cavalo de Batalha': 1, 'Quebra-Cabeça': 2, 'Abacaxi': 3 };
     filtered.sort((a, b) => {
       let cmp = 0;
-      if (sortBy === 'nome') cmp = a.nome.localeCompare(b.nome);
+      if (sortBy === 'nome') cmp = (a.nome || '').localeCompare(b.nome || '');
       else if (sortBy === 'margem') cmp = a.margemPerc - b.margemPerc;
       else if (sortBy === 'vendas') cmp = a.qtdVendida - b.qtdVendida;
       else if (sortBy === 'classificacao') cmp = (classOrder[a.classificacao] || 0) - (classOrder[b.classificacao] || 0);

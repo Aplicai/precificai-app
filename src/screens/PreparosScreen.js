@@ -347,7 +347,7 @@ export default function PreparosScreen({ navigation }) {
       .sort((a, b) => {
         if (a.id === null) return 1;
         if (b.id === null) return -1;
-        return a.nome.localeCompare(b.nome);
+        return (a.nome || '').localeCompare(b.nome || '');
       })
       .map((g) => ({
         title: g.nome,

@@ -144,7 +144,7 @@ export default function ExportPDFScreen({ navigation }) {
       const prodCatMap = {};
       (prodCats || []).forEach(c => { prodCatMap[c.id] = c.nome; });
       const rows = (rawProds || []).map(p => ({ ...p, categoria_nome: prodCatMap[p.categoria_id] || null, isCombo: false }))
-        .sort((a, b) => (a.categoria_nome || 'zzz').localeCompare(b.categoria_nome || 'zzz') || a.nome.localeCompare(b.nome));
+        .sort((a, b) => (a.categoria_nome || 'zzz').localeCompare(b.categoria_nome || 'zzz') || (a.nome || '').localeCompare(b.nome || ''));
 
       // Add combos
       const itensByCombo = {};
@@ -180,7 +180,7 @@ export default function ExportPDFScreen({ navigation }) {
       const prepCatMap = {};
       (prepCats || []).forEach(c => { prepCatMap[c.id] = c.nome; });
       const rows = (rawPreps || []).map(p => ({ ...p, categoria_nome: prepCatMap[p.categoria_id] || null }))
-        .sort((a, b) => (a.categoria_nome || 'zzz').localeCompare(b.categoria_nome || 'zzz') || a.nome.localeCompare(b.nome));
+        .sort((a, b) => (a.categoria_nome || 'zzz').localeCompare(b.categoria_nome || 'zzz') || (a.nome || '').localeCompare(b.nome || ''));
       setPreparos(rows);
     } catch (e) {
       // Audit P0: era silent.
