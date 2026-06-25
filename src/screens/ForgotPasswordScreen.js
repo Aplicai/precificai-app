@@ -55,13 +55,14 @@ export default function ForgotPasswordScreen({ navigation }) {
       // Sessão 28.9 — APP-01: log detalhado pra diagnosticar falha de envio.
       // Status 500 + mensagem "Error sending recovery email" geralmente = SMTP
       // rejeitando (ex: Resend em modo teste só envia pra email do dono da conta).
-      console.error('[ForgotPassword.handleReset] full error:', {
-        message: err?.message,
-        status: err?.status || err?.code,
-        name: err?.name,
-        details: err?.details,
-        raw: err,
-      });
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.error('[ForgotPassword.handleReset] full error:', {
+          message: err?.message,
+          status: err?.status || err?.code,
+          name: err?.name,
+          details: err?.details,
+        });
+      }
       rateLimit.recordAttempt();
       setError(mapAuthError(err, { context: 'reset' }));
     } finally {

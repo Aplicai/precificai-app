@@ -374,7 +374,7 @@ export default function ListaComprasScreen({ navigation }) {
       <span>Custo Total Estimado</span>
       <span class="total-valor">${formatCurrency(lista.custoTotal)}</span>
     </div>
-    <div class="footer">Gerado por Precificaí - precificaipp.com</div>
+    <div class="footer">Gerado por Precificaí - precificaiapp.com</div>
     </body></html>`;
 
     // M-3: defense-in-depth XSS — gerar via Blob URL (origem opaca) em vez de

@@ -503,6 +503,7 @@ export default function PreparoFormScreen({ route, navigation }) {
     }
     setErrors({});
     allowExit.current = true;
+    try {
     const db = await getDatabase();
 
     const result = await db.runAsync('INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg, modo_preparo, observacoes, validade_dias, temp_congelado, tempo_congelado, temp_refrigerado, tempo_refrigerado, temp_ambiente, tempo_ambiente) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
@@ -545,6 +546,11 @@ export default function PreparoFormScreen({ route, navigation }) {
     // Área 4 — toast de confirmação após salvar preparo novo
     try { showToast('Preparo salvo', 'check-circle'); } catch (_) {}
     navigation.goBack();
+    } catch (e) {
+      allowExit.current = false;
+      if (typeof console !== 'undefined' && console.error) console.error('[PreparoForm.salvarNovo]', e);
+      try { showToast('Não foi possível salvar o preparo. Tente de novo.', 'alert-circle', 4500); } catch (_) {}
+    }
   }
 
   // Ações do modal de campos incompletos

@@ -542,7 +542,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
     </div>
     ${filtroCatHtml}
     ${data.resumo ? `<div class="kpi-row">
-      <div class="kpi"><div class="kpi-label">Faturamento</div><div class="kpi-value">${formatCurrency(data.resumo.faturamento || 0)}</div></div>
+      <div class="kpi"><div class="kpi-label">Faturamento</div><div class="kpi-value">${formatCurrency(data.resumo.fatMedio || 0)}</div></div>
       <div class="kpi"><div class="kpi-label">Lucro</div><div class="kpi-value" style="color: ${data.resumo.lucroPositivo ? '#16a34a' : '#dc2626'};">R$ ${formatBR(data.resumo.lucro)}</div></div>
       <div class="kpi"><div class="kpi-label">Custos do mês</div><div class="kpi-value">R$ ${formatBR(data.resumo.fixas)}</div></div>
     </div>` : ''}

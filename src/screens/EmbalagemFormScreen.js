@@ -294,6 +294,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
     }
     setErrors({});
     allowExit.current = true;
+    try {
     const db = await getDatabase();
     const params = [form.nome, form.marca, form.categoria_id, qtd, form.unidade_medida, preco, precoUn];
     const result = await db.runAsync(
@@ -398,6 +399,11 @@ export default function EmbalagemFormScreen({ route, navigation }) {
       }
     } catch (_) {}
     navigation.goBack();
+    } catch (e) {
+      allowExit.current = false;
+      if (typeof console !== 'undefined' && console.error) console.error('[EmbalagemForm.salvarNovo]', e);
+      try { showToast('Não foi possível salvar a embalagem. Tente de novo.', 'alert-circle', 4500); } catch (_) {}
+    }
   }
 
   // Ações do modal de campos incompletos

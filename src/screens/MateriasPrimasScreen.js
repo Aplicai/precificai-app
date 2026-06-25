@@ -190,7 +190,7 @@ export default function MateriasPrimasScreen({ navigation }) {
         return;
       }
       if (info.mode === 'produto') navigation.navigate('Produtos', { screen: 'ProdutosList' });
-      else if (info.mode === 'preparo') navigation.navigate('Preparos', { screen: 'PreparosMain' });
+      else if (info.mode === 'preparo') navigation.navigate('Preparos', { screen: 'Preparos' });
     } catch {}
   }, [navigation]);
 

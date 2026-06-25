@@ -769,8 +769,8 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
     const embRows = embs.map(e => `
       <tr>
         <td>${escapeHtml(e.emb_nome || '')}</td>
-        <td style="text-align:center">${e.quantidade || 1}</td>
-        <td style="text-align:right">${fmtCur((e.preco_unitario || 0) * (e.quantidade || 1))}</td>
+        <td style="text-align:center">${e.quantidade_utilizada || e.quantidade || 1}</td>
+        <td style="text-align:right">${fmtCur((e.preco_unitario || 0) * (e.quantidade_utilizada || e.quantidade || 1))}</td>
       </tr>
     `).join('');
 
@@ -1181,7 +1181,7 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
     ${fichaCards}
   </div>
   <div class="page-footer">
-    Gerado por Precificaí - precificaipp.com
+    Gerado por Precificaí - precificaiapp.com
   </div>
 </body>
 </html>`;
@@ -1345,7 +1345,7 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
     ${fichaCards}
   </div>
   <div class="page-footer">
-    Gerado por Precificaí - precificaipp.com
+    Gerado por Precificaí - precificaiapp.com
   </div>
 </body>
 </html>`;

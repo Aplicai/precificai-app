@@ -330,6 +330,9 @@ export function AuthProvider({ children }) {
           'entityDraftToRestore',
           'reopenEntityModalAfterEdit',
           'reopenNestedPreparoOnMount',
+          'deliveryComboDraft',
+          'reopenPreparoFormAfterEdit',
+          'segmento_negocio',
         ]);
       } catch {}
     } catch (err) {
