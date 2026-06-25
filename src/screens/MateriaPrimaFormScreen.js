@@ -1045,23 +1045,37 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
           )}
         </View>
 
-        {/* Valor Pago */}
+        {/* Valor Pago — microcopy explícito: é o total pago pela QUANTIDADE
+            BRUTA comprada (não por kg / não por unidade aproveitável). */}
         <InputField
-          label="Valor Pago (R$)"
+          label="Valor pago pela quantidade comprada (R$)"
           value={form.valor_pago}
           onChangeText={(v) => { setForm(p => ({ ...p, valor_pago: v })); setErrors(p => ({ ...p, valor_pago: undefined })); }}
           keyboardType="decimal-pad"
-          placeholder="Ex: 5,00"
+          placeholder="Ex: 5,00 (total da nota por essa quantidade)"
           error={errors.valor_pago}
           style={styles.fieldCompact}
           rightLabel={
             <InfoTooltip
-              title="Valor Pago"
-              text="Valor pago pela quantidade bruta, como na nota fiscal."
-              examples={['1kg cebola por R$ 5,00', '500g camarão por R$ 35,00']}
+              title="Valor pago pela quantidade comprada"
+              text="É o valor TOTAL que você pagou pela quantidade bruta comprada, como aparece na nota fiscal. Não é o valor por kg nem por unidade — o app calcula isso pra você."
+              examples={['1 kg de cebola por R$ 5,00', '500 g de camarão por R$ 35,00', '12 ovos por R$ 18,00']}
             />
           }
         />
+        <Text
+          numberOfLines={2}
+          style={{
+            fontSize: 12,
+            color: colors.textSecondary,
+            marginTop: -spacing.xs,
+            marginBottom: spacing.sm,
+            fontFamily: fontFamily.regular,
+            lineHeight: 16,
+          }}
+        >
+          Quanto você pagou no total por essa quantidade bruta. O custo por kg/unidade é calculado automaticamente abaixo.
+        </Text>
 
         {/* APP-14: badge "valor estimado" quando o item veio pré-preenchido pelo Kit de Início */}
         {ehValorEstimado && (
@@ -1224,6 +1238,24 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
               }
             }
             allowExit.current = true;
+            // Cascata de edição — se viemos de "editar" um insumo dentro do
+            // EntityCreateModal (produto/preparo), o modal salvou a flag
+            // reopenEntityModalAfterEdit e marcou returnToEntityModal. Igual ao
+            // caminho de CRIAR (salvarNovo), navegamos de volta pra tab do
+            // produto/preparo pra a tela-pai reabrir o modal via focus effect.
+            // Sem isso o goBackSafe() caía na lista de Insumos e o user tinha
+            // que trocar de tab manualmente.
+            if (route.params?.returnToEntityModal) {
+              try {
+                const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+                if (raw) {
+                  const info = JSON.parse(raw);
+                  if (info?.mode === 'produto') { navigation.navigate('Produtos', { screen: 'ProdutosList' }); return; }
+                  if (info?.mode === 'preparo') { navigation.navigate('Preparos', { screen: 'Preparos' }); return; }
+                }
+              } catch (_) {}
+            }
             goBackSafe();
           }}>
             <Feather name="check" size={14} color={colors.primary} style={{ marginRight: 5 }} />

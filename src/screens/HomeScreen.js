@@ -12,6 +12,7 @@ import { getSetupStatus } from '../utils/setupStatus';
 import InfoTooltip from '../components/InfoTooltip';
 import Loader from '../components/Loader';
 import MobileOnboardingOverlay from '../components/MobileOnboardingOverlay';
+import OnboardingChecklist from '../components/OnboardingChecklist';
 import MobileDesktopHint from '../components/MobileDesktopHint';
 import InstallPWABanner from '../components/InstallPWABanner';
 import HomeInstallBanner from '../components/HomeInstallBanner';
@@ -577,6 +578,20 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
           </TouchableOpacity>
         </View>
+      )}
+
+      {/* Checklist guiado de onboarding (não-bloqueante). Orienta a ordem
+          ideal Financeiro → Insumos → Preparos → Produtos. Some sozinho
+          quando os 4 passos estão completos, ou se o usuário ocultar.
+          Reusa os dados já carregados por loadAll (zero queries extras). */}
+      {!loading && (
+        <OnboardingChecklist
+          financeiroCompleto={!!(finStatus && finStatus.completo)}
+          totalInsumos={d.totalInsumos}
+          totalPreparos={d.totalPreparos}
+          totalProdutos={d.totalProdutos}
+          onNavigate={nav}
+        />
       )}
 
       {/* Kit de Início banner — prominent for new users with no data */}

@@ -169,8 +169,11 @@ export default function ProdutosListScreen({ navigation }) {
       const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
       if (!raw) return;
       const info = JSON.parse(raw);
-      await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
+      // Cascata 3 níveis: NÃO consumir a flag se for de OUTRA tab. Antes
+      // removíamos sempre, então uma flag mode 'preparo' que aterrissasse aqui
+      // (ou vice-versa) era destruída e o retorno do pai não reabria o modal.
       if (info?.mode !== 'produto') return;
+      await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
       if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) return;
       if (info.draft) {
         try { await AsyncStorage.setItem('entityDraftToRestore', JSON.stringify({ mode: 'produto', editId: info.editId || null, draft: info.draft, ts: Date.now() })); } catch {}

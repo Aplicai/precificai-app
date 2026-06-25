@@ -877,15 +877,30 @@ export default function EntityCreateModal({
               }
               if (it.tipo === 'preparo') {
                 const pr = allPreparos.find(p => p.id === it.id);
-                const custo = safeNum(pr?.custo_por_kg);
-                if (custo <= 0) return null;
                 const tipo = getTipoUnidade(pr?.unidade_medida || it.unidade || 'g');
+                // Bug fix — preparo recém-criado ainda não está em allPreparos
+                // (recarrega async). Sem fallback, o "valor por kg" não aparecia
+                // embaixo do nome na hora. Usa o custo congelado no próprio item
+                // (it.custoUnit = custo por 1 unidade base g/mL/un) quando não
+                // encontrar a linha fresca no catálogo.
+                let custo = safeNum(pr?.custo_por_kg);
+                if (custo <= 0) {
+                  // it.custoUnit é por unidade base; ×1000 reconstrói o /kg (ou /L).
+                  // Pra 'un', custoUnit já é por unidade.
+                  const unit = safeNum(it.custoUnit);
+                  if (unit > 0) custo = tipo === 'unidade' ? unit : unit * 1000;
+                }
+                if (custo <= 0) return null;
                 // Preparo medido em UNIDADE: custo_por_kg guarda (custoTotal/rendimento)×1000
                 // (ver PreparoFormScreen). Logo o custo por unidade real = custo_por_kg/1000.
                 // Sem este ramo, o rótulo mostrava o valor inflado ×1000 com "/kg" (bug:
                 // cliente cadastrou croissant em "un" e via o valor do kg no produto).
                 if (tipo === 'unidade') {
-                  return `${formatCurrency(custo / 1000)}/un`;
+                  // Quando veio do fallback (it.custoUnit já é por-unidade), custo
+                  // está em escala de un — não dividir. Quando veio de pr.custo_por_kg
+                  // (escala ×1000), dividir. Detecta pela presença de pr.
+                  const custoUn = safeNum(pr?.custo_por_kg) > 0 ? custo / 1000 : custo;
+                  return `${formatCurrency(custoUn)}/un`;
                 }
                 const un = tipo === 'volume' ? 'L' : 'kg';
                 return `${formatCurrency(custo)}/${un}`;
@@ -1123,14 +1138,27 @@ export default function EntityCreateModal({
                   <Text style={styles.resumoLabel}>Custo total</Text>
                   <Text style={styles.resumoValue}>{formatCurrency(custoTotal)}</Text>
                 </View>
-                <View style={styles.resumoCell}>
-                  <Text style={styles.resumoLabel}>Custo / {unidadeMedidaPrep}</Text>
-                  <Text style={styles.resumoValue}>
-                    {parseInputValue(rendimentoTotalPrep) > 0
-                      ? formatCurrency(custoTotal / parseInputValue(rendimentoTotalPrep))
-                      : '—'}
-                  </Text>
-                </View>
+                {(() => {
+                  // Bug fix — custo por grama arredondava pra R$ 0,00 (custo/g < 1
+                  // centavo). Exibimos por kg (g), por L (mL/L) ou por unidade (un),
+                  // que é legível. Cálculo do save (custoTotal) não muda — só a EXIBIÇÃO.
+                  const rend = parseInputValue(rendimentoTotalPrep);
+                  const tipoPrep = getTipoUnidade(unidadeMedidaPrep || 'g');
+                  // Unidade legível de exibição + fator de conversão da base.
+                  let labelUn, fator;
+                  if (tipoPrep === 'unidade') { labelUn = 'un'; fator = 1; }
+                  else if (tipoPrep === 'volume') { labelUn = 'L'; fator = unidadeMedidaPrep === 'L' ? 1 : 1000; }
+                  else { labelUn = 'kg'; fator = unidadeMedidaPrep === 'kg' ? 1 : 1000; }
+                  const custoPorUn = rend > 0 ? (custoTotal / rend) * fator : 0;
+                  return (
+                    <View style={styles.resumoCell}>
+                      <Text style={styles.resumoLabel}>Custo / {labelUn}</Text>
+                      <Text style={styles.resumoValue}>
+                        {rend > 0 ? formatCurrency(custoPorUn) : '—'}
+                      </Text>
+                    </View>
+                  );
+                })()}
               </View>
             )}
           </View>

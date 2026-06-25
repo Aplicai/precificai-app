@@ -717,7 +717,23 @@ export default function EmbalagemFormScreen({ route, navigation }) {
             autoSave();
             // Sessão Mobile-29 — confirmação visual após salvar edição.
             try { showToast('Embalagem salva', 'check-circle'); } catch (_) {}
-            setTimeout(() => {
+            setTimeout(async () => {
+              // Cascata de edição — se viemos de "editar" uma embalagem dentro
+              // do EntityCreateModal (produto/preparo), o modal salvou a flag
+              // reopenEntityModalAfterEdit e marcou returnToEntityModal. Igual
+              // ao caminho de CRIAR (salvarNovo), navegamos de volta pra tab do
+              // produto/preparo pra a tela-pai reabrir o modal via focus effect.
+              if (route.params?.returnToEntityModal) {
+                try {
+                  const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                  const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+                  if (raw) {
+                    const info = JSON.parse(raw);
+                    if (info?.mode === 'produto') { navigation.navigate('Produtos', { screen: 'ProdutosList' }); return; }
+                    if (info?.mode === 'preparo') { navigation.navigate('Preparos', { screen: 'Preparos' }); return; }
+                  }
+                } catch (_) {}
+              }
               const returnTo = route.params?.returnTo;
               if (returnTo) {
                 navigation.navigate(returnTo);

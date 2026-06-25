@@ -779,7 +779,9 @@ export default function KitInicioScreen({ navigation, route }) {
           <View style={{ flex: 1 }}>
             <Text style={styles.pageHeaderTitle}>Kit de Início Rápido</Text>
             <Text style={styles.pageHeaderDesc}>
-              Escolha seu segmento. Cadastramos insumos, embalagens, preparos e produtos de exemplo pra você.
+              {isSetup
+                ? 'Opcional: escolha seu segmento pra já começar com insumos, embalagens e produtos de exemplo. Prefere começar do zero? É só pular abaixo.'
+                : 'Escolha seu segmento. Cadastramos insumos, embalagens, preparos e produtos de exemplo pra você.'}
             </Text>
           </View>
         </View>
@@ -792,6 +794,28 @@ export default function KitInicioScreen({ navigation, route }) {
               Trocar o segmento APAGA todos os insumos, preparos, embalagens e produtos atuais.
             </Text>
           </View>
+        )}
+
+        {/* Opt-in: no setup inicial, "começar do zero" é o caminho padrão. O kit
+            virou opcional — quem quiser começar com o app vazio pula direto aqui,
+            sem precisar selecionar nenhum segmento. */}
+        {isSetup && (
+          <TouchableOpacity
+            style={styles.skipKitBtn}
+            onPress={navegarAposKit}
+            disabled={loading}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Começar com o app vazio, sem o kit de início"
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.skipKitTitle}>Começar com o app vazio</Text>
+              <Text style={styles.skipKitDesc}>
+                Recomendado. Cadastre seus próprios insumos e produtos do zero. Você pode carregar o kit depois em Configurações.
+              </Text>
+            </View>
+            <Feather name="arrow-right" size={18} color={colors.primary} />
+          </TouchableOpacity>
         )}
 
         {/* Segmentos Grid — visual limpo, ícones Feather padronizados */}
@@ -1141,6 +1165,17 @@ const styles = StyleSheet.create({
     padding: spacing.sm, marginBottom: spacing.md,
   },
   warningText: { flex: 1, fontSize: fonts.tiny, fontFamily: fontFamily.medium, color: '#BF360C', lineHeight: 16 },
+
+  // Opt-in: botão de "começar do zero" destacado no setup inicial (kit é opcional)
+  skipKitBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.md,
+    borderWidth: 1.5, borderColor: colors.primary,
+    padding: spacing.md, marginBottom: spacing.md,
+  },
+  skipKitTitle: { fontSize: fonts.regular, fontFamily: fontFamily.bold, color: colors.text },
+  skipKitDesc: { fontSize: fonts.tiny, fontFamily: fontFamily.regular, color: colors.textSecondary, lineHeight: 16, marginTop: 2 },
 
   sectionLabel: {
     fontSize: fonts.tiny, fontFamily: fontFamily.semiBold,

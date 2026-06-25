@@ -212,8 +212,12 @@ export default function PreparosScreen({ navigation }) {
       const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
       if (!raw) return;
       const info = JSON.parse(raw);
-      await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
+      // Cascata 3 níveis: NÃO consumir a flag se ela é de OUTRA tab (ex.: produto
+      // editando um preparo via openPreparoEdit aterrissa aqui mas a flag mode
+      // 'produto' precisa sobreviver pro ProdutosListScreen reabrir o produto).
+      // Antes removíamos a flag SEMPRE, destruindo o retorno do produto.
       if (info?.mode !== 'preparo') return;
+      await AsyncStorage.removeItem('reopenEntityModalAfterEdit');
       if (!info?.ts || (Date.now() - info.ts) > 5 * 60 * 1000) return;
       if (info.draft) {
         try {
@@ -1060,7 +1064,24 @@ export default function PreparosScreen({ navigation }) {
         mode="preparo"
         editId={editingId}
         defaultCategoriaId={filtroCategoria}
-        onClose={() => { setShowCreateModal(false); setEditingId(null); }}
+        onClose={async () => {
+          setShowCreateModal(false);
+          setEditingId(null);
+          // Cascata 3 níveis (produto → preparo): se este modal de preparo foi
+          // aberto a partir da edição de um preparo DENTRO de um produto, sobra
+          // uma flag reopenEntityModalAfterEdit com mode 'produto'. Ao fechar/
+          // salvar aqui, voltamos pra tab Produtos pra o produto reabrir.
+          try {
+            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+            const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+            if (raw) {
+              const info = JSON.parse(raw);
+              if (info?.mode === 'produto' && info?.ts && (Date.now() - info.ts) < 5 * 60 * 1000) {
+                navigation.navigate('Produtos', { screen: 'ProdutosList' });
+              }
+            }
+          } catch (_) {}
+        }}
         onSaved={() => loadData()}
         // Bug A fix — botão Excluir no footer do modal (modo edit). Fecha o
         // modal primeiro pra ConfirmDeleteModal ficar visível por cima sem

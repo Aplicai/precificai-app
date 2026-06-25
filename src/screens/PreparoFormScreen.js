@@ -1053,7 +1053,24 @@ export default function PreparoFormScreen({ route, navigation }) {
             // CR-5: catch antes era silencioso — log + status de erro p/ feedback
             if (typeof console !== 'undefined' && console.error) console.error('[PreparoForm.saveBackBtn]', e);
             setSaveStatus('error');
-          } const returnTo = route.params?.returnTo; if (returnTo) { navigation.navigate(returnTo); } else { navigation.goBack(); } }}>
+          }
+            // Cascata de edição — se viemos de "editar" um preparo dentro do
+            // EntityCreateModal de um produto (3 níveis), o modal salvou a flag
+            // reopenEntityModalAfterEdit. Navegamos de volta pra tab do produto
+            // pra a tela-pai reabrir o modal via focus effect, em vez de cair na
+            // lista de Preparos e exigir troca de tab manual.
+            if (route.params?.returnToEntityModal) {
+              try {
+                const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                const raw = await AsyncStorage.getItem('reopenEntityModalAfterEdit');
+                if (raw) {
+                  const info = JSON.parse(raw);
+                  if (info?.mode === 'produto') { navigation.navigate('Produtos', { screen: 'ProdutosList' }); return; }
+                  if (info?.mode === 'preparo') { navigation.navigate('Preparos', { screen: 'Preparos' }); return; }
+                }
+              } catch (_) {}
+            }
+            const returnTo = route.params?.returnTo; if (returnTo) { navigation.navigate(returnTo); } else { navigation.goBack(); } }}>
             <Feather name="check" size={16} color="#fff" />
             <Text style={styles.saveBackBtnText}>Salvar e voltar</Text>
           </TouchableOpacity>
