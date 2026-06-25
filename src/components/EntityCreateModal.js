@@ -939,12 +939,17 @@ export default function EntityCreateModal({
                     try { onClose && onClose(); } catch {}
                     setTimeout(() => {
                       try {
-                        if (it.tipo === 'preparo') navigation.navigate('Preparos', { screen: 'PreparosMain', params: { openPreparoEdit: it.id } });
+                        // A rota interna do PreparosStack chama-se 'Preparos'
+                        // (não 'PreparosMain' — esse nome só existe no WebHeader).
+                        // Antes navegávamos pra 'PreparosMain', que não existe no
+                        // navigator: o param openPreparoEdit era descartado e a tela
+                        // caía na LISTA de preparos sem abrir o modal de edição.
+                        if (it.tipo === 'preparo') navigation.navigate('Preparos', { screen: 'Preparos', params: { openPreparoEdit: it.id } });
                         else if (it.tipo === 'materia_prima') navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: it.id, returnToEntityModal: true } });
                         else if (it.tipo === 'embalagem') navigation.navigate('Embalagens', { screen: 'EmbalagemForm', params: { id: it.id, returnToEntityModal: true } });
                       } catch (e) {
                         try {
-                          if (it.tipo === 'preparo') navigation.navigate('Preparos', { params: { openPreparoEdit: it.id } });
+                          if (it.tipo === 'preparo') navigation.navigate('Preparos', { screen: 'Preparos', params: { openPreparoEdit: it.id } });
                           else if (it.tipo === 'materia_prima') navigation.navigate('MateriaPrimaForm', { id: it.id, returnToEntityModal: true });
                           else if (it.tipo === 'embalagem') navigation.navigate('EmbalagemForm', { id: it.id, returnToEntityModal: true });
                         } catch {}
