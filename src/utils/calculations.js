@@ -251,24 +251,28 @@ export function calcPrecoSugerido(custoTotal, markup, margemSegurancaPerc = 0) {
  */
 export function getDivisorRendimento(produto) {
   const un = (produto.unidade_rendimento || '').toLowerCase();
-
-  // Novos valores explícitos
-  if (un === 'por_kg' || un === 'por_litro') {
-    return parseFloat(produto.rendimento_total) || 1;
-  }
-
-  // Heurística para valores legados: Grama(s)/Mililitro(s) com rt pequeno = venda por kg/litro
-  // CR-4: Number.isFinite — NaN deve cair no fallback `unidade` (não causar Infinity no CMV)
+  // CR-4: Number.isFinite — NaN deve cair no fallback (não causar Infinity no CMV)
   const rtRaw = parseFloat(produto.rendimento_total);
   const rt = Number.isFinite(rtRaw) ? rtRaw : 0;
-  const isLegacyKgLitro = (un.includes('grama') || un.includes('quilo') || un.includes('litro') || un.includes('ml'))
-    && rt > 0 && rt <= 50;
 
-  if (isLegacyKgLitro) {
-    return rt;
+  // Novos valores explícitos: rendimento_total já está na unidade-base de venda (kg ou L).
+  if (un === 'por_kg' || un === 'por_litro') {
+    return rt || 1;
+  }
+  if (un === 'por_unidade') {
+    return parseFloat(produto.rendimento_unidades) || 1;
   }
 
-  // Padrão: venda por unidade
+  // LEGADO (produtos pré-migration de unidade_rendimento): classifica
+  // DETERMINISTICAMENTE pela string e converte rendimento_total para a unidade-base
+  // (g→kg, mL→L). Antes a heurística `rt <= 50` misclassificava bolos legados
+  // grandes salvos como 'Grama(s)' (ex.: rt=1500) como UNIDADE — bug documentado.
+  if (un.includes('quilo')) return rt || 1;                 // já em kg
+  if (un.includes('grama')) return (rt / 1000) || 1;        // g → kg
+  if (un.includes('litro')) return rt || 1;                 // já em L
+  if (un.includes('mili') || un === 'ml') return (rt / 1000) || 1; // mL → L
+
+  // Sem string de peso/volume reconhecível → venda por unidade.
   return parseFloat(produto.rendimento_unidades) || 1;
 }
 
@@ -280,15 +284,13 @@ export function getTipoVenda(produto) {
   // Novos valores explícitos
   if (un === 'por_kg') return 'kg';
   if (un === 'por_litro') return 'litro';
+  if (un === 'por_unidade') return 'unidade';
 
-  // Heurística para valores legados
-  // CR-4: Number.isFinite — NaN deve cair no fallback 'unidade' (não classificar errado)
-  const rtRaw = parseFloat(produto.rendimento_total);
-  const rt = Number.isFinite(rtRaw) ? rtRaw : 0;
-  if (rt > 0 && rt <= 50) {
-    if (un.includes('grama') || un.includes('quilo')) return 'kg';
-    if (un.includes('litro') || un.includes('ml')) return 'litro';
-  }
+  // LEGADO: classifica deterministicamente pela string (sem a heurística rt<=50
+  // que misclassificava bolos grandes salvos em 'Grama(s)' como unidade).
+  // Consistente com getDivisorRendimento.
+  if (un.includes('grama') || un.includes('quilo')) return 'kg';
+  if (un.includes('litro') || un.includes('mili') || un === 'ml') return 'litro';
 
   return 'unidade';
 }

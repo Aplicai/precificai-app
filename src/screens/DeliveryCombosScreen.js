@@ -2,6 +2,8 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, FlatList, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert, Platform, TextInput } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import UndoToast from '../components/UndoToast';
+import useUndoableDelete from '../hooks/useUndoableDelete';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import FAB from '../components/FAB';
@@ -61,6 +63,7 @@ export default function DeliveryCombosScreen() {
   const [contextoFin, setContextoFin] = useState({ lucroPerc: 0.15, fixoPerc: 0, variavelPerc: 0 });
   const [busca, setBusca] = usePersistedState('deliveryCombos.busca', '');
   const [confirmRemove, setConfirmRemove] = useState(null);
+  const undoDelete = useUndoableDelete();
 
   // Audit P0: error states + race-guard
   const [loadError, setLoadError] = useState(null);
@@ -293,10 +296,11 @@ export default function DeliveryCombosScreen() {
     return n !== null && n >= 0 ? n : 0;
   }
 
-  // Filtered combos for search
-  const combosFiltrados = busca.trim()
+  // Filtered combos for search (também esconde itens com exclusão pendente de undo)
+  const combosFiltrados = (busca.trim()
     ? combos.filter(c => normalizeSearch(c.nome).includes(normalizeSearch(busca)))
-    : combos;
+    : combos
+  ).filter(c => !undoDelete.hiddenIds.has(c.id));
 
   // Open modal for creating
   async function abrirCriarCombo() {
@@ -623,19 +627,17 @@ export default function DeliveryCombosScreen() {
     setConfirmRemove({
       id, nome,
       onConfirm: async () => {
-        try {
-          const db = await getDatabase();
-          await db.runAsync('DELETE FROM delivery_combo_itens WHERE combo_id = ?', [id]);
-          await db.runAsync('DELETE FROM delivery_combos WHERE id = ?', [id]);
-          setConfirmRemove(null);
-          loadData();
-          // Sessão 28.53 — feedback visual após remover
-          showSaveSuccess(`Combo "${nome}" removido`);
-        } catch (e) {
-          console.error('[DeliveryCombosScreen.removerCombo]', e);
-          setConfirmRemove(null);
-          showSaveError('Falha ao remover combo. Tente novamente.');
-        }
+        setConfirmRemove(null);
+        await undoDelete.requestDelete({
+          id,
+          message: `Combo "${nome}" excluído`,
+          commit: async () => {
+            const db = await getDatabase();
+            await db.runAsync('DELETE FROM delivery_combo_itens WHERE combo_id = ?', [id]);
+            await db.runAsync('DELETE FROM delivery_combos WHERE id = ?', [id]);
+          },
+          onCommitted: () => loadData(),
+        });
       },
     });
   }
@@ -1455,6 +1457,13 @@ export default function DeliveryCombosScreen() {
           </View>
         </View>
       </Modal>
+
+      <UndoToast
+        visible={!!undoDelete.pending}
+        message={undoDelete.pending?.message}
+        onUndo={undoDelete.undo}
+        onTimeout={undoDelete.onTimeout}
+      />
     </View>
   );
 }

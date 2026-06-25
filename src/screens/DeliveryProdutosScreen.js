@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import UndoToast from '../components/UndoToast';
+import useUndoableDelete from '../hooks/useUndoableDelete';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import Card from '../components/Card';
@@ -61,6 +63,7 @@ export default function DeliveryProdutosScreen() {
   const [editingProdutoId, setEditingProdutoId] = useState(null);
   const [novoProdutoDelivery, setNovoProdutoDelivery] = useState({ nome: '', preco_venda: '', itens: [] });
   const [confirmRemove, setConfirmRemove] = useState(null);
+  const undoDelete = useUndoableDelete();
 
   const [buscaItem, setBuscaItem] = usePersistedState('deliveryProdutos.buscaItem', '');
 
@@ -270,17 +273,17 @@ export default function DeliveryProdutosScreen() {
     setConfirmRemove({
       id, nome,
       onConfirm: async () => {
-        try {
-          const db = await getDatabase();
-          await db.runAsync('DELETE FROM delivery_produto_itens WHERE delivery_produto_id = ?', [id]);
-          await db.runAsync('DELETE FROM delivery_produtos WHERE id = ?', [id]);
-          setConfirmRemove(null);
-          loadData();
-        } catch (e) {
-          console.error('[DeliveryProdutosScreen.removerProdutoDelivery]', e);
-          setConfirmRemove(null);
-          showSaveError('Não foi possível remover o produto. Tente novamente.');
-        }
+        setConfirmRemove(null);
+        await undoDelete.requestDelete({
+          id,
+          message: `Produto "${nome}" excluído`,
+          commit: async () => {
+            const db = await getDatabase();
+            await db.runAsync('DELETE FROM delivery_produto_itens WHERE delivery_produto_id = ?', [id]);
+            await db.runAsync('DELETE FROM delivery_produtos WHERE id = ?', [id]);
+          },
+          onCommitted: () => loadData(),
+        });
       },
     });
   }
@@ -340,7 +343,9 @@ export default function DeliveryProdutosScreen() {
             />
           }
         >
-          {deliveryProdutos.length === 0 ? (
+          {(() => {
+          const visibleProdutos = deliveryProdutos.filter(dp => !undoDelete.hiddenIds.has(dp.id));
+          return visibleProdutos.length === 0 ? (
             <EmptyState
               icon="truck"
               title="Nenhum produto delivery"
@@ -350,7 +355,7 @@ export default function DeliveryProdutosScreen() {
             />
           ) : (
             <>
-              {deliveryProdutos.map((dp, dpIndex) => {
+              {visibleProdutos.map((dp, dpIndex) => {
                 const precoVenda = safeNum(dp.preco_venda);
                 const custo = safeNum(dp.custo);
                 // Sessão 28.9 — Auditoria P0-02: usar calcMargem (delivery view bruta).
@@ -366,8 +371,8 @@ export default function DeliveryProdutosScreen() {
                     style={[
                       styles.row,
                       dpIndex === 0 && styles.rowFirst,
-                      dpIndex === deliveryProdutos.length - 1 && styles.rowLast,
-                      dpIndex < deliveryProdutos.length - 1 && styles.rowBorder,
+                      dpIndex === visibleProdutos.length - 1 && styles.rowLast,
+                      dpIndex < visibleProdutos.length - 1 && styles.rowBorder,
                     ]}
                     onPress={() => abrirModalEditar(dp)}
                     activeOpacity={0.6}
@@ -420,7 +425,8 @@ export default function DeliveryProdutosScreen() {
                 <Text style={styles.createBtnText}>Criar Produto Delivery</Text>
               </TouchableOpacity>
             </>
-          )}
+          );
+          })()}
         </Card>
       </ScrollView>
 
@@ -573,6 +579,13 @@ export default function DeliveryProdutosScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      <UndoToast
+        visible={!!undoDelete.pending}
+        message={undoDelete.pending?.message}
+        onUndo={undoDelete.undo}
+        onTimeout={undoDelete.onTimeout}
+      />
     </>
   );
 }

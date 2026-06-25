@@ -137,9 +137,23 @@ try {
   });
 } catch {}
 
-/** Setter global (testes locais na Fase 0; Asaas na Fase 1). */
+/** Setter global (testes locais na Fase 0; Asaas na Fase 1).
+ *
+ * SEC (blindagem paywall): em PRODUÇÃO o cliente NÃO pode conceder entitlement
+ * pago — a fonte da verdade é a tabela `subscriptions` (servidor, escrita só pelo
+ * webhook do Asaas) lida via syncPlanFromServer. Ignorar upgrades client-side
+ * fecha o bypass trivial (`setPlan('ilimitado')` no console / cache spoof). O
+ * switcher de planos da tela de Configurações já é __DEV__-only; downgrade e
+ * 'free' continuam permitidos (logout, expiração). Dados sensíveis seguem
+ * protegidos por RLS no servidor independente disto. */
 export async function setPlan(next) {
   const v = normalizePlan(next);
+  const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : false;
+  if (!isDev && v !== 'free') {
+    // Produção: não confia no cliente pra subir o plano — revalida no servidor.
+    syncPlanFromServer().catch(() => {});
+    return;
+  }
   if (_plan === v) return;
   _plan = v;
   try { await AsyncStorage.setItem(STORAGE_KEY, v); } catch {}

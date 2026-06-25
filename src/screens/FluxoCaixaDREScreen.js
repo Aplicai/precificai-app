@@ -31,6 +31,8 @@ import InputField from '../components/InputField';
 import PickerSelect from '../components/PickerSelect';
 import EmptyState from '../components/EmptyState';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
+import UndoToast from '../components/UndoToast';
+import useUndoableDelete from '../hooks/useUndoableDelete';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { showToast } from '../utils/toastBus';
 
@@ -127,6 +129,7 @@ export default function FluxoCaixaDREScreen() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const undoDelete = useUndoableDelete();
 
   // Form state — modal
   const [formData, setFormData] = useState('');
@@ -258,16 +261,24 @@ export default function FluxoCaixaDREScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [monthKey]);
 
+  // Movimentos visíveis: esconde os com exclusão pendente de undo. Usado tanto na
+  // LISTA quanto nos cálculos de resumo do Fluxo e na importação para a DRE, para
+  // que o item pendente saia dos totais enquanto o undo está disponível.
+  const visibleMovimentos = useMemo(
+    () => movimentos.filter(m => !undoDelete.hiddenIds.has(m.id)),
+    [movimentos, undoDelete.hiddenIds]
+  );
+
   // ---------- FLUXO sumário ----------
   const resumo = useMemo(() => {
     let entradas = 0, saidas = 0;
-    for (const m of movimentos) {
+    for (const m of visibleMovimentos) {
       const v = safeNum(m.valor);
       if (m.tipo === 'entrada') entradas += v;
       else saidas += v;
     }
     return { entradas, saidas, saldoInicial, saldoFinal: saldoInicial + entradas - saidas };
-  }, [movimentos, saldoInicial]);
+  }, [visibleMovimentos, saldoInicial]);
 
   // ---------- DRE valores numéricos ----------
   const dreNum = useMemo(() => ({
@@ -388,16 +399,20 @@ export default function FluxoCaixaDREScreen() {
     }
   }
 
-  async function excluirMovimento(id) {
-    try {
-      const db = await getDatabase();
-      await db.runAsync('DELETE FROM fluxo_caixa_movimentos WHERE id = ?', [id]);
-      setConfirmDelete(null);
-      showToast('Movimento removido', 'trash-2');
-      await reloadMovimentos();
-    } catch (e) {
-      console.error('[FluxoCaixaDRE.excluir]', e);
-    }
+  async function excluirMovimento(mov) {
+    if (!mov || mov.id == null) return;
+    const id = mov.id;
+    const rotulo = mov.descricao || mov.categoria || 'Movimento';
+    setConfirmDelete(null);
+    await undoDelete.requestDelete({
+      id,
+      message: `"${rotulo}" excluído`,
+      commit: async () => {
+        const db = await getDatabase();
+        await db.runAsync('DELETE FROM fluxo_caixa_movimentos WHERE id = ?', [id]);
+      },
+      onCommitted: () => { reloadMovimentos(); },
+    });
   }
 
   // ---------- INTEGRAÇÃO Fluxo → DRE ----------
@@ -413,7 +428,7 @@ export default function FluxoCaixaDREScreen() {
   function importarDoFluxo() {
     let receita = 0, outrasRec = 0, cmv = 0, despFixas = 0, despVar = 0, deducoes = 0, outrasDesp = 0;
     let totalSaidas = 0;
-    for (const m of movimentos) {
+    for (const m of visibleMovimentos) {
       const cat = String(m.categoria || '');
       const v = safeNum(m.valor);
       if (m.tipo === 'entrada') {
@@ -532,7 +547,7 @@ export default function FluxoCaixaDREScreen() {
           {activeTab === 'fluxo' ? (
             <FluxoTab
               loading={loading}
-              movimentos={movimentos}
+              movimentos={visibleMovimentos}
               resumo={resumo}
               onAdd={abrirNovo}
               onEdit={abrirEdicao}
@@ -708,8 +723,15 @@ export default function FluxoCaixaDREScreen() {
         visible={!!confirmDelete}
         titulo="Excluir movimento?"
         nome={confirmDelete?.descricao || confirmDelete?.categoria || 'este movimento'}
-        onConfirm={() => excluirMovimento(confirmDelete?.id)}
+        onConfirm={() => excluirMovimento(confirmDelete)}
         onCancel={() => setConfirmDelete(null)}
+      />
+
+      <UndoToast
+        visible={!!undoDelete.pending}
+        message={undoDelete.pending?.message}
+        onUndo={undoDelete.undo}
+        onTimeout={undoDelete.onTimeout}
       />
     </View>
   );
