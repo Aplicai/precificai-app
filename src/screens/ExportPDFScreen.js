@@ -673,40 +673,54 @@ export default function ExportPDFScreen({ navigation }) {
 
       {/* Sticky bottom CTA — Exportar PDF */}
       <View style={[styles.stickyFooter, { bottom: bottomOffset }]} pointerEvents="box-none">
-        <TouchableOpacity
-          style={[styles.exportBtn, selectedCount === 0 && styles.exportBtnDisabled]}
-          onPress={handleExport}
-          activeOpacity={0.7}
-          disabled={selectedCount === 0 || exporting}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: selectedCount === 0 || exporting, busy: exporting }}
-          accessibilityLabel={
-            exporting
-              ? 'Gerando PDF, aguarde'
-              : selectedCount === 0
-                ? 'Selecione ao menos um item para exportar'
-                : `Exportar PDF com ${selectedCount} ${activeTab === 'produtos' ? (selectedCount === 1 ? 'produto' : 'produtos') : (selectedCount === 1 ? 'preparo' : 'preparos')}`
-          }
-        >
-          {exporting ? (
-            <>
-              <ActivityIndicator size="small" color="#fff" />
-              {/* Audit P1: contexto durante o export longo (era só spinner) */}
-              <Text style={[styles.exportBtnText, { marginLeft: 8 }]}>
-                Gerando PDF...
-              </Text>
-            </>
-          ) : (
-            <>
-              <Feather name="printer" size={18} color="#fff" />
-              <Text style={styles.exportBtnText}>
-                {selectedCount === 0
-                  ? 'Exportar PDF'
-                  : `Exportar PDF (${selectedCount} ${activeTab === 'produtos' ? (selectedCount === 1 ? 'produto' : 'produtos') : (selectedCount === 1 ? 'preparo' : 'preparos')})`}
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
+        {Platform.OS !== 'web' ? (
+          // P1 — A geração de PDF depende 100% de APIs de navegador (exportarPDF
+          // faz `if (Platform.OS !== 'web') return;` e expo-print NÃO está no
+          // projeto). No app nativo o botão funcional só produzia falha silenciosa
+          // (spinner sem nada acontecer). Mesmo padrão do Export CSV: desabilita e
+          // avisa que o recurso é exclusivo do navegador. NÃO implementar expo-print.
+          <View style={[styles.exportBtn, styles.exportBtnDisabled]} accessibilityRole="text">
+            <Feather name="monitor" size={18} color="#fff" />
+            <Text style={styles.exportBtnText}>
+              Exportar PDF · disponível no navegador
+            </Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.exportBtn, selectedCount === 0 && styles.exportBtnDisabled]}
+            onPress={handleExport}
+            activeOpacity={0.7}
+            disabled={selectedCount === 0 || exporting}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: selectedCount === 0 || exporting, busy: exporting }}
+            accessibilityLabel={
+              exporting
+                ? 'Gerando PDF, aguarde'
+                : selectedCount === 0
+                  ? 'Selecione ao menos um item para exportar'
+                  : `Exportar PDF com ${selectedCount} ${activeTab === 'produtos' ? (selectedCount === 1 ? 'produto' : 'produtos') : (selectedCount === 1 ? 'preparo' : 'preparos')}`
+            }
+          >
+            {exporting ? (
+              <>
+                <ActivityIndicator size="small" color="#fff" />
+                {/* Audit P1: contexto durante o export longo (era só spinner) */}
+                <Text style={[styles.exportBtnText, { marginLeft: 8 }]}>
+                  Gerando PDF...
+                </Text>
+              </>
+            ) : (
+              <>
+                <Feather name="printer" size={18} color="#fff" />
+                <Text style={styles.exportBtnText}>
+                  {selectedCount === 0
+                    ? 'Exportar PDF'
+                    : `Exportar PDF (${selectedCount} ${activeTab === 'produtos' ? (selectedCount === 1 ? 'produto' : 'produtos') : (selectedCount === 1 ? 'preparo' : 'preparos')})`}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Planos (Fase 0) — popup ao tentar exportar PDF sem plano Pro */}

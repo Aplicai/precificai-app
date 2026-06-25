@@ -547,7 +547,7 @@ export default function PreparoFormScreen({ route, navigation }) {
     const db = await getDatabase();
 
     const result = await db.runAsync('INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg, modo_preparo, observacoes, validade_dias, temp_congelado, tempo_congelado, temp_refrigerado, tempo_refrigerado, temp_ambiente, tempo_ambiente) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-      [form.nome, form.categoria_id, rendimento, form.unidade_medida, custoTotal, custoKg, form.modo_preparo || '', form.observacoes || '', parseFloat(form.validade_dias) || 0, form.temp_congelado || '', form.tempo_congelado || '', form.temp_refrigerado || '', form.tempo_refrigerado || '', form.temp_ambiente || '', form.tempo_ambiente || '']);
+      [form.nome, form.categoria_id, rendimento, form.unidade_medida, custoTotal, custoKg, form.modo_preparo || '', form.observacoes || '', parseNum(form.validade_dias), form.temp_congelado || '', form.tempo_congelado || '', form.temp_refrigerado || '', form.tempo_refrigerado || '', form.temp_ambiente || '', form.tempo_ambiente || '']);
     const newId = result.lastInsertRowId;
     for (const ing of ingredientes) {
       const mp = materiasPrimas.find(m => m.id === ing.materia_prima_id);
@@ -1064,7 +1064,7 @@ export default function PreparoFormScreen({ route, navigation }) {
               }
               const db = await getDatabase();
               const result = await db.runAsync('INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg, modo_preparo, observacoes, validade_dias) VALUES (?,?,?,?,?,?,?,?,?)',
-                [f.nome.trim() + ' (cópia)', f.categoria_id, parseFloat(f.rendimento_total) || 0, f.unidade_medida, 0, 0, f.modo_preparo || '', f.observacoes || '', parseFloat(f.validade_dias) || 0]);
+                [f.nome.trim() + ' (cópia)', f.categoria_id, parseNum(f.rendimento_total), f.unidade_medida, 0, 0, f.modo_preparo || '', f.observacoes || '', parseNum(f.validade_dias)]);
               const newId = result?.lastInsertRowId;
               if (newId) {
                 const ings = await db.getAllAsync('SELECT * FROM preparo_ingredientes WHERE preparo_id = ?', [editId]);

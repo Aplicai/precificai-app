@@ -642,7 +642,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5, paddingVertical: 1, borderRadius: 6, marginTop: 2,
   },
   margemText: {
-    fontSize: 9, fontFamily: fontFamily.bold, fontWeight: '700',
+    fontSize: 11, fontFamily: fontFamily.bold, fontWeight: '700',
   },
 
   // Delete

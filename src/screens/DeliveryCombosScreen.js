@@ -11,7 +11,7 @@ import InputField from '../components/InputField';
 import SaveStatus from '../components/SaveStatus';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum, parseDecimalBR } from '../utils/calculations';
 import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
 // APP-22: usar engine unificada também para combos (antes era markup fixo 35% sem contar fixos/variáveis)
 import { calcularPrecoCombo } from '../utils/precificacao';
@@ -24,9 +24,9 @@ import { PLAN_LABELS } from '../config/plans';
 // ─── Numeric helpers (audit P0 — defesa contra NaN/Infinity) ─────────────
 function parseInputNumber(raw) {
   if (raw === null || raw === undefined) return null;
-  const str = String(raw).trim().replace(',', '.');
-  if (str === '') return null;
-  const n = parseFloat(str);
+  if (String(raw).trim() === '') return null;
+  // parseDecimalBR trata milhar PT-BR ("1.000,50") e EN-US; retorna NaN se inválido.
+  const n = parseDecimalBR(raw);
   return Number.isFinite(n) ? n : null;
 }
 

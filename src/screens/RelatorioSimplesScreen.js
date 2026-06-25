@@ -1190,7 +1190,7 @@ const styles = StyleSheet.create({
     minHeight: 4,
   },
   barLabel: {
-    fontSize: 9,
+    fontSize: 11,
     color: colors.textSecondary,
     fontFamily: fontFamily.regular,
     marginTop: 4,
@@ -1271,7 +1271,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   precCardItemLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: fontFamily.medium,
     color: colors.textSecondary,
     textTransform: 'uppercase',

@@ -583,7 +583,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   headerCol: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: fontFamily.semiBold,
     color: colors.textSecondary,
     textTransform: 'uppercase',

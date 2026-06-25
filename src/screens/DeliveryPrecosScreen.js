@@ -1166,7 +1166,7 @@ const styles = StyleSheet.create({
   },
   priceCol: { flex: 1, marginRight: spacing.sm },
   priceLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: fontFamily.semiBold,
     color: colors.textSecondary,
     marginBottom: 2,
@@ -1205,7 +1205,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
   },
   margemChipText: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: fontFamily.bold,
     fontWeight: '700',
   },
@@ -1229,7 +1229,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   breakdownChipText: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: fontFamily.regular,
     color: colors.textSecondary,
   },

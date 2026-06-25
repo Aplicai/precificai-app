@@ -38,7 +38,7 @@ import {
   calcDespesasFixasPercentual, calcMarkup, calcPrecoSugerido,
   calcCustoIngrediente, calcCustoPreparo, calcCustoEmbalagem,
   calcLucroLiquido, calcCMVPercentual, calcMargem, calcMargemLiquida,
-  safeNum, getTipoUnidade,
+  safeNum, getTipoUnidade, parseDecimalBROrZero,
 } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 // Área 4 (Preparos) — toast de confirmação ao salvar preparo via modal
@@ -51,11 +51,11 @@ import MateriaPrimaFormScreen from '../screens/MateriaPrimaFormScreen';
 import EmbalagemFormScreen from '../screens/EmbalagemFormScreen';
 
 function parseInputValue(raw) {
-  if (raw === null || raw === undefined) return 0;
-  const s = String(raw).replace(',', '.').trim();
-  if (!s) return 0;
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : 0;
+  // Sessão 28.x: usa parseDecimalBROrZero (de calculations) que entende
+  // separador de milhar PT-BR ("1.500,00" → 1500). O replace(',', '.') único
+  // anterior quebrava esses valores ("1.500,00" virava 1.5). Mantém o contrato
+  // "número válido ou 0" — NUNCA retorna NaN (parseDecimalBR puro retornaria).
+  return parseDecimalBROrZero(raw);
 }
 
 // Sessão 28.13: BUG fix — antes embalagem retornava 'un' SEMPRE (ignorando a unidade real)
@@ -1680,6 +1680,7 @@ export default function EntityCreateModal({
       visible={visible}
       transparent
       animationType={isDesktop ? 'fade' : 'slide'}
+      onRequestClose={handleBackdropPress}
     >
       <TouchableOpacity
         style={[styles.overlay, !isDesktop && styles.overlayMobile]}
@@ -1875,70 +1876,11 @@ export default function EntityCreateModal({
                   Agora salva draft no AsyncStorage e navega — `reopenEntityModalAfterEdit`
                   já existe e o modal restaura automaticamente quando volta (Sessão 28.19). */}
               {(() => {
-                const saveDraftAndNavigate = (target, params = {}) => {
-                  // Sessão 28.36: marca pendingAddType pra que o form de cadastro
-                  // (MateriaPrimaForm/EmbalagemForm/EntityCreateModal preparo) saiba
-                  // adicionar o item recém-criado no draft do produto/preparo pai.
-                  let pendingAddType = null;
-                  if (target === 'MateriaPrimaForm') pendingAddType = 'materia_prima';
-                  else if (target === 'EmbalagemForm') pendingAddType = 'embalagem';
-                  else if (target === 'NovoPreparo') pendingAddType = 'preparo';
-                  try {
-                    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-                    const currentDraft = {
-                      nome, categoriaId, precoVenda,
-                      tipoVenda, rendimentoUnidades, rendimentoTotalProd,
-                      rendimentoTotalPrep, unidadeMedidaPrep, itens,
-                    };
-                    // Sessão 28.52: cascata 3 níveis (produto → preparo nested → insumo/embalagem).
-                    // Se temos parentEntity (somos um nested), salvamos o PRODUTO PAI como o reopen
-                    // e marcamos `reopenNestedPreparo` pra reabrir o preparo nested também.
-                    let reopenInfo;
-                    if (parentEntity && parentEntity.mode === 'produto') {
-                      reopenInfo = {
-                        mode: parentEntity.mode,
-                        editId: parentEntity.editId || null,
-                        ts: Date.now(),
-                        pendingAddType: null, // o produto pai não recebe o novo item; o preparo nested recebe ao reabrir
-                        draft: parentEntity.draft || {},
-                        // Quando ProdutosListScreen reabrir o produto, este flag faz o
-                        // EntityCreateModal abrir automaticamente o nested preparo restaurado.
-                        reopenNestedPreparo: {
-                          mode: 'preparo',
-                          editId: editId || null,
-                          draft: currentDraft,
-                          pendingAddType,
-                        },
-                      };
-                    } else {
-                      reopenInfo = {
-                        mode, editId: editId || null, ts: Date.now(),
-                        pendingAddType,
-                        draft: currentDraft,
-                      };
-                    }
-                    AsyncStorage.setItem('reopenEntityModalAfterEdit', JSON.stringify(reopenInfo));
-                  } catch {}
-                  try { onClose && onClose(); } catch {}
-                  setTimeout(() => {
-                    try {
-                      if (target === 'MateriaPrimaForm') {
-                        navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { ...params, returnToEntityModal: true } });
-                      } else if (target === 'EmbalagemForm') {
-                        navigation.navigate('Embalagens', { screen: 'EmbalagemForm', params: { ...params, returnToEntityModal: true } });
-                      } else if (target === 'NovoPreparo') {
-                        // Reabre EntityCreateModal em mode="preparo" pra criar novo preparo
-                        navigation.navigate('Preparos', { screen: 'PreparosMain', params: { abrirNovoPreparo: true } });
-                      }
-                    } catch (e) {
-                      // Fallback sem nested screen
-                      try {
-                        if (target === 'MateriaPrimaForm') navigation.navigate('MateriaPrimaForm', { ...params, returnToEntityModal: true });
-                        else if (target === 'EmbalagemForm') navigation.navigate('EmbalagemForm', { ...params, returnToEntityModal: true });
-                      } catch {}
-                    }
-                  }, 120);
-                };
+                // Sessão 28.x: a antiga helper `saveDraftAndNavigate` (que salvava
+                // draft no AsyncStorage e navegava pra tela cheia) era CÓDIGO MORTO —
+                // os botões abaixo agora abrem os formulários EMPILHADOS via
+                // setNestedInsumoVisible / setNestedPreparoVisible / setNestedEmbalagemVisible
+                // (Sessão 28.71). Removida pra não confundir.
                 return (
                   <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
                     <TouchableOpacity

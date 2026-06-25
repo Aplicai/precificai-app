@@ -17,6 +17,7 @@ import { supabase } from '../config/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { MIN_PASSWORD_LENGTH, validatePassword, passwordCriteria } from '../utils/passwordPolicy';
+import { mapAuthError } from '../utils/authErrors';
 
 // Sessão 28.68 (L-3): política unificada com RegisterScreen — 8 chars +
 // maiúscula + minúscula + número + símbolo. Antes aceitava apenas 6 chars.
@@ -73,8 +74,7 @@ export default function ResetPasswordScreen({ navigation }) {
       }, 1500);
     } catch (e) {
       setLoading(false);
-      const msg = (e && e.message) ? e.message : 'Erro ao redefinir senha';
-      setError(msg);
+      setError(mapAuthError(e, { context: 'reset' }));
     }
   }
 
@@ -151,7 +151,12 @@ export default function ResetPasswordScreen({ navigation }) {
             placeholder={`Mínimo ${MIN_PASSWORD_LENGTH} caracteres`}
             autoCapitalize="none"
           />
-          <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
+          <TouchableOpacity
+            onPress={() => setShowPassword(!showPassword)}
+            style={styles.eyeBtn}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+          >
             <Feather name={showPassword ? 'eye-off' : 'eye'} size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>

@@ -74,10 +74,39 @@ export function converterDeBase(valorBase, unidade) {
   return valorBase / un.fatorBase;
 }
 
+// Normaliza uma string de unidade para um dos valores canônicos
+// ('g','kg','mL','L','un'), reconhecendo variantes comuns digitadas pelo
+// usuário ou vindas de dados legados/corrompidos.
+// Conceitualmente espelha shortUnidade (EntityCreateModal), implementado local
+// aqui pra não criar dependência cruzada.
+// Retorna null se não reconhecer.
+export function normalizarUnidade(unidade) {
+  const raw = String(unidade == null ? '' : unidade).trim();
+  if (!raw) return null;
+  // Match exato preserva caixa correta (mL ≠ ml, L ≠ l) — caso canônico já reconhecido
+  if (raw === 'g' || raw === 'kg' || raw === 'mL' || raw === 'L' || raw === 'un') return raw;
+  const u = raw.toLowerCase().replace(/\.+$/, ''); // remove ponto final ('un.', 'g.', 'kg.')
+  if (u === 'kg' || u === 'quilo' || u === 'quilos' || u === 'quilograma' || u === 'quilogramas' || u.includes('quilo')) return 'kg';
+  if (u === 'g' || u === 'grama' || u === 'gramas') return 'g';
+  if (u === 'ml' || u === 'mililitro' || u === 'mililitros' || u.includes('mili')) return 'mL';
+  if (u === 'l' || u === 'litro' || u === 'litros' || u.includes('litro')) return 'L';
+  if (u === 'un' || u === 'unidade' || u === 'unidades' || u.includes('unid')) return 'un';
+  return null;
+}
+
 // Retorna o tipo da unidade (peso, volume, unidade)
 export function getTipoUnidade(unidade) {
   const un = UNIDADES_MEDIDA.find(u => u.value === unidade);
-  return un ? un.tipo : 'peso';
+  if (un) return un.tipo;
+  // Tenta normalizar variantes ('unidades', 'un.', 'quilo'...) antes do fallback
+  const canon = normalizarUnidade(unidade);
+  if (canon) {
+    const un2 = UNIDADES_MEDIDA.find(u => u.value === canon);
+    if (un2) return un2.tipo;
+  }
+  // Fallback: 'unidade' (multiplicação direta, sem ×1000) é menos perigoso que
+  // 'peso' para dados não reconhecidos/corrompidos.
+  return 'unidade';
 }
 
 // Retorna o label do preço base (R$/kg, R$/L, R$/un)

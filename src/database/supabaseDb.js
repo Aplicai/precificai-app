@@ -7,6 +7,36 @@ import { supabase } from '../config/supabase';
 
 let currentUserId = null;
 
+// Sessão 28.xx — defense-in-depth (security P2): allowlist EXPLÍCITA das tabelas
+// que têm coluna `user_id NOT NULL` e são por-usuário, derivada do schema do
+// Supabase (supabase-schema.sql + migrations dre-mensal/historico-precos/
+// multi-loja/m1-estoque). INSERT/UPDATE/DELETE já forçam .eq('user_id', ...);
+// a LEITURA (SELECT/JOIN) NÃO forçava — esta lista fecha a lacuna.
+//
+// REGRA DE SEGURANÇA: só aplicamos .eq('user_id', currentUserId) na leitura
+// quando (a) a tabela está NESTA lista E (b) currentUserId existe. Tabelas fora
+// da lista (ex.: locais-só-SQLite, tabelas de referência sem user_id, qualquer
+// nome desconhecido) NÃO são filtradas — comportamento inalterado, zero risco
+// de quebrar leitura de categorias/configuração.
+const USER_SCOPED_TABLES = new Set([
+  // supabase-schema.sql (todas as 27 tabelas têm user_id NOT NULL)
+  'configuracao', 'perfil', 'despesas_fixas', 'despesas_variaveis',
+  'faturamento_mensal', 'categorias_insumos', 'materias_primas',
+  'categorias_embalagens', 'embalagens', 'categorias_preparos', 'preparos',
+  'preparo_ingredientes', 'categorias_produtos', 'produtos',
+  'produto_ingredientes', 'produto_preparos', 'produto_embalagens', 'vendas',
+  'delivery_config', 'delivery_adicionais', 'delivery_produtos',
+  'delivery_produto_itens', 'delivery_combos', 'delivery_combo_itens',
+  'subscriptions', 'fluxo_caixa_movimentos', 'beta_features',
+  // migrations
+  'dre_mensal', 'historico_precos', 'lojas', 'estoque_movimentos',
+  'device_tokens', 'notif_prefs',
+]);
+
+function isUserScopedTable(table) {
+  return !!(table && USER_SCOPED_TABLES.has(String(table).toLowerCase()));
+}
+
 // In-memory cache for read queries (5 second TTL)
 const queryCache = new Map();
 const CACHE_TTL = 2000;
@@ -191,6 +221,10 @@ async function executeQuery(sql, params, mode) {
       else if (w.op === 'IS NULL') query = query.is(w.col, null);
       else if (w.op === 'IS NOT NULL') query = query.not(w.col, 'is', null);
     }
+    // Defense-in-depth (security P2): mesmo filtro user_id no COUNT.
+    if (isUserScopedTable(table) && currentUserId) {
+      query = query.eq('user_id', currentUserId);
+    }
     const { count, error } = await query;
     if (error) {
       console.warn('[SupabaseDb] COUNT error (não-cacheado):', error.message);
@@ -232,6 +266,13 @@ async function executeQuery(sql, params, mode) {
     else if (w.op === '<=') query = query.lte(w.col, w.val);
     else if (w.op === 'IS NULL') query = query.is(w.col, null);
     else if (w.op === 'IS NOT NULL') query = query.not(w.col, 'is', null);
+  }
+
+  // Sessão 28.xx — defense-in-depth (security P2): força filtro user_id na
+  // LEITURA, espelhando UPDATE/DELETE. Só para tabelas da allowlist E quando há
+  // usuário logado. RLS já barra cross-user; isto é a 2ª camada. Custo ~zero.
+  if (isUserScopedTable(table) && currentUserId) {
+    query = query.eq('user_id', currentUserId);
   }
 
   // Parse ORDER BY
@@ -459,6 +500,14 @@ async function executeJoinQuery(sql, params, mode) {
     else if (w.op === 'IS NULL') mainQuery = mainQuery.is(col, null);
     else if (w.op === 'IS NOT NULL') mainQuery = mainQuery.not(col, 'is', null);
     else if (__DEV__) console.warn('[SupabaseDb] JOIN: operador WHERE não aplicado:', w.op, col);
+  }
+
+  // Sessão 28.xx — defense-in-depth (security P2): força filtro user_id no
+  // mainTable do JOIN. Só para tabelas da allowlist E com usuário logado. O
+  // joinTable é buscado por PKs (.in(refCol, fkValues)) derivadas das mainRows
+  // já filtradas, então não é tocado aqui (escopo cirúrgico).
+  if (isUserScopedTable(mainTable) && currentUserId) {
+    mainQuery = mainQuery.eq('user_id', currentUserId);
   }
 
   const { data: mainRows, error: mainErr } = await mainQuery;

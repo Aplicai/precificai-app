@@ -412,6 +412,7 @@ export default function FluxoCaixaDREScreen() {
   const SAIDAS_FIXAS = ['Salários', 'Aluguel', 'Energia/Água', 'Internet/Telefone', 'Manutenção'];
   function importarDoFluxo() {
     let receita = 0, outrasRec = 0, cmv = 0, despFixas = 0, despVar = 0, deducoes = 0, outrasDesp = 0;
+    let totalSaidas = 0;
     for (const m of movimentos) {
       const cat = String(m.categoria || '');
       const v = safeNum(m.valor);
@@ -419,6 +420,7 @@ export default function FluxoCaixaDREScreen() {
         if (cat === 'Outras Receitas') outrasRec += v;
         else receita += v; // Vendas Balcão/Delivery/Combos
       } else {
+        totalSaidas += v;
         if (cat === 'Insumos' || cat === 'Embalagens') cmv += v;
         else if (SAIDAS_FIXAS.includes(cat)) despFixas += v;
         else if (cat === 'Marketing') despVar += v;
@@ -436,9 +438,14 @@ export default function FluxoCaixaDREScreen() {
       deducoes: deducoes > 0 ? formatBRNumber(deducoes) : prev.deducoes,
       outrasDespesas: outrasDesp > 0 ? formatBRNumber(outrasDesp) : prev.outrasDespesas,
     }));
-    // Se trouxemos despesas fixas do Fluxo, desliga o toggle do Financeiro pra
-    // não somar duas vezes (Financeiro + Fluxo).
-    if (despFixas > 0) setUseFixasFromFinanceiro(false);
+    // P1 — Evita DUPLA CONTAGEM. O toggle "Usar do Financeiro" soma as despesas
+    // fixas cadastradas no Financeiro. Se o usuário também lançou custos no Fluxo
+    // (ex.: aluguel sob categoria "Outros" cai em outrasDespesas; ou sob uma das
+    // SAIDAS_FIXAS cai em despFixas), manter o toggle ligado somaria o MESMO custo
+    // duas vezes (Financeiro + Fluxo). Por isso desligamos o toggle sempre que houver
+    // QUALQUER saída importada — não só quando despFixas > 0 — já que o custo fixo
+    // pode ter sido classificado fora de SAIDAS_FIXAS.
+    if (totalSaidas > 0) setUseFixasFromFinanceiro(false);
     showToast('Receitas e custos importados do Fluxo de Caixa', 'download');
   }
 
@@ -721,18 +728,21 @@ function FluxoTab({ loading, movimentos, resumo, onAdd, onEdit, onDelete, isDesk
           value={formatCurrency(resumo.saldoInicial)}
           color={colors.textSecondary}
           icon="anchor"
+          isDesktop={isDesktop}
         />
         <KPICard
           label="Entradas"
           value={formatCurrency(resumo.entradas)}
           color={colors.success}
           icon="arrow-down-circle"
+          isDesktop={isDesktop}
         />
         <KPICard
           label="Saídas"
           value={formatCurrency(resumo.saidas)}
           color={colors.error}
           icon="arrow-up-circle"
+          isDesktop={isDesktop}
         />
         <KPICard
           label="Saldo final"
@@ -740,6 +750,7 @@ function FluxoTab({ loading, movimentos, resumo, onAdd, onEdit, onDelete, isDesk
           color={resumo.saldoFinal >= 0 ? colors.primary : colors.error}
           icon={resumo.saldoFinal >= 0 ? 'trending-up' : 'trending-down'}
           highlight
+          isDesktop={isDesktop}
         />
       </View>
 
@@ -819,9 +830,9 @@ function FluxoTab({ loading, movimentos, resumo, onAdd, onEdit, onDelete, isDesk
   );
 }
 
-function KPICard({ label, value, color, icon, highlight }) {
+function KPICard({ label, value, color, icon, highlight, isDesktop }) {
   return (
-    <View style={[styles.kpiCard, highlight && styles.kpiCardHighlight]}>
+    <View style={[styles.kpiCard, !isDesktop && styles.kpiCardMobile, highlight && styles.kpiCardHighlight]}>
       <View style={styles.kpiHeader}>
         {icon ? (
           <View style={[styles.kpiIconBubble, { backgroundColor: color + '15' }]}>
@@ -862,18 +873,21 @@ function DRETab({
           value={formatCurrency(dreNum.receitaBruta)}
           color={colors.primary}
           icon="dollar-sign"
+          isDesktop={isDesktop}
         />
         <KPICard
           label="CMV"
           value={formatCurrency(dreNum.cmv)}
           color={colors.warning}
           icon="package"
+          isDesktop={isDesktop}
         />
         <KPICard
           label="Lucro Bruto"
           value={formatCurrency(linhas.lucroBruto)}
           color={linhas.lucroBruto >= 0 ? colors.success : colors.error}
           icon="trending-up"
+          isDesktop={isDesktop}
         />
         <KPICard
           label="Lucro Líquido"
@@ -881,6 +895,7 @@ function DRETab({
           color={linhas.lucroLiquido >= 0 ? colors.primary : colors.error}
           icon={linhas.lucroLiquido >= 0 ? 'check-circle' : 'alert-circle'}
           highlight
+          isDesktop={isDesktop}
         />
       </View>
 
@@ -1245,7 +1260,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', gap: spacing.sm,
     marginBottom: spacing.md,
   },
-  kpiRowMobile: { flexWrap: 'wrap' },
+  kpiRowMobile: { flexWrap: 'wrap', justifyContent: 'space-between' },
   kpiCard: {
     flex: 1, minWidth: 140,
     backgroundColor: colors.surface,
@@ -1256,6 +1271,15 @@ const styles = StyleSheet.create({
       web: { boxShadow: '0 1px 3px rgba(0,77,71,0.06)' },
       default: { elevation: 1, shadowColor: colors.shadow, shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 2 },
     }),
+  },
+  // P3 — No mobile, 2 colunas explícitas (48%) em vez de flex:1 minWidth:140.
+  // Com 4 KPIs e flex:1+minWidth:140 o wrap gerava um card órfão de largura cheia
+  // em telas estreitas (~360pt). Largura fixa de 48% força um grid 2x2 limpo.
+  kpiCardMobile: {
+    flex: 0,
+    flexBasis: '48%',
+    width: '48%',
+    minWidth: 0,
   },
   kpiCardHighlight: {
     borderColor: colors.primary + '50',

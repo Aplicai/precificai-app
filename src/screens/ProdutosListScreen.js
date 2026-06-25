@@ -1098,9 +1098,9 @@ export default function ProdutosListScreen({ navigation }) {
                     <HighlightedText text={item.nome} query={busca} style={[styles.rowNome, nameOverride]} numberOfLines={1} />
                   </View>
                   <View style={styles.itemMeta}>
-                    <Text style={styles.itemMetaText}>CMV {formatCurrency(item.custoTotal)}</Text>
+                    <Text numberOfLines={1} style={styles.itemMetaText}>CMV {formatCurrency(item.custoTotal)}</Text>
                     <Text style={styles.itemMetaSep}>•</Text>
-                    <Text style={styles.itemMetaText}>Venda {formatCurrency(item.precoVenda)}</Text>
+                    <Text numberOfLines={1} style={styles.itemMetaText}>Venda {formatCurrency(item.precoVenda)}</Text>
                   </View>
                 </View>
 
@@ -1494,7 +1494,7 @@ const styles = StyleSheet.create({
 
   // Info
   rowInfo: {
-    flex: 1, marginRight: spacing.sm,
+    flex: 1, minWidth: 0, marginRight: spacing.sm,
   },
   rowNome: {
     fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600',
