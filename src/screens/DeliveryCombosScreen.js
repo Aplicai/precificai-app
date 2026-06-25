@@ -392,13 +392,13 @@ export default function DeliveryCombosScreen() {
         'UPDATE delivery_combos SET nome = ?, preco_venda = ? WHERE id = ?',
         [data.nome.trim(), parseInputValue(data.preco_venda), combo.id]
       );
-      // Delete and reinsert items
-      await db.runAsync('DELETE FROM delivery_combo_itens WHERE combo_id = ?', [combo.id]);
-      for (const item of data.itens) {
-        await db.runAsync(
-          'INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
-          [combo.id, item.tipo, item.item_id, safeNum(item.quantidade) || 1]
-        );
+      // P1 — perda de dados no WEB: sem transação, DELETE-then-INSERT podia esvaziar o
+      // combo se um INSERT falhasse. Padrão "insere primeiro, apaga depois, com rollback".
+      const ok = await reinsertComboItens(db, combo.id, data.itens);
+      if (!ok) {
+        setSaveStatus(null);
+        showSaveError('Não foi possível salvar. O combo anterior foi mantido — tente de novo.');
+        return;
       }
       setSaveStatus('saved');
     } catch (e) {
@@ -406,6 +406,31 @@ export default function DeliveryCombosScreen() {
       setSaveStatus(null);
       showSaveError('Falha ao salvar combo. Tente novamente.');
     }
+  }
+
+  // P1 — re-grava os itens do combo de forma segura no WEB (sem transação):
+  //  1) captura ids ANTIGOS; 2) insere NOVOS guardando lastInsertRowId;
+  //  3) se TODOS ok, apaga ANTIGOS um a um e retorna true;
+  //  4) se algum falhar, apaga só os NOVOS (rollback), mantém ANTIGOS, retorna false.
+  async function reinsertComboItens(db, comboId, itens) {
+    const oldRows = await db.getAllAsync('SELECT id FROM delivery_combo_itens WHERE combo_id = ?', [comboId]);
+    const oldIds = (oldRows || []).map(r => r.id);
+    const newIds = [];
+    try {
+      for (const item of itens) {
+        const r = await db.runAsync(
+          'INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
+          [comboId, item.tipo, item.item_id, safeNum(item.quantidade) || 1]
+        );
+        if (r?.lastInsertRowId != null) newIds.push(r.lastInsertRowId);
+      }
+    } catch (insertErr) {
+      for (const id of newIds) { try { await db.runAsync('DELETE FROM delivery_combo_itens WHERE id = ?', [id]); } catch (_) {} }
+      console.error('[DeliveryCombosScreen.reinsertComboItens.rollback]', insertErr);
+      return false;
+    }
+    for (const id of oldIds) { try { await db.runAsync('DELETE FROM delivery_combo_itens WHERE id = ?', [id]); } catch (_) {} }
+    return true;
   }
 
   // Immediate save for item add/remove/quantity changes (edit mode)
@@ -425,12 +450,12 @@ export default function DeliveryCombosScreen() {
         'UPDATE delivery_combos SET nome = ?, preco_venda = ? WHERE id = ?',
         [data.nome.trim(), parseInputValue(data.preco_venda), combo.id]
       );
-      await db.runAsync('DELETE FROM delivery_combo_itens WHERE combo_id = ?', [combo.id]);
-      for (const item of data.itens) {
-        await db.runAsync(
-          'INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
-          [combo.id, item.tipo, item.item_id, safeNum(item.quantidade) || 1]
-        );
+      // P1 — insere primeiro, apaga depois, com rollback (sem transação no WEB).
+      const ok = await reinsertComboItens(db, combo.id, data.itens);
+      if (!ok) {
+        setSaveStatus(null);
+        showSaveError('Não foi possível salvar. O combo anterior foi mantido — tente de novo.');
+        return;
       }
       setSaveStatus('saved');
     } catch (e) {

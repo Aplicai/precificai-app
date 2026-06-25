@@ -400,7 +400,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
     const lucro = cfg?.lucro_desejado || 0.15;
     const mk = calcMarkup(dfPerc, totalVar, lucro);
 
-    setConfig({ despFixasPerc: dfPerc, despVarPerc: totalVar, lucroDesejado: lucro, markup: mk });
+    setConfig({ despFixasPerc: dfPerc, despVarPerc: totalVar, lucroDesejado: lucro, markup: mk, margemSeguranca: cfg?.margem_seguranca || 0 });
   }
 
   async function loadProduto() {
@@ -537,7 +537,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
     ? calcMarkup(config.despFixasPerc, config.despVarPerc, margemProduto)
     : config.markup;
 
-  const precoSugerido = markupEfetivo > 0 ? custoUnitario * markupEfetivo : 0;
+  const precoSugerido = markupEfetivo > 0 ? custoUnitario * (1 + (config.margemSeguranca || 0)) * markupEfetivo : 0;
   const precoVenda = parseNum(form.preco_venda) || precoSugerido;
 
   const despFixasValor = precoVenda * config.despFixasPerc;
@@ -796,9 +796,55 @@ export default function ProdutoFormScreen({ route, navigation }) {
            tempo_preparo=?, preco_venda=?, margem_lucro_produto=?, validade_dias=?, temp_congelado=?, tempo_congelado=?,
            temp_refrigerado=?, tempo_refrigerado=?, temp_ambiente=?, tempo_ambiente=?,
            modo_preparo=?, observacoes=? WHERE id=?`, [...params, editId]);
-        await db.runAsync('DELETE FROM produto_ingredientes WHERE produto_id = ?', [editId]);
-        await db.runAsync('DELETE FROM produto_preparos WHERE produto_id = ?', [editId]);
-        await db.runAsync('DELETE FROM produto_embalagens WHERE produto_id = ?', [editId]);
+
+        // P1 — perda de dados no WEB: NÃO há transação (supabaseDb.execAsync é no-op,
+        // então BEGIN/COMMIT/ROLLBACK não fazem nada). O padrão antigo era
+        // DELETE-then-INSERT: se qualquer INSERT falhasse depois dos DELETEs, a receita
+        // inteira sumia. Novo padrão "insere primeiro, apaga depois, com rollback manual":
+        //  1) captura ids das linhas ANTIGAS de cada junction
+        //  2) insere todas as linhas NOVAS (guardando os lastInsertRowId)
+        //  3) só se TODOS os inserts derem certo, apaga as ANTIGAS uma a uma
+        //  4) se QUALQUER insert falhar, apaga só as NOVAS (rollback) e mantém as ANTIGAS.
+        const oldIngRows = await db.getAllAsync('SELECT id FROM produto_ingredientes WHERE produto_id = ?', [editId]);
+        const oldPrepRows = await db.getAllAsync('SELECT id FROM produto_preparos WHERE produto_id = ?', [editId]);
+        const oldEmbRows = await db.getAllAsync('SELECT id FROM produto_embalagens WHERE produto_id = ?', [editId]);
+        const oldIngIds = (oldIngRows || []).map(r => r.id);
+        const oldPrepIds = (oldPrepRows || []).map(r => r.id);
+        const oldEmbIds = (oldEmbRows || []).map(r => r.id);
+
+        const newIngIds = [];
+        const newPrepIds = [];
+        const newEmbIds = [];
+        try {
+          for (const ing of ingredientes) {
+            const r = await db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)',
+              [editId, ing.materia_prima_id, ing.quantidade_utilizada]);
+            if (r?.lastInsertRowId != null) newIngIds.push(r.lastInsertRowId);
+          }
+          for (const pp of produtoPreparos) {
+            const r = await db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)',
+              [editId, pp.preparo_id, pp.quantidade_utilizada]);
+            if (r?.lastInsertRowId != null) newPrepIds.push(r.lastInsertRowId);
+          }
+          for (const pe of produtoEmbalagens) {
+            const r = await db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
+              [editId, pe.embalagem_id, pe.quantidade_utilizada]);
+            if (r?.lastInsertRowId != null) newEmbIds.push(r.lastInsertRowId);
+          }
+        } catch (insertErr) {
+          // Rollback: apaga só as linhas recém-inseridas, deixa as ANTIGAS intactas.
+          for (const id of newIngIds) { try { await db.runAsync('DELETE FROM produto_ingredientes WHERE id = ?', [id]); } catch (_) {} }
+          for (const id of newPrepIds) { try { await db.runAsync('DELETE FROM produto_preparos WHERE id = ?', [id]); } catch (_) {} }
+          for (const id of newEmbIds) { try { await db.runAsync('DELETE FROM produto_embalagens WHERE id = ?', [id]); } catch (_) {} }
+          allowExit.current = false;
+          if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.salvar.rollback]', insertErr);
+          Alert.alert('Não foi possível salvar', 'Sua receita anterior foi mantida — tente de novo.');
+          return; // NÃO navega
+        }
+        // Todos os inserts OK → apaga as linhas ANTIGAS uma a uma.
+        for (const id of oldIngIds) { try { await db.runAsync('DELETE FROM produto_ingredientes WHERE id = ?', [id]); } catch (_) {} }
+        for (const id of oldPrepIds) { try { await db.runAsync('DELETE FROM produto_preparos WHERE id = ?', [id]); } catch (_) {} }
+        for (const id of oldEmbIds) { try { await db.runAsync('DELETE FROM produto_embalagens WHERE id = ?', [id]); } catch (_) {} }
       } else {
         const result = await db.runAsync(
           `INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades,
@@ -806,24 +852,24 @@ export default function ProdutoFormScreen({ route, navigation }) {
            temp_refrigerado, tempo_refrigerado, temp_ambiente, tempo_ambiente,
            modo_preparo, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, params);
         produtoId = result.lastInsertRowId;
-      }
 
-      // D-15: paraleliza inserts (era sequencial — N round-trips serializados ao Supabase
-      // causavam latência de 5s pra produtos com muitos insumos). Promise.all reduz pra 1 round-trip lógico.
-      await Promise.all([
-        ...ingredientes.map(ing =>
-          db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)',
-            [produtoId, ing.materia_prima_id, ing.quantidade_utilizada])
-        ),
-        ...produtoPreparos.map(pp =>
-          db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)',
-            [produtoId, pp.preparo_id, pp.quantidade_utilizada])
-        ),
-        ...produtoEmbalagens.map(pe =>
-          db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
-            [produtoId, pe.embalagem_id, pe.quantidade_utilizada])
-        ),
-      ]);
+        // CRIAÇÃO: não há delete — mantém o caminho original paralelo (Promise.all).
+        // D-15: paraleliza inserts (N round-trips serializados ao Supabase causavam latência).
+        await Promise.all([
+          ...ingredientes.map(ing =>
+            db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)',
+              [produtoId, ing.materia_prima_id, ing.quantidade_utilizada])
+          ),
+          ...produtoPreparos.map(pp =>
+            db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)',
+              [produtoId, pp.preparo_id, pp.quantidade_utilizada])
+          ),
+          ...produtoEmbalagens.map(pe =>
+            db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
+              [produtoId, pe.embalagem_id, pe.quantidade_utilizada])
+          ),
+        ]);
+      }
 
       // D-19: cascade — atualiza combos que usam esse produto
       try {
@@ -1977,6 +2023,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
           lucroPerc: lucroEfetivo,
           fixoPerc: config.despFixasPerc,
           variavelPerc: config.despVarPerc,
+          margemSegurancaPerc: config.margemSeguranca || 0,
         })}
       />
 

@@ -189,9 +189,13 @@ export function calcMarkup(despesasFixasPerc, despesasVariaveisPerc, lucroDeseja
   return 1 / (1 - denominador);
 }
 
-// Calcula preço sugerido via mark-up
-export function calcPrecoSugerido(custoTotal, markup) {
-  return _safeNum(custoTotal) * _safeNum(markup);
+// Calcula preço sugerido via mark-up.
+// margemSegurancaPerc (decimal, ex: 0.1 = 10%) protege o CMV contra alta de
+// fornecedor: infla o custo usado no preço SEM precisar reajustar manualmente.
+// Default 0 → comportamento inalterado.
+export function calcPrecoSugerido(custoTotal, markup, margemSegurancaPerc = 0) {
+  const cmvProtegido = _safeNum(custoTotal) * (1 + _safeNum(margemSegurancaPerc));
+  return cmvProtegido * _safeNum(markup);
 }
 
 /**

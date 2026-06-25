@@ -236,6 +236,7 @@ export default function EntityCreateModal({
   const [pricingConfig, setPricingConfig] = useState({
     despFixasPerc: 0,
     despVarPerc: 0,
+    margemSeguranca: 0,
     lucroDesejado: 0.15,
     markup: 0,
   });
@@ -480,7 +481,7 @@ export default function EntityCreateModal({
           const dfPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
           const lucro = (cfg && cfg.lucro_desejado) || 0.15;
           const mk = calcMarkup(dfPerc, totalVar, lucro);
-          setPricingConfig({ despFixasPerc: dfPerc, despVarPerc: totalVar, lucroDesejado: lucro, markup: mk });
+          setPricingConfig({ despFixasPerc: dfPerc, despVarPerc: totalVar, lucroDesejado: lucro, markup: mk, margemSeguranca: (cfg && cfg.margem_seguranca) || 0 });
         } catch (e2) {
           if (typeof console !== 'undefined' && console.warn) console.warn('[EntityCreateModal.loadConfig]', e2);
         }
@@ -1213,7 +1214,7 @@ export default function EntityCreateModal({
     ? (pricingConfig.markup > 0 ? pricingConfig.markup : markupSemFixos)
     : 0;
   const precoSugerido = isProduto && markupParaSugerido > 0
-    ? calcPrecoSugerido(cmvUnitario, markupParaSugerido)
+    ? calcPrecoSugerido(cmvUnitario, markupParaSugerido, pricingConfig.margemSeguranca || 0)
     : 0;
   // true quando o "Sugerido" exibido é a estimativa sem despesas fixas.
   const sugeridoSemFixos = isProduto && precoSugerido > 0 && !temFinanceiro;

@@ -218,13 +218,31 @@ export default function DeliveryProdutosScreen() {
       if (editingProdutoId) {
         await db.runAsync('UPDATE delivery_produtos SET nome = ?, preco_venda = ? WHERE id = ?',
           [nome, precoVenda, editingProdutoId]);
-        await db.runAsync('DELETE FROM delivery_produto_itens WHERE delivery_produto_id = ?', [editingProdutoId]);
-        for (const item of novoProdutoDelivery.itens) {
-          await db.runAsync(
-            'INSERT INTO delivery_produto_itens (delivery_produto_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
-            [editingProdutoId, item.tipo, item.item_id, safeNum(item.quantidade) || 1]
-          );
+
+        // P1 — perda de dados no WEB: NÃO há transação (supabaseDb.execAsync é no-op),
+        // então DELETE-then-INSERT podia esvaziar o produto se um INSERT falhasse.
+        // Padrão "insere primeiro, apaga depois, com rollback manual":
+        //  1) captura ids ANTIGOS; 2) insere NOVOS guardando lastInsertRowId;
+        //  3) se TODOS ok, apaga ANTIGOS um a um; 4) se algum falhar, apaga só os NOVOS
+        //  (rollback), mantém ANTIGOS e aborta (sem fechar o modal).
+        const oldRows = await db.getAllAsync('SELECT id FROM delivery_produto_itens WHERE delivery_produto_id = ?', [editingProdutoId]);
+        const oldIds = (oldRows || []).map(r => r.id);
+        const newIds = [];
+        try {
+          for (const item of novoProdutoDelivery.itens) {
+            const r = await db.runAsync(
+              'INSERT INTO delivery_produto_itens (delivery_produto_id, tipo, item_id, quantidade) VALUES (?, ?, ?, ?)',
+              [editingProdutoId, item.tipo, item.item_id, safeNum(item.quantidade) || 1]
+            );
+            if (r?.lastInsertRowId != null) newIds.push(r.lastInsertRowId);
+          }
+        } catch (insertErr) {
+          for (const id of newIds) { try { await db.runAsync('DELETE FROM delivery_produto_itens WHERE id = ?', [id]); } catch (_) {} }
+          console.error('[DeliveryProdutosScreen.salvarProdutoDelivery.rollback]', insertErr);
+          showSaveError('Não foi possível salvar. O produto anterior foi mantido — tente de novo.');
+          return; // mantém o modal aberto e as linhas ANTIGAS intactas
         }
+        for (const id of oldIds) { try { await db.runAsync('DELETE FROM delivery_produto_itens WHERE id = ?', [id]); } catch (_) {} }
       } else {
         const res = await db.runAsync(
           'INSERT INTO delivery_produtos (nome, preco_venda) VALUES (?, ?)',

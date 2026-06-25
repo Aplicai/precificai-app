@@ -218,12 +218,17 @@ export default function FinanceiroConfigScreen() {
   }
 
   async function salvarLucro() {
-    const db = await getDatabase();
-    const p = parseNum(lucroDesejado);
-    const valor = Number.isFinite(p) ? p / 100 : 0;
-    await db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [valor]);
-    showSaved('Margem salva');
-    loadData();
+    try {
+      const db = await getDatabase();
+      const p = parseNum(lucroDesejado);
+      const valor = Number.isFinite(p) ? p / 100 : 0;
+      await db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [valor]);
+      showSaved('Margem salva');
+      loadData();
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.salvarLucro]', e);
+      showError('Não foi possível salvar. Tente de novo.');
+    }
   }
 
   // APP-43 — salvar volumes de venda por canal (defensivo se coluna não existir)
@@ -256,61 +261,91 @@ export default function FinanceiroConfigScreen() {
         'Valor incomum',
         'Margem de segurança acima de 30% é incomum. Confirme se faz sentido para seu negócio.',
         [{ text: 'Cancelar', style: 'cancel' }, { text: 'Salvar mesmo assim', onPress: async () => {
-          await db.runAsync('UPDATE configuracao SET margem_seguranca = ? WHERE id > 0', [valor / 100]);
-          showSaved('Margem de segurança salva');
-          loadData();
+          try {
+            await db.runAsync('UPDATE configuracao SET margem_seguranca = ? WHERE id > 0', [valor / 100]);
+            showSaved('Margem de segurança salva');
+            loadData();
+          } catch (e) {
+            if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.salvarMargemSeguranca]', e);
+            showError('Não foi possível salvar. Tente de novo.');
+          }
         }}]
       );
       return;
     }
-    await db.runAsync('UPDATE configuracao SET margem_seguranca = ? WHERE id > 0', [valor / 100]);
-    showSaved('Margem de segurança salva');
-    loadData();
+    try {
+      await db.runAsync('UPDATE configuracao SET margem_seguranca = ? WHERE id > 0', [valor / 100]);
+      showSaved('Margem de segurança salva');
+      loadData();
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.salvarMargemSeguranca]', e);
+      showError('Não foi possível salvar. Tente de novo.');
+    }
   }
 
   async function adicionarDespesaFixa() {
     if (!novaFixa.descricao.trim()) return Alert.alert('Erro', 'Informe a descrição');
-    const db = await getDatabase();
-    const valor = parseNum(novaFixa.valor);
-    await db.runAsync('INSERT INTO despesas_fixas (descricao, valor) VALUES (?, ?)',
-      [novaFixa.descricao, Number.isFinite(valor) ? valor : 0]);
-    setNovaFixa({ descricao: '', valor: '' });
-    showSaved('Despesa adicionada');
-    loadData();
+    try {
+      const db = await getDatabase();
+      const valor = parseNum(novaFixa.valor);
+      await db.runAsync('INSERT INTO despesas_fixas (descricao, valor) VALUES (?, ?)',
+        [novaFixa.descricao, Number.isFinite(valor) ? valor : 0]);
+      setNovaFixa({ descricao: '', valor: '' });
+      showSaved('Despesa adicionada');
+      loadData();
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.adicionarDespesaFixa]', e);
+      showError('Não foi possível salvar. Tente de novo.');
+    }
   }
 
   function removerDespesaFixa(id, descricao) {
     setConfirmDelete({
       titulo: 'Excluir custo mensal', nome: descricao,
       onConfirm: async () => {
-        const db = await getDatabase();
-        await db.runAsync('DELETE FROM despesas_fixas WHERE id = ?', [id]);
-        setConfirmDelete(null);
-        loadData();
+        try {
+          const db = await getDatabase();
+          await db.runAsync('DELETE FROM despesas_fixas WHERE id = ?', [id]);
+          setConfirmDelete(null);
+          loadData();
+        } catch (e) {
+          if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.removerDespesaFixa]', e);
+          showError('Não foi possível excluir. Tente de novo.');
+        }
       },
     });
   }
 
   async function adicionarDespesaVariavel() {
     if (!novaVariavel.descricao.trim()) return Alert.alert('Erro', 'Informe a descrição');
-    const db = await getDatabase();
-    const p = parseNum(novaVariavel.percentual);
-    const finalPerc = Number.isFinite(p) ? p / 100 : 0;
-    await db.runAsync('INSERT INTO despesas_variaveis (descricao, percentual) VALUES (?, ?)',
-      [novaVariavel.descricao, finalPerc]);
-    setNovaVariavel({ descricao: '', percentual: '' });
-    showSaved('Despesa adicionada');
-    loadData();
+    try {
+      const db = await getDatabase();
+      const p = parseNum(novaVariavel.percentual);
+      const finalPerc = Number.isFinite(p) ? p / 100 : 0;
+      await db.runAsync('INSERT INTO despesas_variaveis (descricao, percentual) VALUES (?, ?)',
+        [novaVariavel.descricao, finalPerc]);
+      setNovaVariavel({ descricao: '', percentual: '' });
+      showSaved('Despesa adicionada');
+      loadData();
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.adicionarDespesaVariavel]', e);
+      showError('Não foi possível salvar. Tente de novo.');
+    }
   }
 
   function removerDespesaVariavel(id, descricao) {
     setConfirmDelete({
       titulo: 'Excluir custo por venda', nome: descricao,
       onConfirm: async () => {
-        const db = await getDatabase();
-        await db.runAsync('DELETE FROM despesas_variaveis WHERE id = ?', [id]);
-        setConfirmDelete(null);
-        loadData();
+        try {
+          const db = await getDatabase();
+          await db.runAsync('DELETE FROM despesas_variaveis WHERE id = ?', [id]);
+          setConfirmDelete(null);
+          loadData();
+        } catch (e) {
+          if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.removerDespesaVariavel]', e);
+          showError('Não foi possível excluir. Tente de novo.');
+        }
       },
     });
   }
@@ -325,29 +360,39 @@ export default function FinanceiroConfigScreen() {
 
   async function salvarEdicao() {
     if (!editModal) return;
-    const db = await getDatabase();
-    if (editModal.tipo === 'fixa') {
-      const valor = parseNum(editModal.valor);
-      await db.runAsync('UPDATE despesas_fixas SET descricao = ?, valor = ? WHERE id = ?',
-        [editModal.descricao, Number.isFinite(valor) ? valor : 0, editModal.id]);
-    } else {
-      const p = parseNum(editModal.valor);
-      const finalPerc = Number.isFinite(p) ? p / 100 : 0;
-      await db.runAsync('UPDATE despesas_variaveis SET descricao = ?, percentual = ? WHERE id = ?',
-        [editModal.descricao, finalPerc, editModal.id]);
+    try {
+      const db = await getDatabase();
+      if (editModal.tipo === 'fixa') {
+        const valor = parseNum(editModal.valor);
+        await db.runAsync('UPDATE despesas_fixas SET descricao = ?, valor = ? WHERE id = ?',
+          [editModal.descricao, Number.isFinite(valor) ? valor : 0, editModal.id]);
+      } else {
+        const p = parseNum(editModal.valor);
+        const finalPerc = Number.isFinite(p) ? p / 100 : 0;
+        await db.runAsync('UPDATE despesas_variaveis SET descricao = ?, percentual = ? WHERE id = ?',
+          [editModal.descricao, finalPerc, editModal.id]);
+      }
+      setEditModal(null);
+      showSaved('Atualizado');
+      loadData();
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.salvarEdicao]', e);
+      showError('Não foi possível salvar. Tente de novo.');
     }
-    setEditModal(null);
-    showSaved('Atualizado');
-    loadData();
   }
 
   async function salvarFaturamento(id, valor) {
-    const db = await getDatabase();
-    const v = parseNum(valor);
-    await db.runAsync('UPDATE faturamento_mensal SET valor = ? WHERE id = ?',
-      [Number.isFinite(v) ? v : 0, id]);
-    const status = await getFinanceiroStatus();
-    setFinStatus(status);
+    try {
+      const db = await getDatabase();
+      const v = parseNum(valor);
+      await db.runAsync('UPDATE faturamento_mensal SET valor = ? WHERE id = ?',
+        [Number.isFinite(v) ? v : 0, id]);
+      const status = await getFinanceiroStatus();
+      setFinStatus(status);
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.salvarFaturamento]', e);
+      showError('Não foi possível salvar o faturamento.');
+    }
   }
 
   async function salvarFaturamentoMedio(valorStr) {

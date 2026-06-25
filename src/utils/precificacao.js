@@ -80,8 +80,11 @@ export function validarSomaPercentual(somaPerc) {
  * @param {number} [params.custosAbsolutos] - Custos em R$ que somam ao numerador (cupons, frete subsidiado)
  * @returns {object} resultado com preco, composicao e diagnostico
  */
-export function calcularPrecoSugerido({ cmv, lucroPerc, fixoPerc, variavelPerc, custosAbsolutos = 0 }) {
+export function calcularPrecoSugerido({ cmv, lucroPerc, fixoPerc, variavelPerc, custosAbsolutos = 0, margemSegurancaPerc = 0 }) {
   const cmvR = safe(cmv);
+  // Margem de segurança (decimal): protege o CMV contra alta de fornecedor —
+  // infla o custo usado no PREÇO, mas a composição mostra o CMV real. Default 0.
+  const cmvProtegido = cmvR * (1 + safe(margemSegurancaPerc));
   const cAbs = safe(custosAbsolutos);
   const lucro = safe(lucroPerc);
   const fixo = safe(fixoPerc);
@@ -103,7 +106,7 @@ export function calcularPrecoSugerido({ cmv, lucroPerc, fixoPerc, variavelPerc, 
     };
   }
 
-  const preco = (cmvR + cAbs) / (1 - somaPerc);
+  const preco = (cmvProtegido + cAbs) / (1 - somaPerc);
 
   // Composição em R$ pra tela de transparência (APP-19, 25)
   const composicao = {
@@ -137,8 +140,8 @@ export function calcularPrecoSugerido({ cmv, lucroPerc, fixoPerc, variavelPerc, 
  * @param {number} params.fixoPerc    - Custos fixos do negócio % (decimal)
  * @param {number} params.variavelPerc - Custos variáveis (imposto + maquininha + outros) % (decimal)
  */
-export function calcularPrecoBalcao({ cmv, lucroPerc, fixoPerc, variavelPerc }) {
-  return calcularPrecoSugerido({ cmv, lucroPerc, fixoPerc, variavelPerc, custosAbsolutos: 0 });
+export function calcularPrecoBalcao({ cmv, lucroPerc, fixoPerc, variavelPerc, margemSegurancaPerc = 0 }) {
+  return calcularPrecoSugerido({ cmv, lucroPerc, fixoPerc, variavelPerc, custosAbsolutos: 0, margemSegurancaPerc });
 }
 
 /**
@@ -171,6 +174,7 @@ export function calcularPrecoDelivery({
   taxaPagamentoOnlinePerc,
   cupomR = 0,
   freteSubsidiadoR = 0,
+  margemSegurancaPerc = 0,
 }) {
   const variavelPerc = safe(impostoPerc) + safe(comissaoPerc) + safe(taxaPagamentoOnlinePerc);
   const custosAbsolutos = safe(cupomR) + safe(freteSubsidiadoR);
@@ -180,6 +184,7 @@ export function calcularPrecoDelivery({
     fixoPerc,
     variavelPerc,
     custosAbsolutos,
+    margemSegurancaPerc,
   });
   // Adiciona breakdown específico de delivery na composição
   if (resultado.composicao) {
@@ -215,9 +220,11 @@ export function calcularPrecoCombo({
   variavelPerc,
   descontoR = 0,
   descontoPerc = 0,
+  margemSegurancaPerc = 0,
 }) {
   const base = calcularPrecoSugerido({
     cmv: cmvCombo,
+    margemSegurancaPerc,
     lucroPerc,
     fixoPerc,
     variavelPerc,

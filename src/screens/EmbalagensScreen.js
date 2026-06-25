@@ -832,6 +832,8 @@ export default function EmbalagensScreen({ navigation }) {
                       onPress={() => duplicarEmbalagem(item)}
                       style={styles.copyBtn}
                       hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Duplicar embalagem"
                     >
                       <Feather name="copy" size={13} color={colors.disabled} />
                     </TouchableOpacity>
@@ -839,6 +841,8 @@ export default function EmbalagensScreen({ navigation }) {
                       onPress={() => solicitarExclusao(item.id, item.nome)}
                       style={styles.deleteBtn}
                       hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Excluir embalagem"
                     >
                       <Feather name="trash-2" size={13} color={colors.disabled} />
                     </TouchableOpacity>

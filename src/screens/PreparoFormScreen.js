@@ -78,6 +78,8 @@ export default function PreparoFormScreen({ route, navigation }) {
   const [novaCatNome, setNovaCatNome] = useState('');
   const [novaCatIcone, setNovaCatIcone] = useState('tag');
   const [confirmDelete, setConfirmDelete] = useState(null);
+  // Evita toque duplo no "Salvar Preparo" (criava preparo duplicado).
+  const [saving, setSaving] = useState(false);
   const [ingAdicionado, setIngAdicionado] = useState(false);
   const [errors, setErrors] = useState({});
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
@@ -439,49 +441,85 @@ export default function PreparoFormScreen({ route, navigation }) {
       const db = await getDatabase();
       await db.runAsync('UPDATE preparos SET nome=?, categoria_id=?, rendimento_total=?, unidade_medida=?, custo_total=?, custo_por_kg=?, modo_preparo=?, observacoes=?, validade_dias=?, temp_congelado=?, tempo_congelado=?, temp_refrigerado=?, tempo_refrigerado=?, temp_ambiente=?, tempo_ambiente=? WHERE id=?',
         [f.nome, f.categoria_id, rend, f.unidade_medida, ct, ck, f.modo_preparo || '', f.observacoes || '', validadeDias, f.temp_congelado || '', f.tempo_congelado || '', f.temp_refrigerado || '', f.tempo_refrigerado || '', f.temp_ambiente || '', f.tempo_ambiente || '', editId]);
-      // Re-save ingredientes — DELETE + INSERT single-row em loop.
-      // Sessão 28.36 BUG FIX CRÍTICO: bulk INSERT (`VALUES (?,?,?,?),(?,?,?,?),...`) era
-      // silenciosamente quebrado no Supabase wrapper (`supabaseDb.js` linha 206 — regex
-      // captura SÓ a primeira tupla). Resultado: ao editar um preparo com 2+ ingredientes
-      // no web, todos os ingredientes APÓS o 1º sumiam do banco. INSERT single-row em loop
-      // é compatível com o wrapper (e com SQLite native), ao custo de N requests em vez de 1.
-      await db.runAsync('DELETE FROM preparo_ingredientes WHERE preparo_id = ?', [editId]);
-      for (const ing of ings) {
-        const mp = materiasPrimas.find(m => m.id === ing.materia_prima_id);
-        const precoBase = mp?.preco_por_kg || ing.preco_por_kg || 0;
-        const unidade = getUnidadeDoIngrediente(ing);
-        const custo = safeCusto(calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade));
-        await db.runAsync(
-          'INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
-          [editId, ing.materia_prima_id, ing.quantidade_utilizada, custo]
-        );
-      }
-      // D-20: re-save embalagens (silencioso se schema não existir)
+      // P1 — perda de dados no WEB: NÃO há transação (supabaseDb.execAsync é no-op),
+      // então DELETE-then-INSERT podia apagar a receita e não recuperar se um INSERT
+      // falhasse. Novo padrão "insere primeiro, apaga depois, com rollback manual":
+      //  1) captura ids das linhas ANTIGAS
+      //  2) insere as linhas NOVAS (guardando lastInsertRowId)
+      //  3) só com TODOS os inserts ok, apaga as ANTIGAS uma a uma
+      //  4) se algum insert falhar, apaga só as NOVAS (rollback) e mantém as ANTIGAS.
+      // Sessão 28.36: INSERT single-row em loop (bulk VALUES quebra no wrapper Supabase).
+
+      // --- preparo_ingredientes (crítico) ---
+      const oldIngRows = await db.getAllAsync('SELECT id FROM preparo_ingredientes WHERE preparo_id = ?', [editId]);
+      const oldIngIds = (oldIngRows || []).map(r => r.id);
+      const newIngIds = [];
       try {
-        await db.runAsync('DELETE FROM preparo_embalagens WHERE preparo_id = ?', [editId]);
-        const embs = preparoEmbalagensRef.current || [];
-        for (const pe of embs) {
-          await db.runAsync(
-            'INSERT INTO preparo_embalagens (preparo_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
-            [editId, pe.embalagem_id, pe.quantidade_utilizada || 1]
+        for (const ing of ings) {
+          const mp = materiasPrimas.find(m => m.id === ing.materia_prima_id);
+          const precoBase = mp?.preco_por_kg || ing.preco_por_kg || 0;
+          const unidade = getUnidadeDoIngrediente(ing);
+          const custo = safeCusto(calcCustoIngrediente(precoBase, ing.quantidade_utilizada, unidade, unidade));
+          const r = await db.runAsync(
+            'INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
+            [editId, ing.materia_prima_id, ing.quantidade_utilizada, custo]
           );
+          if (r?.lastInsertRowId != null) newIngIds.push(r.lastInsertRowId);
         }
+      } catch (insertErr) {
+        for (const id of newIngIds) { try { await db.runAsync('DELETE FROM preparo_ingredientes WHERE id = ?', [id]); } catch (_) {} }
+        if (typeof console !== 'undefined' && console.error) console.error('[PreparoForm.autoSave.rollback ingredientes]', insertErr);
+        setSaveStatus('error');
+        try { showToast('Não foi possível salvar. Sua receita anterior foi mantida — tente de novo.', 'alert-circle', 4500); } catch (_) {}
+        return; // mantém as linhas ANTIGAS intactas
+      }
+      for (const id of oldIngIds) { try { await db.runAsync('DELETE FROM preparo_ingredientes WHERE id = ?', [id]); } catch (_) {} }
+
+      // --- preparo_embalagens (opcional — schema pode não existir) ---
+      try {
+        const oldEmbRows = await db.getAllAsync('SELECT id FROM preparo_embalagens WHERE preparo_id = ?', [editId]);
+        const oldEmbIds = (oldEmbRows || []).map(r => r.id);
+        const embs = preparoEmbalagensRef.current || [];
+        const newEmbIds = [];
+        try {
+          for (const pe of embs) {
+            const r = await db.runAsync(
+              'INSERT INTO preparo_embalagens (preparo_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
+              [editId, pe.embalagem_id, pe.quantidade_utilizada || 1]
+            );
+            if (r?.lastInsertRowId != null) newEmbIds.push(r.lastInsertRowId);
+          }
+        } catch (insertErr) {
+          for (const id of newEmbIds) { try { await db.runAsync('DELETE FROM preparo_embalagens WHERE id = ?', [id]); } catch (_) {} }
+          throw insertErr; // mantém ANTIGAS; cai no catch externo do bloco opcional
+        }
+        for (const id of oldEmbIds) { try { await db.runAsync('DELETE FROM preparo_embalagens WHERE id = ?', [id]); } catch (_) {} }
       } catch (e) {
         if (typeof console !== 'undefined') console.warn('[PreparoForm.autoSave embalagens]', e?.message || e);
       }
-      // Sessão 28.37: re-save sub-preparos (preparos usados como ingrediente)
+
+      // --- preparo_subpreparos (opcional — schema pode não existir) ---
       try {
-        await db.runAsync('DELETE FROM preparo_subpreparos WHERE preparo_id = ?', [editId]);
-        for (const sp of subs) {
-          const live = preparosCatalogo.find(p => p.id === sp.sub_preparo_id);
-          const custoKg = live?.custo_por_kg ?? sp.sub_custo_por_kg ?? 0;
-          const unidade = live?.unidade_medida || sp.sub_unidade_medida || 'g';
-          const custo = safeCusto(calcCustoPreparo(custoKg, sp.quantidade_utilizada, unidade));
-          await db.runAsync(
-            'INSERT INTO preparo_subpreparos (preparo_id, sub_preparo_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
-            [editId, sp.sub_preparo_id, sp.quantidade_utilizada, custo]
-          );
+        const oldSubRows = await db.getAllAsync('SELECT id FROM preparo_subpreparos WHERE preparo_id = ?', [editId]);
+        const oldSubIds = (oldSubRows || []).map(r => r.id);
+        const newSubIds = [];
+        try {
+          for (const sp of subs) {
+            const live = preparosCatalogo.find(p => p.id === sp.sub_preparo_id);
+            const custoKg = live?.custo_por_kg ?? sp.sub_custo_por_kg ?? 0;
+            const unidade = live?.unidade_medida || sp.sub_unidade_medida || 'g';
+            const custo = safeCusto(calcCustoPreparo(custoKg, sp.quantidade_utilizada, unidade));
+            const r = await db.runAsync(
+              'INSERT INTO preparo_subpreparos (preparo_id, sub_preparo_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
+              [editId, sp.sub_preparo_id, sp.quantidade_utilizada, custo]
+            );
+            if (r?.lastInsertRowId != null) newSubIds.push(r.lastInsertRowId);
+          }
+        } catch (insertErr) {
+          for (const id of newSubIds) { try { await db.runAsync('DELETE FROM preparo_subpreparos WHERE id = ?', [id]); } catch (_) {} }
+          throw insertErr; // mantém ANTIGAS; cai no catch externo do bloco opcional
         }
+        for (const id of oldSubIds) { try { await db.runAsync('DELETE FROM preparo_subpreparos WHERE id = ?', [id]); } catch (_) {} }
       } catch (e) {
         if (typeof console !== 'undefined') console.warn('[PreparoForm.autoSave subpreparos]', e?.message || e);
       }
@@ -494,6 +532,7 @@ export default function PreparoFormScreen({ route, navigation }) {
 
   // Salvar manual para modo criação
   async function salvarNovo() {
+    if (saving) return; // guarda contra toque duplo
     const errs = validateForm(form);
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
@@ -502,6 +541,7 @@ export default function PreparoFormScreen({ route, navigation }) {
       return;
     }
     setErrors({});
+    setSaving(true);
     allowExit.current = true;
     try {
     const db = await getDatabase();
@@ -550,6 +590,8 @@ export default function PreparoFormScreen({ route, navigation }) {
       allowExit.current = false;
       if (typeof console !== 'undefined' && console.error) console.error('[PreparoForm.salvarNovo]', e);
       try { showToast('Não foi possível salvar o preparo. Tente de novo.', 'alert-circle', 4500); } catch (_) {}
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -1088,10 +1130,12 @@ export default function PreparoFormScreen({ route, navigation }) {
               styles.btnSave,
               { minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md },
               isDesktop && { maxWidth: 360, alignSelf: 'center', width: '100%' },
+              saving && { opacity: 0.6 },
             ]}
             onPress={salvarNovo}
+            disabled={saving}
           >
-            <Text style={styles.btnSaveText}>Salvar Preparo</Text>
+            <Text style={styles.btnSaveText}>{saving ? 'Salvando...' : 'Salvar Preparo'}</Text>
           </TouchableOpacity>
         </View>
       )}

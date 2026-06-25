@@ -474,7 +474,7 @@ export default function ExportPDFScreen({ navigation }) {
         const lucroVal = calcLucroLiquido(precoVenda, cmv, despFixasVal, despVarVal);
         const margemVal = calcMargemLiquida(precoVenda, cmv, despFixasVal, despVarVal);
         const markup = calcMarkup(despFixasPerc, despVarPerc, lucroDesejado);
-        const precoSugerido = calcPrecoSugerido(cmv, markup);
+        const precoSugerido = calcPrecoSugerido(cmv, markup, config.margem_seguranca || 0);
         const cmvPerc = calcCMVPercentual(cmv, precoVenda);
 
         fichas.push({

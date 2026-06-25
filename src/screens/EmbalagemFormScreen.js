@@ -59,6 +59,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
 
   // Auto-save state
   const [saveStatus, setSaveStatus] = useState(null); // null | 'saving' | 'saved'
+  const [saving, setSaving] = useState(false); // guarda contra toque duplo no "Salvar Embalagem"
   const [loaded, setLoaded] = useState(false);
   const saveTimerRef = useRef(null);
   const formRef = useRef(form);
@@ -293,6 +294,8 @@ export default function EmbalagemFormScreen({ route, navigation }) {
       return;
     }
     setErrors({});
+    if (saving) return; // toque duplo: evita INSERT duplicado
+    setSaving(true);
     allowExit.current = true;
     try {
     const db = await getDatabase();
@@ -403,6 +406,8 @@ export default function EmbalagemFormScreen({ route, navigation }) {
       allowExit.current = false;
       if (typeof console !== 'undefined' && console.error) console.error('[EmbalagemForm.salvarNovo]', e);
       try { showToast('Não foi possível salvar a embalagem. Tente de novo.', 'alert-circle', 4500); } catch (_) {}
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -754,8 +759,8 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         </View>
       ) : (
         <View style={styles.stickyFooter}>
-          <TouchableOpacity style={[styles.btnSave, { minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md }]} onPress={salvarNovo}>
-            <Text style={styles.btnSaveText}>Salvar Embalagem</Text>
+          <TouchableOpacity style={[styles.btnSave, { minHeight: buttonHeight, paddingVertical: isCompact ? spacing.sm : spacing.md }, saving && { opacity: 0.6 }]} onPress={salvarNovo} disabled={saving}>
+            <Text style={styles.btnSaveText}>{saving ? 'Salvando…' : 'Salvar Embalagem'}</Text>
           </TouchableOpacity>
         </View>
       )}

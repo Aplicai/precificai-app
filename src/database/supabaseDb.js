@@ -311,10 +311,15 @@ async function executeRun(sql, params = []) {
     const whereConditions = parseWhereSimple(whereClause, params, paramIdx);
     for (const w of whereConditions) {
       if (w.op === '=') query = query.eq(w.col, w.val);
+      else if (w.op === 'IN') query = query.in(w.col, Array.isArray(w.val) ? w.val : [w.val]);
+      else if (w.op === '!=') query = query.neq(w.col, w.val);
       else if (w.op === '>') query = query.gt(w.col, w.val);
       else if (w.op === '<') query = query.lt(w.col, w.val);
       else if (w.op === '>=') query = query.gte(w.col, w.val);
       else if (w.op === '<=') query = query.lte(w.col, w.val);
+      else if (w.op === 'IS NULL') query = query.is(w.col, null);
+      else if (w.op === 'IS NOT NULL') query = query.not(w.col, 'is', null);
+      else if (__DEV__) console.warn('[SupabaseDb] UPDATE: operador WHERE não aplicado:', w.op, w.col);
     }
     // Sessão 28.44 — defense-in-depth: força filtro user_id no UPDATE.
     // RLS no Postgres já barra cross-user, mas se RLS for desativado por
@@ -344,11 +349,15 @@ async function executeRun(sql, params = []) {
     const whereConditions = parseWhereSimple(whereClause, params, 0);
     for (const w of whereConditions) {
       if (w.op === '=') query = query.eq(w.col, w.val);
+      else if (w.op === 'IN') query = query.in(w.col, Array.isArray(w.val) ? w.val : [w.val]);
       else if (w.op === '!=') query = query.neq(w.col, w.val);
       else if (w.op === '>') query = query.gt(w.col, w.val);
       else if (w.op === '<') query = query.lt(w.col, w.val);
       else if (w.op === '>=') query = query.gte(w.col, w.val);
       else if (w.op === '<=') query = query.lte(w.col, w.val);
+      else if (w.op === 'IS NULL') query = query.is(w.col, null);
+      else if (w.op === 'IS NOT NULL') query = query.not(w.col, 'is', null);
+      else if (__DEV__) console.warn('[SupabaseDb] DELETE: operador WHERE não aplicado:', w.op, w.col);
     }
     // Sessão 28.44 — defense-in-depth: força filtro user_id no DELETE
     if (currentUserId) query = query.eq('user_id', currentUserId);
@@ -438,9 +447,18 @@ async function executeJoinQuery(sql, params, mode) {
   // Fetch main table rows
   let mainQuery = supabase.from(mainTable).select('*');
   for (const w of whereConditions) {
-    // Map alias.col to just col
+    // Map alias.col to just col (parseWhereSimple já remove o alias; defensivo)
     const col = w.col.replace(/^\w+\./, '');
     if (w.op === '=') mainQuery = mainQuery.eq(col, w.val);
+    else if (w.op === 'IN') mainQuery = mainQuery.in(col, Array.isArray(w.val) ? w.val : [w.val]);
+    else if (w.op === '!=') mainQuery = mainQuery.neq(col, w.val);
+    else if (w.op === '>') mainQuery = mainQuery.gt(col, w.val);
+    else if (w.op === '<') mainQuery = mainQuery.lt(col, w.val);
+    else if (w.op === '>=') mainQuery = mainQuery.gte(col, w.val);
+    else if (w.op === '<=') mainQuery = mainQuery.lte(col, w.val);
+    else if (w.op === 'IS NULL') mainQuery = mainQuery.is(col, null);
+    else if (w.op === 'IS NOT NULL') mainQuery = mainQuery.not(col, 'is', null);
+    else if (__DEV__) console.warn('[SupabaseDb] JOIN: operador WHERE não aplicado:', w.op, col);
   }
 
   const { data: mainRows, error: mainErr } = await mainQuery;
@@ -551,13 +569,40 @@ function parseWhereSimple(clause, params, startIdx) {
   const parts = clause.split(/\s+AND\s+/i);
 
   for (const part of parts) {
-    const match = part.trim().match(/(?:\w+\.)?(\w+)\s*(=|!=|<>|>=|<=|>|<)\s*(.+)/);
+    const trimmed = part.trim();
+
+    // IN (?,?,...) — exportação em massa (WHERE id IN (...)).
+    // Captura coluna (com alias opcional) e o conteúdo entre parênteses.
+    const inMatch = trimmed.match(/(?:\w+\.)?(\w+)\s+IN\s*\(([^)]*)\)/i);
+    if (inMatch) {
+      const col = inMatch[1];
+      const tokens = inMatch[2].split(',').map(t => t.trim()).filter(t => t.length > 0);
+      const vals = tokens.map(tok => (tok === '?' ? params[paramIdx++] : parseValue(tok)));
+      conditions.push({ col, op: 'IN', val: vals });
+      continue;
+    }
+
+    if (/IS\s+NOT\s+NULL/i.test(trimmed)) {
+      const col = trimmed.match(/(?:\w+\.)?(\w+)\s+IS\s+NOT\s+NULL/i)?.[1];
+      if (col) conditions.push({ col, op: 'IS NOT NULL', val: null });
+      continue;
+    }
+    if (/IS\s+NULL/i.test(trimmed)) {
+      const col = trimmed.match(/(?:\w+\.)?(\w+)\s+IS\s+NULL/i)?.[1];
+      if (col) conditions.push({ col, op: 'IS NULL', val: null });
+      continue;
+    }
+
+    const match = trimmed.match(/(?:\w+\.)?(\w+)\s*(=|!=|<>|>=|<=|>|<)\s*(.+)/);
     if (match) {
       const col = match[1];
       const op = match[2] === '<>' ? '!=' : match[2];
       const valStr = match[3].trim();
       const val = valStr === '?' ? params[paramIdx++] : parseValue(valStr);
       conditions.push({ col, op, val });
+    } else if (trimmed.length > 0 && __DEV__) {
+      // Operador de WHERE não reconhecido → descartado. Mantém fallback (não quebra).
+      console.warn('[SupabaseDb] parseWhereSimple: condição WHERE descartada:', trimmed);
     }
   }
 
