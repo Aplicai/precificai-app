@@ -756,6 +756,7 @@ export default function DeliveryCombosScreen() {
     lucroPerc: contextoFin.lucroPerc,
     fixoPerc: contextoFin.fixoPerc,
     variavelPerc: contextoFin.variavelPerc,
+    margemSegurancaPerc: contextoFin.margemSegurancaPerc || 0,
   });
   const precoSugerido = sugCombo?.preco || 0;
 

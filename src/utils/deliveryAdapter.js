@@ -153,5 +153,9 @@ export function buildContextoFinanceiro({ cfgRows, fixasRows, varsRows, fatRows,
     0
   );
 
-  return { lucroPerc, fixoPerc, impostoPerc, variavelPerc };
+  return {
+    lucroPerc, fixoPerc, impostoPerc, variavelPerc,
+    // Margem de segurança (decimal) — protege o CMV no preço sugerido (balcão/delivery/combo).
+    margemSegurancaPerc: Number.isFinite(cfg.margem_seguranca) ? cfg.margem_seguranca : 0,
+  };
 }

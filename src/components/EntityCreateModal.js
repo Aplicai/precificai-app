@@ -1268,15 +1268,23 @@ export default function EntityCreateModal({
         const rendTotal = tipoVenda === 'unidade' ? 1 : parseInputValue(rendimentoTotalProd) || 0;
         const rendUn = tipoVenda === 'unidade' ? (parseInputValue(rendimentoUnidades) || 1) : 1;
 
+        // Sessão 28.x — P1 perda de dados: sem transação no web, o padrão antigo
+        // (DELETE pai → INSERT novos) destruía a receita se um INSERT falhasse.
+        // Novo padrão: insere primeiro, captura ids antigos, apaga depois; se um
+        // insert da junction PRINCIPAL falhar, faz rollback manual das linhas novas
+        // e mantém as antigas intactas. Sem WHERE IN (DELETE id=? em loop).
+        let oldIngIds = [], oldPrepIds = [], oldEmbIds = [];
         if (isEditing) {
           await db.runAsync(
             `UPDATE produtos SET nome=?, categoria_id=?, rendimento_total=?, unidade_rendimento=?, rendimento_unidades=?,
              preco_venda=? WHERE id=?`,
             [nome.trim(), categoriaId, rendTotal, unidadeRendimentoDb, rendUn, precoVendaNum, editId]
           );
-          await db.runAsync('DELETE FROM produto_ingredientes WHERE produto_id = ?', [editId]);
-          await db.runAsync('DELETE FROM produto_preparos WHERE produto_id = ?', [editId]);
-          await db.runAsync('DELETE FROM produto_embalagens WHERE produto_id = ?', [editId]);
+          savedId = editId;
+          // Captura ids das linhas ANTIGAS (NÃO deleta ainda). getAllAsync retorna [] em erro.
+          oldIngIds = await db.getAllAsync('SELECT id FROM produto_ingredientes WHERE produto_id = ?', [editId]);
+          oldPrepIds = await db.getAllAsync('SELECT id FROM produto_preparos WHERE produto_id = ?', [editId]);
+          oldEmbIds = await db.getAllAsync('SELECT id FROM produto_embalagens WHERE produto_id = ?', [editId]);
         } else {
           const result = await db.runAsync(
             `INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades,
@@ -1293,31 +1301,64 @@ export default function EntityCreateModal({
           savedId = result.lastInsertRowId;
         }
 
-        for (const it of itens) {
-          if (it.tipo === 'materia_prima') {
-            await db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)',
-              [savedId, it.id, safeNum(it.quantidade)]);
-          } else if (it.tipo === 'preparo') {
-            await db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)',
-              [savedId, it.id, safeNum(it.quantidade)]);
-          } else if (it.tipo === 'embalagem') {
-            await db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
-              [savedId, it.id, safeNum(it.quantidade)]);
+        // Insere as linhas NOVAS guardando seus ids por junction (pra rollback).
+        const insertedRows = [];
+        try {
+          for (const it of itens) {
+            if (it.tipo === 'materia_prima') {
+              const r = await db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)',
+                [savedId, it.id, safeNum(it.quantidade)]);
+              insertedRows.push({ tabela: 'produto_ingredientes', id: r.lastInsertRowId });
+            } else if (it.tipo === 'preparo') {
+              const r = await db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)',
+                [savedId, it.id, safeNum(it.quantidade)]);
+              insertedRows.push({ tabela: 'produto_preparos', id: r.lastInsertRowId });
+            } else if (it.tipo === 'embalagem') {
+              const r = await db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
+                [savedId, it.id, safeNum(it.quantidade)]);
+              insertedRows.push({ tabela: 'produto_embalagens', id: r.lastInsertRowId });
+            }
           }
+        } catch (insErr) {
+          if (isEditing) {
+            // ROLLBACK: apaga as linhas NOVAS recém-inseridas, uma a uma. As ANTIGAS
+            // continuam intactas (nunca foram deletadas). Não fecha o modal.
+            for (const r of insertedRows) {
+              try { await db.runAsync(`DELETE FROM ${r.tabela} WHERE id = ?`, [r.id]); } catch (_) {}
+            }
+            setSaving(false);
+            setErro('Não foi possível salvar. Sua receita anterior foi mantida — tente de novo.');
+            return;
+          }
+          // Criação: não há receita antiga a proteger; deixa o catch externo tratar.
+          throw insErr;
+        }
+
+        // Todos os inserts da junction principal deram certo → só agora apaga as antigas
+        // (uma a uma, sem WHERE IN). Só no modo edição.
+        if (isEditing) {
+          for (const r of oldIngIds) await db.runAsync('DELETE FROM produto_ingredientes WHERE id = ?', [r.id]);
+          for (const r of oldPrepIds) await db.runAsync('DELETE FROM produto_preparos WHERE id = ?', [r.id]);
+          for (const r of oldEmbIds) await db.runAsync('DELETE FROM produto_embalagens WHERE id = ?', [r.id]);
         }
       } else {
         const rend = parseInputValue(rendimentoTotalPrep) || 1;
         const custoPorKg = rend > 0 ? (custoTotal / rend) * 1000 : 0;
+        // Sessão 28.x — P1 perda de dados (mesmo padrão do produto): captura ids
+        // antigos, insere os novos, e só apaga os antigos no fim. Junction PRINCIPAL
+        // = preparo_ingredientes (rollback aborta). embalagens e subpreparos são
+        // opcionais/silenciosas (schema legado): falha nelas NÃO aborta nem dá rollback.
+        let oldIngIds = [], oldEmbIds = [], oldSubIds = [];
         if (isEditing) {
           await db.runAsync(
             `UPDATE preparos SET nome=?, categoria_id=?, rendimento_total=?, unidade_medida=?, custo_total=?, custo_por_kg=? WHERE id=?`,
             [nome.trim(), categoriaId, rend, unidadeMedidaPrep, custoTotal, custoPorKg, editId]
           );
-          await db.runAsync('DELETE FROM preparo_ingredientes WHERE preparo_id = ?', [editId]);
-          // D-20 (sessão 28.13): também limpa embalagens (silencioso se schema não existir)
-          try { await db.runAsync('DELETE FROM preparo_embalagens WHERE preparo_id = ?', [editId]); } catch (e) {}
-          // Sessão 28.37: limpa sub-preparos (silencioso se schema legado)
-          try { await db.runAsync('DELETE FROM preparo_subpreparos WHERE preparo_id = ?', [editId]); } catch (e) {}
+          savedId = editId;
+          // Captura ids das linhas ANTIGAS (NÃO deleta ainda). getAllAsync retorna [] em erro.
+          oldIngIds = await db.getAllAsync('SELECT id FROM preparo_ingredientes WHERE preparo_id = ?', [editId]);
+          oldEmbIds = await db.getAllAsync('SELECT id FROM preparo_embalagens WHERE preparo_id = ?', [editId]);
+          oldSubIds = await db.getAllAsync('SELECT id FROM preparo_subpreparos WHERE preparo_id = ?', [editId]);
         } else {
           const result = await db.runAsync(
             `INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg,
@@ -1326,35 +1367,64 @@ export default function EntityCreateModal({
           );
           savedId = result.lastInsertRowId;
         }
-        for (const it of itens) {
-          // Sessão 28.37: bloqueio anti-ciclo direto (CHECK do banco também bloqueia,
-          // mas damos feedback antes de mandar). Edição que tenta adicionar A→A.
-          if (it.tipo === 'preparo' && isEditing && it.id === editId) {
-            try { showToast('Um preparo não pode usar ele mesmo como ingrediente', 'alert-circle', 3500); } catch (_) {}
-            continue;
-          }
-          if (it.tipo === 'materia_prima') {
-            const cIng = safeNum(it.custoUnit) * safeNum(it.quantidade);
-            await db.runAsync('INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
-              [savedId, it.id, safeNum(it.quantidade), cIng]);
-          } else if (it.tipo === 'embalagem') {
-            // D-20: salva embalagens do preparo (silencioso se schema não existir)
-            try {
-              await db.runAsync('INSERT INTO preparo_embalagens (preparo_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
-                [savedId, it.id, safeNum(it.quantidade)]);
-            } catch (e) {
-              if (typeof console !== 'undefined') console.warn('[EntityCreateModal preparo_embalagens]', e?.message || e);
+        // Insere as linhas NOVAS. Só a junction PRINCIPAL (preparo_ingredientes)
+        // entra em insertedRows e pode abortar/rollback. embalagens e subpreparos
+        // mantêm o try/catch silencioso (opcionais; schema legado pode não ter).
+        const insertedRows = [];
+        try {
+          for (const it of itens) {
+            // Sessão 28.37: bloqueio anti-ciclo direto (CHECK do banco também bloqueia,
+            // mas damos feedback antes de mandar). Edição que tenta adicionar A→A.
+            if (it.tipo === 'preparo' && isEditing && it.id === editId) {
+              try { showToast('Um preparo não pode usar ele mesmo como ingrediente', 'alert-circle', 3500); } catch (_) {}
+              continue;
             }
-          } else if (it.tipo === 'preparo') {
-            // Sessão 28.37: sub-preparo (preparo dentro de preparo).
-            try {
-              const cSub = safeNum(it.custoUnit) * safeNum(it.quantidade);
-              await db.runAsync('INSERT INTO preparo_subpreparos (preparo_id, sub_preparo_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
-                [savedId, it.id, safeNum(it.quantidade), cSub]);
-            } catch (e) {
-              if (typeof console !== 'undefined') console.warn('[EntityCreateModal preparo_subpreparos]', e?.message || e);
+            if (it.tipo === 'materia_prima') {
+              const cIng = safeNum(it.custoUnit) * safeNum(it.quantidade);
+              const r = await db.runAsync('INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
+                [savedId, it.id, safeNum(it.quantidade), cIng]);
+              insertedRows.push({ tabela: 'preparo_ingredientes', id: r.lastInsertRowId });
+            } else if (it.tipo === 'embalagem') {
+              // D-20: salva embalagens do preparo (silencioso se schema não existir)
+              try {
+                await db.runAsync('INSERT INTO preparo_embalagens (preparo_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
+                  [savedId, it.id, safeNum(it.quantidade)]);
+              } catch (e) {
+                if (typeof console !== 'undefined') console.warn('[EntityCreateModal preparo_embalagens]', e?.message || e);
+              }
+            } else if (it.tipo === 'preparo') {
+              // Sessão 28.37: sub-preparo (preparo dentro de preparo).
+              try {
+                const cSub = safeNum(it.custoUnit) * safeNum(it.quantidade);
+                await db.runAsync('INSERT INTO preparo_subpreparos (preparo_id, sub_preparo_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
+                  [savedId, it.id, safeNum(it.quantidade), cSub]);
+              } catch (e) {
+                if (typeof console !== 'undefined') console.warn('[EntityCreateModal preparo_subpreparos]', e?.message || e);
+              }
             }
           }
+        } catch (insErr) {
+          if (isEditing) {
+            // ROLLBACK: apaga as linhas NOVAS (só a junction principal foi rastreada).
+            // As ANTIGAS continuam intactas. Não fecha o modal.
+            for (const r of insertedRows) {
+              try { await db.runAsync(`DELETE FROM ${r.tabela} WHERE id = ?`, [r.id]); } catch (_) {}
+            }
+            setSaving(false);
+            setErro('Não foi possível salvar. Sua receita anterior foi mantida — tente de novo.');
+            return;
+          }
+          // Criação: sem receita antiga a proteger; deixa o catch externo tratar.
+          throw insErr;
+        }
+
+        // Todos os inserts da junction principal deram certo → só agora apaga as
+        // antigas (uma a uma, sem WHERE IN). Só no modo edição. embalagens/subpreparos
+        // são silenciosas (schema legado pode não ter a tabela).
+        if (isEditing) {
+          for (const r of oldIngIds) await db.runAsync('DELETE FROM preparo_ingredientes WHERE id = ?', [r.id]);
+          for (const r of oldEmbIds) { try { await db.runAsync('DELETE FROM preparo_embalagens WHERE id = ?', [r.id]); } catch (e) {} }
+          for (const r of oldSubIds) { try { await db.runAsync('DELETE FROM preparo_subpreparos WHERE id = ?', [r.id]); } catch (e) {} }
         }
       }
 

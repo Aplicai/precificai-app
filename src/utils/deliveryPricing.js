@@ -224,6 +224,7 @@ export function calcSugestaoDeliveryCompleta({ cmv, plat, contexto }) {
     taxaPagamentoOnlinePerc: outrosPerc,
     cupomR: safe(plat?.embalagem_extra),
     freteSubsidiadoR: safe(plat?.taxa_entrega),
+    margemSegurancaPerc: safe(contexto?.margemSegurancaPerc),
   });
 }
 

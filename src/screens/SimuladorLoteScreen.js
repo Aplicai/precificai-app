@@ -145,6 +145,7 @@ export default function SimuladorLoteScreen() {
         lucroPerc: contexto.lucroPerc,
         fixoPerc: contexto.fixoPerc,
         variavelPerc: contexto.variavelPerc,
+        margemSegurancaPerc: contexto.margemSegurancaPerc || 0,
       });
       const sugBalcao = balcao.preco;
       // Margem BRUTA do produto no balcão (preço - CMV) / preço — só pra exibir
