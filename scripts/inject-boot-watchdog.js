@@ -103,8 +103,19 @@ function patch(file) {
   } else {
     html += WATCHDOG_SCRIPT;
   }
+  // 3) BLINDAGEM CONTRA TRADUÇÃO AUTOMÁTICA: o Chrome (auto-translate) reescreve os
+  // nós de texto do DOM por fora → o React perde a sincronia da árvore e o app
+  // "buga tudo" (inputs esvaziam, valores garbleiam, telas travam). Sinais
+  // autoritativos pro navegador NÃO traduzir, presentes desde o 1º byte:
+  //   - <html lang="pt-BR" translate="no">  (o gerado vem lang="en", o que ainda
+  //     INCENTIVA o Chrome a oferecer tradução)
+  //   - <meta name="google" content="notranslate">
+  html = html.replace(/<html[^>]*>/i, '<html lang="pt-BR" translate="no">');
+  if (!/name=["']google["']\s+content=["']notranslate["']/i.test(html)) {
+    html = html.replace(/<head>/i, '<head>\n    <meta name="google" content="notranslate" />');
+  }
   fs.writeFileSync(file, html);
-  console.log('[inject-boot-watchdog] injetado em', file);
+  console.log('[inject-boot-watchdog] injetado (watchdog + no-translate) em', file);
   return true;
 }
 

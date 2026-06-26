@@ -26,6 +26,16 @@ if (typeof document !== 'undefined') {
   // é resolvido via font-size mínimo de 16px em inputs (mobileWebFixes.js).
   setMeta('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
   setMeta('theme-color', '#004d47');
+
+  // BLINDAGEM ANTI-TRADUÇÃO (reforço runtime): o Chrome auto-translate reescreve os
+  // nós de texto do DOM por fora → o React perde a sincronia e o app "buga tudo".
+  // O sinal autoritativo já vai no HTML estático (inject-boot-watchdog.js); isto
+  // cobre o dev server e qualquer HTML não-patcheado.
+  try {
+    document.documentElement.setAttribute('translate', 'no');
+    document.documentElement.lang = 'pt-BR';
+  } catch (_) {}
+  setMeta('google', 'notranslate');
   setMeta('description', 'Precificação inteligente: insumos, fichas técnicas, custo médio, margem, delivery e estoque.');
   setMeta('apple-mobile-web-app-capable', 'yes');
   setMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
