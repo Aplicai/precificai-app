@@ -33,6 +33,11 @@ if [ -z "$NEW_BUNDLE" ]; then
 fi
 echo "    bundle gerado: $NEW_BUNDLE"
 
+# Camada 3 (anti-"fica rodando"): injeta spinner visível + watchdog de boot no
+# dist/index.html. Roda ANTES do sync pra que a cópia em .vercel já tenha o patch.
+echo "==> [1.5/6] Injeta watchdog de boot no index.html"
+node scripts/inject-boot-watchdog.js
+
 echo "==> [2/6] Limpa .vercel/output/static/ (artefatos antigos)"
 rm -rf \
   .vercel/output/static/_expo \

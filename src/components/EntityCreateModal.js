@@ -992,7 +992,7 @@ export default function EntityCreateModal({
                     onChangeText={(v) => alterarQuantidade(index, v)}
                     keyboardType="decimal-pad"
                     style={styles.stepperInput}
-                    placeholder="0,25"
+                    placeholder="0"
                   />
                   <TouchableOpacity
                     style={styles.stepperBtn}

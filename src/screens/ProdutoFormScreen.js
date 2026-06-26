@@ -133,8 +133,10 @@ export default function ProdutoFormScreen({ route, navigation }) {
     if (!editPrecoModal) return;
     const { ing, idx } = editPrecoModal;
     const novoPreco = parseFloat(String(editPrecoValor).replace(',', '.'));
-    if (!Number.isFinite(novoPreco) || novoPreco < 0) {
-      Alert.alert('Valor inválido', 'Informe um preço válido.');
+    // Anti-zeragem (25/06): preço de insumo 0/negativo nunca é válido — bloqueia
+    // (antes permitia 0, zerando o insumo e os produtos que o usam).
+    if (!Number.isFinite(novoPreco) || novoPreco <= 0) {
+      Alert.alert('Valor inválido', 'Informe um preço válido (maior que zero).');
       return;
     }
     try {

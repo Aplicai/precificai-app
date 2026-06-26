@@ -59,3 +59,4 @@ yarn-error.*
 /logo-preview.html
 /logo-test.html
 supabase/.temp/
+.env*

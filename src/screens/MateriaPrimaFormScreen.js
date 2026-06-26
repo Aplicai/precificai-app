@@ -390,18 +390,49 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     const fc = calcFatorCorrecao(qb, ql);
     const pb = calcPrecoBase(vp, ql, f.unidade_medida);
 
+    // PROTEÇÃO ANTI-ZERAGEM (25/06): NUNCA grava preço 0 por cima de um insumo
+    // existente. O preço (preco_por_kg=pb) depende de valor_pago E quantidade_liquida;
+    // se QUALQUER um vier vazio/0 (form ainda carregando, campo limpo pra retypar, ou
+    // edição parcial vinda da cascata), o autoSave gravaria valor_pago=0 / preco_por_kg=0
+    // e ZERARIA o insumo real — e o cascade espalharia o 0 pros preparos/produtos.
+    // Nesse caso, aborta o autoSave e preserva o valor até o usuário completar os campos.
+    if (vp <= 0 || pb <= 0) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('[MateriaPrimaForm.autoSave] BLOQUEADO anti-zeragem: vp=', vp, 'pb=', pb, 'ql=', ql, '— preço preservado. Item id:', editId);
+      }
+      setSaveStatus(null);
+      return;
+    }
+
     setSaveStatus('saving');
     try {
       const db = await getDatabase();
+
+      // PERF (25/06): só roda o cascade se o CUSTO mudou (preço_por_kg/unidade).
+      // Renomear o insumo (ou trocar marca/categoria) NÃO altera custo — antes o
+      // autoSave refazia o cascade INTEIRO (percorre preparos + recalcularTodosCombos)
+      // a cada save, travando ao digitar o nome dentro da cascata.
+      let custoMudou = true;
+      try {
+        const prevMp = await db.getFirstAsync(
+          'SELECT preco_por_kg, unidade_medida FROM materias_primas WHERE id=?', [editId]);
+        if (prevMp) {
+          const precoIgual = Math.abs((Number(prevMp.preco_por_kg) || 0) - pb) < 0.0001;
+          const unidadeIgual = (prevMp.unidade_medida || '') === (f.unidade_medida || '');
+          custoMudou = !(precoIgual && unidadeIgual);
+        }
+      } catch (_) { /* na dúvida, recalcula */ }
+
       await db.runAsync(
         'UPDATE materias_primas SET nome=?, marca=?, categoria_id=?, quantidade_bruta=?, quantidade_liquida=?, fator_correcao=?, unidade_medida=?, valor_pago=?, preco_por_kg=? WHERE id=?',
         [f.nome, f.marca, f.categoria_id, qb, ql, fc, f.unidade_medida, vp, pb, editId]
       );
 
-      // Sessão 28.9 — APP-08/09/10: cascade automático.
+      // Sessão 28.9 — APP-08/09/10: cascade automático (SÓ quando o custo muda).
       // Quando preço/unidade do insumo muda, recalcula custo_total e custo_por_kg
       // de TODOS os preparos que usam esse insumo. Sem isso, os preparos ficavam
       // com custo stale e os produtos derivados também.
+      if (custoMudou) {
       try {
         const preparosAfetados = await db.getAllAsync(
           'SELECT DISTINCT preparo_id FROM preparo_ingredientes WHERE materia_prima_id = ?',
@@ -455,6 +486,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         const { recalcularTodosCombos } = await import('../services/cascadeRecalc');
         await recalcularTodosCombos(db);
       } catch (e) { console.warn('[MateriaPrimaForm.cascadeCombos]', e); }
+      } // fim if (custoMudou) — pula o cascade quando só nome/marca/categoria mudam
 
       // Sessão 28.9 — APP-09/10: limpa cache do wrapper pra outras telas
       // (Produtos, Preparos, Home) lerem custos atualizados imediatamente.

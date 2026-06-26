@@ -41,6 +41,24 @@ const SECURITY_HEADERS = {
   ].join('; ') + ';',
 };
 
+// CAMADA 1 — Cache imutável: os assets em /_expo/static/** têm hash de conteúdo no
+// nome (mudou o conteúdo → mudou o nome). São IMUTÁVEIS → cacheia 1 ano sem
+// revalidar. Antes vinham `max-age=0, must-revalidate` → o navegador revalidava o
+// bundle de 5,4 MB a CADA abertura (lento/instável em conexão ruim = "fica rodando").
+const ASSET_IMMUTABLE_ROUTE = {
+  src: '^/_expo/static/(.*)$',
+  headers: { 'Cache-Control': 'public, max-age=31536000, immutable' },
+  continue: true,
+};
+
+// Reconhece rotas que ESTE script adiciona (idempotência).
+function isOurHeaderRoute(r) {
+  if (!r || !r.headers) return false;
+  if (r.headers['Content-Security-Policy']) return true; // segurança
+  if (r.headers['Cache-Control'] && /immutable/.test(r.headers['Cache-Control'])) return true; // cache
+  return false;
+}
+
 function main() {
   if (!fs.existsSync(CONFIG)) {
     console.error('[ensure-vercel-headers] config.json não encontrado em', CONFIG);
@@ -48,13 +66,30 @@ function main() {
   }
   const cfg = JSON.parse(fs.readFileSync(CONFIG, 'utf8'));
   cfg.routes = Array.isArray(cfg.routes) ? cfg.routes : [];
-  // Remove qualquer rota de headers anterior nossa (idempotência) e recoloca no topo.
-  cfg.routes = cfg.routes.filter(
-    (r) => !(r && r.headers && r.headers['Content-Security-Policy'])
-  );
+
+  // Idempotência: remove rotas de header nossas anteriores (segurança + cache).
+  cfg.routes = cfg.routes.filter((r) => !isOurHeaderRoute(r));
+
+  // CAMADA 2 — Fallback SPA seguro: o catch-all `/(.*) → /index.html` serve HTML
+  // pra QUALQUER path que não seja arquivo — inclusive um bundle/chunk com hash
+  // ANTIGO que sumiu (após deploy com --clear). Resultado: o navegador recebe HTML
+  // onde esperava JS → o <script> quebra → app trava no boot ("spinner eterno").
+  // Excluímos /_expo/ do fallback: asset faltante cai no handler de erro (404 de
+  // verdade) em vez de virar HTML. (Lookahead negativo é suportado — a rota de 404
+  // existente já usa `^(?!/api).*$`.)
+  for (const r of cfg.routes) {
+    if (r && r.dest === '/index.html' && typeof r.src === 'string' && !r.src.includes('_expo')) {
+      r.src = '^(?!/_expo/)' + r.src.replace(/^\^/, '');
+    }
+  }
+
+  // CAMADA 1 — header routes no TOPO (antes do handle:filesystem), com continue:true
+  // pra empilhar com o filesystem. Ordem: segurança (todos) → cache imutável (assets).
+  cfg.routes.unshift(ASSET_IMMUTABLE_ROUTE);
   cfg.routes.unshift({ src: '/(.*)', headers: SECURITY_HEADERS, continue: true });
+
   fs.writeFileSync(CONFIG, JSON.stringify(cfg, null, 2) + '\n');
-  console.log('[ensure-vercel-headers] headers de segurança garantidos no config.json');
+  console.log('[ensure-vercel-headers] OK: segurança + cache imutável (/_expo/static) + fallback SPA seguro (exclui /_expo).');
 }
 
 main();

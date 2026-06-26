@@ -5,9 +5,15 @@
     { "source": "/welcome", "destination": "/welcome/index.html" },
     { "source": "/privacy", "destination": "/privacy/index.html" },
     { "source": "/terms", "destination": "/terms/index.html" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!_expo/).*)", "destination": "/index.html" }
   ],
   "headers": [
+    {
+      "source": "/_expo/static/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
     {
       "source": "/(.*)",
       "headers": [

@@ -266,7 +266,7 @@ CREATE TABLE delivery_combo_itens (
 CREATE TABLE subscriptions (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  plan TEXT DEFAULT 'free' CHECK (plan IN ('free', 'essencial', 'profissional')),
+  plan TEXT DEFAULT 'free' CHECK (plan IN ('free', 'pro', 'ilimitado')),
   status TEXT DEFAULT 'active' CHECK (status IN ('active', 'canceled', 'past_due')),
   started_at TIMESTAMPTZ DEFAULT now(),
   expires_at TIMESTAMPTZ,
