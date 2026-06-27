@@ -51,7 +51,12 @@ const DEPENDENCY_QUERIES = Object.freeze({
     { tabela: 'produto_ingredientes', label: 'ingredientes (linhas)', sql: 'SELECT COUNT(*) AS n FROM produto_ingredientes WHERE produto_id = ?' },
     { tabela: 'produto_preparos',     label: 'preparos (linhas)',     sql: 'SELECT COUNT(*) AS n FROM produto_preparos WHERE produto_id = ?' },
     { tabela: 'produto_embalagens',   label: 'embalagens (linhas)',   sql: 'SELECT COUNT(*) AS n FROM produto_embalagens WHERE produto_id = ?' },
-    { tabela: 'delivery_produto_itens', label: 'configurações delivery', sql: 'SELECT COUNT(*) AS n FROM delivery_produto_itens WHERE produto_id = ?' },
+    // FIX (Sentry "query falhou"): delivery_produto_itens NÃO tem coluna produto_id
+    // (colunas: id, user_id, delivery_produto_id, tipo, item_id, quantidade). Um
+    // produto base é referenciado como ITEM via tipo='produto' + item_id. A query
+    // antiga (WHERE produto_id) dava HTTP 400 no Supabase em TODA checagem de
+    // dependência de produto → ~dezenas de eventos no Sentry.
+    { tabela: 'delivery_produto_itens', label: 'configurações delivery', sql: "SELECT COUNT(*) AS n FROM delivery_produto_itens WHERE item_id = ? AND tipo = 'produto'" },
     { tabela: 'vendas',               label: 'vendas registradas',     sql: 'SELECT COUNT(*) AS n FROM vendas WHERE produto_id = ?' },
   ],
   delivery_combo: [
