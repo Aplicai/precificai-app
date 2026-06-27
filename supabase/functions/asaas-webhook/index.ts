@@ -102,7 +102,7 @@ function resolveTarget(payment: any): Target | null {
 async function reconcilePayment(
   apiKey: string,
   paymentId: string,
-): Promise<{ ok: boolean; value?: number; status?: string; reason?: string }> {
+): Promise<{ ok: boolean; value?: number; status?: string; externalReference?: string; reason?: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), RECONCILE_TIMEOUT_MS);
   try {
@@ -135,7 +135,8 @@ async function reconcilePayment(
     if (!Number.isFinite(value)) {
       return { ok: false, status, reason: 'value_not_numeric' };
     }
-    return { ok: true, value, status };
+    const externalReference = typeof data.externalReference === 'string' ? data.externalReference : undefined;
+    return { ok: true, value, status, externalReference };
   } catch (e) {
     return { ok: false, reason: `fetch_error:${String((e as Error)?.message || e)}` };
   } finally {
@@ -215,6 +216,31 @@ serve(async (req) => {
             rec.reason,
           );
           return new Response(JSON.stringify({ ok: true, skipped: 'reconcile_failed' }), { status: 200 });
+        }
+
+        // 1b) SEGURANÇA (auditoria 25/06, vetor 9a): amarra o pagamento ao usuário
+        //     pelo externalReference RECONCILIADO (autoritativo — o Asaas o gravou na
+        //     criação do paymentLink e NÃO é manipulável). Se o body do webhook
+        //     (forjável caso o ASAAS_WEBHOOK_TOKEN vaze) trouxer um externalReference
+        //     diferente do real, NÃO concede. Fecha o vetor de "pegar um payment.id
+        //     legítimo de terceiro e redirecionar o plano para uma conta arbitrária".
+        // Só valida quando o Asaas RETORNA o externalReference (caso normal — o
+        // atacante não consegue suprimi-lo, pois é gravado na criação do link). Se
+        // por algum motivo a API não trouxer, cai nas barreiras já validadas (token
+        // + reconciliação + valor) em vez de bloquear um pagamento legítimo.
+        if (rec.externalReference) {
+          const recTarget = resolveTarget({ externalReference: rec.externalReference });
+          if (!recTarget || recTarget.userId !== userId || recTarget.plano !== plano || recTarget.ciclo !== ciclo) {
+            console.warn(
+              '[asaas-webhook] externalReference do body ≠ reconciliado da API; não concede. paymentId:',
+              paymentId,
+              'body:',
+              payment?.externalReference,
+              'asaas:',
+              rec.externalReference,
+            );
+            return new Response(JSON.stringify({ ok: true, skipped: 'extref_mismatch' }), { status: 200 });
+          }
         }
 
         // 2) Valor↔plano: o valor REAL (vindo da API do Asaas) bate com o plano

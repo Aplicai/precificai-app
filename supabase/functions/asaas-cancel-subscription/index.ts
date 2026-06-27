@@ -109,6 +109,7 @@ serve(async (req: Request) => {
     return json(req, 200, { ok: true, plan: sub.plan, expires_at: sub.expires_at });
   } catch (e) {
     console.error('[asaas-cancel]', e);
-    return json(req, 500, { error: String((e as Error)?.message || e) });
+    // Não vaza detalhe interno ao cliente (auditoria 25/06, vetor 9b); log fica no servidor.
+    return json(req, 500, { error: 'Não foi possível concluir o cancelamento. Tente novamente.' });
   }
 });
