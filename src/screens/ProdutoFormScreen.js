@@ -1869,23 +1869,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
             </View>
           )}
           <Pressable style={styles.saveBackBtn} onPress={async () => {
-            // Save price to history before full save
-            // F2-J2-02: Number.isFinite guard — campo vazio/letras vira 0, não NaN
-            const priceRaw = parseFloat(String(formRef.current.preco_venda).replace(',','.'));
-            const price = Number.isFinite(priceRaw) ? priceRaw : 0;
-            if (price > 0 && editId) {
-              try {
-                const prodHistId = editId + 1000000;
-                const db = await getDatabase();
-                const lastH = await db.getAllAsync('SELECT valor_pago FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC LIMIT 1', [prodHistId]);
-                if (!lastH?.[0] || Math.abs(lastH[0].valor_pago - price) > 0.001) {
-                  await db.runAsync('INSERT INTO historico_precos (materia_prima_id, valor_pago, preco_por_kg) VALUES (?,?,?)', [prodHistId, price, -1]);
-                }
-              } catch (e) {
-                // histórico é nice-to-have; não bloquear o salvar
-                if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.insertHistorico]', e);
-              }
-            }
+            // FK-fix (Sentry): NÃO grava mais em historico_precos. Aqui o INSERT usava
+            // materia_prima_id = editId + 1000000 (id de PRODUTO deslocado), mas a
+            // coluna tem FK NOT NULL → materias_primas(id). No Supabase isso SEMPRE
+            // violava a FK (no SQLite nativo passava silencioso) → erro recorrente no
+            // Sentry. historico_precos é exclusiva de matéria-prima.
             // Full save (product + ingredientes + preparos + embalagens)
             salvar();
           }}>

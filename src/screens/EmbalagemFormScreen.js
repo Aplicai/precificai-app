@@ -714,17 +714,11 @@ export default function EmbalagemFormScreen({ route, navigation }) {
           )}
           <TouchableOpacity style={styles.saveBackBtn} onPress={async () => {
             allowExit.current = true;
-            // Save price to history
-            const price = parseFloat(String(formRef.current.preco_embalagem).replace(',','.')) || 0;
-            if (price > 0 && editId) {
-              try {
-                const db = await getDatabase();
-                const lastHist = await db.getAllAsync('SELECT valor_pago FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC LIMIT 1', [editId]);
-                if (!lastHist?.[0] || Math.abs(lastHist[0].valor_pago - price) > 0.001) {
-                  await db.runAsync('INSERT INTO historico_precos (materia_prima_id, valor_pago, preco_por_kg) VALUES (?,?,?)', [editId, price, 0]);
-                }
-              } catch(e) { console.error('[EmbalagemForm.priceHistory]', e); }
-            }
+            // FK-fix (Sentry): NÃO grava mais em historico_precos. Aqui o INSERT usava
+            // materia_prima_id = id de EMBALAGEM, mas a coluna tem FK NOT NULL →
+            // materias_primas(id). No Supabase isso SEMPRE violava a FK (no SQLite
+            // nativo passava silencioso) → erro recorrente no Sentry. historico_precos
+            // é exclusiva de matéria-prima.
             autoSave();
             // Sessão Mobile-29 — confirmação visual após salvar edição.
             try { showToast('Embalagem salva', 'check-circle'); } catch (_) {}
