@@ -93,20 +93,35 @@ export default function MatrizBCGScreen({ navigation }) {
   // - `monthName` é "abril de 2026"
   // - `prevMonthStr` agora é DOIS MESES atrás (usado só pro comparativo "antes")
   // - `prevMonthName` é "março"
-  const { currentMonth, monthName, prevMonthStr, prevMonthName } = useMemo(() => {
-    const ref = new Date();
-    ref.setMonth(ref.getMonth() - 1); // mês de referência: anterior ao atual
-    const prev = new Date();
-    prev.setMonth(prev.getMonth() - 2); // mês ainda mais antigo, pra comparativo
+  // Sessão 25/06: mês NAVEGÁVEL (seletor + histórico). `currentMonth` virou STATE
+  // (default = último mês fechado = mês anterior). `maxMonth` é o teto (não navega
+  // pro futuro além do último fechado). monthName/prevMonth derivam do selecionado.
+  const maxMonth = useMemo(() => {
+    const r = new Date(); r.setMonth(r.getMonth() - 1);
+    return r.toISOString().slice(0, 7);
+  }, []);
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const r = new Date(); r.setMonth(r.getMonth() - 1);
+    return r.toISOString().slice(0, 7);
+  });
+  const { monthName, prevMonthStr, prevMonthName } = useMemo(() => {
+    const d = new Date(currentMonth + '-01T12:00:00');
+    const prev = new Date(d); prev.setMonth(prev.getMonth() - 1);
     return {
-      currentMonth: ref.toISOString().slice(0, 7),
-      monthName: ref.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
+      monthName: d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
       prevMonthStr: prev.toISOString().slice(0, 7),
       prevMonthName: prev.toLocaleDateString('pt-BR', { month: 'long' }),
     };
-  }, []);
+  }, [currentMonth]);
+  function changeMonth(delta) {
+    const d = new Date(currentMonth + '-01T12:00:00');
+    d.setMonth(d.getMonth() + delta);
+    const next = d.toISOString().slice(0, 7);
+    if (next > maxMonth) return; // não navega pro futuro além do último mês fechado
+    setCurrentMonth(next);
+  }
 
-  useFocusEffect(useCallback(() => { loadData(); }, []));
+  useFocusEffect(useCallback(() => { loadData(); }, [currentMonth]));
 
   async function saveVenda(prodId, qty) {
     const db = await getDatabase();
@@ -200,7 +215,7 @@ export default function MatrizBCGScreen({ navigation }) {
       // em memória até ela salvar em "Vendas"); o rótulo deixa claro que é o mês
       // anterior. Resolve o "não joga as unidades por mês" na virada.
       let carriedMonth = null;
-      if (!hasCurrentMonth) {
+      if (!hasCurrentMonth && currentMonth === maxMonth) {
         try {
           const lastV = await db.getFirstAsync('SELECT data FROM vendas WHERE data < ? ORDER BY data DESC LIMIT 1', [currentMonth]);
           const lastVC = await db.getFirstAsync('SELECT data FROM vendas_combos WHERE data < ? ORDER BY data DESC LIMIT 1', [currentMonth]).catch(() => null);
@@ -392,6 +407,23 @@ export default function MatrizBCGScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 1200, alignSelf: 'center', width: '100%' }]}>
+
+      {!loading && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 14 }}>
+          <TouchableOpacity onPress={() => changeMonth(-1)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ padding: 6 }} accessibilityLabel="Mês anterior">
+            <Feather name="chevron-left" size={22} color={colors.primary} />
+          </TouchableOpacity>
+          <View style={{ alignItems: 'center', minWidth: 150 }}>
+            <Text style={{ fontSize: 15, fontFamily: fontFamily.bold, color: colors.text, textTransform: 'capitalize' }}>{monthName}</Text>
+            {currentMonth === maxMonth && (
+              <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary }}>mês da análise</Text>
+            )}
+          </View>
+          <TouchableOpacity onPress={() => changeMonth(1)} disabled={currentMonth >= maxMonth} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ padding: 6, opacity: currentMonth >= maxMonth ? 0.3 : 1 }} accessibilityLabel="Próximo mês">
+            <Feather name="chevron-right" size={22} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       {loadError ? (
         <View style={styles.errorBanner}>
