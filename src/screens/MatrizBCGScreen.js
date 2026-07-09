@@ -77,6 +77,7 @@ export default function MatrizBCGScreen({ navigation }) {
   const [loadError, setLoadError] = useState(null);
   const [showVendas, setShowVendas] = useState(false);
   const [needsUpdate, setNeedsUpdate] = useState(false);
+  const [carriedFrom, setCarriedFrom] = useState(null); // rótulo do mês de onde as unidades foram puxadas na virada, ou null
   const [filterClass, setFilterClass] = usePersistedState('bcg.filterClass', null);
   const [sortBy, setSortBy] = usePersistedState('bcg.sortBy', 'classificacao');
   const [sortDir, setSortDir] = usePersistedState('bcg.sortDir', 'asc');
@@ -190,16 +191,43 @@ export default function MatrizBCGScreen({ navigation }) {
       (vendas || []).forEach(v => { vMap[v.produto_id] = safeNum(v.quantidade); });
       // Sessão 28.47 — bug #5: combos têm key negativa (-combo_id) no vMap
       (vendasCombos || []).forEach(v => { vMap[-v.combo_id] = safeNum(v.quantidade); });
+
+      const hasCurrentMonth = (vendas && vendas.length > 0) || (vendasCombos && vendasCombos.length > 0);
+
+      // VIRADA DE MÊS (carry-forward): se o mês de referência ainda não tem vendas
+      // lançadas, PUXA as unidades do último mês que tem dados, em vez de zerar a
+      // matriz toda. A cliente só ajusta o que mudou. NÃO persiste (fica só no vMap
+      // em memória até ela salvar em "Vendas"); o rótulo deixa claro que é o mês
+      // anterior. Resolve o "não joga as unidades por mês" na virada.
+      let carriedMonth = null;
+      if (!hasCurrentMonth) {
+        try {
+          const lastV = await db.getFirstAsync('SELECT data FROM vendas WHERE data < ? ORDER BY data DESC LIMIT 1', [currentMonth]);
+          const lastVC = await db.getFirstAsync('SELECT data FROM vendas_combos WHERE data < ? ORDER BY data DESC LIMIT 1', [currentMonth]).catch(() => null);
+          const cand = [lastV && lastV.data, lastVC && lastVC.data].filter(Boolean).sort().pop();
+          if (cand) {
+            const [cv, cvc] = await Promise.all([
+              db.getAllAsync('SELECT * FROM vendas WHERE data = ?', [cand]),
+              db.getAllAsync('SELECT * FROM vendas_combos WHERE data = ?', [cand]).catch(() => []),
+            ]);
+            (cv || []).forEach(v => { vMap[v.produto_id] = safeNum(v.quantidade); });
+            (cvc || []).forEach(v => { vMap[-v.combo_id] = safeNum(v.quantidade); });
+            carriedMonth = new Date(cand + '-01T12:00:00').toLocaleDateString('pt-BR', { month: 'long' });
+          }
+        } catch (e) { if (typeof console !== 'undefined') console.warn('[BCG.carryForward]', e); }
+      }
       setVendasMap(vMap);
+      setCarriedFrom(carriedMonth);
 
       const pvMap = {};
       (prevVendas || []).forEach(v => { pvMap[v.produto_id] = safeNum(v.quantidade); });
       (prevVendasCombos || []).forEach(v => { pvMap[-v.combo_id] = safeNum(v.quantidade); });
       setPrevVendasMap(pvMap);
 
-      const hasCurrentMonth = vendas && vendas.length > 0;
+      // Ainda precisa atualizar (o mês de referência não foi salvo), mas com carry
+      // NÃO forçamos o modo Vendas — mostramos a matriz (não zerada) + o aviso.
       setNeedsUpdate(!hasCurrentMonth);
-      setShowVendas(!hasCurrentMonth);
+      setShowVendas(!hasCurrentMonth && !carriedMonth);
 
       const result = [];
       for (const p of prods) {
@@ -422,7 +450,9 @@ export default function MatrizBCGScreen({ navigation }) {
             </Text>
             <Text style={{ fontSize: 12, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 2 }}>
               {needsUpdate
-                ? 'Informe a quantidade vendida de cada produto para gerar a análise'
+                ? (carriedFrom
+                    ? `Mostrando as vendas de ${carriedFrom} — confira e atualize para o mês novo`
+                    : 'Informe a quantidade vendida de cada produto para gerar a análise')
                 : 'Clique para editar as quantidades vendidas no mês'}
             </Text>
           </View>
