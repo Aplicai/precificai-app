@@ -562,8 +562,8 @@ export default function FinanceiroConfigScreen() {
             <Text style={s.kpiLabel}>Mark-up</Text>
           </View>
           <View style={s.kpiCard}>
-            <Text style={s.kpiValue}>{formatPercent(despFixasPerc)}</Text>
-            <Text style={s.kpiLabel}>Custos Fixos</Text>
+            <Text style={s.kpiValue}>{totalFixas > 0 && !(faturamentoMedio > 0) ? '—' : formatPercent(despFixasPerc)}</Text>
+            <Text style={s.kpiLabel}>{totalFixas > 0 && !(faturamentoMedio > 0) ? 'Custos Fixos · falta faturamento' : 'Custos Fixos'}</Text>
           </View>
         </View>
         <View style={s.kpiRow}>
