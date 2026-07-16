@@ -673,7 +673,9 @@ export default function EntityCreateModal({
           subs.forEach(s => nextPrep.push({
             tipo: 'preparo',
             id: s.sub_preparo_id,
-            nome: s.sub_nome,
+            // Preparo legado com nome vazio/null aparecia como item INVISÍVEL (só o
+            // custo), impossível de identificar. Fallback torna visível e clicável.
+            nome: (s.sub_nome && String(s.sub_nome).trim()) || '(preparo sem nome)',
             quantidade: s.quantidade_utilizada,
             custoUnit: calcCustoUnit('preparo', { custo_por_kg: s.sub_custo }),
             unidade: shortUnidade(s.sub_un, 'preparo'),
