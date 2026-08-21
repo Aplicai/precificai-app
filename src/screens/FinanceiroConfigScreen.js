@@ -318,6 +318,12 @@ export default function FinanceiroConfigScreen() {
 
   async function adicionarDespesaVariavel() {
     if (!novaVariavel.descricao.trim()) return Alert.alert('Erro', 'Informe a descrição');
+    // Anti-duplicata: taxas variáveis SOMAM no markup. Adicionar a mesma (ex.: duas
+    // "Taxa maquininha") acumula e sai preço errado. Bloqueia igual ao quick-add.
+    const desc = novaVariavel.descricao.trim();
+    if (despesasVariaveis.some(d => (d.descricao || '').trim().toLowerCase() === desc.toLowerCase())) {
+      return Alert.alert('Já está na lista', `"${desc}" já foi adicionada. Edite o valor existente — colocar de novo faz as taxas somarem e o preço sair errado.`);
+    }
     try {
       const db = await getDatabase();
       const p = parseNum(novaVariavel.percentual);
