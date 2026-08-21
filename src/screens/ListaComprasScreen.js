@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, converterParaBase, safeNum } from '../utils/calculations';
+import { formatCurrency, converterParaBase, safeNum, getTipoUnidade } from '../utils/calculations';
 import EmptyState from '../components/EmptyState';
 import InfoToast from '../components/InfoToast';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -246,23 +246,23 @@ export default function ListaComprasScreen({ navigation }) {
 
       // Converter para unidades de compra e calcular custo
       const items = Object.values(consolidado).map(item => {
-        const isUnidade = item.unidade_medida.toLowerCase().includes('unidade');
+        // Classificador central: 'un'/'unidade', 'L'/'mL'/litro, 'g'/'kg'. Antes usava
+        // .includes('unidade')/'ml', que ERRAVA os canônicos 'un' e 'L'/'mL' → insumo
+        // por unidade aparecia como "10 g" em vez de "10 un".
+        const tipo = getTipoUnidade(item.unidade_medida || 'g');
+        const isUnidade = tipo === 'unidade';
+        const isVolume = tipo === 'volume';
         let displayQty, displayUnit;
 
         if (isUnidade) {
-          displayQty = Math.ceil(item.totalGramas); // totalGramas = total units for unit items
+          displayQty = Math.ceil(item.totalGramas); // totalGramas = total de unidades p/ itens por unidade
           displayUnit = 'un';
+        } else if (item.totalGramas >= 1000) {
+          displayQty = Math.ceil(item.totalGramas / 10) / 100; // 2 casas
+          displayUnit = isVolume ? 'L' : 'kg';
         } else {
-          // totalGramas is in grams
-          if (item.totalGramas >= 1000) {
-            const isVolume = item.unidade_medida.toLowerCase().includes('litro') || item.unidade_medida.toLowerCase().includes('ml');
-            displayQty = Math.ceil(item.totalGramas / 10) / 100; // round to 2 decimals
-            displayUnit = isVolume ? 'L' : 'kg';
-          } else {
-            const isVolume = item.unidade_medida.toLowerCase().includes('litro') || item.unidade_medida.toLowerCase().includes('ml');
-            displayQty = Math.ceil(item.totalGramas);
-            displayUnit = isVolume ? 'mL' : 'g';
-          }
+          displayQty = Math.ceil(item.totalGramas);
+          displayUnit = isVolume ? 'mL' : 'g';
         }
 
         // Custo estimado: (totalGramas / quantidade_liquida_em_gramas) * valor_pago

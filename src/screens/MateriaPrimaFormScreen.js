@@ -1178,8 +1178,11 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             </View>
             <View style={styles.historicoChart}>
               {(() => {
-                // Inverter para exibir do mais antigo (esquerda) ao mais recente (direita)
-                const sorted = [...historicoPrecos].reverse();
+                // Ordena por data crescente: mais antigo (esquerda) → mais recente
+                // (direita). Antes fazia `.reverse()` sobre dado já cronológico, o que
+                // invertia tudo: `ultimo`/`penultimo` trocados (variação com sinal
+                // errado — "Caiu" quando subiu), barra destacada e esquerda/direita.
+                const sorted = [...historicoPrecos].sort((a, b) => new Date(a.data || 0) - new Date(b.data || 0));
                 const precos = sorted.map(h => h.valor_pago);
                 const max = Math.max(...precos);
                 const min = Math.min(...precos);
