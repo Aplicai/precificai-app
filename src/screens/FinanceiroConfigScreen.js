@@ -50,6 +50,10 @@ const SUGESTOES_VARIAVEIS = [
   'Imposto sobre serviço', 'ICMS', 'Contribuição sindical',
 ];
 
+// Detecta taxa de cartão/maquininha por nome — usado pra permitir SÓ UMA (crédito
+// e débito separados somariam no markup e o preço sairia errado).
+const ehTaxaCartao = (s) => /maquin|cart[aã]o|cr[eé]dito|d[eé]bito/i.test(String(s || ''));
+
 export default function FinanceiroConfigScreen() {
   const { isDesktop } = useResponsiveLayout();
   const isFocused = useIsFocused();
@@ -324,6 +328,11 @@ export default function FinanceiroConfigScreen() {
     if (despesasVariaveis.some(d => (d.descricao || '').trim().toLowerCase() === desc.toLowerCase())) {
       return Alert.alert('Já está na lista', `"${desc}" já foi adicionada. Edite o valor existente — colocar de novo faz as taxas somarem e o preço sair errado.`);
     }
+    // Trava: SÓ UMA taxa de cartão. Crédito + débito separados (ou "maquininha" +
+    // "cartão") somariam no markup e o preço sairia errado. Detecta por nome.
+    if (ehTaxaCartao(desc) && despesasVariaveis.some(d => ehTaxaCartao(d.descricao))) {
+      return Alert.alert('Só uma taxa de cartão', 'Você já tem uma taxa de cartão/maquininha. Use SÓ UMA, com a MAIOR taxa que você cobra (crédito parcelado). Duas taxas de cartão somam e o preço sai errado.');
+    }
     try {
       const db = await getDatabase();
       const p = parseNum(novaVariavel.percentual);
@@ -496,6 +505,9 @@ export default function FinanceiroConfigScreen() {
 
   async function adicionarSugestaoVariavel(descricao) {
     if (despesasVariaveis.some(d => d.descricao.toLowerCase() === descricao.toLowerCase())) return;
+    if (ehTaxaCartao(descricao) && despesasVariaveis.some(d => ehTaxaCartao(d.descricao))) {
+      return Alert.alert('Só uma taxa de cartão', 'Você já tem uma taxa de cartão/maquininha. Use SÓ UMA, com a MAIOR taxa que você cobra.');
+    }
     const db = await getDatabase();
     const result = await db.runAsync('INSERT INTO despesas_variaveis (descricao, percentual) VALUES (?, ?)', [descricao, 0]);
     await loadData();
