@@ -1191,11 +1191,11 @@ export default function FinanceiroConfigScreen() {
                   'São porcentagens que somam da sua venda toda vez que alguém compra: imposto, taxa do cartão, etc.\n\n' +
                   '⚠️ IMPORTANTE — Taxas do cartão (maquininha):\n' +
                   'NÃO cadastre as taxas de débito e crédito separadas. Se você cadastrar as duas, o sistema vai aplicar AS DUAS sobre cada produto e o preço vai ficar errado.\n\n' +
-                  'Use só UMA "Taxa maquininha (média)" considerando o seu mix de pagamentos. Por exemplo, se você vende 60% no crédito (3,5%) e 40% no débito (1,5%), a média é 2,7%.'
+                  'Use só UMA "Taxa maquininha" e coloque a MAIOR taxa que você cobra (normalmente a do crédito parcelado). Assim o preço cobre o pior caso e você nunca sai no prejuízo — se receber no PIX ou débito, ganha um pouco a mais.'
                 }
                 examples={[
                   'Imposto (Simples Nacional): 4-6%',
-                  'Taxa maquininha (MÉDIA do seu mix): 2-4%',
+                  'Taxa maquininha (a MAIOR que você cobra): 3-5%',
                   'Taxa PIX (se cobra): 0,5-1%',
                   'Comissão de vendedor: 5-10%',
                 ]}
