@@ -954,6 +954,8 @@ export default function PreparosScreen({ navigation }) {
                       onPress={() => duplicarPreparo(item)}
                       style={styles.copyBtn}
                       hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Duplicar receita base"
                     >
                       <Feather name="copy" size={13} color={colors.disabled} />
                     </TouchableOpacity>
@@ -961,6 +963,8 @@ export default function PreparosScreen({ navigation }) {
                       onPress={() => solicitarExclusao(item.id, item.nome)}
                       style={styles.deleteBtn}
                       hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Excluir receita base"
                     >
                       <Feather name="trash-2" size={13} color={colors.disabled} />
                     </TouchableOpacity>

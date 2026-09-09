@@ -14,13 +14,13 @@ test.describe('Home / Visão Geral', () => {
   });
 
   test('shows Saúde da Precificação KPIs', async ({ page }) => {
-    // Labels atuais (renomeados após o redesign de KPIs):
-    // "Margem Média"→"CMV Médio", "Custo Médio"→"Resultado Operacional",
-    // "Lucro Estimado"→"Margem Líquida" / "Ponto de Equilíbrio".
+    // Labels em português de balcão (UX audit 09/09): "CMV Médio"→"Custo dos
+    // ingredientes", "Resultado Operacional"→"Sobra do mês",
+    // "Margem Líquida"→"Quanto sobra por venda".
     await expect(page.getByText('Saúde da Precificação')).toBeVisible();
-    await expect(page.getByText('CMV Médio').first()).toBeVisible();
-    await expect(page.getByText('Resultado Operacional').first()).toBeVisible();
-    await expect(page.getByText('Margem Líquida').first()).toBeVisible();
+    await expect(page.getByText('Custo dos ingredientes').first()).toBeVisible();
+    await expect(page.getByText('Sobra do mês').first()).toBeVisible();
+    await expect(page.getByText('Quanto sobra por venda').first()).toBeVisible();
   });
 
   test('shows Ações Rápidas section', async ({ page }) => {

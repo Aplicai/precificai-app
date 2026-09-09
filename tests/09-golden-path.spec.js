@@ -140,7 +140,9 @@ async function confirmDeleteModal(page) {
   const btn = page.locator('[aria-label="Excluir"]').last();
   await expect(btn).toBeVisible({ timeout: 5000 });
   await btn.click();
-  await page.waitForTimeout(1000);
+  // Exclusão é soft-delete com "Desfazer" (5 s). Fechar o contexto antes disso
+  // perdia o commit e deixava resíduo E2E- na conta. Espera a janela passar.
+  await page.waitForTimeout(6000);
 }
 
 /** Remove qualquer registro E2E- remanescente, na ordem produto → preparo → insumo. Tolerante a ausência. */
@@ -168,10 +170,16 @@ async function cleanupE2E(page) {
     await confirmDeleteModal(page);
   }
 
-  // Insumos: lixeira da lista NÃO tem accessibilityLabel → abre o form de edição e usa o botão "Excluir".
+  // Insumos: desktop grid tem aria-label="Excluir ingrediente"; fallback (mobile) abre o form.
   await goToTab(page, 'Insumos');
   await search(page, 'E2E-');
   for (let i = 0; i < 5; i++) {
+    const btn = page.locator('[aria-label="Excluir ingrediente"]').first();
+    if (await btn.isVisible().catch(() => false)) {
+      await btn.click();
+      await confirmDeleteModal(page);
+      continue;
+    }
     const row = page.getByText(/^E2E-/).first();
     if (!(await row.isVisible().catch(() => false))) break;
     await row.click();

@@ -978,6 +978,8 @@ export default function MateriasPrimasScreen({ navigation }) {
                   onPress={() => duplicarInsumo(item)}
                   style={styles.copyBtn}
                   hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Duplicar ingrediente"
                 >
                   <Feather name="copy" size={13} color={colors.disabled} />
                 </TouchableOpacity>
@@ -989,6 +991,8 @@ export default function MateriasPrimasScreen({ navigation }) {
                   onPress={() => solicitarExclusao(item.id, item.nome)}
                   style={styles.deleteBtn}
                   hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Excluir ingrediente"
                 >
                   <Feather name="trash-2" size={13} color={colors.disabled} />
                 </TouchableOpacity>

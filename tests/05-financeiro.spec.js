@@ -23,7 +23,7 @@ test.describe('Financeiro', () => {
 
   test('shows section headers', async ({ page }) => {
     // At least one section should be visible
-    const sections = page.locator('text=/Margem de Lucro|Faturamento Mensal|Despesas Fixas|Despesas Variáveis/');
+    const sections = page.locator('text=/Quanto você quer ganhar por venda|Quanto entra por mês|Custos do mês|Custos por venda|Margem de lucro|Faturamento mensal/');
     expect(await sections.count()).toBeGreaterThanOrEqual(2);
   });
 

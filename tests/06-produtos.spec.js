@@ -17,7 +17,8 @@ test.describe('Produtos', () => {
     // A barra "Combos" foi removida do ProdutosListScreen (combos viraram
     // recurso isolado em Delivery). Em vez disso checamos que pelo menos
     // uma categoria de produto aparece nos chips de filtro.
-    const chips = page.locator('text=/Bolos|Brownies|Doces|Sobremesas|Tortas|Sem categoria/');
+    // Seção "Sem categoria (0)" não renderiza mais quando vazia; chips reais da conta de teste incluídos.
+    const chips = page.locator('text=/Bolos|Brownies|Doces|Sobremesas|Tortas|À la carte|Entradas|Pratos Executivos|Sem categoria/');
     expect(await chips.count()).toBeGreaterThan(0);
   });
 

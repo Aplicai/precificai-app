@@ -71,6 +71,15 @@ export default function useUndoableDelete() {
     await commitNow();
   }, [commitNow]);
 
+  // Web: se a aba fechar/recarregar dentro da janela de "desfazer", o commit
+  // pendente seria perdido e o item "voltava". pagehide dispara antes do unload.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.addEventListener) return undefined;
+    const onHide = () => { if (pendingRef.current) commitNow(); };
+    window.addEventListener('pagehide', onHide);
+    return () => window.removeEventListener('pagehide', onHide);
+  }, [commitNow]);
+
   const requestDelete = useCallback(async ({ id, message, commit, onCommitted }) => {
     if (id == null) return;
     const ids = toIdArray(id);
