@@ -18,6 +18,19 @@ if (typeof document !== 'undefined') {
     require('./src/utils/webAlert').installWebAlertShim(Alert, window);
   } catch (_) {}
 
+  // === FOCO VISÍVEL (a11y, WCAG 2.4.7) =========================
+  // Vários controles do shell web são `<div role="button">` com estilo inline —
+  // inline não expressa `:focus-visible`, então o anel de foco vai numa folha
+  // de estilo própria. Cobre sidebar, header e menu da conta.
+  try {
+    const focusCss = document.createElement('style');
+    focusCss.setAttribute('data-precificai', 'focus-ring');
+    focusCss.textContent =
+      '[role="button"]:focus-visible,[role="menuitem"]:focus-visible,a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid #004d47;outline-offset:2px;border-radius:6px}' +
+      '[role="menuitem"]:focus-visible,[role="button"]:focus-visible{box-shadow:0 0 0 3px rgba(0,77,71,0.25)}';
+    document.head.appendChild(focusCss);
+  } catch (_) {}
+
   // === PWA META TAGS ============================================
   function setMeta(name, content, isProperty = false) {
     const attr = isProperty ? 'property' : 'name';

@@ -214,7 +214,9 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
         {(canGoBack || parentScreen || returnTo) && Platform.OS === 'web' && (
           <div
             onClick={handleGoBack}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleGoBack(); } }}
             role="button"
+            tabIndex={0}
             aria-label="Voltar"
             style={{
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -242,6 +244,15 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
         {Platform.OS === 'web' ? (
           <div
             onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowMenu(v => !v); }
+              if (e.key === 'Escape') setShowMenu(false);
+            }}
+            role="button"
+            tabIndex={0}
+            aria-haspopup="menu"
+            aria-expanded={showMenu}
+            aria-label="Menu da conta"
             style={{
               width: 36, height: 36, borderRadius: 18,
               backgroundColor: 'rgba(255,255,255,0.2)',
@@ -260,7 +271,7 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
 
         {/* Dropdown menu */}
         {showMenu && Platform.OS === 'web' && (
-          <div style={{
+          <div role="menu" aria-label="Menu da conta" style={{
             position: 'fixed', top: 52, right: 24, zIndex: 99999,
             backgroundColor: '#fff', borderRadius: 12, border: `1px solid ${colors.border}`,
             padding: '8px 0', width: 220, userSelect: 'none',
@@ -270,17 +281,23 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
               {user?.email}
             </div>
             <div onClick={() => { setShowMenu(false); navigation.navigate('Início', { screen: 'Perfil' }); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowMenu(false); navigation.navigate('Início', { screen: 'Perfil' }); } }}
+              role="menuitem" tabIndex={0} aria-label="Meu Perfil"
               style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', padding: '10px 16px', cursor: 'pointer', gap: 10 }}>
               <Feather name="user" size={16} color={colors.text} />
               <span style={{ fontSize: 14, color: colors.text, fontFamily: 'DM Sans' }}>Meu Perfil</span>
             </div>
             <div onClick={() => { setShowMenu(false); navigation.navigate('Mais', { screen: 'Configuracoes' }); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowMenu(false); navigation.navigate('Mais', { screen: 'Configuracoes' }); } }}
+              role="menuitem" tabIndex={0} aria-label="Configurações"
               style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', padding: '10px 16px', cursor: 'pointer', gap: 10 }}>
               <Feather name="settings" size={16} color={colors.text} />
               <span style={{ fontSize: 14, color: colors.text, fontFamily: 'DM Sans' }}>Configurações</span>
             </div>
             <div style={{ height: 1, backgroundColor: colors.border, margin: '4px 0' }} />
             <div onClick={() => { setShowMenu(false); signOut(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowMenu(false); signOut(); } }}
+              role="menuitem" tabIndex={0} aria-label="Sair"
               style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', padding: '10px 16px', cursor: 'pointer', gap: 10 }}>
               <Feather name="log-out" size={16} color={colors.error} />
               <span style={{ fontSize: 14, color: colors.error, fontFamily: 'DM Sans' }}>Sair</span>

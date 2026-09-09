@@ -104,8 +104,11 @@ function getActiveKey(navState) {
   return 'home';
 }
 
-// Web-native clickable button that works reliably with mouse clicks
-function SidebarButton({ onPress, style, children, tooltip }) {
+// Web-native clickable button that works reliably with mouse clicks.
+// Audit a11y (WCAG 2.1.1): era um `<div onClick>` puro — invisível pro teclado
+// e pro leitor de tela. Agora leva role/tabIndex/handler de Enter+Espaço e um
+// anel de foco visível.
+function SidebarButton({ onPress, style, children, tooltip, label, selected }) {
   if (Platform.OS === 'web') {
     const flat = StyleSheet.flatten(style) || {};
     // Convert React Native style to CSS-compatible style
@@ -135,8 +138,23 @@ function SidebarButton({ onPress, style, children, tooltip }) {
       transition: 'background-color 0.15s, border-color 0.15s',
       boxSizing: 'border-box',
     };
+    const activate = (e) => { e.stopPropagation(); onPress(); };
     return (
-      <div onClick={(e) => { e.stopPropagation(); onPress(); }} style={cssStyle} title={tooltip || undefined}>
+      <div
+        onClick={activate}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+            e.preventDefault();
+            activate(e);
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={label || tooltip || undefined}
+        aria-current={selected ? 'page' : undefined}
+        style={cssStyle}
+        title={tooltip || undefined}
+      >
         {children}
       </div>
     );
@@ -269,6 +287,8 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
               return (
                 <SidebarButton
                   key={item.key}
+                  label={locked ? `${item.label} (recurso ${PLAN_LABELS[reqPlan]})` : item.label}
+                  selected={activeKey === item.key}
                   onPress={() => {
                     if (locked) {
                       setUpgradeModal({
@@ -323,6 +343,7 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
         <SidebarButton
           style={[styles.collapseBtn, collapsed && styles.navItemCollapsed]}
           onPress={onToggleCollapse}
+          label={collapsed ? 'Expandir menu' : 'Recolher menu'}
           tooltip={collapsed ? 'Expandir menu' : undefined}
         >
           <Feather
