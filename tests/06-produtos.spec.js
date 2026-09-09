@@ -10,7 +10,7 @@ test.describe('Produtos', () => {
   });
 
   test('shows search bar', async ({ page }) => {
-    await expect(page.getByPlaceholder('Buscar produto...')).toBeVisible();
+    await expect(page.getByPlaceholder('Buscar...')).toBeVisible();
   });
 
   test('shows category chip', async ({ page }) => {

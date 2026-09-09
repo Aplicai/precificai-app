@@ -13,6 +13,8 @@ module.exports = defineConfig({
     headless: true,
     viewport: { width: 390, height: 844 }, // iPhone 15 Pro
     actionTimeout: 10000,
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
     // Bumped: o dev server do Expo Web faz lazy-compile na primeira navegação,
     // então a primeira goto() de cada worker pode estourar 15s.
     navigationTimeout: 30000,

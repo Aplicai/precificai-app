@@ -144,6 +144,21 @@ async function reconcilePayment(
   }
 }
 
+// Audit M5: comparação em tempo constante (hash SHA-256 dos dois lados,
+// tamanhos iguais → sem vazamento por timing do `!==`).
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [ha, hb] = await Promise.all([
+    crypto.subtle.digest('SHA-256', enc.encode(a)),
+    crypto.subtle.digest('SHA-256', enc.encode(b)),
+  ]);
+  const va = new Uint8Array(ha);
+  const vb = new Uint8Array(hb);
+  let diff = 0;
+  for (let i = 0; i < va.length; i++) diff |= va[i] ^ vb[i];
+  return diff === 0;
+}
+
 serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response('Method Not Allowed', { status: 405 });
@@ -151,8 +166,8 @@ serve(async (req) => {
 
   // Auth via token compartilhado (o Asaas envia no header configurado).
   const expected = Deno.env.get('ASAAS_WEBHOOK_TOKEN');
-  const got = req.headers.get('asaas-access-token');
-  if (!expected || got !== expected) {
+  const got = req.headers.get('asaas-access-token') ?? '';
+  if (!expected || !(await timingSafeEqual(got, expected))) {
     return new Response('Unauthorized', { status: 401 });
   }
 
@@ -295,6 +310,40 @@ serve(async (req) => {
       default:
         console.log('[asaas-webhook] evento ignorado:', event);
         return new Response(JSON.stringify({ ok: true, ignored: event }), { status: 200 });
+    }
+
+    // Audit M5: idempotência — o Asaas reenvia eventos (retry/reenvio manual).
+    // Sem isto, cada reentrega de PAYMENT_CONFIRMED recalculava expires_at a
+    // partir de "agora" e estendia o plano de graça. Chave = payment.id + event.
+    const eventKey = payment?.id ? `${payment.id}:${event}` : null;
+    if (eventKey) {
+      const { data: inserted, error: evErr } = await supabase
+        .from('asaas_events')
+        .insert({ payment_id: eventKey, event, user_id: userId })
+        .select('payment_id')
+        .maybeSingle();
+      if (evErr && evErr.code === '23505') {
+        console.log('[asaas-webhook] evento duplicado ignorado:', eventKey);
+        return new Response(JSON.stringify({ ok: true, skipped: 'duplicate' }), { status: 200 });
+      }
+      if (evErr) {
+        // Tabela ausente/erro: segue sem idempotência mas loga (não bloqueia cobrança).
+        console.warn('[asaas-webhook] asaas_events indisponível:', evErr.code, evErr.message);
+      } else if (!inserted) {
+        return new Response(JSON.stringify({ ok: true, skipped: 'duplicate' }), { status: 200 });
+      }
+    }
+
+    // Nunca REDUZ um expires_at já concedido (ex.: anual ativo recebendo mensal).
+    if (typeof row.expires_at === 'string') {
+      const { data: cur } = await supabase
+        .from('subscriptions')
+        .select('expires_at')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (cur?.expires_at && new Date(cur.expires_at) > new Date(row.expires_at)) {
+        row.expires_at = cur.expires_at;
+      }
     }
 
     const { error } = await supabase

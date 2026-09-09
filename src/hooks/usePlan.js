@@ -48,13 +48,44 @@ function _notify() {
   }
 }
 
+// Cache local = { plan, at }. `at` permite expirar o cache (24h) quando o
+// servidor não responde — evita que um valor velho/forjado vire entitlement.
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+let _cacheAt = 0;
+
+function _cacheIsStale() {
+  return !_cacheAt || (Date.now() - _cacheAt) > CACHE_TTL_MS;
+}
+
+async function _setPlanLocal(plan) {
+  const changed = plan !== _plan;
+  _plan = plan;
+  _cacheAt = Date.now();
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ plan, at: _cacheAt }));
+  } catch {}
+  return changed;
+}
+
+function _parseCache(raw) {
+  if (!raw) return null;
+  try {
+    const obj = JSON.parse(raw);
+    if (obj && typeof obj === 'object' && obj.plan) {
+      return { plan: normalizePlan(obj.plan), at: Number(obj.at) || 0 };
+    }
+  } catch {}
+  // Formato legado (string crua): trata como cache já vencido.
+  return { plan: normalizePlan(raw), at: 0 };
+}
+
 async function _ensureLoaded() {
   if (_loaded) return _plan;
   if (_loadingPromise) return _loadingPromise;
   _loadingPromise = (async () => {
     try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY);
-      if (raw) _plan = normalizePlan(raw);
+      const cached = _parseCache(await AsyncStorage.getItem(STORAGE_KEY));
+      if (cached) { _plan = cached.plan; _cacheAt = cached.at; }
     } catch {
       // mantém default 'free'
     } finally {
@@ -87,9 +118,20 @@ export async function syncPlanFromServer() {
       .select('plan,status,expires_at,ciclo')
       .eq('user_id', user.id)
       .maybeSingle();
-    if (error || !data) {
-      // sem assinatura → mantém local; limpa detalhes (usuário sem linha = grátis)
+    if (error) {
+      // Erro transitório (rede/RLS): mantém o cache local, mas só por 24h —
+      // um cache velho (ou forjado no localStorage) não pode ser fonte da
+      // verdade indefinidamente (audit A2: paywall fail-open).
       _sub = { status: null, expiresAt: null, ciclo: null };
+      if (_cacheIsStale()) await _setPlanLocal('free');
+      _notify();
+      return _plan;
+    }
+    if (!data) {
+      // Usuário logado SEM linha em `subscriptions` = grátis (fail-closed).
+      // Não confia no cache local: ele é só cache, nunca entitlement.
+      _sub = { status: null, expiresAt: null, ciclo: null };
+      await _setPlanLocal('free');
       _notify();
       return _plan;
     }
@@ -110,10 +152,7 @@ export async function syncPlanFromServer() {
       entitled = false;
     }
     const serverPlan = entitled ? normalizePlan(data.plan) : 'free';
-    if (serverPlan !== _plan) {
-      _plan = serverPlan;
-      try { await AsyncStorage.setItem(STORAGE_KEY, serverPlan); } catch {}
-    }
+    await _setPlanLocal(serverPlan);
     // Notifica sempre: o plano efetivo pode não mudar, mas os detalhes (_sub)
     // sim (ex.: status virou past_due, ou ciclo mudou) e o card precisa refletir.
     _notify();
@@ -130,6 +169,7 @@ try {
       syncPlanFromServer().catch(() => {});
     } else if (event === 'SIGNED_OUT') {
       _plan = 'free';
+      _cacheAt = 0;
       _sub = { status: null, expiresAt: null, ciclo: null };
       AsyncStorage.removeItem(STORAGE_KEY).catch(() => {});
       _notify();
@@ -155,8 +195,7 @@ export async function setPlan(next) {
     return;
   }
   if (_plan === v) return;
-  _plan = v;
-  try { await AsyncStorage.setItem(STORAGE_KEY, v); } catch {}
+  await _setPlanLocal(v);
   _notify();
 }
 

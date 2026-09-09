@@ -43,8 +43,10 @@ Em toda nova sessão neste projeto (incluindo após `/compact` e `/resume`):
 
 ## Gotchas críticos (já resolvidos — não repetir)
 
-- **Alert.alert no React Native Web:** só renderiza ≤2 botões via `window.confirm`; descarta extras. Use Modal+Pressable para ActionSheets.
-- **Alert.alert post-success no web:** o callback `onPress` não dispara confiavelmente. Use `window.alert(...)` síncrono + `navigation.goBack()`.
+- **Alert.alert no React Native Web é NO-OP nativo** (`class Alert { static alert() {} }` em react-native-web 0.21). Desde a auditoria 2026-09, `index.js` instala o shim `src/utils/webAlert.js`: 0-1 botão → `window.alert` + `onPress`; 2+ botões → `window.confirm` (OK = último botão não-cancel, Cancelar = `style:'cancel'`). Fluxos com 3 opções reais devem usar Modal+Pressable.
+- **`supabaseDb.js` (SQL → PostgREST):** parser em `src/database/sqlParse.js` (puro, testado). Suporta `=`, `!=`, `<`, `>`, `<=`, `>=`, `IS [NOT] NULL`, `IN (...)`, um JOIN, aliases `x.col AS y`, `ORDER BY col [COLLATE] [DESC]`, `LIMIT`. Condição não suportada (LIKE/OR/BETWEEN) → resultado de erro (nunca "todas as linhas"); em UPDATE/DELETE → throw. Colunas da tabela joinada no WHERE são filtradas client-side.
+- **`[]` do wrapper pode ser ERRO, não "vazio":** use `isDbErrorResult(rows)` antes de semear defaults/apagar/zerar algo baseado em lista vazia.
+- **Parse numérico PT-BR:** sempre `parseDecimalBR`/`parseDecimalBROrZero` (`src/utils/calculations.js`). `parseFloat(x.replace(',', '.'))` quebra em "1.000,50" → 1.
 - **Hooks tipo `useState` por tela:** não fazem broadcast cross-screen. Para preferências globais (densidade, tema), use module-level store + Set de listeners (ver `src/hooks/useListDensity.js`).
 - **Vercel env vars `EXPO_PUBLIC_*`:** inlined em BUILD time. Mudou env? Tem que rebuildar.
 - **`WebHeader.ROUTE_TITLES`:** mapeamento manual — adicionar TODA rota nova senão título cai no nome da tab.

@@ -11,7 +11,7 @@ import Chip from '../components/Chip';
 import EmptyState from '../components/EmptyState';
 import InviabilidadeModal from '../components/InviabilidadeModal';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum, parseDecimalBR } from '../utils/calculations';
 // Sprint 2 S3 — fórmula canônica única em src/utils/deliveryPricing.js
 import { calcPrecoBreakEven, calcResultadoDelivery, calcSugestaoDeliveryCompleta, compararDeliveryVsBalcao } from '../utils/deliveryPricing';
 // APP-25: extrair imposto separado das demais variáveis (maquininha não entra no delivery)
@@ -23,7 +23,7 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 // Numeric helpers (defesa contra NaN/Infinity em precificação)
 function parseInputNumber(raw) {
   if (raw === null || raw === undefined || raw === '') return null;
-  const parsed = parseFloat(String(raw).replace(',', '.'));
+  const parsed = parseDecimalBR(raw);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -270,7 +270,7 @@ export default function DeliveryPrecosScreen() {
 
   // D-22: salva preço no DB (persiste por produto×plataforma)
   async function salvarPrecoDelivery(itemId, platId, value) {
-    const preco = parseFloat(String(value).replace(',', '.'));
+    const preco = parseDecimalBR(value);
     if (!Number.isFinite(preco) || preco < 0) {
       Alert.alert('Valor inválido', 'Informe um preço válido.');
       return;

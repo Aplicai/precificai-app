@@ -7,7 +7,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { getDatabase } from '../database/database';
-import { converterParaBase, formatCurrency, formatPercent, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, calcMarkup, calcPrecoSugerido } from '../utils/calculations';
+import { converterParaBase, formatCurrency, formatPercent, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, calcMarkup, calcPrecoSugerido, calcCustoPorKgPreparo } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import Loader from '../components/Loader';
 import { openPrintableHTML } from '../utils/openPrintableHTML';
@@ -72,7 +72,7 @@ function downloadBlobFallback(htmlContent, filename) {
   //    e use o menu de compartilhamento nativo (Imprimir / Salvar em PDF).
   // Sessão 28.53 — toast não-bloqueante substitui window.alert.
   if (isIOSSafari()) {
-    try { window.open(url, '_blank'); } catch (_) {}
+    try { window.open(url, '_blank', 'noopener,noreferrer'); } catch (_) {}
     try {
       const { showToast } = require('../utils/toastBus');
       showToast('PDF gerado · use Compartilhar para Imprimir/Salvar', 'printer', 4000);
@@ -123,7 +123,7 @@ export default function ExportPDFScreen({ navigation }) {
   useFocusEffect(useCallback(() => {
     loadProdutos();
     if (activeTab === 'preparos') loadPreparos();
-  }, []));
+  }, [activeTab])); // Audit M6: closure stale com [] — aba Preparos não recarregava
 
   useEffect(() => {
     if (activeTab === 'preparos' && preparos.length === 0) {
@@ -255,7 +255,7 @@ export default function ExportPDFScreen({ navigation }) {
           return a + calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada, ing.unidade_medida || 'g', ing.unidade_medida || 'g');
         }, 0);
         const rendimento = preparo.rendimento_total || 0;
-        const custoPorKg = preparo.custo_por_kg || (rendimento > 0 ? (custoTotal / rendimento) * 1000 : 0);
+        const custoPorKg = preparo.custo_por_kg || calcCustoPorKgPreparo(custoTotal, rendimento, preparo.unidade_medida);
         fichas.push({ preparo, ings, custoTotal, rendimento, custoPorKg });
       }
 

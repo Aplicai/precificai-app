@@ -44,7 +44,7 @@ export function plataformaParaParamsDelivery(plataformaRow, contextoFinanceiro) 
     impostoPerc: safe(contextoFinanceiro.impostoPerc),
     comissaoPerc: safe(plataformaRow.taxa_plataforma) / 100,
     taxaPagamentoOnlinePerc: safe(plataformaRow.comissao_app) / 100,
-    cupomR: safe(plataformaRow.desconto_promocao),
+    cupomR: safe(plataformaRow.desconto_promocao) + safe(plataformaRow.embalagem_extra),
     freteSubsidiadoR: safe(plataformaRow.taxa_entrega),
   };
 }
@@ -76,7 +76,8 @@ export function extrairImpostoPercentual(despesasVariaveis) {
   return despesasVariaveis
     .filter((d) => {
       const desc = String(d.descricao || '').toLowerCase();
-      return desc.includes('imposto') || desc.includes('icms') || desc.includes('iss') || desc.includes('simples') || desc.includes('mei');
+      // Audit: match por palavra — "comISSão" e "MEIa-entrega" casavam por substring.
+      return /\b(imposto|impostos|icms|iss|issqn|simples|mei|das|tributo|tributos)\b/.test(desc);
     })
     .reduce((acc, d) => acc + (Number.isFinite(d.percentual) ? d.percentual : 0), 0);
 }
@@ -109,7 +110,7 @@ export function normalizePlataforma(platRow) {
     comissaoPct: safe(platRow?.taxa_plataforma) / 100,
     taxaOnlinePct: safe(platRow?.comissao_app) / 100,
     outrosPct: safe(platRow?.outros_perc) / 100,
-    cupomR: safe(platRow?.desconto_promocao),
+    cupomR: safe(platRow?.desconto_promocao) + safe(platRow?.embalagem_extra),
     freteSubsidiadoR: safe(platRow?.taxa_entrega),
   };
 }

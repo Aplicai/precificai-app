@@ -39,6 +39,7 @@ import {
   calcCustoIngrediente, calcCustoPreparo, calcCustoEmbalagem,
   calcLucroLiquido, calcCMVPercentual, calcMargem, calcMargemLiquida,
   safeNum, getTipoUnidade, parseDecimalBROrZero,
+  calcCustoPorKgPreparo,
 } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 // Área 4 (Preparos) — toast de confirmação ao salvar preparo via modal
@@ -1345,7 +1346,7 @@ export default function EntityCreateModal({
         }
       } else {
         const rend = parseInputValue(rendimentoTotalPrep) || 1;
-        const custoPorKg = rend > 0 ? (custoTotal / rend) * 1000 : 0;
+        const custoPorKg = calcCustoPorKgPreparo(custoTotal, rend, unidadeMedidaPrep || 'g');
         // Sessão 28.x — P1 perda de dados (mesmo padrão do produto): captura ids
         // antigos, insere os novos, e só apaga os antigos no fim. Junction PRINCIPAL
         // = preparo_ingredientes (rollback aborta). embalagens e subpreparos são
@@ -1444,7 +1445,7 @@ export default function EntityCreateModal({
               const existingItens = info.draft.itens || [];
               // 28.38 BUG FIX: custoUnit pra preparo = custo_por_kg * 1g = custo por 1 unidade.
               // Usa calcCustoPreparo pra fazer a conversão correta.
-              const custoPorKg = rend > 0 ? (custoTotal / rend) * 1000 : 0;
+              const custoPorKg = calcCustoPorKgPreparo(custoTotal, rend, unidadeMedidaPrep || 'g');
               const custoUnit = calcCustoPreparo(custoPorKg, 1, unidadeMedidaPrep || 'g');
               const novoItem = {
                 tipo: 'preparo',

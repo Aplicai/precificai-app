@@ -13,6 +13,24 @@
 // Deploy: `supabase functions deploy send-feedback-email`
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+// Audit A3 — o gateway (`verify_jwt`) aceita a anon key pública como JWT
+// válido; a autenticação REAL tem de ser feita aqui (mesmo padrão das
+// funções asaas-* / suggest-price). Sem usuário → 401.
+const MAX_MENSAGEM = 5000;
+const RATE_LIMIT_PER_HOUR = 5;
+const _rate = new Map<string, { count: number; resetAt: number }>();
+function rateLimited(userId: string): boolean {
+  const now = Date.now();
+  const cur = _rate.get(userId);
+  if (!cur || cur.resetAt < now) {
+    _rate.set(userId, { count: 1, resetAt: now + 60 * 60 * 1000 });
+    return false;
+  }
+  cur.count += 1;
+  return cur.count > RATE_LIMIT_PER_HOUR;
+}
 
 // === Sessão 28.68 — security hardening (L-2) ===
 // CORS whitelist explícita. Antes era 'Access-Control-Allow-Origin: *'.
@@ -64,13 +82,40 @@ serve(async (req: Request) => {
   }
 
   try {
+    const authed = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } },
+    );
+    const { data: { user } } = await authed.auth.getUser();
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
+      });
+    }
+    if (rateLimited(user.id)) {
+      return new Response(JSON.stringify({ error: 'rate_limited' }), {
+        status: 429,
+        headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
+      });
+    }
+
     const payload = (await req.json()) as FeedbackPayload;
-    if (!payload?.mensagem || typeof payload.mensagem !== 'string') {
+    if (!payload?.mensagem || typeof payload.mensagem !== 'string' || !payload.mensagem.trim()) {
       return new Response(JSON.stringify({ error: 'mensagem é obrigatória' }), {
         status: 400,
         headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
       });
     }
+    if (payload.mensagem.length > MAX_MENSAGEM) {
+      return new Response(JSON.stringify({ error: 'mensagem_too_long' }), {
+        status: 400,
+        headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
+      });
+    }
+    // Remetente SEMPRE do JWT (o body não é confiável).
+    payload.user_email = user.email ?? undefined;
 
     const apiKey = Deno.env.get('RESEND_API_KEY');
     const toEmail = Deno.env.get('FEEDBACK_TO_EMAIL') || 'suporte@precificaiapp.com';
@@ -153,7 +198,7 @@ Enviado pela Central de Suporte do app Precificaí.`;
     });
   } catch (e) {
     console.error('[send-feedback-email]', e);
-    return new Response(JSON.stringify({ error: String((e as Error).message || e) }), {
+    return new Response(JSON.stringify({ error: 'internal' }), {
       status: 500,
       headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
     });

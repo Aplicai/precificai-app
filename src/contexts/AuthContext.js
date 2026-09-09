@@ -127,7 +127,7 @@ export function AuthProvider({ children }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, s) => {
       addBreadcrumb({ category: 'auth', message: `auth event: ${_event}` });
-      if (typeof console !== 'undefined' && console.log) {
+      if (__DEV__ && typeof console !== 'undefined' && console.log) {
         console.log('[AuthContext] event:', _event, 'hasSession:', !!s);
       }
       // Sessão 28.54 — TOKEN_REFRESHED sem session: ignora pra evitar logout espúrio
@@ -236,7 +236,17 @@ export function AuthProvider({ children }) {
   const signUp = async (email, password) => {
     addBreadcrumb({ category: 'auth', message: 'signUp attempt' });
     try {
-      const { data, error } = await supabase.auth.signUp({ email, password });
+      // Audit A4: quando "Confirm email" estiver ligado no Supabase, o link de
+      // confirmação volta pro app (não pro localhost padrão do GoTrue).
+      const emailRedirectTo =
+        Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin
+          ? `${window.location.origin}/`
+          : undefined;
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: emailRedirectTo ? { emailRedirectTo } : undefined,
+      });
       if (error) throw error;
       return data;
     } catch (err) {

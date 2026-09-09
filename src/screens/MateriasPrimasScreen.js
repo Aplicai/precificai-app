@@ -9,7 +9,7 @@ import FAB from '../components/FAB';
 import FABMenu from '../components/FABMenu';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, getTipoUnidade, normalizeSearch } from '../utils/calculations';
+import { formatCurrency, getTipoUnidade, normalizeSearch, calcPrecoBase } from '../utils/calculations';
 import { subscribeDataChanged } from '../utils/dataSync';
 
 // APP-14: marcador interno do Kit pra valor pré-preenchido (não exibir como marca).
@@ -71,20 +71,27 @@ async function getInsumoDependencies(ids) {
   try {
     const db = await getDatabase();
     const placeholders = ids.map(() => '?').join(',');
-    const produtos = await db.getAllAsync(
-      `SELECT DISTINCT p.id, p.nome FROM produtos p
-       INNER JOIN produto_ingredientes pi ON pi.produto_id = p.id
-       WHERE pi.materia_prima_id IN (${placeholders})
-       ORDER BY p.nome ASC`,
+    // Audit A1: tabela principal = junction (o filtro `materia_prima_id IN` é dela);
+    // antes o filtro caía em `produtos` → 42703 → [] → aviso nunca aparecia.
+    const dedupe = (rows, key) => {
+      const seen = new Set();
+      return (rows || [])
+        .filter(r => r[key] != null && !seen.has(r[key]) && seen.add(r[key]))
+        .map(r => ({ id: r[key], nome: r.nome }))
+        .sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || '')));
+    };
+    const produtos = dedupe(await db.getAllAsync(
+      `SELECT pi.produto_id, p.nome FROM produto_ingredientes pi
+       INNER JOIN produtos p ON p.id = pi.produto_id
+       WHERE pi.materia_prima_id IN (${placeholders})`,
       ids
-    );
-    const preparos = await db.getAllAsync(
-      `SELECT DISTINCT p.id, p.nome FROM preparos p
-       INNER JOIN preparo_ingredientes pi ON pi.preparo_id = p.id
-       WHERE pi.materia_prima_id IN (${placeholders})
-       ORDER BY p.nome ASC`,
+    ), 'produto_id');
+    const preparos = dedupe(await db.getAllAsync(
+      `SELECT pi.preparo_id, p.nome FROM preparo_ingredientes pi
+       INNER JOIN preparos p ON p.id = pi.preparo_id
+       WHERE pi.materia_prima_id IN (${placeholders})`,
       ids
-    );
+    ), 'preparo_id');
     const total = (produtos?.length || 0) + (preparos?.length || 0);
     if (total === 0) return null;
     return { produtos: produtos || [], preparos: preparos || [], total };
@@ -440,8 +447,10 @@ export default function MateriasPrimasScreen({ navigation }) {
       const oldValor = Number(item.valor_pago) || 0;
       let novoValor = mode === 'percent' ? oldValor * factor : oldValor + sign * value;
       if (novoValor < 0) novoValor = 0;
+      // Audit A3: mesma conversão de unidade do AtualizarPrecosScreen — antes
+      // dividia por quantidade_liquida crua (insumo em g/mL ficava 1000× menor).
       const qtdLiq = Number(item.quantidade_liquida) || 1;
-      const novoPrecoKg = qtdLiq > 0 ? novoValor / qtdLiq : 0;
+      const novoPrecoKg = calcPrecoBase(novoValor, qtdLiq, item.unidade_medida);
       return db.runAsync(
         'UPDATE materias_primas SET valor_pago = ?, preco_por_kg = ? WHERE id = ?',
         [novoValor, novoPrecoKg, item.id]

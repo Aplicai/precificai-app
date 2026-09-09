@@ -38,7 +38,7 @@ const FRIENDLY = {
 
   // === VALIDATION ===
   validation_email_invalid: 'Esse email não parece válido. Verifique e tente de novo.',
-  validation_password_weak: 'Sua senha precisa ter pelo menos 6 caracteres.',
+  validation_password_weak: 'Sua senha precisa ter pelo menos 8 caracteres, com maiúscula, minúscula, número e símbolo.',
   validation_already_registered: 'Esse email já tem cadastro. Faça login ou recupere a senha.',
   validation_default: 'Verifique os dados informados.',
 

@@ -4,6 +4,7 @@
  * so that existing screens work without any changes.
  */
 import { supabase } from '../config/supabase';
+import { parseWhereSimple, parseValue, applyWhere, matchesConditions, parseOrderBy, parseSelectColumns } from './sqlParse';
 
 let currentUserId = null;
 
@@ -31,6 +32,10 @@ const USER_SCOPED_TABLES = new Set([
   // migrations
   'dre_mensal', 'historico_precos', 'lojas', 'estoque_movimentos',
   'device_tokens', 'notif_prefs',
+  // audit B5 — tabelas por-usuário que faltavam na allowlist
+  'produto_preco_delivery', 'preparo_embalagens', 'preparo_subpreparos',
+  'embalagem_categoria_padrao', 'vendas_combos', 'account_deletion_requests',
+  'feedback',
 ]);
 
 function isUserScopedTable(table) {
@@ -39,6 +44,9 @@ function isUserScopedTable(table) {
 
 // In-memory cache for read queries (5 second TTL)
 const queryCache = new Map();
+// Audit A7-perf: dedupe de requests EM VOO — a mesma query disparada 2-3× no
+// mount (focus listener + useFocusEffect + banners) virava 2-3 HTTP idênticos.
+const inflight = new Map();
 const CACHE_TTL = 2000;
 
 // Sentinel: marks a result that came from a SWALLOWED Supabase error (not a
@@ -124,7 +132,12 @@ function setCache(key, data) {
 }
 
 // Invalidate cache — table-aware: only clears entries that reference the affected table
+// Audit M11: versão de escrita — leitura iniciada ANTES de um write não pode
+// gravar no cache DEPOIS dele (dado stale por até 2s).
+let writeVersion = 0;
+
 function invalidateCache(table) {
+  writeVersion += 1;
   if (!table) { queryCache.clear(); return; }
   const tbl = table.toLowerCase();
   for (const key of queryCache.keys()) {
@@ -134,6 +147,7 @@ function invalidateCache(table) {
 
 // Export for clearing on sign-out
 export function clearQueryCache() {
+  writeVersion += 1;
   queryCache.clear();
 }
 
@@ -169,7 +183,10 @@ export function createSupabaseDb(userId) {
       const key = getCacheKey(sql, params);
       const cached = getCached(key);
       if (cached) return Promise.resolve(cached);
-      return executeQuery(sql, params, 'all').then(result => {
+      const pending = inflight.get(key);
+      if (pending) return pending;
+      const versionAtStart = writeVersion;
+      const promise = executeQuery(sql, params, 'all').then(result => {
         // Erro do Supabase: NÃO cacheia (a próxima leitura recupera), mas também
         // NÃO lança. Lançar quebrava telas que não tratam o throw → TELA BRANCA
         // (ex.: atualizar insumos). Retorna vazio (contrato original), e a tela
@@ -178,13 +195,15 @@ export function createSupabaseDb(userId) {
           reportDbError('getAllAsync', sql, params, new Error('query falhou: ' + (getErrorInfo(result) || 'não-cacheado')));
           return unwrapErrorResult(result);
         }
-        setCache(key, result);
+        if (versionAtStart === writeVersion) setCache(key, result);
         return result;
       }).catch(err => {
         // Exceção inesperada: loga e devolve vazio — nunca derruba a tela.
         reportDbError('getAllAsync', sql, params, err);
         return [];
-      });
+      }).finally(() => { if (inflight.get(key) === promise) inflight.delete(key); });
+      inflight.set(key, promise);
+      return promise;
     },
     getFirstAsync: (sql, params = []) => executeQuery(sql, params, 'first').then(result => {
       // Erro: não cacheia, mas não lança (evita tela branca). Devolve null.
@@ -233,16 +252,10 @@ async function executeQuery(sql, params, mode) {
     const rest = (countMatch[3] || '').trim();
     let query = supabase.from(table).select('*', { count: 'exact', head: true });
     const whereParts = parseWhere(rest, params);
-    for (const w of whereParts) {
-      if (w.op === '=') query = query.eq(w.col, w.val);
-      else if (w.op === '!=') query = query.neq(w.col, w.val);
-      else if (w.op === '>') query = query.gt(w.col, w.val);
-      else if (w.op === '<') query = query.lt(w.col, w.val);
-      else if (w.op === '>=') query = query.gte(w.col, w.val);
-      else if (w.op === '<=') query = query.lte(w.col, w.val);
-      else if (w.op === 'IS NULL') query = query.is(w.col, null);
-      else if (w.op === 'IS NOT NULL') query = query.not(w.col, 'is', null);
+    if (whereParts.some(w => w.op === 'UNSUPPORTED')) {
+      return markErrorResult(mode === 'first' ? null : [], 'WHERE não suportado: ' + whereParts.find(w => w.op === 'UNSUPPORTED').raw);
     }
+    query = applyWhere(query, whereParts);
     // Defense-in-depth (security P2): mesmo filtro user_id no COUNT.
     if (isUserScopedTable(table) && currentUserId) {
       query = query.eq('user_id', currentUserId);
@@ -277,18 +290,18 @@ async function executeQuery(sql, params, mode) {
   const selectCols = isSimpleColumns ? columns : '*';
   let query = supabase.from(table).select(selectCols);
 
-  // Parse WHERE clause
+  // Parse WHERE clause.
+  // Audit C1: antes, uma condição não reconhecida (ex.: `id IN (?,?)`) era
+  // DESCARTADA em silêncio e a query devolvia o catálogo INTEIRO — "Reajustar"
+  // e "Duplicar" em massa atingiam todos os registros. Agora: IN é suportado e
+  // condição desconhecida vira erro (resultado vazio marcado), nunca "tudo".
   const whereParts = parseWhere(rest, params);
-  for (const w of whereParts) {
-    if (w.op === '=') query = query.eq(w.col, w.val);
-    else if (w.op === '!=') query = query.neq(w.col, w.val);
-    else if (w.op === '>') query = query.gt(w.col, w.val);
-    else if (w.op === '<') query = query.lt(w.col, w.val);
-    else if (w.op === '>=') query = query.gte(w.col, w.val);
-    else if (w.op === '<=') query = query.lte(w.col, w.val);
-    else if (w.op === 'IS NULL') query = query.is(w.col, null);
-    else if (w.op === 'IS NOT NULL') query = query.not(w.col, 'is', null);
+  const unsupported = whereParts.find(w => w.op === 'UNSUPPORTED');
+  if (unsupported) {
+    reportDbError('executeQuery', sql, params, new Error('WHERE não suportado: ' + unsupported.raw));
+    return markErrorResult(mode === 'first' ? null : [], 'WHERE não suportado: ' + unsupported.raw);
   }
+  query = applyWhere(query, whereParts);
 
   // Sessão 28.xx — defense-in-depth (security P2): força filtro user_id na
   // LEITURA, espelhando UPDATE/DELETE. Só para tabelas da allowlist E quando há
@@ -298,9 +311,11 @@ async function executeQuery(sql, params, mode) {
   }
 
   // Parse ORDER BY
-  const orderMatch = rest.match(/ORDER\s+BY\s+(\w+)(?:\s+(ASC|DESC))?/i);
+  // Audit A7: `ORDER BY nome COLLATE NOCASE DESC` — o COLLATE no meio fazia o
+  // DESC ser ignorado (Z-A sempre A-Z).
+  const orderMatch = parseOrderBy(rest);
   if (orderMatch) {
-    query = query.order(orderMatch[1], { ascending: (orderMatch[2] || 'ASC').toUpperCase() !== 'DESC' });
+    query = query.order(orderMatch.col, { ascending: !orderMatch.desc });
   }
 
   // Parse LIMIT
@@ -370,20 +385,11 @@ async function executeRun(sql, params = []) {
 
     let query = supabase.from(table).update(updates);
 
-    // Parse WHERE for UPDATE
+    // Parse WHERE for UPDATE. Condição não suportada → lança (nunca "atualiza tudo").
     const whereConditions = parseWhereSimple(whereClause, params, paramIdx);
-    for (const w of whereConditions) {
-      if (w.op === '=') query = query.eq(w.col, w.val);
-      else if (w.op === 'IN') query = query.in(w.col, Array.isArray(w.val) ? w.val : [w.val]);
-      else if (w.op === '!=') query = query.neq(w.col, w.val);
-      else if (w.op === '>') query = query.gt(w.col, w.val);
-      else if (w.op === '<') query = query.lt(w.col, w.val);
-      else if (w.op === '>=') query = query.gte(w.col, w.val);
-      else if (w.op === '<=') query = query.lte(w.col, w.val);
-      else if (w.op === 'IS NULL') query = query.is(w.col, null);
-      else if (w.op === 'IS NOT NULL') query = query.not(w.col, 'is', null);
-      else if (__DEV__) console.warn('[SupabaseDb] UPDATE: operador WHERE não aplicado:', w.op, w.col);
-    }
+    const badUpd = whereConditions.find(w => w.op === 'UNSUPPORTED');
+    if (badUpd) throw new Error(`UPDATE ${table}: WHERE não suportado (${badUpd.raw})`);
+    query = applyWhere(query, whereConditions);
     // Sessão 28.44 — defense-in-depth: força filtro user_id no UPDATE.
     // RLS no Postgres já barra cross-user, mas se RLS for desativado por
     // engano, isso é a 2ª camada. Custo zero. (Auditoria security M1)
@@ -409,19 +415,11 @@ async function executeRun(sql, params = []) {
     const whereClause = deleteMatch[2].trim();
 
     let query = supabase.from(table).delete();
+    // Condição não suportada → lança (nunca "apaga tudo").
     const whereConditions = parseWhereSimple(whereClause, params, 0);
-    for (const w of whereConditions) {
-      if (w.op === '=') query = query.eq(w.col, w.val);
-      else if (w.op === 'IN') query = query.in(w.col, Array.isArray(w.val) ? w.val : [w.val]);
-      else if (w.op === '!=') query = query.neq(w.col, w.val);
-      else if (w.op === '>') query = query.gt(w.col, w.val);
-      else if (w.op === '<') query = query.lt(w.col, w.val);
-      else if (w.op === '>=') query = query.gte(w.col, w.val);
-      else if (w.op === '<=') query = query.lte(w.col, w.val);
-      else if (w.op === 'IS NULL') query = query.is(w.col, null);
-      else if (w.op === 'IS NOT NULL') query = query.not(w.col, 'is', null);
-      else if (__DEV__) console.warn('[SupabaseDb] DELETE: operador WHERE não aplicado:', w.op, w.col);
-    }
+    const badDel = whereConditions.find(w => w.op === 'UNSUPPORTED');
+    if (badDel) throw new Error(`DELETE ${table}: WHERE não suportado (${badDel.raw})`);
+    query = applyWhere(query, whereConditions);
     // Sessão 28.44 — defense-in-depth: força filtro user_id no DELETE
     if (currentUserId) query = query.eq('user_id', currentUserId);
 
@@ -506,23 +504,20 @@ async function executeJoinQuery(sql, params, mode) {
   if (whereMatch) {
     whereConditions = parseWhereSimple(whereMatch[1], params, 0);
   }
+  const unsupportedJoin = whereConditions.find(w => w.op === 'UNSUPPORTED');
+  if (unsupportedJoin) {
+    reportDbError('executeJoinQuery', sql, params, new Error('WHERE não suportado: ' + unsupportedJoin.raw));
+    return markErrorResult(mode === 'first' ? null : [], 'WHERE não suportado: ' + unsupportedJoin.raw);
+  }
+  // Audit A1/A5: condição sobre coluna da tabela JOINADA (`p.preco_venda > 0`,
+  // `pi.materia_prima_id IN (...)`) era aplicada no mainTable → 42703 → [].
+  // Agora: condições com alias da joinada são aplicadas client-side após o merge.
+  const joinAliases = new Set([alias2, table2]);
+  const mainConds = whereConditions.filter(w => !(w.alias && joinAliases.has(w.alias)));
+  const joinConds = whereConditions.filter(w => w.alias && joinAliases.has(w.alias));
 
   // Fetch main table rows
-  let mainQuery = supabase.from(mainTable).select('*');
-  for (const w of whereConditions) {
-    // Map alias.col to just col (parseWhereSimple já remove o alias; defensivo)
-    const col = w.col.replace(/^\w+\./, '');
-    if (w.op === '=') mainQuery = mainQuery.eq(col, w.val);
-    else if (w.op === 'IN') mainQuery = mainQuery.in(col, Array.isArray(w.val) ? w.val : [w.val]);
-    else if (w.op === '!=') mainQuery = mainQuery.neq(col, w.val);
-    else if (w.op === '>') mainQuery = mainQuery.gt(col, w.val);
-    else if (w.op === '<') mainQuery = mainQuery.lt(col, w.val);
-    else if (w.op === '>=') mainQuery = mainQuery.gte(col, w.val);
-    else if (w.op === '<=') mainQuery = mainQuery.lte(col, w.val);
-    else if (w.op === 'IS NULL') mainQuery = mainQuery.is(col, null);
-    else if (w.op === 'IS NOT NULL') mainQuery = mainQuery.not(col, 'is', null);
-    else if (__DEV__) console.warn('[SupabaseDb] JOIN: operador WHERE não aplicado:', w.op, col);
-  }
+  let mainQuery = applyWhere(supabase.from(mainTable).select('*'), mainConds);
 
   // Sessão 28.xx — defense-in-depth (security P2): força filtro user_id no
   // mainTable do JOIN. Só para tabelas da allowlist E com usuário logado. O
@@ -567,31 +562,44 @@ async function executeJoinQuery(sql, params, mode) {
     return mode === 'first' ? null : [];
   }
 
+  // Audit A14/A15/M3: aliases `x.col AS nome` eram ignorados e colunas homônimas
+  // da joinada (nome, id, unidade_medida…) ficavam sombreadas pela principal.
+  // Agora cada alias é resolvido explicitamente contra a tabela certa.
+  const selectCols = parseSelectColumns(sql);
+
   // Merge results - flatten columns with alias prefixes removed
-  let merged = mainRows.map(main => {
-    const joined = joinMap[main[fkCol]] || {};
+  let merged = [];
+  for (const main of mainRows) {
+    const joined = joinMap[main[fkCol]] || null;
+    if (!joined && !isLeftJoin) continue; // INNER JOIN filtra rows sem match
+    if (joined && !matchesConditions(joined, joinConds)) continue;
     const result = { ...main };
-    Object.keys(joined).forEach(k => {
+    Object.keys(joined || {}).forEach(k => {
       if (!(k in result)) result[k] = joined[k];
     });
-    return result;
-  });
-  // INNER JOIN filtra rows sem match. LEFT JOIN preserva todas.
-  if (!isLeftJoin) {
-    merged = merged.filter(r => joinMap[r[fkCol]]);
+    for (const c of selectCols) {
+      if (!c.alias) continue;
+      const src = (c.prefix && joinAliases.has(c.prefix)) ? (joined || {}) : main;
+      if (c.col in src) result[c.alias] = src[c.col];
+    }
+    merged.push(result);
   }
 
-  // Parse ORDER BY
-  const orderMatch = sql.match(/ORDER\s+BY\s+(?:\w+\.)?(\w+)(?:\s+(ASC|DESC))?/i);
+  // Parse ORDER BY (client-side; função no ORDER → mantém ordem de chegada)
+  const orderMatch = parseOrderBy(sql);
   if (orderMatch) {
-    const col = orderMatch[1];
-    const desc = (orderMatch[2] || 'ASC').toUpperCase() === 'DESC';
+    const col = orderMatch.col;
+    const desc = orderMatch.desc;
     merged.sort((a, b) => {
       if (a[col] < b[col]) return desc ? 1 : -1;
       if (a[col] > b[col]) return desc ? -1 : 1;
       return 0;
     });
   }
+
+  // Audit M4: LIMIT era ignorado em JOIN (histórico inteiro carregado).
+  const limitMatch = sql.match(/LIMIT\s+(\d+)/i);
+  if (limitMatch) merged = merged.slice(0, parseInt(limitMatch[1], 10));
 
   return mode === 'first' ? (merged[0] ?? null) : merged;
 }
@@ -600,90 +608,16 @@ async function executeJoinQuery(sql, params, mode) {
 // Helper parsers
 // ============================================================
 
+// Audit C1: parseWhere (SELECT simples) agora delega ao parser completo —
+// ganha `IN (...)`, alias em coluna e sinalização de condição não suportada.
 function parseWhere(rest, params) {
-  const conditions = [];
   const whereMatch = rest.match(/WHERE\s+(.+?)(?:\s+ORDER|\s+GROUP|\s+LIMIT|\s*$)/i);
-  if (!whereMatch) return conditions;
-
-  const clause = whereMatch[1];
-  let paramIdx = 0;
-
-  // Split by AND
-  const parts = clause.split(/\s+AND\s+/i);
-  for (const part of parts) {
-    const trimmed = part.trim();
-
-    if (/IS\s+NULL/i.test(trimmed)) {
-      const col = trimmed.match(/(\w+(?:\.\w+)?)\s+IS\s+NULL/i)?.[1]?.replace(/^\w+\./, '');
-      if (col) conditions.push({ col, op: 'IS NULL', val: null });
-    } else if (/IS\s+NOT\s+NULL/i.test(trimmed)) {
-      const col = trimmed.match(/(\w+(?:\.\w+)?)\s+IS\s+NOT\s+NULL/i)?.[1]?.replace(/^\w+\./, '');
-      if (col) conditions.push({ col, op: 'IS NOT NULL', val: null });
-    } else {
-      const match = trimmed.match(/(\w+(?:\.\w+)?)\s*(=|!=|<>|>=|<=|>|<)\s*(.+)/);
-      if (match) {
-        const col = match[1].replace(/^\w+\./, '');
-        const op = match[2] === '<>' ? '!=' : match[2];
-        const valStr = match[3].trim();
-        const val = valStr === '?' ? params[paramIdx++] : parseValue(valStr);
-        conditions.push({ col, op, val });
-      }
-    }
-  }
-
-  return conditions;
+  if (!whereMatch) return [];
+  return parseWhereSimple(whereMatch[1], params, 0);
 }
 
-function parseWhereSimple(clause, params, startIdx) {
-  const conditions = [];
-  let paramIdx = startIdx;
-  const parts = clause.split(/\s+AND\s+/i);
-
-  for (const part of parts) {
-    const trimmed = part.trim();
-
-    // IN (?,?,...) — exportação em massa (WHERE id IN (...)).
-    // Captura coluna (com alias opcional) e o conteúdo entre parênteses.
-    const inMatch = trimmed.match(/(?:\w+\.)?(\w+)\s+IN\s*\(([^)]*)\)/i);
-    if (inMatch) {
-      const col = inMatch[1];
-      const tokens = inMatch[2].split(',').map(t => t.trim()).filter(t => t.length > 0);
-      const vals = tokens.map(tok => (tok === '?' ? params[paramIdx++] : parseValue(tok)));
-      conditions.push({ col, op: 'IN', val: vals });
-      continue;
-    }
-
-    if (/IS\s+NOT\s+NULL/i.test(trimmed)) {
-      const col = trimmed.match(/(?:\w+\.)?(\w+)\s+IS\s+NOT\s+NULL/i)?.[1];
-      if (col) conditions.push({ col, op: 'IS NOT NULL', val: null });
-      continue;
-    }
-    if (/IS\s+NULL/i.test(trimmed)) {
-      const col = trimmed.match(/(?:\w+\.)?(\w+)\s+IS\s+NULL/i)?.[1];
-      if (col) conditions.push({ col, op: 'IS NULL', val: null });
-      continue;
-    }
-
-    const match = trimmed.match(/(?:\w+\.)?(\w+)\s*(=|!=|<>|>=|<=|>|<)\s*(.+)/);
-    if (match) {
-      const col = match[1];
-      const op = match[2] === '<>' ? '!=' : match[2];
-      const valStr = match[3].trim();
-      const val = valStr === '?' ? params[paramIdx++] : parseValue(valStr);
-      conditions.push({ col, op, val });
-    } else if (trimmed.length > 0 && __DEV__) {
-      // Operador de WHERE não reconhecido → descartado. Mantém fallback (não quebra).
-      console.warn('[SupabaseDb] parseWhereSimple: condição WHERE descartada:', trimmed);
-    }
-  }
-
-  return conditions;
+// Audit A10/M5: permite ao chamador distinguir "[] por erro" de "vazio real".
+export function isDbErrorResult(result) {
+  return isErrorResult(result);
 }
 
-function parseValue(str) {
-  if (str === 'NULL' || str === 'null') return null;
-  if (str === 'CURRENT_TIMESTAMP') return new Date().toISOString();
-  if (/^'.*'$/.test(str)) return str.slice(1, -1);
-  if (/^-?\d+(\.\d+)?$/.test(str)) return parseFloat(str);
-  return str;
-}

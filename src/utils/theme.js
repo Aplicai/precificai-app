@@ -29,7 +29,7 @@ export const colors = {
   surface: '#FFFFFF',
   card: '#FFFFFF',
   text: '#1A2B2A',
-  textSecondary: '#6B7D7B',
+  textSecondary: '#5F706E', // Audit a11y: 4.8:1 sobre background / 5.2:1 sobre surface (era #6B7D7B = 3.99:1, fail AA)
   textLight: '#FFFFFF',
   border: '#D8E0DE',
   error: '#c74040',
@@ -41,7 +41,7 @@ export const colors = {
   // contra fundo branco (contraste 2.4:1). Novo token tem ratio 5.2:1.
   // Componentes de input devem usar `colors.placeholder` (não `disabled`)
   // para texto de placeholder/hint.
-  placeholder: '#6B7D7B',
+  placeholder: '#5F706E', // Audit a11y: mesmo tom do textSecondary (AA ≥ 4.5:1)
   inputBg: '#F8FAF9',
   shadow: '#004d47',
   // Sprint 1 Q1 — token fantasma usado em 5 telas (ConfiguracoesScreen, ContaSegurancaScreen) sem declaração; alias para accent.

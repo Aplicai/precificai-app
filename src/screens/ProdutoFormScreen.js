@@ -20,12 +20,7 @@ import useListDensity from '../hooks/useListDensity';
 import { t } from '../i18n/pt-BR';
 // Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
-import {
-  UNIDADES_MEDIDA, formatCurrency, formatPercent, calcMarkup, calcDespesasFixasPercentual,
-  converterParaBase, getTipoUnidade, calcCustoIngrediente, calcCustoPreparo,
-  getLabelPrecoBase, normalizeSearch, getTipoVenda,
-  calcLucroLiquido, calcMargemLiquida, calcCMVPercentual,
-} from '../utils/calculations';
+import { UNIDADES_MEDIDA, formatCurrency, formatPercent, calcMarkup, calcDespesasFixasPercentual, converterParaBase, getTipoUnidade, calcCustoIngrediente, calcCustoPreparo, getLabelPrecoBase, normalizeSearch, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, parseDecimalBR } from '../utils/calculations';
 // APP-19/24b: engine unificada + modal de transparência do cálculo
 import { calcularPrecoBalcao } from '../utils/precificacao';
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
@@ -132,7 +127,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
   async function salvarNovoPrecoInsumo() {
     if (!editPrecoModal) return;
     const { ing, idx } = editPrecoModal;
-    const novoPreco = parseFloat(String(editPrecoValor).replace(',', '.'));
+    const novoPreco = parseDecimalBR(editPrecoValor);
     // Anti-zeragem (25/06): preço de insumo 0/negativo nunca é válido — bloqueia
     // (antes permitia 0, zerando o insumo e os produtos que o usam).
     if (!Number.isFinite(novoPreco) || novoPreco <= 0) {
@@ -155,9 +150,10 @@ export default function ProdutoFormScreen({ route, navigation }) {
       setMateriasPrimas(prev => prev.map(m => m.id === ing.materia_prima_id ? { ...m, preco_por_kg: novoPreco } : m));
       // D-19 cascade: recalcula preparos+combos
       try {
-        const { cascadeFromInsumo, recalcularTodosCombos } = await import('../services/cascadeRecalc');
+        // Audit A7-perf: cascadeFromInsumo já recalcula os combos — a chamada dupla
+        // custava ~7 HTTP por item de combo sem efeito.
+        const { cascadeFromInsumo } = await import('../services/cascadeRecalc');
         await cascadeFromInsumo(db);
-        await recalcularTodosCombos(db);
       } catch (e) { console.warn('[ProdutoForm.cascade]', e); }
       // Sessão 28.44 — bug #17: invalida cache + notifica list screens
       try {
@@ -183,7 +179,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
   async function salvarNovoPrecoPreparo() {
     if (!editPrecoModal || editPrecoModal.tipo !== 'preparo') return;
     const { pp, idx } = editPrecoModal;
-    const novoCusto = parseFloat(String(editPrecoValor).replace(',', '.'));
+    const novoCusto = parseDecimalBR(editPrecoValor);
     if (!Number.isFinite(novoCusto) || novoCusto < 0) {
       Alert.alert('Valor inválido', 'Informe um custo válido.');
       return;
@@ -196,9 +192,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
       setProdutoPreparos(prev => prev.map((it, i) => i === idx ? { ...it, custo_por_kg: novoCusto } : it));
       // D-19 cascade: produtos+combos que usam esse preparo
       try {
-        const { cascadeFromPreparo, recalcularTodosCombos } = await import('../services/cascadeRecalc');
-        if (typeof cascadeFromPreparo === 'function') await cascadeFromPreparo(db, pp.preparo_id);
-        await recalcularTodosCombos(db);
+        // Audit A12: cascadeFromPreparo agora existe (antes o typeof mascarava o no-op).
+        const { cascadeFromPreparo } = await import('../services/cascadeRecalc');
+        await cascadeFromPreparo(db, pp.preparo_id);
       } catch (_) {}
       setEditPrecoModal(null);
       setEditPrecoValor('');
@@ -269,7 +265,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
   function validateForm(f) {
     const errs = {};
     if (!f.nome.trim()) errs.nome = true;
-    if (!f.preco_venda || parseFloat(String(f.preco_venda).replace(',', '.')) <= 0) errs.preco_venda = true;
+    if (!f.preco_venda || parseDecimalBR(f.preco_venda) <= 0) errs.preco_venda = true;
     return errs;
   }
 
@@ -364,7 +360,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
   // distinguir "vazio/inválido" de "zero explícito". Cada call site deve usar
   // Number.isFinite() ou um fallback explícito (`?? 0`, `|| 1`).
   const parseNum = (v) => {
-    const n = parseFloat(String(v).replace(',', '.'));
+    const n = parseDecimalBR(v);
     return Number.isFinite(n) ? n : null;
   };
 
@@ -695,7 +691,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
   function updateQuantidade(type, index, val) {
     // F2-J2-02: guarda Number.isFinite — campo vazio/letras vira 0, não NaN
-    const parsed = parseFloat(String(val).replace(',', '.'));
+    const parsed = parseDecimalBR(val);
     const numVal = Number.isFinite(parsed) ? parsed : 0;
     if (type === 'ingrediente') {
       setIngredientes(prev => prev.map((item, i) => i === index ? { ...item, quantidade_utilizada: numVal } : item));
@@ -731,9 +727,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
     if (!f.nome.trim()) return; // não salva sem nome
 
     // F2-J2-02: Number.isFinite guards para evitar NaN persistido no DB
-    const margemRaw = parseFloat(String(f.margem_lucro_produto).replace(',', '.'));
+    const margemRaw = parseDecimalBR(f.margem_lucro_produto);
     const margemSalvar = f.margem_lucro_produto.trim() !== '' && Number.isFinite(margemRaw) ? margemRaw / 100 : null;
-    const pvRaw = parseFloat(String(f.preco_venda).replace(',', '.'));
+    const pvRaw = parseDecimalBR(f.preco_venda);
     const pv = Number.isFinite(pvRaw) ? pvRaw : 0;
 
     setSaveStatus('saving');
@@ -764,7 +760,24 @@ export default function ProdutoFormScreen({ route, navigation }) {
   }
 
   // Salvar manual (novo) ou atualizar (edição)
+  // Audit A4: guard de reentrância — duplo clique em "Salvar Produto" gravava
+  // o produto (e seus itens) duas vezes.
+  const savingRef = useRef(false);
+  const [saving, setSaving] = useState(false);
+
   async function salvar() {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      await salvarImpl();
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  }
+
+  async function salvarImpl() {
     const errs = validateForm(form);
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
@@ -779,7 +792,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
       // F2-J2-02: Number.isFinite guards + fallback `?? 0` para campos numéricos
       const margemRaw = parseNum(form.margem_lucro_produto);
       const margemSalvar = form.margem_lucro_produto.trim() !== '' && Number.isFinite(margemRaw) ? margemRaw / 100 : null;
-      const pvRaw = parseFloat(String(form.preco_venda).replace(',', '.'));
+      const pvRaw = parseDecimalBR(form.preco_venda);
       const pv = Number.isFinite(pvRaw) ? pvRaw : 0;
       const params = [
         form.nome, form.categoria_id, parseNum(form.rendimento_total) ?? 0, form.unidade_rendimento,
@@ -1618,7 +1631,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               try { await autoSave(); } catch (e) { if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.preDuplicate.autoSave]', e); }
               const db = await getDatabase();
               // F2-J2-02: guards Number.isFinite + `?? 0` para preservar 0 quando vazio/inválido
-              const margemDupRaw = parseFloat(String(f.margem_lucro_produto).replace(',', '.'));
+              const margemDupRaw = parseDecimalBR(f.margem_lucro_produto);
               const margemVal = f.margem_lucro_produto && f.margem_lucro_produto.trim() !== '' && Number.isFinite(margemDupRaw) ? margemDupRaw / 100 : null;
               const pvDupRaw = parseFloat(String(f.preco_venda).replace(',','.'));
               const pvDup = Number.isFinite(pvDupRaw) ? pvDupRaw : 0;
@@ -1868,7 +1881,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               <SaveStatus status={saveStatus} variant="badge" />
             </View>
           )}
-          <Pressable style={styles.saveBackBtn} onPress={async () => {
+          <Pressable style={styles.saveBackBtn} disabled={saving} accessibilityRole="button" accessibilityState={{ disabled: saving, busy: saving }} onPress={async () => {
             // FK-fix (Sentry): NÃO grava mais em historico_precos. Aqui o INSERT usava
             // materia_prima_id = editId + 1000000 (id de PRODUTO deslocado), mas a
             // coluna tem FK NOT NULL → materias_primas(id). No Supabase isso SEMPRE
@@ -1890,8 +1903,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
               isDesktop && { maxWidth: 360, alignSelf: 'center', width: '100%' },
             ]}
             onPress={salvar}
+            disabled={saving}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: saving, busy: saving }}
           >
-            <Text style={styles.btnSaveText}>Salvar Produto</Text>
+            <Text style={styles.btnSaveText}>{saving ? 'Salvando…' : 'Salvar Produto'}</Text>
           </Pressable>
         </View>
       )}

@@ -14,11 +14,11 @@ import { Feather } from '@expo/vector-icons';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum, parseDecimalBR } from '../utils/calculations';
 
 function parseInputNumber(raw) {
   if (raw === null || raw === undefined || raw === '') return null;
-  const parsed = parseFloat(String(raw).replace(',', '.'));
+  const parsed = parseDecimalBR(raw);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 

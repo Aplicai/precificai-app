@@ -177,7 +177,9 @@ export default function SuporteScreen({ navigation }) {
       let emailOk = false;
       let emailErrMsg = null;
       try {
-        const { data, error: fnError } = await supabase.functions.invoke('send-feedback-email', { body: payload });
+        // Audit A3: e-mail do remetente vem do JWT no servidor — nunca do body.
+        const { user_email: _omit, ...fnPayload } = payload;
+        const { data, error: fnError } = await supabase.functions.invoke('send-feedback-email', { body: fnPayload });
         if (fnError) {
           emailErrMsg = fnError.message || String(fnError);
           console.warn('[Suporte.feedback] edge function error:', fnError);

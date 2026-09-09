@@ -27,6 +27,24 @@
       "port": 3000
     },
     {
+      "name": "landing-site",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "/Users/erick/Documents/precificai-site", "-l", "4599"],
+      "port": 4599
+    },
+    {
+      "name": "bcg-preview",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "/tmp/bcg-preview", "-l", "4601"],
+      "port": 4601
+    },
+    {
+      "name": "dist-runtime-test",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "/tmp/dist-verified", "-l", "4602", "-s"],
+      "port": 4602
+    },
+    {
       "name": "dist-prod",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["serve", "dist", "-l", "4173", "-s"],

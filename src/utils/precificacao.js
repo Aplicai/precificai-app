@@ -27,6 +27,7 @@
  *
  * ─────────────────────────────────────────────────────────────────────────
  */
+import { parseDecimalBR } from './calculations';
 
 /** Soma defensiva: ignora NaN/null/undefined. */
 function safe(n) {
@@ -347,7 +348,7 @@ export function pctToDecimal(input) {
   if (typeof input === 'number') {
     n = input;
   } else {
-    n = parseFloat(String(input).replace(',', '.'));
+    n = parseDecimalBR(input);
   }
   if (!Number.isFinite(n)) return 0;
   if (n > 1) return n / 100;

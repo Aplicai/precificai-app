@@ -5,12 +5,13 @@ import CurrencyInputModal from '../components/CurrencyInputModal';
 import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getDatabase } from '../database/database';
+import { isDbErrorResult } from '../database/supabaseDb';
 import InfoTooltip from '../components/InfoTooltip';
 import Chip from '../components/Chip';
 import { Feather } from '@expo/vector-icons';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, calcDespesasFixasPercentual, calcMarkup } from '../utils/calculations';
+import { formatCurrency, formatPercent, calcDespesasFixasPercentual, calcMarkup, parseDecimalBR } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 // APP-30/33/34 — config centralizada de constantes financeiras
 import {
@@ -22,7 +23,7 @@ import {
 // Parsing seguro: aceita "12,5" e "12.5", retorna NaN para entrada inválida (não 0 silencioso).
 function parseNum(str) {
   if (str == null) return NaN;
-  const n = parseFloat(String(str).replace(',', '.'));
+  const n = parseDecimalBR(str);
   return Number.isFinite(n) ? n : NaN;
 }
 
@@ -163,7 +164,10 @@ export default function FinanceiroConfigScreen() {
     ]);
     setSegmentoUsuario(perfilRows?.[0]?.segmento || '');
     let config = configs?.[0];
-    if (!config) {
+    // Audit A10: `[]` por ERRO (rede/RLS) não é "usuário sem dados" — semear
+    // aqui duplicava faturamento_mensal (sem UNIQUE) e tentava duplicar configuracao.
+    const leituraFalhou = isDbErrorResult(configs) || isDbErrorResult(fatRaw);
+    if (!config && !leituraFalhou) {
       // Criar row de configuração se não existir
       await db.runAsync('INSERT INTO configuracao (lucro_desejado, margem_seguranca) VALUES (0.15, 0)');
       const newConfigs = await db.getAllAsync('SELECT * FROM configuracao');
@@ -185,7 +189,7 @@ export default function FinanceiroConfigScreen() {
     setDespesasVariaveis(variaveis);
 
     let fat = fatRaw;
-    if (fat.length === 0) {
+    if (fat.length === 0 && !leituraFalhou) {
       for (const mes of mesesCurtos) {
         await db.runAsync('INSERT INTO faturamento_mensal (mes, valor) VALUES (?, ?)', [mes, 0]);
       }
@@ -225,7 +229,13 @@ export default function FinanceiroConfigScreen() {
     try {
       const db = await getDatabase();
       const p = parseNum(lucroDesejado);
-      const valor = Number.isFinite(p) ? p / 100 : 0;
+      // Audit A5 (browser): "abc"/vazio + OK ZERAVA a margem salva (auto-save) sem aviso.
+      if (!Number.isFinite(p) || p < 0) {
+        showError('Digite uma margem de lucro válida (ex.: 20).');
+        loadData();
+        return;
+      }
+      const valor = p / 100;
       await db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [valor]);
       showSaved('Margem salva');
       loadData();
@@ -831,7 +841,7 @@ export default function FinanceiroConfigScreen() {
             {/* APP-30 — Margem de Segurança com sugestão dinâmica por segmento + warning >30% */}
             {(() => {
               const sug = getSugestaoMargemSeguranca(segmentoUsuario);
-              const valorAtual = parseFloat(String(margemSeguranca).replace(',', '.'));
+              const valorAtual = parseDecimalBR(margemSeguranca);
               const acimaDoComum = Number.isFinite(valorAtual) && valorAtual > 30;
               return (
                 <View style={s.subSection}>

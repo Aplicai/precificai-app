@@ -17,7 +17,9 @@
     "prebuild:web": "node scripts/validate-env.js",
     "build:web": "npx expo export --platform web",
     "smoke:prod": "node scripts/smoke-test-prod.js",
-    "test": "node --test __tests__/precificacao.test.mjs __tests__/listaCompras.test.mjs"
+    "test": "node --import ./__tests__/loader.mjs --test '__tests__/*.test.mjs'",
+    "test:e2e": "playwright test",
+    "test:e2e:golden": "playwright test tests/09-golden-path.spec.js --reporter=line"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",

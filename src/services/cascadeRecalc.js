@@ -21,7 +21,7 @@
  * o cache de `custo_por_kg` (preparo) ou `custo` (combo) esteja stale.
  */
 
-import { calcCustoIngrediente, calcCustoPreparo, getDivisorRendimento } from '../utils/calculations';
+import { calcCustoIngrediente, calcCustoPreparo, getDivisorRendimento, calcCustoPorKgPreparo } from '../utils/calculations';
 
 const safe = (v) => {
   const n = Number(v);
@@ -65,7 +65,7 @@ export async function recalcularPreparo(db, preparoId) {
   const rendimento = safe(p.rendimento_total);
   // Sessão 28.72 — fórmula canônica do form (sempre * 1000)
   const custoPorKg = rendimento > 0
-    ? (custoTotal / rendimento) * 1000
+    ? calcCustoPorKgPreparo(custoTotal, rendimento, p.unidade_medida)
     : custoTotal;
   await db.runAsync('UPDATE preparos SET custo_por_kg = ? WHERE id = ?', [custoPorKg, preparoId]);
   return { id: preparoId, custoTotal, custoPorKg };
@@ -118,11 +118,12 @@ export async function recalcularCombo(db, comboId) {
       const r = await recalcularProduto(db, item.item_id);
       custo += (r?.custoUnitario || 0) * qt;
     } else if (item.tipo === 'materia_prima') {
-      const m = await db.getFirstAsync('SELECT preco_por_kg FROM materias_primas WHERE id = ?', [item.item_id]);
-      custo += safe(m?.preco_por_kg) * qt;
+      // Audit: telas tratam quantidade de insumo/preparo em combo como GRAMAS.
+      const m = await db.getFirstAsync('SELECT preco_por_kg, unidade_medida FROM materias_primas WHERE id = ?', [item.item_id]);
+      custo += calcCustoIngrediente(safe(m?.preco_por_kg), qt, m?.unidade_medida || 'g', 'g');
     } else if (item.tipo === 'preparo') {
       const p = await db.getFirstAsync('SELECT custo_por_kg FROM preparos WHERE id = ?', [item.item_id]);
-      custo += safe(p?.custo_por_kg) * qt;
+      custo += calcCustoPreparo(safe(p?.custo_por_kg), qt, 'g');
     } else if (item.tipo === 'embalagem') {
       const e = await db.getFirstAsync('SELECT preco_unitario FROM embalagens WHERE id = ?', [item.item_id]);
       custo += safe(e?.preco_unitario) * qt;
@@ -194,4 +195,50 @@ export async function cascadeFromInsumo(db) {
     clearQueryCache?.();
   } catch (_) {}
   return { preparos: nPreparos, combos: nCombos };
+}
+
+
+/**
+ * Audit C3/A12 — cascade DIRECIONADO: recalcula só os preparos afetados por um
+ * insumo (uso direto) e sobe pelos pais via `preparo_subpreparos` até convergir
+ * (máx 5 níveis). Bem mais barato que `recalcularTodosPreparos` e, ao contrário
+ * do cascade inline antigo do MateriaPrimaForm, inclui sub-preparos.
+ */
+export async function recalcularPreparosDoInsumo(db, insumoId) {
+  const direct = await db.getAllAsync(
+    'SELECT DISTINCT preparo_id FROM preparo_ingredientes WHERE materia_prima_id = ?', [insumoId]
+  );
+  return _recalcularPreparosESeusPais(db, (direct || []).map(r => r.preparo_id));
+}
+
+/**
+ * Audit A12 — `cascadeFromPreparo` era importado pelo ProdutoForm mas não existia
+ * (no-op silencioso). Recalcula o preparo e todos os pais que o usam como sub-preparo,
+ * depois os combos.
+ */
+export async function cascadeFromPreparo(db, preparoId) {
+  await _recalcularPreparosESeusPais(db, [preparoId]);
+  await recalcularTodosCombos(db);
+  clearQueryCache();
+}
+
+async function _recalcularPreparosESeusPais(db, startIds) {
+  const done = new Set();
+  let ids = new Set((startIds || []).filter(Boolean));
+  for (let pass = 0; pass < 5 && ids.size > 0; pass++) {
+    for (const id of ids) {
+      try { await recalcularPreparo(db, id); } catch (e) { console.warn('[cascadeRecalc.preparo]', id, e); }
+      done.add(id);
+    }
+    let parents = [];
+    try {
+      const list = [...ids];
+      parents = await db.getAllAsync(
+        `SELECT DISTINCT preparo_id FROM preparo_subpreparos WHERE sub_preparo_id IN (${list.map(() => '?').join(',')})`,
+        list
+      );
+    } catch (_) { /* DB legado sem preparo_subpreparos */ }
+    ids = new Set((parents || []).map(r => r.preparo_id).filter(x => x && !done.has(x)));
+  }
+  return [...done];
 }

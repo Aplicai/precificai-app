@@ -170,7 +170,7 @@ export default function SimuladorScreen({ navigation }) {
     const results = produtos.map(p => {
       let novoCustoIng = p.ingredientes.reduce((a, ing) => {
         let preco = safeNum(ing.preco_por_kg);
-        if (!insumoSelecionado || ing.mp_id === insumoSelecionado) {
+        if (!insumoSelecionado || ing.materia_prima_id === insumoSelecionado) {
           preco = preco * (1 + pct);
         }
         if ((ing.unidade_medida || '').toLowerCase() === 'un') return a + safeNum(ing.quantidade_utilizada) * preco;
@@ -360,7 +360,7 @@ export default function SimuladorScreen({ navigation }) {
             </View>
 
             {/* Lista de produtos (filtrada pelo insumo selecionado) */}
-            {(insumoSelecionado ? resultados.filter(r => r.ingredientes.some(ing => ing.mp_id === insumoSelecionado)) : resultados).map(r => {
+            {(insumoSelecionado ? resultados.filter(r => r.ingredientes.some(ing => ing.materia_prima_id === insumoSelecionado)) : resultados).map(r => {
               const margemColor = r.margemNova >= 0.15 ? colors.success : r.margemNova >= 0.05 ? colors.warning : colors.error;
               const margemRisco = r.margemNova < 0.10;
               const margemNegativa = r.margemNova < 0;
@@ -368,7 +368,8 @@ export default function SimuladorScreen({ navigation }) {
               // navegar — usuário pode estar prestes a "salvar" um preço que
               // ainda gera prejuízo (precisa ajustar custo OU subir muito o preço).
               const handlePressProduto = () => {
-                const navigateToProduto = () => navigation.navigate('ProdutoForm', { id: r.id, sugerirNovoPreco: margemRisco });
+                // Audit A4: Simulador vive no MaisStack — 'ProdutoForm' só existe no ProdutosStack.
+                const navigateToProduto = () => navigation.navigate('Produtos', { screen: 'ProdutoForm', params: { id: r.id, sugerirNovoPreco: margemRisco } });
                 if (margemNegativa) {
                   const msg = `Margem negativa: ${(r.margemNova * 100).toFixed(1)}%. O preço atual não cobre o custo deste produto. Quer abrir o produto para ajustar?`;
                   if (Platform.OS === 'web') {

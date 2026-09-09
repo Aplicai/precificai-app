@@ -18,7 +18,7 @@ import {
   CATEGORIAS_PREPAROS_POR_SEGMENTO,
   CATEGORIAS_EMBALAGENS_POR_SEGMENTO,
 } from '../data/templates';
-import { calcPrecoBase, calcFatorCorrecao, safeNum } from '../utils/calculations';
+import { calcPrecoBase, calcFatorCorrecao, safeNum, calcCustoPorKgPreparo } from '../utils/calculations';
 import { getPrecoReferencia } from '../data/precosReferencia';
 // D-27/D-28: aplica fatores de correção de referência (TACO) automaticamente
 import { getFatorCorrecaoReferencia, estimarQuantidadeLiquida } from '../data/fatoresCorrecao';
@@ -178,9 +178,15 @@ export default function KitInicioScreen({ navigation, route }) {
       const userId = authData?.user?.id;
       if (!userId) throw new Error('Usuário não autenticado');
 
+      // Audit A11: antes o `{ error }` nem era lido e exceções eram engolidas —
+      // "Apagar tudo" podia terminar parcial e o kit era aplicado por cima.
+      const falhas = [];
       const collectErrors = async (tables) => {
         await Promise.all(tables.map(async t => {
-          try { await supabase.from(t).delete().eq('user_id', userId); } catch {}
+          try {
+            const { error } = await supabase.from(t).delete().eq('user_id', userId);
+            if (error) falhas.push(`${t}: ${error.message}`);
+          } catch (e) { falhas.push(`${t}: ${e?.message || e}`); }
         }));
       };
       // Fase 1: junctions (sem deps)
@@ -202,6 +208,9 @@ export default function KitInicioScreen({ navigation, route }) {
         'categorias_produtos', 'categorias_preparos',
         'categorias_embalagens', 'categorias_insumos',
       ]);
+      if (falhas.length > 0) {
+        throw new Error('Alguns dados não foram apagados: ' + falhas.join('; '));
+      }
       // Limpa cache do wrapper pra outras telas relerem
       try {
         const { clearQueryCache } = await import('../database/supabaseDb');
@@ -585,7 +594,7 @@ export default function KitInicioScreen({ navigation, route }) {
             custoTotalPrep += custoUso;
             ingsValidos.push({ ...ing, insumoId, custoUso });
           }
-          const custoPorKg = prep.rendimento_total > 0 ? (custoTotalPrep / prep.rendimento_total) * 1000 : 0;
+          const custoPorKg = calcCustoPorKgPreparo(custoTotalPrep, prep.rendimento_total, prep.unidade_medida);
 
           const prepRow = {
             user_id: userId,

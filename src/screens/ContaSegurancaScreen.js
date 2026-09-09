@@ -14,6 +14,8 @@ import usePlan, { syncPlanFromServer } from '../hooks/usePlan';
 import { cancelSubscription } from '../services/checkout';
 import { PLAN_LABELS } from '../config/plans';
 import UpgradeModal from '../components/UpgradeModal';
+import { validatePassword } from '../utils/passwordPolicy';
+import { captureException } from '../utils/errorReporter';
 
 // Mapeia mensagens cruas do Supabase auth para textos amigáveis (sem expor stack/tokens)
 function mapAuthError(rawMsg) {
@@ -115,12 +117,10 @@ export default function ContaSegurancaScreen({ navigation }) {
   }
 
   async function handleUpdatePassword() {
-    if (newPass.length < 8) {
-      Alert.alert(t.alertAttention, t.validation.passwordMin);
-      return;
-    }
-    if (!/[A-Z]/.test(newPass) || !/[a-z]/.test(newPass) || !/[0-9]/.test(newPass)) {
-      Alert.alert(t.alertAttention, t.validation.passwordWeak);
+    // Audit M3: mesma política do cadastro (passwordPolicy.js), não uma cópia divergente.
+    const policy = validatePassword(newPass);
+    if (!policy.ok) {
+      Alert.alert(t.alertAttention, policy.error || t.validation.passwordWeak);
       return;
     }
     if (newPass !== confirmPass) {
@@ -245,15 +245,24 @@ export default function ContaSegurancaScreen({ navigation }) {
       }
 
       // Best-effort: registra também numa tabela auditável (se existir). Não bloqueia se faltar.
+      // Audit A5: colunas alinhadas ao schema real (`scheduled_for`, `status`,
+      // `reason`) — antes o INSERT falhava sempre (42703) e era engolido.
       try {
-        await supabase.from('account_deletion_requests').insert({
+        const { error: auditErr } = await supabase.from('account_deletion_requests').insert({
           user_id: user.id,
           requested_at: deletionRequestedAt,
-          purge_scheduled_for: purgeAfter,
-          source: Platform.OS,
+          scheduled_for: purgeAfter,
+          status: 'pending',
+          reason: `user_request:${Platform.OS}`,
         });
+        if (auditErr) {
+          captureException(auditErr, { where: 'ContaSegurancaScreen.excluirConta.audit' });
+          throw new Error('Não foi possível registrar sua solicitação. Tente novamente em instantes.');
+        }
       } catch (auditErr) {
-        console.warn('[ContaSegurancaScreen.excluirConta] tabela account_deletion_requests inexistente — usando só user_metadata');
+        if (auditErr?.message?.startsWith('Não foi possível')) throw auditErr;
+        captureException(auditErr, { where: 'ContaSegurancaScreen.excluirConta.audit' });
+        throw new Error('Não foi possível registrar sua solicitação. Tente novamente em instantes.');
       }
 
       await supabase.auth.signOut();

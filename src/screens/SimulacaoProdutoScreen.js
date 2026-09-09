@@ -20,10 +20,7 @@ import { Feather } from '@expo/vector-icons';
 import { Alert } from 'react-native';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import {
-  formatCurrency, calcCustoIngrediente, calcCustoPreparo,
-  getDivisorRendimento,
-} from '../utils/calculations';
+import { formatCurrency, calcCustoIngrediente, calcCustoPreparo, getDivisorRendimento, parseDecimalBR } from '../utils/calculations';
 import { calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
 import { buildContextoFinanceiro, normalizePlataforma } from '../utils/deliveryAdapter';
 // Sessão 28.26: service unificado de upsert do preço delivery
@@ -159,7 +156,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
   }
 
   async function salvarComoPrecoDelivery() {
-    const num = parseFloat(String(precoEscolhido).replace(',', '.'));
+    const num = parseDecimalBR(precoEscolhido);
     if (!Number.isFinite(num) || num <= 0) return;
     setSaving(true);
     try {
@@ -205,7 +202,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
   // Vem pronto do carregar() — é o MESMO R$ que a sugestão "MESMO LUCRO" persegue.
   const precoBalcaoNum = safe(prod.preco_venda);
   const lucroLiqBalcaoR = lucroLiqBalcaoReais || 0;
-  const numEscolhido = parseFloat(String(precoEscolhido).replace(',', '.'));
+  const numEscolhido = parseDecimalBR(precoEscolhido);
   const precoValido = Number.isFinite(numEscolhido) && numEscolhido > 0;
 
   // Sessão 28.33: migrado pra normalizePlataforma — antes lia campos legacy direto

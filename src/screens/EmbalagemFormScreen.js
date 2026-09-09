@@ -11,7 +11,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useListDensity from '../hooks/useListDensity';
-import { calcPrecoUnitarioEmbalagem, formatCurrency } from '../utils/calculations';
+import { calcPrecoUnitarioEmbalagem, formatCurrency, parseDecimalBR } from '../utils/calculations';
 import { t } from '../i18n/pt-BR';
 import { showToast } from '../utils/toastBus';
 // Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
@@ -70,8 +70,8 @@ export default function EmbalagemFormScreen({ route, navigation }) {
   function validateForm(f) {
     const errs = {};
     if (!f.nome.trim()) errs.nome = true;
-    if (!f.quantidade || parseFloat(String(f.quantidade).replace(',', '.')) <= 0) errs.quantidade = true;
-    if (!f.preco_embalagem || parseFloat(String(f.preco_embalagem).replace(',', '.')) <= 0) errs.preco_embalagem = true;
+    if (!f.quantidade || parseDecimalBR(f.quantidade) <= 0) errs.quantidade = true;
+    if (!f.preco_embalagem || parseDecimalBR(f.preco_embalagem) <= 0) errs.preco_embalagem = true;
     return errs;
   }
 
@@ -205,11 +205,10 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         const padroes = await getCategoriasPadraoDaEmbalagem(db, editId, 'balcao');
         setCategoriasPadraoSel(padroes);
       } catch (_) { /* defensivo */ }
-      // Load price history
-      try {
-        const hist = await db.getAllAsync('SELECT * FROM historico_precos WHERE materia_prima_id = ? ORDER BY data DESC LIMIT 10', [editId]);
-        setHistoricoPrecos((hist || []).reverse());
-      } catch(e) { console.error('[EmbalagemForm.loadItem.historico]', e); }
+      // Audit A16: `historico_precos` é exclusiva de INSUMO (FK materia_prima_id).
+      // Ler com o id da embalagem mostrava (e deixava apagar) o histórico de um
+      // insumo qualquer por colisão de id. Não há histórico de embalagem no schema.
+      setHistoricoPrecos([]);
       // Marca como carregado após setar o form para evitar auto-save imediato
       setTimeout(() => setLoaded(true), 100);
     } else {
@@ -218,7 +217,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
   }
 
   const parseNum = (v) => {
-    const n = parseFloat(String(v).replace(',', '.'));
+    const n = parseDecimalBR(v);
     return Number.isFinite(n) ? n : 0;
   };
   const qtd = parseNum(form.quantidade);

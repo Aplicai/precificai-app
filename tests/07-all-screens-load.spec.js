@@ -34,12 +34,12 @@ test.describe('All Screens Load Without Crash', () => {
   });
 
   test('Ferramentas loads', async ({ page }) => {
-    await goToTab(page, 'Ferramentas');
+    await goToTab(page, 'Mais');
     await expect(page.getByRole('heading', { name: 'Ferramentas' })).toBeVisible();
   });
 
   test('Financeiro loads via Ferramentas', async ({ page }) => {
-    await goToTab(page, 'Ferramentas');
+    await goToTab(page, 'Mais');
     await page.getByText('Markup, despesas, faturamento').click();
     await page.waitForTimeout(1500);
     // Substituiu "Configuração Central" pelo KPI "Mark-up" no novo stepper.
@@ -47,13 +47,13 @@ test.describe('All Screens Load Without Crash', () => {
   });
 
   test('Delivery menu item exists in Ferramentas', async ({ page }) => {
-    await goToTab(page, 'Ferramentas');
+    await goToTab(page, 'Mais');
     // Verify Delivery option is visible (click limited by RN Web)
     await expect(page.getByText('Plataformas, preços e combos').first()).toBeVisible();
   });
 
   test('Matriz BCG loads via Ferramentas', async ({ page }) => {
-    await goToTab(page, 'Ferramentas');
+    await goToTab(page, 'Mais');
     // "Análise de portfólio" foi reescrito como "Veja quais produtos vendem mais...".
     await page.getByText('Veja quais produtos vendem mais').click();
     await page.waitForTimeout(1500);
@@ -62,7 +62,7 @@ test.describe('All Screens Load Without Crash', () => {
   });
 
   test('Configurações loads via Ferramentas', async ({ page }) => {
-    await goToTab(page, 'Ferramentas');
+    await goToTab(page, 'Mais');
     await page.getByText('Ajustes e preferências').click();
     await page.waitForTimeout(1000);
     await expect(page.getByText('Perfil do Negócio')).toBeVisible();

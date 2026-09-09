@@ -20,7 +20,9 @@ export function isMarcaEstimada(marca) {
 export function formatInsumoNome(nome, marca, separador = ' (') {
   const n = nome || '';
   if (!marca || isMarcaEstimada(marca)) return n;
-  return `${n}${separador}${marca})`;
+  // Audit: o ")" só faz sentido com o separador padrão " (".
+  const fecha = separador === ' (' ? ')' : '';
+  return `${n}${separador}${marca}${fecha}`;
 }
 
 /** Versão com separador "—" pra contextos onde parênteses ficam ruins. */

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { View, TextInput, StyleSheet, TouchableOpacity, Platform, Text } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, borderRadius, fontFamily } from '../utils/theme';
@@ -25,8 +25,27 @@ export default function SearchBar({
   autoFocus = false,
   inset = 'screen',
   shortcut,
+  debounceMs = 250,
 }) {
   const isModal = inset === 'modal';
+  // Audit A7-perf: a busca disparava loadData (2+ requests REST) a CADA tecla —
+  // 9 letras = 11 requests. O input fica responsivo (estado local) e o pai só
+  // recebe o valor após `debounceMs` sem digitar. Limpar (✕) é imediato.
+  const [local, setLocal] = useState(value ?? '');
+  const timerRef = useRef(null);
+  useEffect(() => { setLocal(value ?? ''); }, [value]);
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  const handleChange = (text) => {
+    setLocal(text);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (!debounceMs) { onChangeText(text); return; }
+    timerRef.current = setTimeout(() => { timerRef.current = null; onChangeText(text); }, debounceMs);
+  };
+  const handleClear = () => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    setLocal('');
+    onChangeText('');
+  };
   const enableShortcut = shortcut === undefined ? !isModal : shortcut;
   const inputRef = useRef(null);
   const isWeb = Platform.OS === 'web';
@@ -57,14 +76,14 @@ export default function SearchBar({
       <TextInput
         ref={inputRef}
         style={[styles.input, { height: inputInnerHeight }]}
-        value={value}
-        onChangeText={onChangeText}
+        value={local}
+        onChangeText={handleChange}
         placeholder={placeholder}
         placeholderTextColor={colors.placeholder}
         autoFocus={autoFocus}
       />
-      {value ? (
-        <TouchableOpacity onPress={() => onChangeText('')} style={styles.clearBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+      {local ? (
+        <TouchableOpacity onPress={handleClear} style={styles.clearBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Feather name="x" size={14} color={colors.textSecondary} />
         </TouchableOpacity>
       ) : isWeb && enableShortcut ? (
@@ -104,7 +123,8 @@ const styles = StyleSheet.create({
     color: colors.text,
     paddingVertical: 0,
     height: 42, // Sessão 28 — alinhar com container 44pt
-    outlineStyle: 'none',
+    // Audit A4 (WCAG 2.4.7): sem `outlineStyle: 'none'` — o container já
+    // desenha o foco; o input mantém o outline padrão do navegador (visível).
   },
   clearBtn: {
     padding: spacing.xs,

@@ -20,12 +20,7 @@ import { showToast } from '../utils/toastBus';
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 // Sessão 28.8 — exibe nome+marca p/ distinguir insumos com mesmo nome
 import { formatInsumoLabel, formatIngLabel } from '../utils/formatInsumo';
-import {
-  UNIDADES_MEDIDA,
-  formatCurrency,
-  calcCustoIngrediente,
-  calcCustoPreparo,
-} from '../utils/calculations';
+import { UNIDADES_MEDIDA, formatCurrency, calcCustoIngrediente, calcCustoPreparo, parseDecimalBR, calcCustoPorKgPreparo } from '../utils/calculations';
 
 // Cores para categorias no picker
 const CATEGORY_COLORS = [
@@ -99,7 +94,7 @@ export default function PreparoFormScreen({ route, navigation }) {
   function validateForm(f) {
     const errs = {};
     if (!f.nome.trim()) errs.nome = true;
-    if (!f.rendimento_total || parseFloat(String(f.rendimento_total).replace(',', '.')) <= 0) errs.rendimento_total = true;
+    if (!f.rendimento_total || parseDecimalBR(f.rendimento_total) <= 0) errs.rendimento_total = true;
     return errs;
   }
 
@@ -227,7 +222,7 @@ export default function PreparoFormScreen({ route, navigation }) {
   async function loadEmbalagens() {
     try {
       const db = await getDatabase();
-      const embs = await db.getAllAsync('SELECT id, nome, custo_unitario FROM embalagens ORDER BY nome');
+      const embs = await db.getAllAsync('SELECT id, nome, preco_unitario FROM embalagens ORDER BY nome');
       setEmbalagens(embs || []);
     } catch (e) {
       // tabela não existe / outro erro — silencia, módulo opcional
@@ -240,7 +235,7 @@ export default function PreparoFormScreen({ route, navigation }) {
     try {
       const db = await getDatabase();
       const rows = await db.getAllAsync(
-        `SELECT pe.id, pe.embalagem_id, pe.quantidade_utilizada, e.nome, e.custo_unitario
+        `SELECT pe.id, pe.embalagem_id, pe.quantidade_utilizada, e.nome, e.preco_unitario
          FROM preparo_embalagens pe LEFT JOIN embalagens e ON e.id = pe.embalagem_id
          WHERE pe.preparo_id = ?`, [id]
       );
@@ -287,7 +282,7 @@ export default function PreparoFormScreen({ route, navigation }) {
   }
 
   const parseNum = (v) => {
-    const n = parseFloat(String(v).replace(',', '.'));
+    const n = parseDecimalBR(v);
     return Number.isFinite(n) ? n : 0;
   };
   const safeCusto = (v) => (Number.isFinite(v) && v >= 0 ? v : 0);
@@ -321,7 +316,7 @@ export default function PreparoFormScreen({ route, navigation }) {
 
   const custoTotal = custoInsumos + custoSubpreparos;
   const rendimento = parseNum(form.rendimento_total);
-  const custoKg = rendimento > 0 && Number.isFinite(custoTotal) ? (custoTotal / rendimento) * 1000 : 0;
+  const custoKg = calcCustoPorKgPreparo(custoTotal, rendimento, form.unidade_medida);
   const temCustos = ingredientes.length > 0 || subpreparos.length > 0;
 
   function openQuantityPrompt(mpId) {
@@ -433,7 +428,7 @@ export default function PreparoFormScreen({ route, navigation }) {
       return acc + safeCusto(calcCustoPreparo(custoKg, sp.quantidade_utilizada, unidade));
     }, 0);
     const ct = ctInsumos + ctSub;
-    const ck = rend > 0 && Number.isFinite(ct) ? (ct / rend) * 1000 : 0;
+    const ck = calcCustoPorKgPreparo(ct, rend, f.unidade_medida);
     const validadeDias = parseNum(f.validade_dias);
 
     setSaveStatus('saving');
@@ -524,6 +519,14 @@ export default function PreparoFormScreen({ route, navigation }) {
         if (typeof console !== 'undefined') console.warn('[PreparoForm.autoSave subpreparos]', e?.message || e);
       }
       setSaveStatus('saved');
+      // Audit M7: outras telas (Produtos, Home, Combos) precisam reler o custo.
+      try {
+        const { clearQueryCache } = await import('../database/supabaseDb');
+        clearQueryCache?.();
+        const { notifyDataChanged } = await import('../utils/dataSync');
+        notifyDataChanged('preparos');
+        notifyDataChanged('produtos');
+      } catch (_) {}
     } catch (e) {
       console.error('[PreparoForm.autoSave]', e);
       setSaveStatus('error');
@@ -891,13 +894,13 @@ export default function PreparoFormScreen({ route, navigation }) {
               setPreparoEmbalagens(prev => [...prev, {
                 embalagem_id: em.id,
                 nome: em.nome,
-                custo_unitario: em.custo_unitario,
+                preco_unitario: em.preco_unitario,
                 quantidade_utilizada: 1,
               }]);
               // Área 4 — força remontagem pra próxima adição vir limpa
               setPickerResetKey(k => k + 1);
             }}
-            options={embalagens.map(e => ({ label: `${e.nome} — ${formatCurrency(e.custo_unitario || 0)}/un`, value: e.id }))}
+            options={embalagens.map(e => ({ label: `${e.nome} — ${formatCurrency(e.preco_unitario || 0)}/un`, value: e.id }))}
             placeholder={embalagens.length === 0 ? 'Cadastre uma embalagem primeiro' : 'Selecione uma embalagem'}
             onCreateNew={async () => {
               // Sessão 28.50 — cascata: marca pra que ao voltar de EmbalagemForm
@@ -921,7 +924,7 @@ export default function PreparoFormScreen({ route, navigation }) {
                 <Text style={[styles.ingHeaderText, { flex: 1.2, textAlign: 'right', paddingRight: 28 }]}>Custo</Text>
               </View>
               {preparoEmbalagens.map((pe, idx) => {
-                const totalPe = (Number(pe.custo_unitario) || 0) * (Number(pe.quantidade_utilizada) || 1);
+                const totalPe = (Number(pe.preco_unitario) || 0) * (Number(pe.quantidade_utilizada) || 1);
                 return (
                   <View key={pe.embalagem_id} style={[styles.ingRow, idx % 2 === 0 && styles.ingRowEven]}>
                     <Text style={[styles.ingCell, { flex: 2 }]} numberOfLines={1}>{pe.nome}</Text>
@@ -930,7 +933,7 @@ export default function PreparoFormScreen({ route, navigation }) {
                       value={String(pe.quantidade_utilizada)}
                       keyboardType="decimal-pad"
                       onChangeText={(v) => {
-                        const n = parseFloat(String(v).replace(',', '.')) || 0;
+                        const n = parseDecimalBR(v) || 0;
                         setPreparoEmbalagens(prev => prev.map((it, i) => i === idx ? { ...it, quantidade_utilizada: n } : it));
                       }}
                       selectTextOnFocus
@@ -1072,6 +1075,26 @@ export default function PreparoFormScreen({ route, navigation }) {
                   await db.runAsync('INSERT INTO preparo_ingredientes (preparo_id, materia_prima_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
                     [newId, ing.materia_prima_id, ing.quantidade_utilizada, ing.custo]);
                 }
+                // Audit A13: cópia também de sub-preparos e embalagens + recálculo do custo
+                // (antes gravava custo 0 e perdia parte da receita).
+                try {
+                  const subs = await db.getAllAsync('SELECT * FROM preparo_subpreparos WHERE preparo_id = ?', [editId]);
+                  for (const sp of (subs || [])) {
+                    await db.runAsync('INSERT INTO preparo_subpreparos (preparo_id, sub_preparo_id, quantidade_utilizada, custo) VALUES (?,?,?,?)',
+                      [newId, sp.sub_preparo_id, sp.quantidade_utilizada, sp.custo || 0]);
+                  }
+                } catch (_) { /* schema legado */ }
+                try {
+                  const embs = await db.getAllAsync('SELECT * FROM preparo_embalagens WHERE preparo_id = ?', [editId]);
+                  for (const pe of (embs || [])) {
+                    await db.runAsync('INSERT INTO preparo_embalagens (preparo_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)',
+                      [newId, pe.embalagem_id, pe.quantidade_utilizada]);
+                  }
+                } catch (_) { /* schema legado */ }
+                try {
+                  const { recalcularPreparo } = await import('../services/cascadeRecalc');
+                  await recalcularPreparo(db, newId);
+                } catch (_) {}
                 allowExit.current = true;
                 navigation.replace('PreparoForm', { id: newId });
               }

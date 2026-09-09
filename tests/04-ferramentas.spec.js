@@ -5,7 +5,7 @@ test.describe('Ferramentas & Sub-screens', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await waitForAppLoad(page);
-    await goToTab(page, 'Ferramentas');
+    await goToTab(page, 'Mais');
     await page.waitForTimeout(800);
   });
 

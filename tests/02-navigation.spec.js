@@ -28,12 +28,12 @@ test.describe('Navigation - Tabs', () => {
   });
 
   test('navigate to Ferramentas tab', async ({ page }) => {
-    await goToTab(page, 'Ferramentas');
+    await goToTab(page, 'Mais');
     await expect(page.getByRole('heading', { name: 'Ferramentas' })).toBeVisible();
   });
 
   test('Ferramentas > Financeiro works', async ({ page }) => {
-    await goToTab(page, 'Ferramentas');
+    await goToTab(page, 'Mais');
     await page.getByText('Markup, despesas, faturamento').click();
     await page.waitForTimeout(1500);
     // ConfiguracaoScreen renderiza um stepper com seções "Margem de Lucro",
@@ -43,16 +43,26 @@ test.describe('Navigation - Tabs', () => {
   });
 
   test('Ferramentas > Configurações works', async ({ page }) => {
-    await goToTab(page, 'Ferramentas');
+    await goToTab(page, 'Mais');
     await page.getByText('Ajustes e preferências').click();
     await page.waitForTimeout(1000);
     await expect(page.getByText('Perfil do Negócio')).toBeVisible();
   });
 
   test('cycle through all tabs', async ({ page }) => {
-    for (const tab of ['Insumos', 'Preparos', 'Embalagens', 'Produtos', 'Ferramentas']) {
-      await goToTab(page, tab);
-      await expect(page.getByRole('heading', { name: tab })).toBeVisible();
+    // route name (usado no href, via goToTab) → heading exibido na tela.
+    // "Mais" é o route name real da tab em mobile (tabBarLabel 'Mais'), mas a
+    // tela em si mantém o título "Ferramentas" (AppNavigator.js:377).
+    const tabs = [
+      ['Insumos', 'Insumos'],
+      ['Preparos', 'Preparos'],
+      ['Embalagens', 'Embalagens'],
+      ['Produtos', 'Produtos'],
+      ['Mais', 'Ferramentas'],
+    ];
+    for (const [route, heading] of tabs) {
+      await goToTab(page, route);
+      await expect(page.getByRole('heading', { name: heading })).toBeVisible();
     }
   });
 });

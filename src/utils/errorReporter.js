@@ -93,6 +93,9 @@ function sanitizeBreadcrumb(bc) {
       BREADCRUMB_REDACT_KEYS.forEach((k) => {
         if (k in safeData) safeData[k] = '[REDACTED]';
       });
+      ['url', 'to', 'from'].forEach((k) => {
+        if (typeof safeData[k] === 'string') safeData[k] = stripSensitiveUrl(safeData[k]);
+      });
       cleaned.data = safeData;
     }
     return cleaned;
@@ -109,8 +112,19 @@ function sanitizeBreadcrumb(bc) {
  * do Sentry serializa logs de erro do supabaseDb com tabela/payload
  * que vazariam dados financeiros e PII.
  */
+// Audit M4: o link de recovery chega como `#access_token=…`; se um erro for
+// capturado antes do supabase-js consumir o hash, `request.url` / breadcrumbs
+// de navegação levariam o token pro Sentry. Remove fragmento e tokens em query.
+function stripSensitiveUrl(u) {
+  if (typeof u !== 'string') return u;
+  return u
+    .replace(/#.*$/, '')
+    .replace(/([?&])(access_token|refresh_token|token|code)=[^&]*/gi, '$1$2=[REDACTED]');
+}
+
 function beforeSend(event) {
   try {
+    if (event.request?.url) event.request.url = stripSensitiveUrl(event.request.url);
     if (event.request?.headers) {
       delete event.request.headers.authorization;
       delete event.request.headers.Authorization;

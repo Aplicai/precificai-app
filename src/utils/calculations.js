@@ -61,17 +61,37 @@ export const UNIDADES_MEDIDA = [
 ];
 
 // Converte qualquer valor para a unidade base (g, mL ou un)
+function _findUnidade(unidade) {
+  // Audit: aceita variantes legadas ("Quilograma(s)", "Litro(s)", "KG", "l") —
+  // 98 insumos em prod ainda têm essas grafias; antes passavam cru (sem ×1000).
+  return UNIDADES_MEDIDA.find(u => u.value === unidade)
+    || UNIDADES_MEDIDA.find(u => u.value === normalizarUnidade(unidade));
+}
+
 export function converterParaBase(valor, unidade) {
-  const un = UNIDADES_MEDIDA.find(u => u.value === unidade);
+  const un = _findUnidade(unidade);
   if (!un) return valor;
   return valor * un.fatorBase;
 }
 
 // Converte da unidade base para a unidade desejada
 export function converterDeBase(valorBase, unidade) {
-  const un = UNIDADES_MEDIDA.find(u => u.value === unidade);
+  const un = _findUnidade(unidade);
   if (!un || un.fatorBase === 0) return valorBase;
   return valorBase / un.fatorBase;
+}
+
+/**
+ * Custo do preparo "por kg" (convenção interna: custo por 1000 unidades-base —
+ * g, mL ou un). Audit: 7 call-sites faziam `custoTotal / rendimento * 1000`
+ * ignorando a unidade do rendimento; preparo "rende 2 kg" saía 1000× maior.
+ */
+export function calcCustoPorKgPreparo(custoTotal, rendimentoTotal, unidadeMedida) {
+  const custo = _safeNum(custoTotal);
+  const rend = _safeNum(rendimentoTotal);
+  if (rend <= 0 || !Number.isFinite(custo)) return 0;
+  const rendBase = converterParaBase(rend, unidadeMedida || 'g');
+  return rendBase > 0 ? (custo / rendBase) * 1000 : 0;
 }
 
 // Normaliza uma string de unidade para um dos valores canônicos
@@ -87,7 +107,8 @@ export function normalizarUnidade(unidade) {
   if (raw === 'g' || raw === 'kg' || raw === 'mL' || raw === 'L' || raw === 'un') return raw;
   const u = raw.toLowerCase().replace(/\.+$/, ''); // remove ponto final ('un.', 'g.', 'kg.')
   if (u === 'kg' || u === 'quilo' || u === 'quilos' || u === 'quilograma' || u === 'quilogramas' || u.includes('quilo')) return 'kg';
-  if (u === 'g' || u === 'grama' || u === 'gramas') return 'g';
+  // Audit: "Grama(s)" (legado, 46 preparos em prod) caía em null → 'unidade' → custo 1000×.
+  if (u === 'g' || u === 'grama' || u === 'gramas' || u.includes('gram')) return 'g';
   if (u === 'ml' || u === 'mililitro' || u === 'mililitros' || u.includes('mili')) return 'mL';
   if (u === 'l' || u === 'litro' || u === 'litros' || u.includes('litro')) return 'L';
   if (u === 'un' || u === 'unidade' || u === 'unidades' || u.includes('unid')) return 'un';
@@ -162,7 +183,7 @@ export function calcPrecoUnitarioEmbalagem(precoEmbalagem, quantidade) {
 // Sessão 28.9 — Auditoria P1-05: garantir que entradas inválidas não propagem NaN no cálculo final.
 function _safeNum(v) {
   if (v === null || v === undefined) return 0;
-  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+  const n = typeof v === 'number' ? v : parseDecimalBR(v);
   return Number.isFinite(n) ? n : 0;
 }
 

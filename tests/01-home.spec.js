@@ -28,7 +28,7 @@ test.describe('Home / Visão Geral', () => {
   });
 
   test('all 6 bottom tabs exist as links', async ({ page }) => {
-    for (const tab of ['In%C3%ADcio', 'Insumos', 'Preparos', 'Embalagens', 'Produtos', 'Ferramentas']) {
+    for (const tab of ['In%C3%ADcio', 'Insumos', 'Preparos', 'Embalagens', 'Produtos', 'Mais']) {
       const link = page.locator(`a[href*="${tab}"]`);
       expect(await link.count()).toBeGreaterThan(0);
     }

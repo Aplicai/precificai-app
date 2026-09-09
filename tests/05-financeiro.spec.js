@@ -5,7 +5,7 @@ test.describe('Financeiro', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await waitForAppLoad(page);
-    await goToTab(page, 'Ferramentas');
+    await goToTab(page, 'Mais');
     await page.waitForTimeout(500);
     await page.getByText('Markup, despesas, faturamento').click();
     await page.waitForTimeout(1500);

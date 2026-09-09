@@ -10,7 +10,7 @@ test.describe('Insumos', () => {
   });
 
   test('shows search bar', async ({ page }) => {
-    await expect(page.getByPlaceholder('Buscar por nome ou marca...')).toBeVisible();
+    await expect(page.getByPlaceholder('Buscar...')).toBeVisible();
   });
 
   test('shows Todos filter chip', async ({ page }) => {
@@ -18,7 +18,7 @@ test.describe('Insumos', () => {
   });
 
   test('search filters items', async ({ page }) => {
-    const searchInput = page.getByPlaceholder('Buscar por nome ou marca...');
+    const searchInput = page.getByPlaceholder('Buscar...');
     await searchInput.fill('Farinha');
     await page.waitForTimeout(500);
     const results = page.getByText('Farinha', { exact: false });

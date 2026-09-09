@@ -8,7 +8,8 @@ import useListDensity from '../hooks/useListDensity';
 // Sessão 28 — Audit mobile-web: bottom: 20 ficava encoberto pelo BottomTab (66pt).
 // Em mobile (sem sidebar), elevamos o FAB para acima da tab. Em desktop mantemos 20.
 // Sessão 28.6 — densidade: compact reduz FAB para 48px; comfortable mantém 56 (Material default).
-export default function FAB({ onPress, iconName = 'plus', size, label }) {
+export default function FAB({ onPress, iconName = 'plus', size, label, accessibilityLabel }) {
+  const a11yLabel = accessibilityLabel || label || 'Adicionar';
   const { isMobile } = useResponsiveLayout();
   const { isCompact } = useListDensity();
   const bottomOffset = isMobile ? 86 : 20;
@@ -22,6 +23,8 @@ export default function FAB({ onPress, iconName = 'plus', size, label }) {
         style={[styles.fab, styles.fabExpanded, { bottom: bottomOffset, paddingHorizontal: expandedPadH, paddingVertical: expandedPadV }]}
         onPress={onPress}
         activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
       >
         <Feather name={iconName} size={isCompact ? 18 : 20} color={colors.textLight} />
         <Text style={styles.fabLabel}>{label}</Text>
@@ -29,7 +32,7 @@ export default function FAB({ onPress, iconName = 'plus', size, label }) {
     );
   }
   return (
-    <TouchableOpacity style={[styles.fab, { width: fabSize, height: fabSize, borderRadius: fabSize / 2, bottom: bottomOffset }]} onPress={onPress} activeOpacity={0.8}>
+    <TouchableOpacity style={[styles.fab, { width: fabSize, height: fabSize, borderRadius: fabSize / 2, bottom: bottomOffset }]} onPress={onPress} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={a11yLabel}>
       <Feather name={iconName} size={iconSize} color={colors.textLight} />
     </TouchableOpacity>
   );

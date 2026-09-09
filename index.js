@@ -10,6 +10,14 @@ import { registerRootComponent } from 'expo';
 import App from './App';
 
 if (typeof document !== 'undefined') {
+  // === ALERT SHIM ================================================
+  // react-native-web: Alert.alert é NO-OP. Sem isto, validações/confirmações
+  // nunca aparecem no navegador (audit 2026-09). Instala antes de tudo.
+  try {
+    const { Alert } = require('react-native');
+    require('./src/utils/webAlert').installWebAlertShim(Alert, window);
+  } catch (_) {}
+
   // === PWA META TAGS ============================================
   function setMeta(name, content, isProperty = false) {
     const attr = isProperty ? 'property' : 'name';

@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, calcPrecoBase, safeNum } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, calcPrecoBase, safeNum, parseDecimalBR } from '../utils/calculations';
 import { formatInsumoNome } from '../utils/insumoDisplay';
 import { notifyDataChanged } from '../utils/dataSync';
 import SearchBar from '../components/SearchBar';
@@ -123,7 +123,7 @@ export default function AtualizarPrecosScreen({ navigation }) {
     if (!editModal) return;
     const { item, value } = editModal;
     // Audit P1: validar input antes de gravar — antes "abc" virava 0 silent.
-    const parsed = parseFloat(String(value).replace(',', '.'));
+    const parsed = parseDecimalBR(value);
     if (!Number.isFinite(parsed) || parsed < 0) {
       setEditError('Digite um valor numérico válido (use vírgula para decimais).');
       return;

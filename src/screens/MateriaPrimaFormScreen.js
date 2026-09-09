@@ -20,17 +20,7 @@ import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useListDensity from '../hooks/useListDensity';
 import { t } from '../i18n/pt-BR';
-import {
-  UNIDADES_MEDIDA,
-  calcPrecoBase,
-  calcFatorCorrecao,
-  getLabelPrecoBase,
-  formatCurrency,
-  converterParaBase,
-  calcCustoIngrediente,
-  calcCustoPreparo,
-  calcMargem,
-} from '../utils/calculations';
+import { UNIDADES_MEDIDA, calcPrecoBase, calcFatorCorrecao, getLabelPrecoBase, formatCurrency, converterParaBase, calcCustoIngrediente, calcCustoPreparo, calcMargem, parseDecimalBR, calcCustoPorKgPreparo } from '../utils/calculations';
 // Sprint 2 S5 — checagem de dependências antes de DELETE (evita órfãos em preparo_ingredientes / produto_ingredientes).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 // Sessão 28.8 — sugestão automática via dicionário pré-cadastrado (zero IA, zero custo)
@@ -154,9 +144,9 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   function validateForm(f) {
     const errs = {};
     if (!f.nome.trim()) errs.nome = true;
-    if (!f.quantidade_bruta || parseFloat(String(f.quantidade_bruta).replace(',', '.')) <= 0) errs.quantidade_bruta = true;
-    if (!f.quantidade_liquida || parseFloat(String(f.quantidade_liquida).replace(',', '.')) <= 0) errs.quantidade_liquida = true;
-    if (!f.valor_pago || parseFloat(String(f.valor_pago).replace(',', '.')) <= 0) errs.valor_pago = true;
+    if (!f.quantidade_bruta || parseDecimalBR(f.quantidade_bruta) <= 0) errs.quantidade_bruta = true;
+    if (!f.quantidade_liquida || parseDecimalBR(f.quantidade_liquida) <= 0) errs.quantidade_liquida = true;
+    if (!f.valor_pago || parseDecimalBR(f.valor_pago) <= 0) errs.valor_pago = true;
     return errs;
   }
 
@@ -229,12 +219,15 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   // navegava de volta dentro dos 600ms do debounce. Resultado: preço não persistia
   // e Relatório de Insumos mostrava valor velho.
   // Agora: ao sair da tela, FLUSH o save pendente sincronicamente (best-effort).
+  const loadedRef = useRef(false);
+  useEffect(() => { loadedRef.current = loaded; }, [loaded]);
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
-        if (editId && loaded) {
+        // Audit: `loaded` aqui era o valor capturado no mount (false) → flush nunca rodava.
+        if (editId && loadedRef.current) {
           // dispara autoSave imediatamente (best-effort — se promise não completar
           // o app já está unmounting, mas o UPDATE chega no DB).
           try { autoSave(); } catch {}
@@ -339,7 +332,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   // distinguir "vazio/inválido" de "zero explícito". Use Number.isFinite() ou
   // fallback `?? 0` em cada call site.
   function parseNum(val) {
-    const n = parseFloat(String(val).replace(',', '.'));
+    const n = parseDecimalBR(val);
     return Number.isFinite(n) ? n : null;
   }
 
@@ -444,25 +437,10 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             `SELECT pi.quantidade_utilizada, pi.materia_prima_id, mp.preco_por_kg, mp.unidade_medida
              FROM preparo_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id
              WHERE pi.preparo_id = ?`, [prepId]);
-          let custoTotalPrep = 0;
-          for (const ing of (ingsPrep || [])) {
-            custoTotalPrep += calcCustoIngrediente(
-              ing.preco_por_kg || 0,
-              ing.quantidade_utilizada,
-              ing.unidade_medida || 'g',
-              ing.unidade_medida || 'g'
-            );
-          }
-          // Pega rendimento do preparo pra calcular custo_por_kg
-          const prepRow = await db.getFirstAsync(
-            'SELECT rendimento_total FROM preparos WHERE id = ?', [prepId]);
-          const rend = parseNum(prepRow?.rendimento_total) || 1;
-          const custoPorKgPrep = rend > 0 ? (custoTotalPrep / rend) * 1000 : 0;
-          await db.runAsync(
-            'UPDATE preparos SET custo_total=?, custo_por_kg=? WHERE id=?',
-            [custoTotalPrep, custoPorKgPrep, prepId]
-          );
-          // Atualiza também o "custo" individual de cada linha de preparo_ingredientes
+          // Audit C3: o total do preparo (custo_total/custo_por_kg) é recalculado
+          // por `recalcularPreparosDoInsumo` abaixo — a versão inline ignorava
+          // sub-preparos e sobrescrevia o custo com valor MENOR que o real.
+          // Aqui só atualizamos o "custo" individual de cada linha de preparo_ingredientes
           for (const ing of (ingsPrep || [])) {
             const c = calcCustoIngrediente(
               ing.preco_por_kg || 0,
@@ -476,6 +454,8 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             );
           }
         }
+        const { recalcularPreparosDoInsumo } = await import('../services/cascadeRecalc');
+        await recalcularPreparosDoInsumo(db, editId);
       } catch (cascadeErr) {
         console.warn('[MateriaPrimaForm.cascadeUpdate]', cascadeErr);
       }
@@ -537,10 +517,15 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
       if (now - lastMarginCheckRef.current >= MARGIN_CHECK_MIN_INTERVAL_MS) {
         lastMarginCheckRef.current = now;
         try {
-          const affected = await db.getAllAsync(
-            'SELECT DISTINCT p.id, p.nome, p.preco_venda FROM produto_ingredientes pi JOIN produtos p ON p.id = pi.produto_id WHERE pi.materia_prima_id = ? AND p.preco_venda > 0',
+          const affectedRaw = await db.getAllAsync(
+            'SELECT pi.produto_id, p.nome, p.preco_venda FROM produto_ingredientes pi JOIN produtos p ON p.id = pi.produto_id WHERE pi.materia_prima_id = ?',
             [editId]
           );
+          // Audit A5: filtro em coluna da tabela joinada feito em JS + dedupe por produto
+          // (antes `AND p.preco_venda > 0` no SQL → 42703 → alerta nunca aparecia).
+          const seen = new Set();
+          const affected = (affectedRaw || []).filter(r => r.preco_venda > 0 && !seen.has(r.produto_id) && seen.add(r.produto_id))
+            .map(r => ({ id: r.produto_id, nome: r.nome, preco_venda: r.preco_venda }));
           if (affected.length > 0) {
             const warnings = [];
             for (const prod of affected) {
@@ -582,7 +567,24 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   }
 
   // Salvar manual para modo criação
+  // Audit A4: guard de reentrância — sem isto, duplo clique em "Salvar Insumo"
+  // (ou Enter + clique) cria o insumo duas vezes.
+  const savingRef = useRef(false);
+  const [saving, setSaving] = useState(false);
+
   async function salvarNovo() {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      await salvarNovoImpl();
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  }
+
+  async function salvarNovoImpl() {
     const errs = validateForm(form);
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
@@ -931,7 +933,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                     quantidade_liquida: qtdLiquida,
                     categoria_id: categoria_id || p.categoria_id,
                     // só preenche se user ainda não digitou um valor manual
-                    valor_pago: (valorPagoMercado != null && (!p.valor_pago || parseFloat(String(p.valor_pago).replace(',', '.')) === 0))
+                    valor_pago: (valorPagoMercado != null && (!p.valor_pago || parseDecimalBR(p.valor_pago) === 0))
                       ? String(valorPagoMercado).replace('.', ',')
                       : p.valor_pago,
                   }));
@@ -1250,6 +1252,16 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         {/* Salvar (edição) */}
         {editId && (
           <TouchableOpacity style={styles.btnSaveEdit} onPress={async () => {
+            // Audit (e2e A8): "Salvar e voltar" clicado dentro dos 600ms do debounce
+            // DESCARTAVA a edição — o botão nunca salvava por conta própria e o flush
+            // do unmount usava `loaded` capturado como false. Agora salva explicitamente.
+            if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+            try { await autoSave(); } catch (e) {
+              if (typeof console !== 'undefined' && console.error) console.error('[MateriaPrimaForm.saveBackBtn.autoSave]', e);
+              setSaveStatus('error');
+              try { showToast('Não foi possível salvar. Tente novamente.', 'alert-circle', 4000); } catch (_) {}
+              return;
+            }
             // Registrar histórico de preço ao salvar
             // F2-J2-03 / CR-1: parseNum c/ Number.isFinite + `?? 0` (preserva fallback ql=qb)
             const vp = parseNum(formRef.current.valor_pago) ?? 0;
@@ -1340,8 +1352,11 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
               isDesktop && { maxWidth: 360, alignSelf: 'center', width: '100%' },
             ]}
             onPress={salvarNovo}
+            disabled={saving}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: saving, busy: saving }}
           >
-            <Text style={styles.btnSaveText}>Salvar Insumo</Text>
+            <Text style={styles.btnSaveText}>{saving ? 'Salvando…' : 'Salvar Insumo'}</Text>
           </TouchableOpacity>
         )}
 

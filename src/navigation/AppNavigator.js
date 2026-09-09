@@ -196,6 +196,12 @@ function HomeStack() {
         <Stack.Screen name="Configuracoes" component={ConfiguracoesScreen} options={{ title: 'Configurações' }} />
         <Stack.Screen name="MargemBaixa" component={MargemBaixaScreen} options={{ title: 'Margem Baixa' }} />
         <Stack.Screen name="ProdutoFormHome" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
+        {/* Audit A4: ProdutoForm aberto pela Home navega para estes forms (criar insumo/
+            preparo/embalagem inline, duplicar) — sem registro aqui era no-op silencioso. */}
+        <Stack.Screen name="ProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
+        <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo', presentation: 'transparentModal', headerShown: false }} />
+        <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Novo Preparo', presentation: 'transparentModal', headerShown: false }} />
+        <Stack.Screen name="EmbalagemForm" component={EmbalagemFormScreen} options={{ title: 'Nova Embalagem', presentation: 'transparentModal', headerShown: false }} />
       </Stack.Navigator>
     </StackWithBanner>
   );
@@ -244,6 +250,9 @@ function InsumosStack() {
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen name="MateriasPrimas" component={MateriasPrimasScreen} options={({ navigation }) => ({ title: 'Insumos', ...backToHomeOption(navigation) })} />
         <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Insumo', presentation: 'transparentModal', headerShown: false }} />
+        {/* Audit A4: "Dar entrada"/"Ajustar saldo" na lista de insumos (modo estoque). */}
+        <Stack.Screen name="EntradaEstoque" component={EntradaEstoqueScreen} options={{ title: 'Entrada de Estoque', presentation: 'transparentModal', headerShown: false }} />
+        <Stack.Screen name="AjusteEstoque" component={AjusteEstoqueScreen} options={{ title: 'Ajuste de Estoque', presentation: 'transparentModal', headerShown: false }} />
       </Stack.Navigator>
     </StackWithBanner>
   );
@@ -379,6 +388,11 @@ function MaisStack() {
       {/* Sprint 1 Q4 — display "Ranking de Produtos" (route name MatrizBCG mantido). */}
       <Stack.Screen name="MatrizBCG" component={MatrizBCGScreen} options={{ title: 'Ranking de Produtos' }} />
       <Stack.Screen name="BCGProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
+      {/* Audit A4: mesmos forms inline que o ProdutoForm usa (ver HomeStack). */}
+      <Stack.Screen name="ProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
+      <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo', presentation: 'transparentModal', headerShown: false }} />
+      <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Novo Preparo', presentation: 'transparentModal', headerShown: false }} />
+      <Stack.Screen name="EmbalagemForm" component={EmbalagemFormScreen} options={{ title: 'Nova Embalagem', presentation: 'transparentModal', headerShown: false }} />
       <Stack.Screen name="DeliveryHub" component={DeliveryHubScreen} options={{ title: 'Delivery' }} />
       <Stack.Screen name="DeliveryPlataformas" component={DeliveryPlataformasScreen} options={{ title: 'Plataformas' }} />
       <Stack.Screen name="DeliveryPrecos" component={DeliveryPrecosScreen} options={{ title: 'Precificação' }} />
@@ -431,7 +445,14 @@ function MainTabs({ route }) {
   const tabBarFontSize = isNarrow ? 9 : (densityCompact ? 9 : 11);
   const tabFontSize = tabBarFontSize;
 
+  // Audit A7-perf: `screenListeners.state` dispara a CADA mudança de navegação e
+  // getFinanceiroStatus faz 4 queries sequenciais — throttle de 5s (o wrapper já
+  // cacheia 2s, mas o status financeiro não muda a cada tela).
+  const lastFinCheckRef = useRef(0);
   const checkFinanceiro = useCallback(() => {
+    const now = Date.now();
+    if (now - lastFinCheckRef.current < 5000) return;
+    lastFinCheckRef.current = now;
     getFinanceiroStatus().then(s => setFinPendente(!s.completo)).catch(() => {});
   }, []);
 

@@ -54,9 +54,14 @@ function roundUpTo50(value) {
 export function normalizePlatform(plat) {
   return {
     nome: plat?.plataforma || plat?.nome || 'Plataforma',
-    comissaoPct: safeNum(plat?.comissao_app ?? plat?.taxa_plataforma) / 100,
-    descontoPct: safeNum(plat?.desconto_promocao) / 100,
-    cupomR$: safeNum(plat?.embalagem_extra),
+    // Audit (CRÍTICO delivery): semântica CANÔNICA = DeliveryPlataformasScreen /
+    // deliveryAdapter — taxa_plataforma = comissão %, comissao_app = taxa de
+    // pagamento online %, outros_perc = outras taxas %, desconto_promocao = cupom R$.
+    // Somamos os três % (todos são custos reais sobre a venda). `embalagem_extra`
+    // era o "Cupom R$" do editor antigo do Hub — mantido como fallback aditivo.
+    comissaoPct: (safeNum(plat?.taxa_plataforma) + safeNum(plat?.comissao_app) + safeNum(plat?.outros_perc)) / 100,
+    descontoPct: 0,
+    cupomR$: safeNum(plat?.desconto_promocao) + safeNum(plat?.embalagem_extra),
     taxaEntregaR$: safeNum(plat?.taxa_entrega),
   };
 }
@@ -125,13 +130,16 @@ export function sugerirPrecoDelivery({ custoUnit, plat, margemAlvo = DEFAULT_MAR
     return { precoSugerido: null, precoMinimo: null, inviavel: true, motivoInviavel: 'Custo zero ou negativo' };
   }
 
-  const numerador = p.cupomR$ * (1 - p.comissaoPct) + p.taxaEntregaR$ + custo;
+  // Audit: o modelo direto (calcResultadoDelivery) cobra comissão sobre
+  // (preço após cupom + frete) E abate o frete → o frete pesa frete×(1+comissão).
+  // Antes o numerador usava só `frete` e a margem obtida ficava abaixo do alvo.
+  const numerador = p.cupomR$ * (1 - p.comissaoPct) + p.taxaEntregaR$ * (1 + p.comissaoPct) + custo;
   const divisorAlvo = (1 - p.descontoPct) * (1 - p.comissaoPct) - m;
   const divisorMin = (1 - p.descontoPct) * (1 - p.comissaoPct);
 
   const precoSugeridoBruto = (Number.isFinite(divisorAlvo) && divisorAlvo > 0) ? numerador / divisorAlvo : null;
   const precoMinimoBruto = (Number.isFinite(divisorMin) && divisorMin > 0)
-    ? (custo + p.cupomR$ * (1 - p.comissaoPct) + p.taxaEntregaR$) / divisorMin
+    ? (custo + p.cupomR$ * (1 - p.comissaoPct) + p.taxaEntregaR$ * (1 + p.comissaoPct)) / divisorMin
     : null;
 
   const inviavel = precoSugeridoBruto === null || precoSugeridoBruto <= 0;
@@ -202,10 +210,11 @@ export function calcSugestaoDeliveryCompleta({ cmv, plat, contexto }) {
   // 1. cupomR (28.14): de desconto_promocao % pra embalagem_extra R$ (alinhar com normalizePlatform)
   // 2. comissão (28.23): UI de plataforma escreve "Comissão" em `comissao_app` (legacy nome).
   //    Engine antes usava só `taxa_plataforma` → mostrava 0%. Agora usa o fallback igual normalizePlatform.
-  const descontoPct = safe(plat?.desconto_promocao) / 100;
-  const impostoComDesconto = safe(contexto?.impostoPerc) + descontoPct;
-  // Comissão = qualquer um dos dois campos legacy (UI escreve em comissao_app; schema antigo usava taxa_plataforma)
-  const comissaoPerc = safe(plat?.comissao_app ?? plat?.taxa_plataforma) / 100;
+  // Audit: semântica canônica (ver normalizePlatform) — comissão = taxa_plataforma;
+  // taxa de pagamento online = comissao_app; cupom R$ = desconto_promocao.
+  const impostoComDesconto = safe(contexto?.impostoPerc);
+  const comissaoPerc = safe(plat?.taxa_plataforma) / 100;
+  const taxaOnlinePerc = safe(plat?.comissao_app) / 100;
   // Sessão 28.27: novo campo "Outros %" pra taxas embutidas (marketing, fundo
   // de propaganda, etc) que o user contrata com a plataforma. Soma como mais
   // um custo variável.
@@ -221,8 +230,8 @@ export function calcSugestaoDeliveryCompleta({ cmv, plat, contexto }) {
     // Sessão 28.27: usamos esse slot pra "outros %" — engine só somava esse campo
     // como variável, mesmo efeito final. Mantém compatibilidade pra simulações antigas
     // (onde outros_perc não existe → fallback 0).
-    taxaPagamentoOnlinePerc: outrosPerc,
-    cupomR: safe(plat?.embalagem_extra),
+    taxaPagamentoOnlinePerc: taxaOnlinePerc + outrosPerc,
+    cupomR: safe(plat?.desconto_promocao) + safe(plat?.embalagem_extra),
     freteSubsidiadoR: safe(plat?.taxa_entrega),
     margemSegurancaPerc: safe(contexto?.margemSegurancaPerc),
   });
@@ -255,12 +264,11 @@ export function calcSugestaoDeliveryCompleta({ cmv, plat, contexto }) {
  */
 export function calcPrecoMesmoLucroReais({ cmv, lucroAlvoReais, plat, contexto }) {
   const safe = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  const descontoPct = safe(plat?.desconto_promocao) / 100;
-  const impostoPerc = safe(contexto?.impostoPerc) + descontoPct;
-  const comissaoPerc = safe(plat?.comissao_app ?? plat?.taxa_plataforma) / 100;
+  const impostoPerc = safe(contexto?.impostoPerc);
+  const comissaoPerc = (safe(plat?.taxa_plataforma) + safe(plat?.comissao_app)) / 100;
   const outrosPerc = safe(plat?.outros_perc) / 100;
   const fixoPerc = safe(contexto?.fixoPerc);
-  const cupomR = safe(plat?.embalagem_extra);
+  const cupomR = safe(plat?.desconto_promocao) + safe(plat?.embalagem_extra);
   const freteR = safe(plat?.taxa_entrega);
 
   const variavelPerc = impostoPerc + comissaoPerc + outrosPerc;

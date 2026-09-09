@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSetupStatus } from './setupStatus';
+import { isDbErrorResult } from '../database/supabaseDb';
 
 /**
  * Determina a rota inicial do RootStack para usuários autenticados.
@@ -41,13 +42,18 @@ export async function determineInitialRoute({ skipWelcomeTour = false } = {}) {
     const db = await getDatabase();
 
     // Perfil de negócio incompleto → ProfileSetup
-    const perfil = await db.getFirstAsync('SELECT * FROM perfil LIMIT 1');
+    // Audit M5: `[]`/null por ERRO de rede não é "sem perfil" — um usuário maduro
+    // caía no onboarding a cada falha transitória. Erro → MainTabs (seguro).
+    const perfilRows = await db.getAllAsync('SELECT * FROM perfil LIMIT 1');
+    if (isDbErrorResult(perfilRows)) return 'MainTabs';
+    const perfil = perfilRows?.[0];
     if (!perfil || !perfil.nome_negocio || perfil.nome_negocio.trim() === '') {
       return 'ProfileSetup';
     }
 
     // Já tem insumos cadastrados → considera onboarding implícito
     const insumos = await db.getAllAsync('SELECT id FROM materias_primas LIMIT 1');
+    if (isDbErrorResult(insumos)) return 'MainTabs';
     if (insumos && insumos.length > 0) {
       await AsyncStorage.setItem('onboarding_done', 'true');
       return 'MainTabs';
@@ -123,12 +129,15 @@ export async function determineInitialRouteSafe({ skipWelcomeTour = false } = {}
     const { getDatabase } = require('../database/database');
     const db = await getDatabase();
 
-    const perfil = await db.getFirstAsync('SELECT * FROM perfil LIMIT 1');
+    const perfilRows = await db.getAllAsync('SELECT * FROM perfil LIMIT 1');
+    if (isDbErrorResult(perfilRows)) return { route: 'MainTabs', routeError: null };
+    const perfil = perfilRows?.[0];
     if (!perfil || !perfil.nome_negocio || perfil.nome_negocio.trim() === '') {
       return { route: 'ProfileSetup', routeError: null };
     }
 
     const insumos = await db.getAllAsync('SELECT id FROM materias_primas LIMIT 1');
+    if (isDbErrorResult(insumos)) return { route: 'MainTabs', routeError: null };
     if (insumos && insumos.length > 0) {
       await AsyncStorage.setItem('onboarding_done', 'true');
       return { route: 'MainTabs', routeError: null };

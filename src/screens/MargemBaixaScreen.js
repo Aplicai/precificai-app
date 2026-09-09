@@ -136,19 +136,24 @@ export default function MargemBaixaScreen({ navigation }) {
     setBulkError(null);
     try {
       const db = await getDatabase();
-      // Atualiza em lote dentro de uma transação para atomicidade
-      await db.execAsync('BEGIN');
-      try {
-        for (const item of previewViaveis) {
+      // Audit M1: não há transação no web (execAsync é no-op) — conta o que
+      // foi aplicado e informa falha PARCIAL com precisão em vez de fingir rollback.
+      let aplicados = 0;
+      let falha = null;
+      for (const item of previewViaveis) {
+        try {
           await db.runAsync('UPDATE produtos SET preco_venda = ? WHERE id = ?', [item.precoNovo, item.id]);
+          aplicados += 1;
+        } catch (innerErr) {
+          falha = innerErr;
+          break;
         }
-        await db.execAsync('COMMIT');
-      } catch (innerErr) {
-        await db.execAsync('ROLLBACK');
-        throw innerErr;
       }
       setBulkPreviewVisible(false);
       await loadData();
+      if (falha) {
+        throw new Error(`${aplicados} de ${previewViaveis.length} preços atualizados. Falhou em "${previewViaveis[aplicados]?.nome || ''}": ${falha?.message || 'erro'}`);
+      }
     } catch (e) {
       console.error('[MargemBaixa.applyBulkUpdate]', e);
       setBulkError(e?.message || 'Não foi possível aplicar o ajuste em massa.');

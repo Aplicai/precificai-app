@@ -17,7 +17,7 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import SearchBar from '../components/SearchBar';
-import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum } from '../utils/calculations';
+import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum, parseDecimalBR } from '../utils/calculations';
 // Sprint 2 S3 — fonte única da verdade para precificação delivery (substitui fórmula inline duplicada).
 import { calcResultadoDelivery, sugerirPrecoDelivery, calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
 // Sessão 28.12 (D-22b): adapter pra extrair imposto% das despesas variáveis
@@ -164,7 +164,7 @@ export default function DeliveryHubScreen({ navigation }) {
     setLoadError(null);
     try {
     const db = await getDatabase();
-    const [plats, prods, allIngs, allPreps, allEmbs, comboRows, comboItensRows, cfgRows, fixasRows, varsRows, fatRows] = await Promise.all([
+    const [plats, prods, allIngs, allPreps, allEmbs, comboRows, comboItensRows, mpsAll, prepsAll, embsAll, cfgRows, fixasRows, varsRows, fatRows] = await Promise.all([
       db.getAllAsync('SELECT * FROM delivery_config ORDER BY id'),
       db.getAllAsync('SELECT * FROM produtos WHERE preco_venda > 0 ORDER BY nome'),
       db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
@@ -172,6 +172,10 @@ export default function DeliveryHubScreen({ navigation }) {
       db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
       db.getAllAsync('SELECT * FROM delivery_combos ORDER BY nome'),
       db.getAllAsync('SELECT * FROM delivery_combo_itens'),
+      // Audit A9: itens de combo podem ser insumo/preparo/embalagem — não só produto.
+      db.getAllAsync('SELECT id, preco_por_kg, unidade_medida FROM materias_primas'),
+      db.getAllAsync('SELECT id, custo_por_kg FROM preparos'),
+      db.getAllAsync('SELECT id, preco_unitario FROM embalagens'),
       // Sessão 28.12 (D-22b): contexto financeiro — mesma fonte usada no balcão
       db.getAllAsync('SELECT * FROM configuracao'),
       db.getAllAsync('SELECT valor FROM despesas_fixas'),
@@ -231,7 +235,24 @@ export default function DeliveryHubScreen({ navigation }) {
 
     const comboData = (comboRows || []).filter(c => c.preco_venda > 0).map(c => {
       const itens = itensByCombo[c.id] || [];
-      const custoUnit = itens.reduce((a, item) => a + (prodCostMap[item.item_id] || 0) * (item.quantidade || 1), 0);
+      const custoUnit = itens.reduce((a, item) => {
+        const qt = item.quantidade || 1;
+        const tipo = item.tipo || 'produto';
+        if (tipo === 'produto') return a + (prodCostMap[item.item_id] || 0) * qt;
+        if (tipo === 'materia_prima') {
+          const mp = (mpsAll || []).find(m => m.id === item.item_id);
+          return a + (mp ? calcCustoIngrediente(mp.preco_por_kg || 0, qt, mp.unidade_medida || 'g', 'g') : 0);
+        }
+        if (tipo === 'preparo') {
+          const pr = (prepsAll || []).find(x => x.id === item.item_id);
+          return a + (pr ? calcCustoPreparo(pr.custo_por_kg || 0, qt, 'g') : 0);
+        }
+        if (tipo === 'embalagem') {
+          const em = (embsAll || []).find(x => x.id === item.item_id);
+          return a + (em ? (em.preco_unitario || 0) * qt : 0);
+        }
+        return a; // delivery_produto: custo não disponível nesta tela
+      }, 0);
       const margem = calcMargem(c.preco_venda, custoUnit);
       return { ...c, custoUnit, margem, isCombo: true };
     });
@@ -270,7 +291,7 @@ export default function DeliveryHubScreen({ navigation }) {
       console.error('[DeliveryHubScreen.savePlatField] campo não permitido:', field);
       return;
     }
-    const parsed = parseFloat(String(value).replace(',', '.'));
+    const parsed = parseDecimalBR(value);
     if (!Number.isFinite(parsed) || parsed < 0) {
       setSaveError('Digite um valor numérico válido (0 ou maior).');
       setTimeout(() => setSaveError(null), 4000);
@@ -413,7 +434,7 @@ export default function DeliveryHubScreen({ navigation }) {
 
   function calcCustom() {
     if (!simResult) return null;
-    const preco = parseFloat(String(precoCustom).replace(',', '.'));
+    const preco = parseDecimalBR(precoCustom);
     if (!Number.isFinite(preco) || preco <= 0) return null;
     // Sessão 28.9 — Auditoria P0-03: usar fonte canônica calcResultadoDelivery.
     // Reconstrói o `plat` shape pra alimentar a função (simResult guarda decimais já normalizados).
@@ -546,7 +567,21 @@ export default function DeliveryHubScreen({ navigation }) {
                           <Text style={styles.platFieldLabel}>Comissão (%)</Text>
                           <TextInput
                             style={styles.platInput}
-                            defaultValue={String(plat.comissao_app || plat.taxa_plataforma || 0)}
+                            defaultValue={String(plat.taxa_plataforma || 0)}
+                            keyboardType="numeric"
+                            onBlur={(e) => savePlatField(plat.id, 'taxa_plataforma', e.nativeEvent.text)}
+                            placeholder="0"
+                            placeholderTextColor={colors.placeholder}
+                          />
+                        </View>
+                        <View style={styles.platField}>
+                          {/* Audit: mesmos campos/colunas da tela Plataformas (antes este editor
+                              gravava "Comissão" em comissao_app e "Cupom" em embalagem_extra —
+                              semântica oposta à do motor de preço). */}
+                          <Text style={styles.platFieldLabel}>Taxa pgto. online (%)</Text>
+                          <TextInput
+                            style={styles.platInput}
+                            defaultValue={String(plat.comissao_app || 0)}
                             keyboardType="numeric"
                             onBlur={(e) => savePlatField(plat.id, 'comissao_app', e.nativeEvent.text)}
                             placeholder="0"
@@ -554,7 +589,7 @@ export default function DeliveryHubScreen({ navigation }) {
                           />
                         </View>
                         <View style={styles.platField}>
-                          <Text style={styles.platFieldLabel}>Taxa entrega (R$)</Text>
+                          <Text style={styles.platFieldLabel}>Frete subsidiado (R$)</Text>
                           <TextInput
                             style={styles.platInput}
                             defaultValue={String(plat.taxa_entrega || 0)}
@@ -565,23 +600,12 @@ export default function DeliveryHubScreen({ navigation }) {
                           />
                         </View>
                         <View style={styles.platField}>
-                          <Text style={styles.platFieldLabel}>Desconto promo (%)</Text>
+                          <Text style={styles.platFieldLabel}>Cupom recorrente (R$)</Text>
                           <TextInput
                             style={styles.platInput}
                             defaultValue={String(plat.desconto_promocao || 0)}
                             keyboardType="numeric"
                             onBlur={(e) => savePlatField(plat.id, 'desconto_promocao', e.nativeEvent.text)}
-                            placeholder="0"
-                            placeholderTextColor={colors.placeholder}
-                          />
-                        </View>
-                        <View style={styles.platField}>
-                          <Text style={styles.platFieldLabel}>Cupom em R$</Text>
-                          <TextInput
-                            style={styles.platInput}
-                            defaultValue={String(plat.embalagem_extra || 0)}
-                            keyboardType="numeric"
-                            onBlur={(e) => savePlatField(plat.id, 'embalagem_extra', e.nativeEvent.text)}
                             placeholder="0"
                             placeholderTextColor={colors.placeholder}
                           />
@@ -1115,7 +1139,7 @@ export default function DeliveryHubScreen({ navigation }) {
                 {precosProdutos.map((p, idx) => {
                   const balcao = typeof p.preco_venda === 'number' ? p.preco_venda : Number(p.preco_venda) || 0;
                   const valorAtual = precosMap[p.id] || '';
-                  const num = parseFloat(String(valorAtual).replace(',', '.'));
+                  const num = parseDecimalBR(valorAtual);
                   const tem = Number.isFinite(num) && num > 0;
                   return (
                     <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4, borderRadius: 6, backgroundColor: idx % 2 === 0 ? 'transparent' : colors.background }}>

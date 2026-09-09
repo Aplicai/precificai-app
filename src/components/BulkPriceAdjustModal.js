@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import { parseDecimalBROrZero } from '../utils/calculations';
 
 /**
  * BulkPriceAdjustModal — modal de reajuste de preço em massa.
@@ -32,9 +33,9 @@ export default function BulkPriceAdjustModal({
   const [valueStr, setValueStr] = useState('');
 
   const numeric = useMemo(() => {
-    const cleaned = (valueStr || '').replace(',', '.').replace(/[^\d.]/g, '');
-    const n = parseFloat(cleaned);
-    return isNaN(n) ? 0 : n;
+    // Audit M8: "1.000,00" virava 1 (reajuste fixo de R$ 1 em massa).
+    const n = parseDecimalBROrZero(String(valueStr || '').replace(/[^\d.,-]/g, ''));
+    return Number.isFinite(n) ? Math.abs(n) : 0;
   }, [valueStr]);
 
   const canConfirm = numeric > 0;
