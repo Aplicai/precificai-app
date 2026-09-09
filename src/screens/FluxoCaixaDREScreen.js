@@ -17,7 +17,7 @@
  * Preserva: schema `fluxo_caixa_movimentos`, 2 tabs (Fluxo / DRE),
  * feature flag externo (`useFeatureFlags().dreFluxoCaixa`), navegação.
  */
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, Modal, Platform,
   TextInput, ActivityIndicator, StyleSheet,
@@ -35,6 +35,8 @@ import UndoToast from '../components/UndoToast';
 import useUndoableDelete from '../hooks/useUndoableDelete';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { showToast } from '../utils/toastBus';
+import { isDbErrorResult } from '../database/supabaseDb';
+import useFeatureFlags from '../hooks/useFeatureFlags';
 
 // ---------- helpers ----------
 
@@ -119,6 +121,9 @@ const CATEGORIAS_SAIDA = [
 // ============================================================
 export default function FluxoCaixaDREScreen() {
   const { isDesktop } = useResponsiveLayout();
+  // Audit ALTO: a rota é registrada pra todo mundo e entra na restauração de
+  // última tela — o gate beta só escondia o item de menu. Gate na própria tela.
+  const featureFlags = useFeatureFlags();
   const [activeTab, setActiveTab] = useState('fluxo');
   const [monthKey, setMonthKey] = useState(() => getMonthKey(new Date()));
   const [loading, setLoading] = useState(true);
@@ -196,13 +201,29 @@ export default function FluxoCaixaDREScreen() {
 
   useFocusEffect(useCallback(() => { reloadMovimentos(); }, [reloadMovimentos]));
 
+  // Audit: sentinel para distinguir "erro na leitura" de "linha inexistente".
+  const ERR = React.useRef({ __err: true }).current;
+  const [despesasFixasErro, setDespesasFixasErro] = useState(false);
+  const [dreErro, setDreErro] = useState(false);
+  const [salvandoMov, setSalvandoMov] = useState(false);
+  const dreErroRef = useRef(false);
+  useEffect(() => { dreErroRef.current = dreErro; }, [dreErro]);
+
   // ---------- LOAD DESPESAS FIXAS (Financeiro) ----------
   const reloadDespesasFixas = useCallback(async () => {
     try {
       const db = await getDatabase();
-      const rows = await db.getAllAsync('SELECT * FROM despesas_fixas').catch(() => []);
-      setDespesasFixasList(rows || []);
-      const total = (rows || []).reduce((s, d) => s + safeNum(d.valor), 0);
+      const rows = await db.getAllAsync('SELECT * FROM despesas_fixas').catch(() => null);
+      // Audit CRÍTICO: `[]` por ERRO de rede era indistinguível de "sem despesas"
+      // → o toggle "usar do Financeiro" sincronizava 0 no campo → o autosave
+      // gravava ZERO em dre_mensal, corrompendo a DRE real do mês.
+      if (rows == null || isDbErrorResult(rows)) {
+        setDespesasFixasErro(true);
+        return;
+      }
+      setDespesasFixasErro(false);
+      setDespesasFixasList(rows);
+      const total = rows.reduce((s, d) => s + safeNum(d.valor), 0);
       setDespesasFixasFromFinanceiro(total);
     } catch (e) {
       console.warn('[FluxoCaixaDRE.despesasFixas]', e?.message || e);
@@ -213,6 +234,8 @@ export default function FluxoCaixaDREScreen() {
 
   // Se o toggle "Usar do Financeiro" está ligado, sincroniza o campo.
   useEffect(() => {
+    // Não sincroniza enquanto a leitura do Financeiro estiver falhando (evita 0).
+    if (despesasFixasErro) return;
     if (useFixasFromFinanceiro) {
       setDre(prev => ({
         ...prev,
@@ -232,8 +255,16 @@ export default function FluxoCaixaDREScreen() {
       setDreLoaded(false);
       try {
         const db = await getDatabase();
-        const row = await db.getFirstAsync('SELECT * FROM dre_mensal WHERE mes = ?', [monthKey]).catch(() => null);
+        const row = await db.getFirstAsync('SELECT * FROM dre_mensal WHERE mes = ?', [monthKey]).catch(() => ERR);
         if (cancelled) return;
+        // Audit CRÍTICO: falha na leitura resetava a UI para `emptyDre` e o
+        // autosave sobrescrevia o mês com zeros. Agora: mantém a tela como está
+        // e NÃO libera o autosave (dreLoaded continua false).
+        if (row === ERR || isDbErrorResult(row)) {
+          setDreErro(true);
+          return;
+        }
+        setDreErro(false);
         if (row) {
           const fmt = (n) => (safeNum(n) ? formatBRNumber(n) : '');
           setDre({
@@ -253,8 +284,9 @@ export default function FluxoCaixaDREScreen() {
         }
       } catch (e) {
         console.warn('[FluxoCaixaDRE.loadDre]', e?.message || e);
+        if (!cancelled) { setDreErro(true); return; }
       } finally {
-        if (!cancelled) setDreLoaded(true);
+        if (!cancelled && !dreErroRef.current) setDreLoaded(true);
       }
     })();
     return () => { cancelled = true; };
@@ -306,7 +338,9 @@ export default function FluxoCaixaDREScreen() {
   // sobrescrever com estado vazio durante a troca de mês. UPSERT manual
   // (SELECT→UPDATE/INSERT) porque o wrapper SQL→Supabase não suporta ON CONFLICT.
   useEffect(() => {
-    if (!dreLoaded) return;
+    // Audit: nunca grava enquanto a leitura do mês (ou do Financeiro) falhou —
+    // salvar aqui sobrescreveria dados reais com zeros.
+    if (!dreLoaded || dreErro || despesasFixasErro) return;
     const t = setTimeout(async () => {
       try {
         const db = await getDatabase();
@@ -332,7 +366,7 @@ export default function FluxoCaixaDREScreen() {
       }
     }, 800);
     return () => clearTimeout(t);
-  }, [dreNum, useFixasFromFinanceiro, dreLoaded, monthKey]);
+  }, [dreNum, useFixasFromFinanceiro, dreLoaded, dreErro, despesasFixasErro, monthKey]);
 
   // ---------- FORM helpers ----------
   function abrirNovo() {
@@ -368,12 +402,19 @@ export default function FluxoCaixaDREScreen() {
     return Object.keys(errs).length === 0;
   }
 
+  const salvandoMovRef = useRef(false);
+
   async function salvarMovimento() {
+    // Audit ALTO: sem guard, duplo clique criava o lançamento duas vezes
+    // (fluxo_caixa_movimentos não tem constraint de unicidade).
+    if (salvandoMovRef.current) return;
     if (!validateForm()) {
       showToast('Verifique os campos do formulário', 'alert-triangle');
       return;
     }
     const valor = parseDecimalBROrZero(formValor);
+    salvandoMovRef.current = true;
+    setSalvandoMov(true);
     try {
       const db = await getDatabase();
       const isEdit = !!editing?.id;
@@ -393,9 +434,10 @@ export default function FluxoCaixaDREScreen() {
       await reloadMovimentos();
     } catch (e) {
       console.error('[FluxoCaixaDRE.salvar]', e);
-      if (typeof window !== 'undefined' && window.alert) {
-        window.alert('Erro ao salvar movimento: ' + (e?.message || ''));
-      }
+      showToast('Não foi possível salvar o movimento. Tente de novo.', 'alert-circle', 4000);
+    } finally {
+      salvandoMovRef.current = false;
+      setSalvandoMov(false);
     }
   }
 
@@ -482,6 +524,20 @@ export default function FluxoCaixaDREScreen() {
   // ============================================================
   // RENDER
   // ============================================================
+  if (!featureFlags.loading && !featureFlags.dreFluxoCaixa) {
+    return (
+      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center', padding: 24 }]}>
+        <Feather name="lock" size={32} color={colors.textSecondary} />
+        <Text style={{ marginTop: 12, fontSize: 16, fontFamily: fontFamily.semiBold, color: colors.text, textAlign: 'center' }}>
+          Fluxo de Caixa + DRE está em testes
+        </Text>
+        <Text style={{ marginTop: 6, fontSize: 13, color: colors.textSecondary, textAlign: 'center', maxWidth: 340 }}>
+          Esta função ainda está sendo liberada aos poucos. Fale com o suporte se quiser participar do teste.
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.pageShell}>
@@ -709,10 +765,13 @@ export default function FluxoCaixaDREScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={salvarMovimento}
-                style={[styles.btn, styles.btnPrimary]}
+                disabled={salvandoMov}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: salvandoMov, busy: salvandoMov }}
+                style={[styles.btn, styles.btnPrimary, salvandoMov && { opacity: 0.6 }]}
               >
                 <Feather name="check" size={16} color="#fff" />
-                <Text style={styles.btnPrimaryText}>Salvar</Text>
+                <Text style={styles.btnPrimaryText}>{salvandoMov ? 'Salvando…' : 'Salvar'}</Text>
               </TouchableOpacity>
             </View>
           </View>

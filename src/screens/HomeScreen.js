@@ -114,14 +114,16 @@ export default function HomeScreen({ navigation }) {
     try {
       const db = await getDatabase();
 
-      // Load ALL data in a single parallel batch
-      const [insumosR, embsR, prepsR, prodsR, delProdsR, combosR, fixas, variaveis, fat, allProdIngs, allProdEmbs, allProdPreps, configs] = await Promise.all([
-        db.getAllAsync('SELECT * FROM materias_primas'),
-        db.getAllAsync('SELECT * FROM embalagens'),
-        db.getAllAsync('SELECT * FROM preparos'),
+      // Load ALL data in a single parallel batch.
+      // Audit perf: contadores usam COUNT(*) (head request) em vez de baixar a
+      // tabela inteira só p/ `.length` — com 2.400 insumos isso era MBs por load.
+      const [insumosN, embsN, prepsN, prodsR, delProdsN, combosN, fixas, variaveis, fat, allProdIngs, allProdEmbs, allProdPreps, configs] = await Promise.all([
+        db.getFirstAsync('SELECT COUNT(*) as n FROM materias_primas').then(r => r?.n || 0),
+        db.getFirstAsync('SELECT COUNT(*) as n FROM embalagens').then(r => r?.n || 0),
+        db.getFirstAsync('SELECT COUNT(*) as n FROM preparos').then(r => r?.n || 0),
         db.getAllAsync('SELECT * FROM produtos'),
-        db.getAllAsync('SELECT * FROM delivery_produtos'),
-        db.getAllAsync('SELECT * FROM delivery_combos'),
+        db.getFirstAsync('SELECT COUNT(*) as n FROM delivery_produtos').then(r => r?.n || 0),
+        db.getFirstAsync('SELECT COUNT(*) as n FROM delivery_combos').then(r => r?.n || 0),
         db.getAllAsync('SELECT * FROM despesas_fixas'),
         db.getAllAsync('SELECT * FROM despesas_variaveis'),
         db.getAllAsync('SELECT * FROM faturamento_mensal'),
@@ -150,15 +152,15 @@ export default function HomeScreen({ navigation }) {
       };
       setFinStatus(status);
 
-      const deliveryOk = delProdsR.length > 0 || combosR.length > 0;
+      const deliveryOk = delProdsN > 0 || combosN > 0;
       const setupEtapas = [
         { key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign', desc: 'Configure markup, despesas e margem de lucro', done: finCompleto, obrigatoria: true, tab: 'Financeiro', progresso: finConcluidas / 4 },
-        { key: 'insumos', label: 'Insumos', icon: 'shopping-bag', desc: 'Cadastre suas matérias-primas', done: insumosR.length > 0, tab: 'Insumos', count: insumosR.length },
-        { key: 'embalagens', label: 'Embalagens', icon: 'package', desc: 'Cadastre embalagens', done: embsR.length > 0, tab: 'Embalagens', count: embsR.length },
-        { key: 'preparos', label: 'Preparos', icon: 'layers', desc: 'Cadastre receitas base', done: prepsR.length > 0, tab: 'Preparos', count: prepsR.length },
+        { key: 'insumos', label: 'Insumos', icon: 'shopping-bag', desc: 'Cadastre suas matérias-primas', done: insumosN > 0, tab: 'Insumos', count: insumosN },
+        { key: 'embalagens', label: 'Embalagens', icon: 'package', desc: 'Cadastre embalagens', done: embsN > 0, tab: 'Embalagens', count: embsN },
+        { key: 'preparos', label: 'Preparos', icon: 'layers', desc: 'Cadastre receitas base', done: prepsN > 0, tab: 'Preparos', count: prepsN },
         { key: 'produtos', label: 'Produtos', icon: 'box', desc: 'Monte fichas técnicas', done: prodsR.length > 0, tab: 'Produtos', count: prodsR.length },
         // Sessão 26 — etapa de Delivery só aparece se user marcou que faz delivery
-        ...(usaDelivery ? [{ key: 'delivery', label: 'Delivery', icon: 'truck', desc: 'Configure delivery', done: deliveryOk, tab: 'Delivery', count: delProdsR.length + combosR.length }] : []),
+        ...(usaDelivery ? [{ key: 'delivery', label: 'Delivery', icon: 'truck', desc: 'Configure delivery', done: deliveryOk, tab: 'Delivery', count: delProdsN + combosN }] : []),
       ];
       const setupConcluidas = setupEtapas.filter(e => e.done).length;
       const setup = {
@@ -168,11 +170,11 @@ export default function HomeScreen({ navigation }) {
       };
       setSetupStatus(setup);
 
-      const totalInsumos = insumosR.length;
-      const totalEmbalagens = embsR.length;
-      const totalPreparos = prepsR.length;
+      const totalInsumos = insumosN;
+      const totalEmbalagens = embsN;
+      const totalPreparos = prepsN;
       const totalProdutos = prodsR.length;
-      const impactoDelivery = delProdsR.length + combosR.length;
+      const impactoDelivery = delProdsN + combosN;
 
       const totalFixas = fixas.reduce((a, x) => a + (x.valor || 0), 0);
       const totalVar = variaveis.reduce((a, x) => a + (x.percentual || 0), 0);

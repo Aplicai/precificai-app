@@ -126,6 +126,9 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   // o campo OU digitar nome que casa com canonical DIFERENTE.
   const [sugestaoDispensadaPara, setSugestaoDispensadaPara] = useState(null);
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
+  // Audit UX: formulário COMPLETO mas não salvo também precisa confirmar a saída
+  // (antes só o incompleto avisava — clicar fora descartava o trabalho em silêncio).
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   const [historicoPrecos, setHistoricoPrecos] = useState([]);
   const pendingNavAction = useRef(null);
 
@@ -192,7 +195,12 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         setErrors(validateForm(f));
         pendingNavAction.current = e.data.action;
         setShowIncompleteModal(true);
+        return;
       }
+      // Completo, porém ainda NÃO salvo (modo criar): confirma antes de perder.
+      e.preventDefault();
+      pendingNavAction.current = e.data.action;
+      setShowUnsavedModal(true);
     });
     return unsubscribe;
   }, [navigation, editId]);
@@ -773,7 +781,23 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
 
   function handleContinueEditing() {
     setShowIncompleteModal(false);
+    setShowUnsavedModal(false);
     pendingNavAction.current = null;
+  }
+
+  // Audit UX — modal "tem dados não salvos" (form completo, modo criar).
+  function handleDiscardAndExit() {
+    setShowUnsavedModal(false);
+    allowExit.current = true;
+    const action = pendingNavAction.current;
+    pendingNavAction.current = null;
+    if (action) navigation.dispatch(action); else navigation.goBack();
+  }
+
+  async function handleSaveAndExit() {
+    setShowUnsavedModal(false);
+    // salvarNovo já navega de volta (e seta allowExit) quando dá certo.
+    await salvarNovo();
   }
 
   async function solicitarExclusao() {
@@ -1453,6 +1477,32 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
       />
 
       {/* Modal de campos incompletos */}
+      <Modal visible={showUnsavedModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.incompleteModal}>
+            <View style={[styles.incompleteIconCircle, { backgroundColor: colors.primary + '15' }]}>
+              <Feather name="save" size={28} color={colors.primary} />
+            </View>
+            <Text style={styles.incompleteTitle}>Salvar antes de sair?</Text>
+            <Text style={styles.incompleteDesc}>
+              Você preencheu este insumo mas ainda não salvou. Se sair agora, os dados serão perdidos.
+            </Text>
+            <TouchableOpacity style={styles.incompleteBtnEdit} onPress={handleSaveAndExit} activeOpacity={0.7}>
+              <Feather name="check" size={15} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.incompleteBtnEditText}>Salvar e sair</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.incompleteBtnEdit} onPress={handleContinueEditing} activeOpacity={0.7}>
+              <Feather name="edit-2" size={15} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.incompleteBtnEditText}>Continuar editando</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.incompleteBtnDelete} onPress={handleDiscardAndExit} activeOpacity={0.7}>
+              <Feather name="x" size={15} color={colors.error} style={{ marginRight: 6 }} />
+              <Text style={styles.incompleteBtnDeleteText}>Descartar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={showIncompleteModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.incompleteModal}>

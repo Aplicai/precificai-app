@@ -3,39 +3,23 @@ import { getDatabase } from '../database/database';
 export async function getFinanceiroStatus() {
   const db = await getDatabase();
 
-  let lucroOk = false;
-  let configData = null;
+  // Audit perf: eram 4 queries SEQUENCIAIS de tabela inteira, disparadas a cada
+  // mudança de navegação (screenListeners) e pelos banners. Agora: paralelo + COUNT(*).
+  let lucroOk = false, faturamentoOk = false, fixasOk = false, variaveisOk = false;
   try {
-    const configs = await db.getAllAsync('SELECT * FROM configuracao');
-    configData = configs?.[0];
-    lucroOk = configData != null && configData.lucro_desejado > 0;
+    const n = (sql) => db.getFirstAsync(sql).then(r => r?.n || 0);
+    const [config, fatN, fixasN, variaveisN] = await Promise.all([
+      db.getFirstAsync('SELECT * FROM configuracao LIMIT 1'),
+      n('SELECT COUNT(*) as n FROM faturamento_mensal WHERE valor > 0'),
+      n('SELECT COUNT(*) as n FROM despesas_fixas'),
+      n('SELECT COUNT(*) as n FROM despesas_variaveis'),
+    ]);
+    lucroOk = config != null && config.lucro_desejado > 0;
+    faturamentoOk = fatN >= 1;
+    fixasOk = fixasN > 0;
+    variaveisOk = variaveisN > 0;
   } catch (err) {
-    if (__DEV__) console.warn('Error checking config:', err.message);
-  }
-
-  let faturamentoOk = false;
-  try {
-    const fat = await db.getAllAsync('SELECT * FROM faturamento_mensal');
-    const mesesPreenchidos = fat.filter(f => f.valor > 0).length;
-    faturamentoOk = mesesPreenchidos >= 1;
-  } catch (err) {
-    if (__DEV__) console.warn('Error checking faturamento:', err.message);
-  }
-
-  let fixasOk = false;
-  try {
-    const fixas = await db.getAllAsync('SELECT * FROM despesas_fixas');
-    fixasOk = fixas.length > 0;
-  } catch (err) {
-    if (__DEV__) console.warn('Error checking fixas:', err.message);
-  }
-
-  let variaveisOk = false;
-  try {
-    const variaveis = await db.getAllAsync('SELECT * FROM despesas_variaveis');
-    variaveisOk = variaveis.length > 0;
-  } catch (err) {
-    if (__DEV__) console.warn('Error checking variaveis:', err.message);
+    if (__DEV__) console.warn('[financeiroStatus]', err?.message);
   }
 
   const etapas = [

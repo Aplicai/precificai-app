@@ -17,7 +17,6 @@ import { useAuth } from '../contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import LoginScreen from '../screens/LoginScreen';
-import RegisterScreen from '../screens/RegisterScreen';
 import ForgotPasswordScreen from '../screens/ForgotPasswordScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 // Sessão 28.8 — LandingScreen NÃO é importada porque a landing fica em
@@ -40,36 +39,64 @@ import DeliveryHubScreen from '../screens/DeliveryHubScreen';
 import DeliveryPlataformasScreen from '../screens/DeliveryPlataformasScreen';
 import DeliveryPrecosScreen from '../screens/DeliveryPrecosScreen';
 import DeliveryProdutosScreen from '../screens/DeliveryProdutosScreen';
-import DeliveryCombosScreen from '../screens/DeliveryCombosScreen';
 import MaisScreen from '../screens/MaisScreen';
 import AtualizarPrecosScreen from '../screens/AtualizarPrecosScreen';
-import SimuladorScreen from '../screens/SimuladorScreen';
 // APP-28: simulador em lote (todos produtos × todas plataformas em uma tela)
-import SimuladorLoteScreen from '../screens/SimuladorLoteScreen';
 // Sessão 28.40: RelatorioSimples e RelatorioInsumos foram unificados em RelatoriosHub.
 // Imports legados removidos — RelatoriosHubScreen importa os dois internamente.
-import RelatoriosHubScreen from '../screens/RelatoriosHubScreen';
-import FornecedoresScreen from '../screens/FornecedoresScreen';
-import PrecosPlataformaScreen from '../screens/PrecosPlataformaScreen';
-import SimulacaoProdutoScreen from '../screens/SimulacaoProdutoScreen';
 import ListaComprasScreen from '../screens/ListaComprasScreen';
-import KitInicioScreen from '../screens/KitInicioScreen';
-import WelcomeTourScreen from '../screens/WelcomeTourScreen';
-import SobreScreen from '../screens/SobreScreen';
 import ContaSegurancaScreen from '../screens/ContaSegurancaScreen';
 import PerfilScreen from '../screens/PerfilScreen';
 import MargemBaixaScreen from '../screens/MargemBaixaScreen';
-import ExportPDFScreen from '../screens/ExportPDFScreen';
-import SuporteScreen from '../screens/SuporteScreen';
-import EntradaEstoqueScreen from '../screens/EntradaEstoqueScreen';
-import AjusteEstoqueScreen from '../screens/AjusteEstoqueScreen';
-import NotificacoesScreen from '../screens/NotificacoesScreen';
-import ComparativoCanaisScreen from '../screens/ComparativoCanaisScreen';
-import TermosScreen from '../screens/TermosScreen';
-import PrivacidadeScreen from '../screens/PrivacidadeScreen';
 // Feature beta — só visível pra emails com whitelist + toggle ativo (ver useFeatureFlags).
-import FluxoCaixaDREScreen from '../screens/FluxoCaixaDREScreen';
 
+
+
+// ── Code-splitting (audit perf) ────────────────────────────────────────────
+// O bundle web era um único arquivo de 5,4 MB. Telas pesadas ou pouco usadas
+// (kit com 270 KB de templates, cadastro com zxcvbn, simulador com chart-kit,
+// relatórios, DRE) viram chunks carregados sob demanda. `lazyScreen` mantém a
+// identidade do componente estável (exigência do React Navigation) e mostra o
+// Loader enquanto o chunk baixa.
+function lazyScreen(factory) {
+  const LazyComp = React.lazy(factory);
+  return function LazyScreenWrapper(props) {
+    return (
+      <React.Suspense fallback={<ScreenFallback />}>
+        <LazyComp {...props} />
+      </React.Suspense>
+    );
+  };
+}
+
+function ScreenFallback() {
+  return (
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
+      <ActivityIndicator size="large" color={colors.primary} />
+    </View>
+  );
+}
+
+const RelatoriosHubScreen = lazyScreen(() => import('../screens/RelatoriosHubScreen'));
+const RegisterScreen = lazyScreen(() => import('../screens/RegisterScreen'));
+const KitInicioScreen = lazyScreen(() => import('../screens/KitInicioScreen'));
+const SimuladorScreen = lazyScreen(() => import('../screens/SimuladorScreen'));
+const SimuladorLoteScreen = lazyScreen(() => import('../screens/SimuladorLoteScreen'));
+const FluxoCaixaDREScreen = lazyScreen(() => import('../screens/FluxoCaixaDREScreen'));
+const ExportPDFScreen = lazyScreen(() => import('../screens/ExportPDFScreen'));
+const DeliveryCombosScreen = lazyScreen(() => import('../screens/DeliveryCombosScreen'));
+const WelcomeTourScreen = lazyScreen(() => import('../screens/WelcomeTourScreen'));
+const SobreScreen = lazyScreen(() => import('../screens/SobreScreen'));
+const TermosScreen = lazyScreen(() => import('../screens/TermosScreen'));
+const PrivacidadeScreen = lazyScreen(() => import('../screens/PrivacidadeScreen'));
+const SuporteScreen = lazyScreen(() => import('../screens/SuporteScreen'));
+const FornecedoresScreen = lazyScreen(() => import('../screens/FornecedoresScreen'));
+const ComparativoCanaisScreen = lazyScreen(() => import('../screens/ComparativoCanaisScreen'));
+const SimulacaoProdutoScreen = lazyScreen(() => import('../screens/SimulacaoProdutoScreen'));
+const PrecosPlataformaScreen = lazyScreen(() => import('../screens/PrecosPlataformaScreen'));
+const NotificacoesScreen = lazyScreen(() => import('../screens/NotificacoesScreen'));
+const AjusteEstoqueScreen = lazyScreen(() => import('../screens/AjusteEstoqueScreen'));
+const EntradaEstoqueScreen = lazyScreen(() => import('../screens/EntradaEstoqueScreen'));
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();

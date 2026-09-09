@@ -3,39 +3,35 @@ import { getDatabase } from '../database/database';
 export async function getSetupStatus() {
   const db = await getDatabase();
 
-  // Financeiro
-  const configs = await db.getAllAsync('SELECT * FROM configuracao');
-  const config = configs?.[0];
+  // Audit perf: eram 10 queries SEQUENCIAIS trazendo tabelas INTEIRAS só p/
+  // `.length` (com 2.400 insumos, MBs por chamada — e esta função roda no boot
+  // e a cada mudança de navegação). Agora: paralelo + COUNT(*).
+  const n = (sql) => db.getFirstAsync(sql).then(r => r?.n || 0);
+  const [config, fatOkN, fixasN, variaveisN, insumosN, embalagensN, preparosN, produtosN, delProdsN, combosN] = await Promise.all([
+    db.getFirstAsync('SELECT * FROM configuracao LIMIT 1'),
+    n('SELECT COUNT(*) as n FROM faturamento_mensal WHERE valor > 0'),
+    n('SELECT COUNT(*) as n FROM despesas_fixas'),
+    n('SELECT COUNT(*) as n FROM despesas_variaveis'),
+    n('SELECT COUNT(*) as n FROM materias_primas'),
+    n('SELECT COUNT(*) as n FROM embalagens'),
+    n('SELECT COUNT(*) as n FROM preparos'),
+    n('SELECT COUNT(*) as n FROM produtos'),
+    n('SELECT COUNT(*) as n FROM delivery_produtos'),
+    n('SELECT COUNT(*) as n FROM delivery_combos'),
+  ]);
+
   const lucroOk = config != null && config.lucro_desejado != null;
-  const fat = await db.getAllAsync('SELECT * FROM faturamento_mensal');
-  const faturamentoOk = fat.filter(f => f.valor > 0).length >= 1;
-  const fixas = await db.getAllAsync('SELECT * FROM despesas_fixas');
-  const fixasOk = fixas.length > 0;
-  const variaveis = await db.getAllAsync('SELECT * FROM despesas_variaveis');
-  const variaveisOk = variaveis.length > 0;
+  const faturamentoOk = fatOkN >= 1;
+  const fixasOk = fixasN > 0;
+  const variaveisOk = variaveisN > 0;
   const financeiroCompleto = lucroOk && faturamentoOk && fixasOk && variaveisOk;
   const financeiroProgresso = [lucroOk, faturamentoOk, fixasOk, variaveisOk].filter(Boolean).length / 4;
 
-  // Insumos
-  const insumos = await db.getAllAsync('SELECT * FROM materias_primas');
-  const insumosOk = insumos.length > 0;
-
-  // Embalagens
-  const embalagens = await db.getAllAsync('SELECT * FROM embalagens');
-  const embalagensOk = embalagens.length > 0;
-
-  // Preparos
-  const preparos = await db.getAllAsync('SELECT * FROM preparos');
-  const preparosOk = preparos.length > 0;
-
-  // Produtos
-  const produtos = await db.getAllAsync('SELECT * FROM produtos');
-  const produtosOk = produtos.length > 0;
-
-  // Delivery
-  const delProds = await db.getAllAsync('SELECT * FROM delivery_produtos');
-  const combos = await db.getAllAsync('SELECT * FROM delivery_combos');
-  const deliveryOk = delProds.length > 0 || combos.length > 0;
+  const insumosOk = insumosN > 0;
+  const embalagensOk = embalagensN > 0;
+  const preparosOk = preparosN > 0;
+  const produtosOk = produtosN > 0;
+  const deliveryOk = delProdsN > 0 || combosN > 0;
 
   const etapas = [
     {
@@ -54,31 +50,31 @@ export async function getSetupStatus() {
       key: 'insumos', label: 'Insumos', icon: 'shopping-bag',
       desc: 'Cadastre suas matérias-primas e ingredientes',
       done: insumosOk, obrigatoria: false, tab: 'Insumos',
-      count: insumos.length,
+      count: insumosN,
     },
     {
       key: 'embalagens', label: 'Embalagens', icon: 'package',
       desc: 'Cadastre embalagens e itens de apresentação',
       done: embalagensOk, obrigatoria: false, tab: 'Embalagens',
-      count: embalagens.length,
+      count: embalagensN,
     },
     {
       key: 'preparos', label: 'Preparos', icon: 'layers',
       desc: 'Cadastre receitas base e pré-preparos',
       done: preparosOk, obrigatoria: false, tab: 'Preparos',
-      count: preparos.length,
+      count: preparosN,
     },
     {
       key: 'produtos', label: 'Produtos', icon: 'box',
       desc: 'Monte fichas técnicas e defina preços',
       done: produtosOk, obrigatoria: false, tab: 'Produtos',
-      count: produtos.length,
+      count: produtosN,
     },
     {
       key: 'delivery', label: 'Delivery', icon: 'truck',
       desc: 'Configure plataformas e preços de delivery',
       done: deliveryOk, obrigatoria: false, tab: 'Delivery',
-      count: delProds.length + combos.length,
+      count: delProdsN + combosN,
     },
   ];
 

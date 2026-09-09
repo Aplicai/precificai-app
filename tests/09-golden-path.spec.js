@@ -29,9 +29,16 @@ const { waitForAppLoad, goToTab } = require('./helpers');
 const glyphs = require('@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps/Feather.json');
 
 const ICON = { plus: String.fromCodePoint(glyphs.plus) };
-const N = { farinha: 'E2E-Farinha', massa: 'E2E-Massa', bolo: 'E2E-Bolo' };
+// Sufixo único por execução: se um cleanup anterior falhar (rede/UI), o resíduo
+// `E2E-Farinha` de outra rodada — que o passo 4 deixa a R$ 10,00/kg — não é
+// escolhido no lugar do insumo recém-criado (flake que dava custo R$ 5,00).
+const RUN = String(Date.now()).slice(-5);
+const N = { farinha: `E2E-Farinha-${RUN}`, massa: `E2E-Massa-${RUN}`, bolo: `E2E-Bolo-${RUN}` };
 
-test.describe.configure({ mode: 'serial' });
+// `retries: 1` — a cascata (passo 4) depende de recálculo assíncrono no
+// servidor; sob carga (5 workers rodando as outras specs na MESMA conta) o
+// primeiro assert pode chegar antes da propagação.
+test.describe.configure({ mode: 'serial', retries: 1 });
 
 // ───────────────────────────── helpers ─────────────────────────────
 
