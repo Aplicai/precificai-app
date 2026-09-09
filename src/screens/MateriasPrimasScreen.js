@@ -17,6 +17,7 @@ const MARCA_VALOR_ESTIMADO = '__VALOR_ESTIMADO_KIT__';
 const isMarcaEstimada = (m) => m === MARCA_VALOR_ESTIMADO;
 const marcaVisivel = (m) => (m && !isMarcaEstimada(m) ? m : '');
 import SearchBar from '../components/SearchBar';
+import PrecosZeradosBanner from '../components/PrecosZeradosBanner';
 import EmptyState from '../components/EmptyState';
 import Skeleton from '../components/Skeleton';
 import UndoToast from '../components/UndoToast';
@@ -592,6 +593,9 @@ export default function MateriasPrimasScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      {/* UX audit 09/09: aviso de preços estimados abaixo do header (era global). */}
+      <PrecosZeradosBanner />
+
       {/* Filtros + busca */}
       <View style={styles.headerBar}>
         <ScrollView

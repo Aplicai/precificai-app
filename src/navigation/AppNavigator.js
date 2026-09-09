@@ -9,7 +9,6 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useListDensity from '../hooks/useListDensity';
 import WebLayout from '../components/web/WebLayout';
 import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
-import PrecosZeradosBanner from '../components/PrecosZeradosBanner';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { getSetupStatus } from '../utils/setupStatus';
 import { determineInitialRoute, determineInitialRouteSafe } from '../utils/initialRoute';
@@ -205,11 +204,12 @@ function TabIcon({ label, focused, badge, baseSize }) {
 // UX audit 09/09: a faixa "confira os preços dos insumos" aparecia em TODAS as
 // telas (e acima do header no mobile). É um aviso sobre insumos — só faz sentido
 // em Início e Insumos. Uma faixa por vez; o resto do app respira.
-function StackWithBanner({ children, precosBanner = false }) {
+// A faixa agora é renderizada DENTRO de HomeScreen e MateriasPrimasScreen
+// (abaixo do header, não acima dele).
+function StackWithBanner({ children }) {
   return (
     <View style={{ flex: 1 }}>
       <FinanceiroPendenteBanner />
-      {precosBanner ? <PrecosZeradosBanner /> : null}
       {children}
     </View>
   );
@@ -217,7 +217,7 @@ function StackWithBanner({ children, precosBanner = false }) {
 
 function HomeStack() {
   return (
-    <StackWithBanner precosBanner>
+    <StackWithBanner>
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen name="HomeMain" component={HomeScreen} options={{
           header: () => null, // Custom header rendered inside HomeScreen
@@ -276,7 +276,7 @@ function backToHomeOption(navigation) {
 
 function InsumosStack() {
   return (
-    <StackWithBanner precosBanner>
+    <StackWithBanner>
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen name="MateriasPrimas" component={MateriasPrimasScreen} options={({ navigation }) => ({ title: 'Insumos', ...backToHomeOption(navigation) })} />
         <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Insumo', presentation: 'transparentModal', headerShown: false }} />
