@@ -17,6 +17,11 @@ Status possíveis: `não iniciado` · `em análise` · `validado` · `com risco`
 - **Conta TE**: `E2E-Bolo-25088`, `E2E-Massa-05254/25088` e 3× `E2E-Farinha-*` (resíduo de e2e com cleanup falho) excluídos pelo app; aggregate `LIKE 'E2E-%'/'QA-%'` = 0 em materias_primas/preparos/produtos/embalagens/delivery_combos.
 - Verificação: 213 unit; Playwright 10-responsive + 01-home (ver log da sessão).
 
+### 09/09 (cont.) — Fase B aplicada integralmente (dono: "Todos")
+- 5 agentes por fatia de arquivos (Home / listas / Financeiro+wizard / shell+instalar+tipografia / renomeação sequencial). Itens 1–13 em `docs/UX-AUDIT-2026-09-09.md` ("Fase B — APLICADA").
+- Verificado ao vivo (localhost): sidebar resolve todas as rotas com título certo; Financeiro "Voltar" → Painel Geral; Insumos com tag "estimado" + chip; Produtos vazio com exemplo + CTA; abas "Ingredientes"/"Receitas base"; zero erros de console.
+- Deixados de fora (por decisão técnica): rótulos `DEPENDENCY_QUERIES` ("• 3 preparos") — teste unitário fixa o literal; "CMV R$ x" compacto nas linhas densas (specs e2e dependem); categoria `'Insumos'` do Fluxo de Caixa (valor persistido).
+
 ## Sessão atual (2026-04-22) — Auditoria de produto + fix do modal de Estoque
 
 ### Diagnóstico inicial

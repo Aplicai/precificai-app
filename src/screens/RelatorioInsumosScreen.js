@@ -283,7 +283,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
               <Feather name="bar-chart-2" size={22} color={colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.title}>Relatório de Insumos</Text>
+              <Text style={styles.title}>Relatório de Ingredientes</Text>
               <Text style={styles.subtitle}>
                 Saúde do seu cadastro: pendências, variações e oportunidades de redução de custo.
               </Text>
@@ -315,16 +315,16 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
         {insumos.length === 0 ? (
           <View style={styles.empty}>
             <Feather name="package" size={32} color={colors.disabled} />
-            <Text style={styles.emptyTitle}>Sem insumos cadastrados</Text>
+            <Text style={styles.emptyTitle}>Sem ingredientes cadastrados</Text>
             <Text style={styles.emptyDesc}>
-              Vai em Insumos pra cadastrar os primeiros e ver o relatório.
+              Vai em Ingredientes pra cadastrar os primeiros e ver o relatório.
             </Text>
             <TouchableOpacity
               style={styles.btnPrimary}
               onPress={() => navigation.navigate('Insumos', { screen: 'MateriasPrimas' })}
               activeOpacity={0.8}
             >
-              <Text style={styles.btnPrimaryText}>Cadastrar insumos</Text>
+              <Text style={styles.btnPrimaryText}>Cadastrar ingredientes</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -334,7 +334,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
               icon="grid"
               color={colors.primary}
               title="Panorama"
-              subtitle="Números-chave do seu cadastro de insumos"
+              subtitle="Números-chave do seu cadastro de ingredientes"
             >
               <View style={styles.kpiGrid}>
                 <View style={styles.kpiTile}>
@@ -419,7 +419,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                       </Text>
                     </View>
                     <Text style={styles.alertPanelDesc}>
-                      Esses insumos NÃO entram no cálculo dos seus produtos. Atualize agora.
+                      Esses ingredientes NÃO entram no cálculo dos seus produtos. Atualize agora.
                     </Text>
                     {insights.semPreco.map((i, idx) => (
                       <TouchableOpacity
@@ -510,7 +510,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                 icon="dollar-sign"
                 color={colors.success}
                 title="Oportunidades de custo"
-                subtitle="Top 5 insumos mais caros — vale renegociar ou buscar alternativa"
+                subtitle="Top 5 ingredientes mais caros — vale renegociar ou buscar alternativa"
               >
                 {insights.top5Caros.map((i, idx) => (
                   <TouchableOpacity

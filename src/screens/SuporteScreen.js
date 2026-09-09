@@ -35,7 +35,7 @@ const FAQ_ITEMS = [
   {
     category: 'Primeiros Passos',
     question: 'Como começar a usar o Precificaí?',
-    answer: 'Siga 5 passos simples: 1) Configure o Financeiro (margem, faturamento, despesas), 2) Cadastre seus insumos com preços, 3) Crie preparos (receitas intermediárias), 4) Monte seus produtos finais, 5) Analise resultados no Painel.',
+    answer: 'Siga 5 passos simples: 1) Configure o Financeiro (margem, faturamento, despesas), 2) Cadastre seus ingredientes com preços, 3) Crie receitas base (receitas intermediárias), 4) Monte seus produtos finais, 5) Analise resultados no Painel.',
   },
   {
     question: 'Preciso cadastrar todos os ingredientes?',
@@ -43,7 +43,7 @@ const FAQ_ITEMS = [
   },
   {
     question: 'O que é o Kit de Início e como funciona?',
-    answer: 'São modelos pré-configurados para diferentes tipos de negócio (confeitaria, hamburgueria, pizzaria, etc) com categorias e insumos mais comuns já cadastrados. Acesse em Configurações.',
+    answer: 'São modelos pré-configurados para diferentes tipos de negócio (confeitaria, hamburgueria, pizzaria, etc) com categorias e ingredientes mais comuns já cadastrados. Acesse em Configurações.',
   },
   // — Precificação —
   {
@@ -81,11 +81,11 @@ const FAQ_ITEMS = [
   {
     category: 'Recursos',
     question: 'Como gerar a lista de compras?',
-    answer: 'Em Lista de Compras, informe quantas unidades pretende produzir de cada produto. O app consolida todos os ingredientes necessários (incluindo dos preparos) com quantidades e custos estimados. Pode exportar em PDF.',
+    answer: 'Em Lista de Compras, informe quantas unidades pretende produzir de cada produto. O app consolida todos os ingredientes necessários (incluindo das receitas base) com quantidades e custos estimados. Pode exportar em PDF.',
   },
   {
     question: 'Posso exportar fichas técnicas?',
-    answer: 'Sim! Em Exportar PDF, selecione os produtos ou preparos desejados. O PDF inclui: ingredientes com quantidades, custos, composição do preço e informações adicionais. Ideal para padronização e treinamento.',
+    answer: 'Sim! Em Exportar PDF, selecione os produtos ou receitas base desejados. O PDF inclui: ingredientes com quantidades, custos, composição do preço e informações adicionais. Ideal para padronização e treinamento.',
   },
   {
     question: 'Meus dados estão seguros?',
@@ -95,9 +95,9 @@ const FAQ_ITEMS = [
 
 const GUIDE_STEPS = [
   'Configure o Financeiro com sua margem, faturamento e despesas.',
-  'Cadastre insumos (ingredientes) com preços de compra.',
-  'Crie preparos (receitas intermediárias como massas e recheios).',
-  'Monte produtos finais com insumos, preparos e embalagens.',
+  'Cadastre ingredientes com preços de compra.',
+  'Crie receitas base (receitas intermediárias como massas e recheios).',
+  'Monte produtos finais com ingredientes, receitas base e embalagens.',
   'Analise margens no Painel e ajuste preços se necessário.',
   'Use a Engenharia de Cardápio para otimizar seu mix de produtos.',
   'Configure o Delivery para precificar corretamente nas plataformas.',

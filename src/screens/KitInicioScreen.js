@@ -202,7 +202,7 @@ export default function KitInicioScreen({ navigation, route }) {
       ]);
       // Fase 3: materias_primas (FK alvo de outras tabelas)
       const { error: mpErr } = await supabase.from('materias_primas').delete().eq('user_id', userId);
-      if (mpErr) throw new Error('Erro ao apagar insumos: ' + mpErr.message);
+      if (mpErr) throw new Error('Erro ao apagar ingredientes: ' + mpErr.message);
       // Fase 4: categorias
       await collectErrors([
         'categorias_produtos', 'categorias_preparos',
@@ -234,7 +234,7 @@ export default function KitInicioScreen({ navigation, route }) {
         navegarAposKit();
         return;
       }
-      const msgOutro = 'Começar do zero vai APAGAR todos os insumos, preparos, produtos, embalagens e categorias atuais. Os dados financeiros (lucro, custos fixos, faturamento) serão MANTIDOS. Esta ação não pode ser desfeita. Deseja continuar?';
+      const msgOutro = 'Começar do zero vai APAGAR todos os ingredientes, receitas base, produtos, embalagens e categorias atuais. Os dados financeiros (lucro, custos fixos, faturamento) serão MANTIDOS. Esta ação não pode ser desfeita. Deseja continuar?';
       const exec = async () => {
         try {
           await wipeAllData();
@@ -278,7 +278,7 @@ export default function KitInicioScreen({ navigation, route }) {
     }
 
     if (sobrescrever) {
-      const msg = 'Sobrescrever vai APAGAR todos os insumos, preparos, produtos, embalagens e categorias atuais antes de aplicar o kit. Esta ação não pode ser desfeita. Deseja continuar?';
+      const msg = 'Sobrescrever vai APAGAR todos os ingredientes, receitas base, produtos, embalagens e categorias atuais antes de aplicar o kit. Esta ação não pode ser desfeita. Deseja continuar?';
       // AUDITORIA: dupla confirmação (web exige digitar APAGAR; nativo em 2 etapas).
       if (Platform.OS === 'web') {
         if (!window.confirm(msg)) return;
@@ -303,7 +303,7 @@ export default function KitInicioScreen({ navigation, route }) {
     // Antes: kit era aplicado direto se "sobrescrever" estava desmarcado, sem
     // dar pro user uma última chance. Agora pede confirmação explícita.
     const segLabel = segmentoInfo?.label || 'segmento';
-    const msgAdd = `Vamos aplicar o kit "${segLabel}" — vai cadastrar ${insumosCount} insumos com PREÇOS DE REFERÊNCIA do mercado. Os dados existentes (insumos, preparos, produtos) serão PRESERVADOS. Você poderá ajustar os preços depois. Continuar?`;
+    const msgAdd = `Vamos aplicar o kit "${segLabel}" — vai cadastrar ${insumosCount} ingredientes com PREÇOS DE REFERÊNCIA do mercado. Os dados existentes (ingredientes, receitas base, produtos) serão PRESERVADOS. Você poderá ajustar os preços depois. Continuar?`;
     if (Platform.OS === 'web') {
       if (!window.confirm(msgAdd)) return;
       await executarKit(false);
@@ -376,7 +376,7 @@ export default function KitInicioScreen({ navigation, route }) {
         const { error: mpErr } = await supabase.from('materias_primas').delete().eq('user_id', userId);
         if (mpErr) {
           console.error('[KitInicio.phase3_materias_primas] erro CRÍTICO:', mpErr);
-          throw new Error('Erro ao limpar insumos antes do reset: ' + mpErr.message);
+          throw new Error('Erro ao limpar ingredientes antes do reset: ' + mpErr.message);
         }
 
         // Phase 4: Category tables (materias_primas FK liberada)
@@ -411,7 +411,7 @@ export default function KitInicioScreen({ navigation, route }) {
 
       // Step 3: Insert insumos with correct category mapping
       setProgressStep('insumos');
-      setProgressMsg(`Cadastrando ${insumosTemplate.length} insumos...`);
+      setProgressMsg(`Cadastrando ${insumosTemplate.length} ingredientes...`);
       let criados = 0;
       // APP-52 — total geral de itens preservados (insumos + embalagens + preparos + produtos)
       let totalPulados = 0;
@@ -495,7 +495,7 @@ export default function KitInicioScreen({ navigation, route }) {
             .select('id');
           if (insErr) {
             console.error('[KitInicio.step3_insumos] erro:', insErr, 'rows:', insumoRows.length);
-            throw new Error('Erro ao cadastrar insumos: ' + insErr.message);
+            throw new Error('Erro ao cadastrar ingredientes: ' + insErr.message);
           }
           criados = insData?.length || 0;
         }
@@ -562,7 +562,7 @@ export default function KitInicioScreen({ navigation, route }) {
       let prepsCriados = 0;
       if (preparosTemplate.length > 0) {
         setProgressStep('preparos');
-        setProgressMsg(`Cadastrando ${preparosTemplate.length} preparos...`);
+        setProgressMsg(`Cadastrando ${preparosTemplate.length} receitas base...`);
 
         // 5a — categorias de preparos
         if (catPrepTemplate.length > 0) {
@@ -727,9 +727,9 @@ export default function KitInicioScreen({ navigation, route }) {
 
       setProgressStep('sucesso');
       const partes = [];
-      if (criados > 0)        partes.push(`${criados} insumo${criados === 1 ? '' : 's'}`);
+      if (criados > 0)        partes.push(`${criados} ingrediente${criados === 1 ? '' : 's'}`);
       if (embsCriadas > 0)    partes.push(`${embsCriadas} embalagen${embsCriadas === 1 ? 'm' : 's'}`);
-      if (prepsCriados > 0)   partes.push(`${prepsCriados} preparo${prepsCriados === 1 ? '' : 's'}`);
+      if (prepsCriados > 0)   partes.push(`${prepsCriados} ${prepsCriados === 1 ? 'receita base' : 'receitas base'}`);
       if (prodsCriados > 0)   partes.push(`${prodsCriados} produto${prodsCriados === 1 ? '' : 's'}`);
       // APP-52 — informa quantos itens foram preservados (multi-kit sem sobrescrever)
       let msgFinal = `Pronto! ${partes.join(', ')}.`;
@@ -789,8 +789,8 @@ export default function KitInicioScreen({ navigation, route }) {
             <Text style={styles.pageHeaderTitle}>Kit de Início Rápido</Text>
             <Text style={styles.pageHeaderDesc}>
               {isSetup
-                ? 'Opcional: escolha seu segmento pra já começar com insumos, embalagens e produtos de exemplo. Prefere começar do zero? É só pular abaixo.'
-                : 'Escolha seu segmento. Cadastramos insumos, embalagens, preparos e produtos de exemplo pra você.'}
+                ? 'Opcional: escolha seu segmento pra já começar com ingredientes, embalagens e produtos de exemplo. Prefere começar do zero? É só pular abaixo.'
+                : 'Escolha seu segmento. Cadastramos ingredientes, embalagens, receitas base e produtos de exemplo pra você.'}
             </Text>
           </View>
         </View>
@@ -800,7 +800,7 @@ export default function KitInicioScreen({ navigation, route }) {
           <View style={styles.warningCard}>
             <Feather name="alert-triangle" size={16} color={colors.warning} />
             <Text style={styles.warningText}>
-              Trocar o segmento APAGA todos os insumos, preparos, embalagens e produtos atuais.
+              Trocar o segmento APAGA todos os ingredientes, receitas base, embalagens e produtos atuais.
             </Text>
           </View>
         )}
@@ -820,7 +820,7 @@ export default function KitInicioScreen({ navigation, route }) {
             <View style={{ flex: 1 }}>
               <Text style={styles.skipKitTitle}>Começar com o app vazio</Text>
               <Text style={styles.skipKitDesc}>
-                Recomendado. Cadastre seus próprios insumos e produtos do zero. Você pode carregar o kit depois em Configurações.
+                Recomendado. Cadastre seus próprios ingredientes e produtos do zero. Você pode carregar o kit depois em Configurações.
               </Text>
             </View>
             <Feather name="arrow-right" size={18} color={colors.primary} />
@@ -877,7 +877,7 @@ export default function KitInicioScreen({ navigation, route }) {
               </View>
               <View style={styles.previewItem}>
                 <Text style={styles.previewNumber}>{insumosCount}</Text>
-                <Text style={styles.previewLabel}>Insumos</Text>
+                <Text style={styles.previewLabel}>Ingredientes</Text>
               </View>
               {(EMBALAGENS_POR_SEGMENTO[selected] || []).length > 0 && (
                 <View style={styles.previewItem}>
@@ -888,7 +888,7 @@ export default function KitInicioScreen({ navigation, route }) {
               {(PREPAROS_POR_SEGMENTO[selected] || []).length > 0 && (
                 <View style={styles.previewItem}>
                   <Text style={styles.previewNumber}>{(PREPAROS_POR_SEGMENTO[selected] || []).length}</Text>
-                  <Text style={styles.previewLabel}>Preparos</Text>
+                  <Text style={styles.previewLabel}>Receitas base</Text>
                 </View>
               )}
               {produtosKit.length > 0 && (
@@ -904,7 +904,7 @@ export default function KitInicioScreen({ navigation, route }) {
               <View style={{ flex: 1 }}>
                 <Text style={styles.precoZeroTitle}>Atenção: preços vêm em R$ 0,00</Text>
                 <Text style={styles.precoZeroDesc}>
-                  Você vai precisar abrir cada insumo, embalagem e produto e colocar o valor REAL do seu fornecedor pra que custos e margens fiquem corretos. A gente NÃO inventa preços pra você não confiar em valor errado.
+                  Você vai precisar abrir cada ingrediente, embalagem e produto e colocar o valor REAL do seu fornecedor pra que custos e margens fiquem corretos. A gente NÃO inventa preços pra você não confiar em valor errado.
                 </Text>
               </View>
             </View>
@@ -959,7 +959,7 @@ export default function KitInicioScreen({ navigation, route }) {
                 </Text>
                 <Text style={{ fontSize: 12, color: sobrescrever ? '#991B1B' : '#6B7280', marginTop: 2 }}>
                   {sobrescrever
-                    ? 'APAGA todos os insumos, preparos, produtos, embalagens e categorias antes de aplicar.'
+                    ? 'APAGA todos os ingredientes, receitas base, produtos, embalagens e categorias antes de aplicar.'
                     : 'O kit será adicionado AOS dados existentes (nada é apagado).'}
                 </Text>
               </View>
@@ -1007,7 +1007,7 @@ export default function KitInicioScreen({ navigation, route }) {
                 <View style={styles.progressStats}>
                   <View style={styles.progressStat}>
                     <Text style={styles.progressStatNum}>{progressCount.insumos}</Text>
-                    <Text style={styles.progressStatLabel}>Insumos</Text>
+                    <Text style={styles.progressStatLabel}>Ingredientes</Text>
                   </View>
                   {progressCount.embalagens > 0 && (
                     <View style={styles.progressStat}>
@@ -1018,7 +1018,7 @@ export default function KitInicioScreen({ navigation, route }) {
                   {progressCount.preparos > 0 && (
                     <View style={styles.progressStat}>
                       <Text style={styles.progressStatNum}>{progressCount.preparos}</Text>
-                      <Text style={styles.progressStatLabel}>Preparos</Text>
+                      <Text style={styles.progressStatLabel}>Receitas base</Text>
                     </View>
                   )}
                   {progressCount.produtos > 0 && (
@@ -1033,7 +1033,7 @@ export default function KitInicioScreen({ navigation, route }) {
                   <Feather name="alert-triangle" size={16} color="#B45309" />
                   <Text style={styles.sucessoWarningText}>
                     <Text style={{ fontFamily: fontFamily.bold }}>Próximo passo:</Text>{' '}
-                    abra cada insumo e cadastre o valor pago real do seu fornecedor. Sem isso, custos e margens vão ficar zerados.
+                    abra cada ingrediente e cadastre o valor pago real do seu fornecedor. Sem isso, custos e margens vão ficar zerados.
                   </Text>
                 </View>
 
@@ -1085,9 +1085,9 @@ export default function KitInicioScreen({ navigation, route }) {
                   {[
                     { key: 'limpando',    label: 'Limpando dados antigos' },
                     { key: 'categorias',  label: 'Cadastrando categorias' },
-                    { key: 'insumos',     label: 'Cadastrando insumos' },
+                    { key: 'insumos',     label: 'Cadastrando ingredientes' },
                     { key: 'embalagens',  label: 'Cadastrando embalagens' },
-                    { key: 'preparos',    label: 'Cadastrando preparos' },
+                    { key: 'preparos',    label: 'Cadastrando receitas base' },
                     { key: 'produtos',    label: 'Cadastrando produtos' },
                     { key: 'finalizando', label: 'Finalizando' },
                   ].map((step) => {

@@ -220,7 +220,7 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
         <Text style={styles.label}>Tipo de item</Text>
         <View style={styles.toggle}>
           {[
-            { v: 'materia_prima', l: 'Insumo' },
+            { v: 'materia_prima', l: 'Ingrediente' },
             { v: 'embalagem', l: 'Embalagem' },
           ].map((opt) => (
             <TouchableOpacity
@@ -239,7 +239,7 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
           value={itemId}
           options={opcoesItens}
           onValueChange={setItemId}
-          placeholder={`Escolha ${tipo === 'embalagem' ? 'uma embalagem' : 'um insumo'}…`}
+          placeholder={`Escolha ${tipo === 'embalagem' ? 'uma embalagem' : 'um ingrediente'}…`}
         />
 
         {/* Sprint 4 F2 — modo 'saldo' (default) vs 'diferenca'. */}

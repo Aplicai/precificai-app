@@ -82,8 +82,8 @@ function shortUnidade(rawUnidade, tipo) {
 }
 
 const TIPO_BADGE = {
-  preparo:       { label: 'Preparo',    color: '#7c3aed' },
-  materia_prima: { label: 'Insumo',     color: '#0891b2' },
+  preparo:       { label: 'Receita base',    color: '#7c3aed' },
+  materia_prima: { label: 'Ingrediente',     color: '#0891b2' },
   embalagem:     { label: 'Embalagem',  color: '#ea580c' },
 };
 
@@ -625,7 +625,7 @@ export default function EntityCreateModal({
         const rows = await db.getAllAsync('SELECT * FROM preparos WHERE id = ?', [editId]);
         const p = rows && rows[0];
         if (!p) {
-          setErro('Preparo não encontrado');
+          setErro('Receita base não encontrada');
           setLoading(false);
           return;
         }
@@ -676,7 +676,7 @@ export default function EntityCreateModal({
             id: s.sub_preparo_id,
             // Preparo legado com nome vazio/null aparecia como item INVISÍVEL (só o
             // custo), impossível de identificar. Fallback torna visível e clicável.
-            nome: (s.sub_nome && String(s.sub_nome).trim()) || '(preparo sem nome)',
+            nome: (s.sub_nome && String(s.sub_nome).trim()) || '(receita base sem nome)',
             quantidade: s.quantidade_utilizada,
             custoUnit: calcCustoUnit('preparo', { custo_por_kg: s.sub_custo }),
             unidade: shortUnidade(s.sub_un, 'preparo'),
@@ -1079,9 +1079,9 @@ export default function EntityCreateModal({
                 )}
                 {(custoInsumos > 0 || custoPreparos > 0 || custoEmbalagens > 0) && (
                   <View style={styles.resumoBreakdown}>
-                    {custoInsumos > 0 && <Text style={styles.resumoBreakdownItem}>Insumos {formatCurrency(custoInsumos / divisor)}</Text>}
+                    {custoInsumos > 0 && <Text style={styles.resumoBreakdownItem}>Ingredientes {formatCurrency(custoInsumos / divisor)}</Text>}
                     {custoInsumos > 0 && custoPreparos > 0 && <Text style={styles.resumoBreakdownSep}>·</Text>}
-                    {custoPreparos > 0 && <Text style={styles.resumoBreakdownItem}>Preparos {formatCurrency(custoPreparos / divisor)}</Text>}
+                    {custoPreparos > 0 && <Text style={styles.resumoBreakdownItem}>Receitas base {formatCurrency(custoPreparos / divisor)}</Text>}
                     {(custoInsumos > 0 || custoPreparos > 0) && custoEmbalagens > 0 && <Text style={styles.resumoBreakdownSep}>·</Text>}
                     {custoEmbalagens > 0 && <Text style={styles.resumoBreakdownItem}>Emb. {formatCurrency(custoEmbalagens / divisor)}</Text>}
                   </View>
@@ -1243,7 +1243,7 @@ export default function EntityCreateModal({
     // Produto: campos obrigatórios pra não criar ficha sem custo/preço.
     if (isProduto) {
       if (itens.length === 0) {
-        setErro('Adicione pelo menos um item (insumo ou preparo) à ficha.');
+        setErro('Adicione pelo menos um item (ingrediente ou receita base) à ficha.');
         return;
       }
       const rendOk = tipoVenda === 'unidade'
@@ -1379,7 +1379,7 @@ export default function EntityCreateModal({
             // Sessão 28.37: bloqueio anti-ciclo direto (CHECK do banco também bloqueia,
             // mas damos feedback antes de mandar). Edição que tenta adicionar A→A.
             if (it.tipo === 'preparo' && isEditing && it.id === editId) {
-              try { showToast('Um preparo não pode usar ele mesmo como ingrediente', 'alert-circle', 3500); } catch (_) {}
+              try { showToast('Uma receita base não pode usar ela mesma como ingrediente', 'alert-circle', 3500); } catch (_) {}
               continue;
             }
             if (it.tipo === 'materia_prima') {
@@ -1469,7 +1469,7 @@ export default function EntityCreateModal({
       // quanto edição via EntityCreateModal mode='preparo'). Produto fica
       // a cargo da Área que cuida dele.
       if (!isProduto) {
-        try { showToast('Preparo salvo', 'check-circle'); } catch (_) {}
+        try { showToast('Receita base salva', 'check-circle'); } catch (_) {}
       }
       if (isProduto && savedId) {
         // R1 — earned moment: pede permissão de push após o 1º produto salvo.
@@ -1638,8 +1638,8 @@ export default function EntityCreateModal({
   const catLabel = catObj ? catObj.nome : 'Selecione uma categoria';
 
   const tituloModal = isEditing
-    ? (nome ? nome : (isProduto ? 'Editar produto' : 'Editar preparo'))
-    : (isProduto ? 'Novo produto' : 'Novo preparo');
+    ? (nome ? nome : (isProduto ? 'Editar produto' : 'Editar receita base'))
+    : (isProduto ? 'Novo produto' : 'Nova receita base');
   const iconModal = isProduto ? 'tag' : 'pot-steam-outline';
   const usaMaterialIcon = !isProduto;
 
@@ -1706,7 +1706,7 @@ export default function EntityCreateModal({
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.title} numberOfLines={1}>{tituloModal}</Text>
-              {isEditing && <Text style={styles.subtitleHeader}>{isProduto ? 'Editar produto' : 'Editar preparo'}</Text>}
+              {isEditing && <Text style={styles.subtitleHeader}>{isProduto ? 'Editar produto' : 'Editar receita base'}</Text>}
             </View>
             <TouchableOpacity
               style={styles.closeBtn}
@@ -1735,7 +1735,7 @@ export default function EntityCreateModal({
             {/* Coluna esquerda — Form */}
             <View style={isDesktop ? styles.colLeft : null}>
               <InputField
-                label={isProduto ? 'Nome do produto' : 'Nome do preparo'}
+                label={isProduto ? 'Nome do produto' : 'Nome da receita base'}
                 value={nome}
                 onChangeText={setNome}
                 placeholder={isProduto ? 'Ex: Bolo de chocolate' : 'Ex: Massa de pizza'}
@@ -1894,11 +1894,11 @@ export default function EntityCreateModal({
                       // a MateriaPrimaFormScreen via ScreenInModal. O draft do
                       // produto/preparo permanece intacto (modal pai segue montado).
                       onPress={() => setNestedInsumoVisible(true)}
-                      accessibilityLabel="Cadastrar novo insumo"
+                      accessibilityLabel="Cadastrar novo ingrediente"
                     >
                       <Feather name="plus" size={11} color={colors.primary} />
                       <Feather name="shopping-bag" size={11} color={colors.primary} />
-                      <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.primary }}>Insumo</Text>
+                      <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.primary }}>Ingrediente</Text>
                     </TouchableOpacity>
                     {/* Sessão 28.37: "+ Preparo" também em mode='preparo' (cascade
                         pra criar outro preparo que vai virar sub-ingrediente do atual).
@@ -1907,11 +1907,11 @@ export default function EntityCreateModal({
                     <TouchableOpacity
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '10' }}
                       onPress={() => setNestedPreparoVisible(true)}
-                      accessibilityLabel="Cadastrar novo preparo"
+                      accessibilityLabel="Cadastrar nova receita base"
                     >
                       <Feather name="plus" size={11} color={colors.primary} />
                       <MaterialCommunityIcons name="pot-steam-outline" size={11} color={colors.primary} />
-                      <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.primary }}>Preparo</Text>
+                      <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.primary }}>Receita base</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '10' }}
@@ -1939,8 +1939,8 @@ export default function EntityCreateModal({
                 <View style={styles.tipoFilterRow}>
                   {[
                     { key: 'todos', label: 'Tudo', icon: 'grid' },
-                    { key: 'preparo', label: 'Preparos', icon: 'pot-steam-outline', material: true },
-                    { key: 'materia_prima', label: 'Insumos', icon: 'shopping-bag' },
+                    { key: 'preparo', label: 'Receitas base', icon: 'pot-steam-outline', material: true },
+                    { key: 'materia_prima', label: 'Ingredientes', icon: 'shopping-bag' },
                     { key: 'embalagem', label: 'Embalagens', icon: 'package' },
                   ].map(opt => {
                     const isActive = (filtroTipo || 'todos') === opt.key;
@@ -1976,8 +1976,8 @@ export default function EntityCreateModal({
                 }
                 return (
                   <>
-                    {renderCatBlock('preparo', 'Preparos', filteredPreparos, (p) => renderRow(p, `prep-${p.id}`, 'preparo', (x) => safeNum(x.custo_total)))}
-                    {renderCatBlock('materia_prima', 'Insumos', filteredMaterias, (m) => renderRow(m, `mp-${m.id}`, 'materia_prima', (x) => safeNum(x.preco_por_kg)))}
+                    {renderCatBlock('preparo', 'Receitas base', filteredPreparos, (p) => renderRow(p, `prep-${p.id}`, 'preparo', (x) => safeNum(x.custo_total)))}
+                    {renderCatBlock('materia_prima', 'Ingredientes', filteredMaterias, (m) => renderRow(m, `mp-${m.id}`, 'materia_prima', (x) => safeNum(x.preco_por_kg)))}
                     {renderCatBlock('embalagem', 'Embalagens', filteredEmbalagens, (e) => renderRow(e, `emb-${e.id}`, 'embalagem', (x) => safeNum(x.preco_unitario)))}
                   </>
                 );
@@ -2022,12 +2022,12 @@ export default function EntityCreateModal({
                   }
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={isProduto ? 'Excluir produto' : 'Excluir preparo'}
+                accessibilityLabel={isProduto ? 'Excluir produto' : 'Excluir receita base'}
                 disabled={saving}
               >
                 <Feather name="trash-2" size={14} color={colors.error || '#dc2626'} />
                 <Text style={{ color: colors.error || '#dc2626', fontFamily: fontFamily.semiBold, fontWeight: '600', fontSize: fonts.small }}>
-                  {isProduto ? 'Excluir produto' : 'Excluir preparo'}
+                  {isProduto ? 'Excluir produto' : 'Excluir receita base'}
                 </Text>
               </TouchableOpacity>
             )}
@@ -2193,7 +2193,7 @@ export default function EntityCreateModal({
             </Text>
             {confirmDeleteCat && confirmDeleteCat.count > 0 && (
               <Text style={{ color: colors.textSecondary, fontSize: fonts.small, marginTop: spacing.sm, fontFamily: fontFamily.regular }}>
-                {confirmDeleteCat.count} {confirmDeleteCat.count === 1 ? (isProduto ? 'produto será movido' : 'preparo será movido') : (isProduto ? 'produtos serão movidos' : 'preparos serão movidos')} para "Sem categoria".
+                {confirmDeleteCat.count} {confirmDeleteCat.count === 1 ? (isProduto ? 'produto será movido' : 'receita base será movida') : (isProduto ? 'produtos serão movidos' : 'receitas base serão movidas')} para "Sem categoria".
               </Text>
             )}
             <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>

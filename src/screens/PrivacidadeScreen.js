@@ -21,7 +21,7 @@ const SECOES = [
       'Coletamos apenas o que é necessário para o funcionamento do Aplicativo:',
       'Dados de cadastro: e-mail e senha. A senha é armazenada de forma criptografada (hash) pelo nosso provedor de autenticação e nunca temos acesso ao texto original.',
       'Dados do negócio: nome do estabelecimento, segmento, telefone e demais informações que você optar por preencher em "Perfil do Negócio".',
-      'Dados operacionais: insumos, embalagens, fichas de preparo, produtos, preços, faturamento, despesas, fornecedores e demais informações inseridas para utilizar as funcionalidades de precificação. Esses dados ficam armazenados localmente no seu dispositivo (SQLite) e podem ser sincronizados com a nuvem para manter as informações disponíveis em diferentes aparelhos.',
+      'Dados operacionais: ingredientes, embalagens, fichas de preparo, produtos, preços, faturamento, despesas, fornecedores e demais informações inseridas para utilizar as funcionalidades de precificação. Esses dados ficam armazenados localmente no seu dispositivo (SQLite) e podem ser sincronizados com a nuvem para manter as informações disponíveis em diferentes aparelhos.',
       'Avatar (opcional): se você escolher uma foto de perfil, ela é guardada apenas localmente no seu dispositivo (AsyncStorage), não sendo enviada aos nossos servidores.',
       'Dados técnicos mínimos: informações automáticas de uso (versão do Aplicativo, plataforma e eventuais erros) coletadas para diagnóstico, sempre que possível de forma anonimizada.',
     ],

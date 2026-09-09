@@ -128,15 +128,17 @@ export async function contarDependencias(db, tipo, id) {
  *    • 7 registros de histórico de preços
  *    Excluir vai zerar o custo desses itens. Deseja continuar?"
  */
-export function formatarMensagemDeps(deps, { acao = 'excluir', entidade = 'item' } = {}) {
+export function formatarMensagemDeps(deps, { acao = 'excluir', entidade = 'item', artigo = 'este' } = {}) {
+  const Artigo = artigo.charAt(0).toUpperCase() + artigo.slice(1);
+  const pron = artigo === 'esta' ? 'la' : 'lo';
   if (!deps || deps.total === 0) {
-    return `${acao === 'excluir' ? 'Excluir' : 'Alterar'} este ${entidade}? Esta ação não pode ser desfeita.`;
+    return `${acao === 'excluir' ? 'Excluir' : 'Alterar'} ${artigo} ${entidade}? Esta ação não pode ser desfeita.`;
   }
   const linhas = deps.porTabela.map(d => `• ${d.n} ${d.label}`).join('\n');
   if (deps.temBloqueio) {
-    return `Este ${entidade} possui vendas registradas:\n${linhas}\n\nExclusão definitiva não é permitida — você pode arquivá-lo (soft-delete) para preservar o histórico de relatórios.`;
+    return `${Artigo} ${entidade} possui vendas registradas:\n${linhas}\n\nExclusão definitiva não é permitida — você pode arquivá-${pron} (soft-delete) para preservar o histórico de relatórios.`;
   }
-  return `Este ${entidade} está em uso em:\n${linhas}\n\n${acao === 'excluir' ? 'Excluir' : 'Alterar'} vai impactar esses itens. Deseja continuar?`;
+  return `${Artigo} ${entidade} está em uso em:\n${linhas}\n\n${acao === 'excluir' ? 'Excluir' : 'Alterar'} vai impactar esses itens. Deseja continuar?`;
 }
 
 /**

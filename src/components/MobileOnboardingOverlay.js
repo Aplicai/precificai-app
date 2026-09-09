@@ -39,14 +39,14 @@ const STEPS = [
     n: 2,
     icon: 'shopping-bag',
     color: colors.success,
-    title: 'Insumos',
-    desc: 'Cadastre suas matérias-primas com preço, quantidade e unidade.',
+    title: 'Ingredientes',
+    desc: 'Cadastre seus ingredientes com preço, quantidade e unidade.',
   },
   {
     n: 3,
     icon: 'layers',
     color: colors.purple,
-    title: 'Preparos',
+    title: 'Receitas base',
     desc: 'Crie receitas base (massas, molhos, recheios) reutilizáveis.',
   },
   {
@@ -61,7 +61,7 @@ const STEPS = [
     icon: 'box',
     color: colors.primary,
     title: 'Produtos',
-    desc: 'Monte fichas técnicas combinando insumos, preparos e embalagens.',
+    desc: 'Monte fichas técnicas combinando ingredientes, receitas base e embalagens.',
   },
   {
     n: 6,

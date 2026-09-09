@@ -555,7 +555,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
     if (custoUnitario <= 0) {
       Alert.alert(
         'Adicione custos primeiro',
-        'Precisamos do CMV para sugerir um preço. Adicione insumos, preparos ou embalagens antes.',
+        'Precisamos do CMV para sugerir um preço. Adicione ingredientes, receitas base ou embalagens antes.',
       );
       return;
     }
@@ -1114,8 +1114,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
             <View style={styles.costsChartWrap}>
               <CostBreakdownChart
                 segments={[
-                  { label: 'Insumos', value: custoInsumos, color: colors.primary },
-                  { label: 'Preparos', value: custoPreparos, color: colors.accent },
+                  { label: 'Ingredientes', value: custoInsumos, color: colors.primary },
+                  { label: 'Receitas base', value: custoPreparos, color: colors.accent },
                   { label: 'Embalagens', value: custoEmbalagens, color: colors.coral },
                 ]}
               />
@@ -1135,16 +1135,16 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
         {/* Bloco 3: Preparos (autocomplete + inline table) */}
         <Card
-          title={`Preparos${produtoPreparos.length > 0 ? ` (${produtoPreparos.length})` : ''}`}
+          title={`Receitas base${produtoPreparos.length > 0 ? ` (${produtoPreparos.length})` : ''}`}
           style={{ marginTop: spacing.md }}
           headerRight={
             <InfoTooltip
-              title="O que é um Preparo?"
-              text="Preparos são receitas intermediárias (ex: caldas, massas, recheios) que você faz antes de montar o produto final."
+              title="O que é uma Receita base?"
+              text="Receitas base são receitas intermediárias (ex: caldas, massas, recheios) que você faz antes de montar o produto final."
               examples={[
                 'Calda de chocolate: usada em bolos e sobremesas',
                 'Massa base de bolo: usada em vários sabores',
-                'Cadastre na aba "Preparos" e selecione aqui',
+                'Cadastre na aba "Receitas base" e selecione aqui',
               ]}
             />
           }
@@ -1153,7 +1153,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
           {produtoPreparos.length > 0 && (
             <View style={styles.tableBlock}>
               <View style={styles.tableHeader}>
-                <Text style={[styles.tableHeaderText, { flex: 2 }]}>Preparo</Text>
+                <Text style={[styles.tableHeaderText, { flex: 2 }]}>Receita base</Text>
                 <Text style={[styles.tableHeaderText, { flex: 1, textAlign: 'center' }]}>Qtd</Text>
                 <Text style={[styles.tableHeaderText, { flex: 0.8, textAlign: 'center' }]}>Un</Text>
                 <Text style={[styles.tableHeaderText, { flex: 1.2, textAlign: 'right' }]}>Custo</Text>
@@ -1179,7 +1179,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                       onPress={() => setEditPrecoModal({ tipo: 'preparo', pp, idx })}
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                       accessibilityRole="button"
-                      accessibilityLabel="Editar custo do preparo"
+                      accessibilityLabel="Editar custo da receita base"
                     >
                       <Text style={[styles.tableCellCusto, { textAlign: 'right' }]}>{formatCurrency(custoPreparo(pp))}</Text>
                       <Feather name="edit-2" size={11} color={colors.primary} />
@@ -1191,7 +1191,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 );
               })}
               <View style={styles.tableFooter}>
-                <Text style={styles.tableFooterLabel}>Total Preparos:</Text>
+                <Text style={styles.tableFooterLabel}>Total Receitas base:</Text>
                 <Text style={styles.tableFooterValue}>{formatCurrency(custoPreparos)}</Text>
               </View>
             </View>
@@ -1202,7 +1202,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
             <Feather name="search" size={16} color={colors.disabled} style={{ marginRight: spacing.xs }} />
             <TextInput
               style={[styles.searchInput, { flex: 1 }]}
-              placeholder="Adicionar preparo..."
+              placeholder="Adicionar receita base..."
               placeholderTextColor={colors.placeholder}
               value={buscaPreparo}
               onChangeText={(v) => { setBuscaPreparo(v); setActiveSearch('preparo'); }}
@@ -1230,26 +1230,26 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     </TouchableOpacity>
                   ))}
                 {preparosList.filter(p => !buscaPreparo || normalizeSearch(p.nome).includes(normalizeSearch(buscaPreparo))).length === 0 && (
-                  <Text style={styles.listEmpty}>Nenhum preparo encontrado</Text>
+                  <Text style={styles.listEmpty}>Nenhuma receita base encontrada</Text>
                 )}
               </ScrollView>
               <Pressable style={styles.createNewBtn} onPress={() => { setActiveSearch(null); navigation.navigate('PreparoForm'); }}>
                 <Feather name="plus-circle" size={14} color={colors.primary} />
-                <Text style={styles.createNewBtnText}>Criar novo preparo</Text>
+                <Text style={styles.createNewBtnText}>Criar nova receita base</Text>
               </Pressable>
             </View>
           )}
-          {prepAdicionado && <Text style={styles.feedbackText}>Preparo adicionado!</Text>}
+          {prepAdicionado && <Text style={styles.feedbackText}>Receita base adicionada!</Text>}
         </Card>
 
         {/* Bloco 4: Insumos (autocomplete + inline table) */}
         <Card
-          title={`Insumos${ingredientes.length > 0 ? ` (${ingredientes.length})` : ''}`}
+          title={`Ingredientes${ingredientes.length > 0 ? ` (${ingredientes.length})` : ''}`}
           style={{ marginTop: spacing.md }}
           headerRight={
             <InfoTooltip
-              title="O que são Insumos?"
-              text="Insumos são ingredientes comprados diretamente (ex: farinha, açúcar, ovos) usados na receita."
+              title="O que são Ingredientes?"
+              text="Ingredientes são os itens comprados diretamente (ex: farinha, açúcar, ovos) usados na receita."
             />
           }
         >
@@ -1257,7 +1257,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
           {ingredientes.length > 0 && (
             <View style={styles.tableBlock}>
               <View style={styles.tableHeader}>
-                <Text style={[styles.tableHeaderText, { flex: 2 }]}>Insumo</Text>
+                <Text style={[styles.tableHeaderText, { flex: 2 }]}>Ingrediente</Text>
                 <Text style={[styles.tableHeaderText, { flex: 1, textAlign: 'center' }]}>Qtd</Text>
                 <Text style={[styles.tableHeaderText, { flex: 0.8, textAlign: 'center' }]}>Un</Text>
                 <Text style={[styles.tableHeaderText, { flex: 1.2, textAlign: 'right' }]}>Custo</Text>
@@ -1300,7 +1300,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 </View>
               ))}
               <View style={styles.tableFooter}>
-                <Text style={styles.tableFooterLabel}>Total Insumos:</Text>
+                <Text style={styles.tableFooterLabel}>Total Ingredientes:</Text>
                 <Text style={styles.tableFooterValue}>{formatCurrency(custoInsumos)}</Text>
               </View>
             </View>
@@ -1311,7 +1311,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
             <Feather name="search" size={16} color={colors.disabled} style={{ marginRight: spacing.xs }} />
             <TextInput
               style={[styles.searchInput, { flex: 1 }]}
-              placeholder="Adicionar insumo..."
+              placeholder="Adicionar ingrediente..."
               placeholderTextColor={colors.placeholder}
               value={buscaIng}
               onChangeText={(v) => { setBuscaIng(v); setActiveSearch('ingrediente'); }}
@@ -1339,16 +1339,16 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     </TouchableOpacity>
                   ))}
                 {materiasPrimas.filter(m => !buscaIng || normalizeSearch(buildSearchString(m)).includes(normalizeSearch(buscaIng))).length === 0 && (
-                  <Text style={styles.listEmpty}>Nenhum insumo encontrado</Text>
+                  <Text style={styles.listEmpty}>Nenhum ingrediente encontrado</Text>
                 )}
               </ScrollView>
               <Pressable style={styles.createNewBtn} onPress={() => { setActiveSearch(null); navigation.navigate('MateriaPrimaForm'); }}>
                 <Feather name="plus-circle" size={14} color={colors.primary} />
-                <Text style={styles.createNewBtnText}>Criar novo insumo</Text>
+                <Text style={styles.createNewBtnText}>Criar novo ingrediente</Text>
               </Pressable>
             </View>
           )}
-          {ingAdicionado && <Text style={styles.feedbackText}>Insumo adicionado!</Text>}
+          {ingAdicionado && <Text style={styles.feedbackText}>Ingrediente adicionado!</Text>}
         </Card>
 
         {/* Bloco 5: Embalagens (autocomplete + inline table) */}
@@ -1468,8 +1468,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
               <View style={styles.separator} />
 
               {/* Composição do custo */}
-              <View style={styles.custoRow}><Text style={styles.custoLabel}>Insumos</Text><Text style={styles.custoValue}>{formatCurrency(custoInsumos)}</Text></View>
-              <View style={styles.custoRow}><Text style={styles.custoLabel}>Preparos</Text><Text style={styles.custoValue}>{formatCurrency(custoPreparos)}</Text></View>
+              <View style={styles.custoRow}><Text style={styles.custoLabel}>Ingredientes</Text><Text style={styles.custoValue}>{formatCurrency(custoInsumos)}</Text></View>
+              <View style={styles.custoRow}><Text style={styles.custoLabel}>Receitas base</Text><Text style={styles.custoValue}>{formatCurrency(custoPreparos)}</Text></View>
               <View style={styles.custoRow}><Text style={styles.custoLabel}>Embalagens</Text><Text style={styles.custoValue}>{formatCurrency(custoEmbalagens)}</Text></View>
               <View style={[styles.custoRow, styles.custoTotal]}><Text style={[styles.custoLabel, styles.custoTotalText]}>Custo Total da Receita</Text><Text style={[styles.custoValue, styles.custoTotalText]}>{formatCurrency(custoTotalReceita)}</Text></View>
               {tipoVenda === 'unidade' ? (
@@ -1558,7 +1558,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
           ) : (
             <View style={styles.custoEmpty}>
               <Feather name="bar-chart-2" size={28} color={colors.disabled} style={{ marginBottom: spacing.sm }} />
-              <Text style={styles.custoEmptyText}>Adicione insumos, preparos ou embalagens para ver os custos calculados</Text>
+              <Text style={styles.custoEmptyText}>Adicione ingredientes, receitas base ou embalagens para ver os custos calculados</Text>
             </View>
           )}
         </Card>}
@@ -1705,8 +1705,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
               <View style={styles.costsChartWrap}>
                 <CostBreakdownChart
                   segments={[
-                    { label: 'Insumos', value: custoInsumos, color: colors.primary },
-                    { label: 'Preparos', value: custoPreparos, color: colors.accent },
+                    { label: 'Ingredientes', value: custoInsumos, color: colors.primary },
+                    { label: 'Receitas base', value: custoPreparos, color: colors.accent },
                     { label: 'Embalagens', value: custoEmbalagens, color: colors.coral },
                   ]}
                 />
@@ -1725,11 +1725,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     <View style={[styles.separator, { marginTop: spacing.md }]} />
                     <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 6, fontFamily: fontFamily.medium }}>Composição {labelUnit}</Text>
                     <View style={styles.custoRow}>
-                      <Text style={styles.custoLabel}>Insumos</Text>
+                      <Text style={styles.custoLabel}>Ingredientes</Text>
                       <Text style={styles.custoValue}>{formatCurrency(custoInsumos / divisor)} {pv > 0 ? `(${formatPercent(percInsumos)})` : ''}</Text>
                     </View>
                     <View style={styles.custoRow}>
-                      <Text style={styles.custoLabel}>Preparos</Text>
+                      <Text style={styles.custoLabel}>Receitas base</Text>
                       <Text style={styles.custoValue}>{formatCurrency(custoPreparos / divisor)} {pv > 0 ? `(${formatPercent(percPreparos)})` : ''}</Text>
                     </View>
                     <View style={styles.custoRow}>
@@ -1755,7 +1755,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               {!temCustos && (
                 <View style={[styles.custoEmpty, { paddingVertical: spacing.md }]}>
                   <Feather name="bar-chart-2" size={24} color={colors.disabled} style={{ marginBottom: spacing.xs }} />
-                  <Text style={styles.custoEmptyText}>Adicione insumos, preparos ou embalagens para ver os custos</Text>
+                  <Text style={styles.custoEmptyText}>Adicione ingredientes, receitas base ou embalagens para ver os custos</Text>
                 </View>
               )}
             </View>
@@ -1765,7 +1765,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               <View style={[styles.costsSummaryCard, { marginTop: spacing.sm }]}>
                 {ingredientes.length > 0 && (
                   <>
-                    <Text style={[styles.costsTitle, { fontSize: 13, marginBottom: 6 }]}>Insumos ({ingredientes.length})</Text>
+                    <Text style={[styles.costsTitle, { fontSize: 13, marginBottom: 6 }]}>Ingredientes ({ingredientes.length})</Text>
                     {ingredientes.map((ing, i) => {
                       const custoIng = calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada || 0, ing.unidade || 'g', ing.unidade || 'g');
                       return (
@@ -2039,7 +2039,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
             {editPrecoModal?.tipo === 'preparo' ? (
               <>
                 <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
-                  Atualizar custo do preparo
+                  Atualizar custo da receita base
                 </Text>
                 <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 16 }}>
                   {editPrecoModal?.pp?.pr_nome}
@@ -2056,11 +2056,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
                   autoFocus
                 />
                 <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 12, fontStyle: 'italic' }}>
-                  O custo do preparo normalmente é recalculado pelos insumos. Editar aqui sobrescreve o valor e propaga em TODOS os produtos/combos que usam.
+                  O custo da receita base normalmente é recalculado pelos ingredientes. Editar aqui sobrescreve o valor e propaga em TODOS os produtos/combos que usam.
                 </Text>
                 <TouchableOpacity onPress={abrirPreparoCompleto} style={{ paddingVertical: 8, marginBottom: 12 }}>
                   <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13, textAlign: 'center' }}>
-                    Editar receita completa do preparo →
+                    Editar receita completa da receita base →
                   </Text>
                 </TouchableOpacity>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -2075,7 +2075,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
             ) : (
               <>
                 <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 4 }}>
-                  Atualizar preço do insumo
+                  Atualizar preço do ingrediente
                 </Text>
                 <Text style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 16 }}>
                   {editPrecoModal?.ing?.mp_nome} {editPrecoModal?.ing?.mp_marca ? `(${editPrecoModal.ing.mp_marca})` : ''}

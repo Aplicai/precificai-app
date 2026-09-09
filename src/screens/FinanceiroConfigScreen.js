@@ -622,7 +622,7 @@ export default function FinanceiroConfigScreen() {
   // `fullWidth`: no wizard (resumo) o painel ocupa a coluna inteira, sem sticky.
   function SummaryPanel({ fullWidth = false } = {}) {
     const slices = [
-      { label: 'CMV', value: custoMaxPerc, color: colors.primary },
+      { label: 'Ingredientes (CMV)', value: custoMaxPerc, color: colors.primary },
       { label: 'Custos Fixos', value: despFixasPerc, color: colors.coral },
       { label: 'Custos Variáveis', value: totalVariaveis, color: colors.purple },
       { label: 'Margem de Lucro', value: lucroPerc, color: colors.success },
@@ -1316,8 +1316,8 @@ export default function FinanceiroConfigScreen() {
                     <InfoTooltip
                       title="Margem de Segurança"
                       text={
-                        'É um percentual extra que você adiciona aos custos dos insumos para se proteger contra variações de preço dos fornecedores.\n\n' +
-                        'Exemplo: se a farinha pode subir até 10% sem aviso, coloque 10% de margem de segurança. Assim você não precisa atualizar todos os preços toda vez que um insumo aumentar.'
+                        'É um percentual extra que você adiciona aos custos dos ingredientes para se proteger contra variações de preço dos fornecedores.\n\n' +
+                        'Exemplo: se a farinha pode subir até 10% sem aviso, coloque 10% de margem de segurança. Assim você não precisa atualizar todos os preços toda vez que um ingrediente aumentar.'
                       }
                       examples={[
                         'Confeitaria: 5-10%',

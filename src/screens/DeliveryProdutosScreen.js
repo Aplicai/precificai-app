@@ -37,8 +37,8 @@ function getAvatarColor(index) {
 const TIPO_BADGE = {
   produto:       { label: 'Produto',   color: colors.purple,  icon: 'package' },
   embalagem:     { label: 'Embalagem', color: colors.coral,   icon: 'box' },
-  preparo:       { label: 'Preparo',   color: colors.accent,  icon: 'layers' },
-  materia_prima: { label: 'Insumo',    color: colors.primary, icon: 'shopping-bag' },
+  preparo:       { label: 'Receita base',   color: colors.accent,  icon: 'layers' },
+  materia_prima: { label: 'Ingrediente',    color: colors.primary, icon: 'shopping-bag' },
   adicional:     { label: 'Adicional', color: colors.yellow,  icon: 'plus-circle' },
 };
 
@@ -334,7 +334,7 @@ export default function DeliveryProdutosScreen() {
           headerRight={
             <InfoTooltip
               title="Produtos Delivery"
-              text="Crie produtos exclusivos para delivery combinando produtos existentes com embalagens, preparos ou insumos extras."
+              text="Crie produtos exclusivos para delivery combinando produtos existentes com embalagens, receitas base ou ingredientes extras."
               examples={[
                 'Ex: Bolo Delivery = Bolo + Caixa + Gelo seco',
                 'Reutilize produtos já cadastrados',
@@ -521,7 +521,7 @@ export default function DeliveryProdutosScreen() {
                 <SearchBar
                   value={buscaItem}
                   onChangeText={setBuscaItem}
-                  placeholder="Buscar produto, embalagem, preparo..."
+                  placeholder="Buscar produto, embalagem, receita base..."
                 />
 
                 {(() => {
@@ -529,8 +529,8 @@ export default function DeliveryProdutosScreen() {
                   const sections = [
                     { key: 'produto', label: 'Produtos', items: allProdutos },
                     { key: 'embalagem', label: 'Embalagens', items: allEmbalagens },
-                    { key: 'preparo', label: 'Preparos', items: allPreparos },
-                    { key: 'materia_prima', label: 'Insumos', items: allMaterias },
+                    { key: 'preparo', label: 'Receitas base', items: allPreparos },
+                    { key: 'materia_prima', label: 'Ingredientes', items: allMaterias },
                     { key: 'adicional', label: 'Adicionais', items: allAdicionais },
                   ];
 

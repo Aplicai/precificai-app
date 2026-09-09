@@ -56,10 +56,10 @@ const SLIDES = [
     key: 'flow',
     icon: 'layers',
     title: 'Como funciona',
-    subtitle: 'Do insumo ao produto final',
-    body: 'Cadastre seus Insumos, monte Preparos (receitas), defina Embalagens e combine tudo nos Produtos. Cada custo aparece automaticamente no produto final.',
+    subtitle: 'Do ingrediente ao produto final',
+    body: 'Cadastre seus Ingredientes, monte Receitas base (massas, recheios), defina Embalagens e combine tudo nos Produtos. Cada custo aparece automaticamente no produto final.',
     accent: colors.accent,
-    steps: ['Insumos', 'Preparos', 'Embalagens', 'Produtos'],
+    steps: ['Ingredientes', 'Receitas base', 'Embalagens', 'Produtos'],
   },
   {
     key: 'price',

@@ -89,7 +89,7 @@ export default function PrecosZeradosBanner() {
       <Feather name="alert-circle" size={16} color="#B45309" style={{ marginRight: spacing.sm }} />
       <View style={styles.body}>
         <Text style={styles.title}>
-          Confira os preços dos seus insumos
+          Confira os preços dos seus ingredientes
           {info.total > 0 && (
             <Text style={styles.titleCount}>  ({info.count} de {info.total} estão estimados)</Text>
           )}

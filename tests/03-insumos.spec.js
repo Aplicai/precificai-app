@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const { waitForAppLoad, goToTab, setupConsoleErrorCheck } = require('./helpers');
 
-test.describe('Insumos', () => {
+test.describe('Ingredientes (rota Insumos)', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await waitForAppLoad(page);

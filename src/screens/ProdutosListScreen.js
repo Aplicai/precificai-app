@@ -1214,7 +1214,7 @@ export default function ProdutosListScreen({ navigation }) {
         fields={previewItem ? [
           { label: 'Categoria', value: previewItem.categoria_nome || previewItem.categoria || 'Sem categoria' },
           { label: 'Preço de venda', value: formatCurrency(previewItem.preco_venda) },
-          { label: 'CMV', value: formatCurrency(previewItem.custoTotal) },
+          { label: 'Custo dos ingredientes (CMV)', value: formatCurrency(previewItem.custoTotal) },
           { label: 'Lucro/un.', value: formatCurrency(previewItem.lucro) },
           { label: 'Margem', value: typeof previewItem.margem === 'number' ? formatPercent(previewItem.margem) : '—', accent: true },
         ] : []}

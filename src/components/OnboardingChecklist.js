@@ -64,8 +64,8 @@ export default function OnboardingChecklist({
     {
       key: 'insumos',
       n: 2,
-      label: 'Cadastre seus insumos',
-      desc: 'Ingredientes e matérias-primas',
+      label: 'Cadastre seus ingredientes',
+      desc: 'Tudo que você compra para produzir',
       icon: 'shopping-bag',
       tab: 'Insumos',
       done: totalInsumos > 0,
@@ -73,8 +73,8 @@ export default function OnboardingChecklist({
     {
       key: 'preparos',
       n: 3,
-      label: 'Crie seus preparos',
-      desc: 'Receitas base feitas com insumos',
+      label: 'Crie suas receitas base',
+      desc: 'Receitas base feitas com ingredientes',
       icon: 'layers',
       tab: 'Preparos',
       done: totalPreparos > 0,

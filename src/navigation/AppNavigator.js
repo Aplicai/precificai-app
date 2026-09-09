@@ -229,8 +229,8 @@ function HomeStack() {
         {/* Audit A4: ProdutoForm aberto pela Home navega para estes forms (criar insumo/
             preparo/embalagem inline, duplicar) — sem registro aqui era no-op silencioso. */}
         <Stack.Screen name="ProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
-        <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo', presentation: 'transparentModal', headerShown: false }} />
-        <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Novo Preparo', presentation: 'transparentModal', headerShown: false }} />
+        <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Ingrediente', presentation: 'transparentModal', headerShown: false }} />
+        <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Nova Receita base', presentation: 'transparentModal', headerShown: false }} />
         <Stack.Screen name="EmbalagemForm" component={EmbalagemFormScreen} options={{ title: 'Nova Embalagem', presentation: 'transparentModal', headerShown: false }} />
       </Stack.Navigator>
     </StackWithBanner>
@@ -244,8 +244,8 @@ function ProdutosStack() {
         <Stack.Screen name="ProdutosList" component={ProdutosListScreen} options={({ navigation }) => ({ title: 'Produtos', ...backToHomeOption(navigation) })} />
         <Stack.Screen name="ProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
         <Stack.Screen name="CombosScreen" component={DeliveryCombosScreen} options={{ title: 'Combos' }} />
-        <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo', presentation: 'transparentModal', headerShown: false }} />
-        <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Novo Preparo', presentation: 'transparentModal', headerShown: false }} />
+        <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Ingrediente', presentation: 'transparentModal', headerShown: false }} />
+        <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Nova Receita base', presentation: 'transparentModal', headerShown: false }} />
         <Stack.Screen name="EmbalagemForm" component={EmbalagemFormScreen} options={{ title: 'Nova Embalagem', presentation: 'transparentModal', headerShown: false }} />
       </Stack.Navigator>
     </StackWithBanner>
@@ -278,8 +278,8 @@ function InsumosStack() {
   return (
     <StackWithBanner>
       <Stack.Navigator screenOptions={screenOptions}>
-        <Stack.Screen name="MateriasPrimas" component={MateriasPrimasScreen} options={({ navigation }) => ({ title: 'Insumos', ...backToHomeOption(navigation) })} />
-        <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Insumo', presentation: 'transparentModal', headerShown: false }} />
+        <Stack.Screen name="MateriasPrimas" component={MateriasPrimasScreen} options={({ navigation }) => ({ title: 'Ingredientes', ...backToHomeOption(navigation) })} />
+        <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Ingrediente', presentation: 'transparentModal', headerShown: false }} />
         {/* Audit A4: "Dar entrada"/"Ajustar saldo" na lista de insumos (modo estoque). */}
         <Stack.Screen name="EntradaEstoque" component={EntradaEstoqueScreen} options={{ title: 'Entrada de Estoque', presentation: 'transparentModal', headerShown: false }} />
         <Stack.Screen name="AjusteEstoque" component={AjusteEstoqueScreen} options={{ title: 'Ajuste de Estoque', presentation: 'transparentModal', headerShown: false }} />
@@ -303,9 +303,9 @@ function PreparosStack() {
   return (
     <StackWithBanner>
       <Stack.Navigator screenOptions={screenOptions}>
-        <Stack.Screen name="Preparos" component={PreparosScreen} options={({ navigation }) => ({ title: 'Preparos', ...backToHomeOption(navigation) })} />
-        <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Preparo', presentation: 'transparentModal', headerShown: false }} />
-        <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo', presentation: 'transparentModal', headerShown: false }} />
+        <Stack.Screen name="Preparos" component={PreparosScreen} options={({ navigation }) => ({ title: 'Receitas base', ...backToHomeOption(navigation) })} />
+        <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Receita base', presentation: 'transparentModal', headerShown: false }} />
+        <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Ingrediente', presentation: 'transparentModal', headerShown: false }} />
       </Stack.Navigator>
     </StackWithBanner>
   );
@@ -441,8 +441,8 @@ function MaisStack() {
       <Stack.Screen name="BCGProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
       {/* Audit A4: mesmos forms inline que o ProdutoForm usa (ver HomeStack). */}
       <Stack.Screen name="ProdutoForm" component={ProdutoFormScreen} options={{ title: 'Ficha Técnica' }} />
-      <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Insumo', presentation: 'transparentModal', headerShown: false }} />
-      <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Novo Preparo', presentation: 'transparentModal', headerShown: false }} />
+      <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Novo Ingrediente', presentation: 'transparentModal', headerShown: false }} />
+      <Stack.Screen name="PreparoForm" component={PreparoFormScreen} options={{ title: 'Nova Receita base', presentation: 'transparentModal', headerShown: false }} />
       <Stack.Screen name="EmbalagemForm" component={EmbalagemFormScreen} options={{ title: 'Nova Embalagem', presentation: 'transparentModal', headerShown: false }} />
       <Stack.Screen name="DeliveryHub" component={DeliveryHubScreen} options={{ title: 'Delivery' }} />
       <Stack.Screen name="DeliveryPlataformas" component={DeliveryPlataformasScreen} options={{ title: 'Plataformas' }} />

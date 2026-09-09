@@ -185,7 +185,7 @@ export default function ExportPDFScreen({ navigation }) {
     } catch (e) {
       // Audit P0: era silent.
       console.error('[ExportPDF.loadPreparos]', e);
-      setLoadError('Não foi possível carregar seus preparos. Tente novamente.');
+      setLoadError('Não foi possível carregar suas receitas base. Tente novamente.');
     }
   };
 
@@ -261,7 +261,7 @@ export default function ExportPDFScreen({ navigation }) {
 
       if (fichas.length === 0) {
         if (preOpenedWindow && !preOpenedWindow.closed) preOpenedWindow.close();
-        if (Platform.OS === 'web') alert('Nenhum preparo válido foi encontrado para exportar.');
+        if (Platform.OS === 'web') alert('Nenhuma receita base válida foi encontrada para exportar.');
         return;
       }
 
@@ -383,7 +383,7 @@ export default function ExportPDFScreen({ navigation }) {
               const ciCmv = (ciIng + ciPrep + ciEmb) / rend;
               comboCmv += ciCmv * ciQty;
 
-              prodIngs.forEach(ing => comboIngs.push({ ...ing, mp_nome: ing.mp_nome || `Insumo ${ing.materia_prima_id}` }));
+              prodIngs.forEach(ing => comboIngs.push({ ...ing, mp_nome: ing.mp_nome || `Ingrediente ${ing.materia_prima_id}` }));
               prodPreps.forEach(pp => comboPreps.push({ ...pp }));
               prodEmbs.forEach(pe => comboEmbs.push({ ...pe }));
             } else if (ci.tipo === 'materia_prima') {
@@ -546,14 +546,14 @@ export default function ExportPDFScreen({ navigation }) {
         <View style={{ flex: 1, marginLeft: spacing.md }}>
           <Text style={styles.infoTitle}>Exportar Fichas Técnicas</Text>
           <Text style={styles.infoDesc}>
-            Selecione os {activeTab === 'produtos' ? 'produtos' : 'preparos'} para gerar um PDF com as fichas técnicas completas.
+            Selecione {activeTab === 'produtos' ? 'os produtos' : 'as receitas base'} para gerar um PDF com as fichas técnicas completas.
           </Text>
         </View>
       </View>
 
       {/* Tabs */}
       <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: spacing.md }}>
-        {[{key: 'produtos', label: 'Produtos'}, {key: 'preparos', label: 'Preparos'}].map(t => (
+        {[{key: 'produtos', label: 'Produtos'}, {key: 'preparos', label: 'Receitas base'}].map(t => (
           <TouchableOpacity key={t.key} onPress={() => { setActiveTab(t.key); setSelected({}); setBusca(''); }}
             style={{ paddingVertical: 8, paddingHorizontal: 16, borderBottomWidth: 2, borderBottomColor: activeTab === t.key ? colors.primary : 'transparent' }}>
             <Text style={{ fontSize: 13, fontFamily: activeTab === t.key ? fontFamily.bold : fontFamily.medium, color: activeTab === t.key ? colors.primary : colors.textSecondary }}>
@@ -577,7 +577,7 @@ export default function ExportPDFScreen({ navigation }) {
         <Feather name="search" size={16} color={colors.textSecondary} style={{ marginRight: 8 }} />
         <TextInput
           style={styles.searchInput}
-          placeholder={activeTab === 'produtos' ? "Buscar produto..." : "Buscar preparo..."}
+          placeholder={activeTab === 'produtos' ? "Buscar produto..." : "Buscar receita base..."}
           placeholderTextColor={colors.placeholder}
           value={busca}
           onChangeText={setBusca}
@@ -593,7 +593,7 @@ export default function ExportPDFScreen({ navigation }) {
       {currentItems.length === 0 ? (
         <View style={styles.emptyCard}>
           <Feather name="inbox" size={36} color={colors.disabled} />
-          <Text style={styles.emptyText}>{activeTab === 'produtos' ? 'Nenhum produto cadastrado' : 'Nenhum preparo cadastrado'}</Text>
+          <Text style={styles.emptyText}>{activeTab === 'produtos' ? 'Nenhum produto cadastrado' : 'Nenhuma receita base cadastrada'}</Text>
         </View>
       ) : (
         <View>
@@ -698,7 +698,7 @@ export default function ExportPDFScreen({ navigation }) {
                 ? 'Gerando PDF, aguarde'
                 : selectedCount === 0
                   ? 'Selecione ao menos um item para exportar'
-                  : `Exportar PDF com ${selectedCount} ${activeTab === 'produtos' ? (selectedCount === 1 ? 'produto' : 'produtos') : (selectedCount === 1 ? 'preparo' : 'preparos')}`
+                  : `Exportar PDF com ${selectedCount} ${activeTab === 'produtos' ? (selectedCount === 1 ? 'produto' : 'produtos') : (selectedCount === 1 ? 'receita base' : 'receitas base')}`
             }
           >
             {exporting ? (
@@ -715,7 +715,7 @@ export default function ExportPDFScreen({ navigation }) {
                 <Text style={styles.exportBtnText}>
                   {selectedCount === 0
                     ? 'Exportar PDF'
-                    : `Exportar PDF (${selectedCount} ${activeTab === 'produtos' ? (selectedCount === 1 ? 'produto' : 'produtos') : (selectedCount === 1 ? 'preparo' : 'preparos')})`}
+                    : `Exportar PDF (${selectedCount} ${activeTab === 'produtos' ? (selectedCount === 1 ? 'produto' : 'produtos') : (selectedCount === 1 ? 'receita base' : 'receitas base')})`}
                 </Text>
               </>
             )}
@@ -874,15 +874,15 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
         ` : ''}
 
         ${preps.length > 0 ? `
-        <!-- Preparos -->
-        <div class="section-title">Preparos</div>
+        <!-- Receitas base -->
+        <div class="section-title">Receitas base</div>
         <table>
           <thead>
             <tr><th>Nome</th><th style="text-align:center">Qtd</th><th style="text-align:center">Unidade</th><th style="text-align:right">Custo</th></tr>
           </thead>
           <tbody>
             ${prepRows}
-            <tr class="total-row"><td colspan="3"><strong>Total Preparos</strong></td><td style="text-align:right"><strong>${fmtCur(custoPrep)}</strong></td></tr>
+            <tr class="total-row"><td colspan="3"><strong>Total Receitas base</strong></td><td style="text-align:right"><strong>${fmtCur(custoPrep)}</strong></td></tr>
           </tbody>
         </table>
         ` : ''}
@@ -1222,7 +1222,7 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
         <div class="ficha-header">
           <h2>${escapeHtml(preparo.nome || 'Sem nome')}</h2>
           <div class="ficha-meta">
-            <span class="badge">Preparo</span>
+            <span class="badge">Receita base</span>
             <span class="preco">Rende ${rendimento > 0 ? rendimento + (escapeHtml(preparo.unidade_medida || 'g')) : '—'}</span>
           </div>
         </div>
@@ -1283,7 +1283,7 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fichas Técnicas de Preparos - Precificaí</title>
+<title>Fichas Técnicas de Receitas base - Precificaí</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
   * { margin:0; padding:0; box-sizing:border-box; }
@@ -1351,7 +1351,7 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
       ${nomeNegocio ? `<div class="negocio-nome">${escapeHtml(nomeNegocio)}</div>` : ''}
     </div>
     <div class="meta">
-      <div style="font-size:18px; font-weight:600;">Fichas Técnicas - Preparos</div>
+      <div style="font-size:18px; font-weight:600;">Fichas Técnicas - Receitas base</div>
       <div>${dataStr}</div>
     </div>
   </div>

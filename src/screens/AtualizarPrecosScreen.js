@@ -20,7 +20,7 @@ const CATEGORY_COLORS = [
 ];
 
 const TABS = [
-  { key: 'insumos', label: 'Insumos', icon: 'package' },
+  { key: 'insumos', label: 'Ingredientes', icon: 'package' },
   { key: 'embalagens', label: 'Embalagens', icon: 'box' },
   { key: 'produtos', label: 'Produtos', icon: 'tag' },
   { key: 'combos', label: 'Combos', icon: 'layers' },

@@ -23,8 +23,8 @@ const NAV_SECTIONS = [
       // Antes (sem screen) caía no CommonActions.reset frágil → exigia 2 cliques
       // no web (1º só destacava, conteúdo não trocava).
       { key: 'home', label: 'Painel Geral', icon: 'home', iconSet: 'feather', tab: 'Início', screen: 'HomeMain' },
-      { key: 'insumos', label: 'Insumos', icon: 'shopping-bag', iconSet: 'feather', tab: 'Insumos', screen: 'MateriasPrimas' },
-      { key: 'preparos', label: 'Preparos', icon: 'pot-steam-outline', iconSet: 'material', tab: 'Preparos', screen: 'Preparos' },
+      { key: 'insumos', label: 'Ingredientes', icon: 'shopping-bag', iconSet: 'feather', tab: 'Insumos', screen: 'MateriasPrimas' },
+      { key: 'preparos', label: 'Receitas base', icon: 'pot-steam-outline', iconSet: 'material', tab: 'Preparos', screen: 'Preparos' },
       { key: 'embalagens', label: 'Embalagens', icon: 'package', iconSet: 'feather', tab: 'Embalagens', screen: 'Embalagens' },
       { key: 'produtos', label: 'Produtos', icon: 'tag', iconSet: 'feather', tab: 'Produtos', screen: 'ProdutosList' },
       // D-05 — Combos depende APENAS da flag modo_avancado_combos (antes era OR com delivery,

@@ -71,10 +71,10 @@ export const t = {
   // Empty states (resumos curtos — completos via EmptyState)
   // ─────────────────────────────────────────────────────────
   empty: {
-    insumos: 'Comece cadastrando seus insumos — eles são a base do custo.',
-    preparos: 'Crie preparos (bases, recheios, massas) para reaproveitar.',
+    insumos: 'Comece cadastrando seus ingredientes — eles são a base do custo.',
+    preparos: 'Crie receitas base (massas, recheios, molhos) para reaproveitar.',
     embalagens: 'Inclua caixas, potes e sacos para o custo final do produto.',
-    produtos: 'Monte fichas técnicas combinando insumos, preparos e embalagens.',
+    produtos: 'Monte fichas técnicas combinando ingredientes, receitas base e embalagens.',
     busca: (termo) => `Não encontramos nada para "${termo}".`,
   },
 

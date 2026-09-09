@@ -408,7 +408,7 @@ export default function PreparosScreen({ navigation }) {
       }
     } catch (e) {
       console.error('[PreparosScreen.duplicarPreparo]', e);
-      Alert.alert('Erro', 'Não foi possível duplicar o preparo.');
+      Alert.alert('Erro', 'Não foi possível duplicar a receita base.');
     }
   }
 
@@ -419,20 +419,20 @@ export default function PreparosScreen({ navigation }) {
       const db = await getDatabase();
       const deps = await contarDependencias(db, 'preparo', id);
       if (deps.total > 0) {
-        mensagemExtra = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'preparo' });
+        mensagemExtra = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'receita base', artigo: 'esta' });
       }
     } catch (e) {
       console.error('[PreparosScreen.solicitarExclusao.deps]', e);
     }
     setConfirmDelete({
-      titulo: 'Excluir Preparo',
+      titulo: 'Excluir Receita base',
       nome,
       aviso: mensagemExtra,
       onConfirm: async () => {
         setConfirmDelete(null);
         await undoDelete.requestDelete({
           id,
-          message: `Preparo "${nome}" excluído`,
+          message: `Receita base "${nome}" excluída`,
           commit: async () => {
             const db = await getDatabase();
             await db.runAsync('DELETE FROM preparos WHERE id = ?', [id]);
@@ -455,20 +455,20 @@ export default function PreparosScreen({ navigation }) {
         totalRefs += deps.total;
       }
       if (totalRefs > 0) {
-        mensagemExtra = `${totalRefs} referência${totalRefs === 1 ? '' : 's'} ${totalRefs === 1 ? 'será afetada' : 'serão afetadas'} (produtos perderão o preparo do CMV).`;
+        mensagemExtra = `${totalRefs} referência${totalRefs === 1 ? '' : 's'} ${totalRefs === 1 ? 'será afetada' : 'serão afetadas'} (produtos perderão a receita base do CMV).`;
       }
     } catch (e) {
       console.error('[PreparosScreen.solicitarExclusaoEmMassa.deps]', e);
     }
     setConfirmDelete({
-      titulo: ids.length === 1 ? 'Excluir Preparo' : `Excluir ${ids.length} preparos`,
+      titulo: ids.length === 1 ? 'Excluir Receita base' : `Excluir ${ids.length} receitas base`,
       nome: ids.length === 1 ? null : `${ids.length} itens selecionados`,
       aviso: mensagemExtra,
       onConfirm: async () => {
         setConfirmDelete(null);
         await undoDelete.requestDelete({
           id: ids,
-          message: ids.length === 1 ? '1 preparo excluído' : `${ids.length} preparos excluídos`,
+          message: ids.length === 1 ? '1 receita base excluída' : `${ids.length} receitas base excluídas`,
           commit: async () => {
             const db = await getDatabase();
             const placeholders = ids.map(() => '?').join(',');
@@ -498,7 +498,7 @@ export default function PreparosScreen({ navigation }) {
       [catId, ...ids]
     );
     bulk.clear();
-    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'preparo movido' : 'preparos movidos'}`, icon: 'folder' });
+    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'receita base movida' : 'receitas base movidas'}`, icon: 'folder' });
     loadData();
   }
 
@@ -525,7 +525,7 @@ export default function PreparosScreen({ navigation }) {
       }
     }
     bulk.clear();
-    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'preparo duplicado' : 'preparos duplicados'}`, icon: 'copy' });
+    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'receita base duplicada' : 'receitas base duplicadas'}`, icon: 'copy' });
     loadData();
   }
 
@@ -555,7 +555,7 @@ export default function PreparosScreen({ navigation }) {
     const sigStr = sign === 1 ? '+' : '−';
     const valStr = mode === 'percent' ? `${value}%` : `R$ ${value.toFixed(2).replace('.', ',')}`;
     setInfoToast({
-      message: `${ids.length} ${ids.length === 1 ? 'preparo reajustado' : 'preparos reajustados'} (${sigStr}${valStr})`,
+      message: `${ids.length} ${ids.length === 1 ? 'receita base reajustada' : 'receitas base reajustadas'} (${sigStr}${valStr})`,
       icon: 'trending-up',
     });
     loadData();
@@ -574,8 +574,8 @@ export default function PreparosScreen({ navigation }) {
     bulk.clear();
     setInfoToast({
       message: novoVal === 1
-        ? `${ids.length} ${ids.length === 1 ? 'preparo favoritado' : 'preparos favoritados'}`
-        : `${ids.length} ${ids.length === 1 ? 'preparo desfavoritado' : 'preparos desfavoritados'}`,
+        ? `${ids.length} ${ids.length === 1 ? 'receita base favoritada' : 'receitas base favoritadas'}`
+        : `${ids.length} ${ids.length === 1 ? 'receita base desfavoritada' : 'receitas base desfavoritadas'}`,
       icon: 'star',
     });
     loadData();
@@ -616,7 +616,7 @@ export default function PreparosScreen({ navigation }) {
     ]);
     if (ok) {
       bulk.clear();
-      setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'preparo exportado' : 'preparos exportados'}`, icon: 'download' });
+      setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'receita base exportada' : 'receitas base exportadas'}`, icon: 'download' });
     }
   }
 
@@ -700,7 +700,7 @@ export default function PreparosScreen({ navigation }) {
                           style={{ padding: 4 }}
                           hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                           accessibilityRole="button"
-                          accessibilityLabel="Duplicar preparo"
+                          accessibilityLabel="Duplicar receita base"
                         >
                           <Feather name="copy" size={12} color={colors.disabled} />
                         </TouchableOpacity>
@@ -709,7 +709,7 @@ export default function PreparosScreen({ navigation }) {
                           style={{ padding: 4 }}
                           hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                           accessibilityRole="button"
-                          accessibilityLabel="Excluir preparo"
+                          accessibilityLabel="Excluir receita base"
                         >
                           <Feather name="trash-2" size={12} color={colors.error || '#dc2626'} />
                         </TouchableOpacity>
@@ -738,9 +738,9 @@ export default function PreparosScreen({ navigation }) {
     ? { icon: 'search', title: `Nenhum resultado para "${busca.trim()}"`, description: 'Tente outro termo ou limpe a busca.' }
     : {
         icon: 'layers',
-        title: 'Nenhum preparo ainda',
+        title: 'Nenhuma receita base ainda',
         description: 'Crie o primeiro — ex.: Massa de bolo — rende 700 g',
-        ctaLabel: 'Criar preparo',
+        ctaLabel: 'Criar receita base',
         onPress: () => abrirCriacao(),
       };
 
@@ -753,7 +753,7 @@ export default function PreparosScreen({ navigation }) {
     const avgKg = visibleItems.reduce((acc, it) => acc + (Number(it.custo_por_kg) || 0), 0) / visCount;
     const totalCusto = visibleItems.reduce((acc, it) => acc + (Number(it.custo_total) || 0), 0);
     return [
-      { icon: 'layers', label: 'Preparos', value: String(visCount), color: colors.primary },
+      { icon: 'layers', label: 'Receitas base', value: String(visCount), color: colors.primary },
       { icon: 'tag', label: 'Médio/kg', value: formatCurrency(avgKg), color: colors.accent || '#FFD37A' },
       { icon: 'shopping-cart', label: 'Custo total', value: formatCurrency(totalCusto), color: colors.success || '#1a8a4f' },
     ];
@@ -764,7 +764,7 @@ export default function PreparosScreen({ navigation }) {
       {loadError && (
         <View style={styles.errorBanner}>
           <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: 8 }} />
-          <Text style={styles.errorBannerText}>Não foi possível carregar os preparos.</Text>
+          <Text style={styles.errorBannerText}>Não foi possível carregar as receitas base.</Text>
           <TouchableOpacity onPress={loadData} style={styles.errorBannerBtn} activeOpacity={0.7}>
             <Text style={styles.errorBannerBtnText}>Tentar de novo</Text>
           </TouchableOpacity>
@@ -974,7 +974,7 @@ export default function PreparosScreen({ navigation }) {
       )}
 
       {!bulk.active && (
-        <FAB onPress={() => abrirCriacao()} label={isDesktop ? 'Novo Preparo' : undefined} />
+        <FAB onPress={() => abrirCriacao()} label={isDesktop ? 'Nova Receita base' : undefined} />
       )}
 
       <BulkActionBar
@@ -1008,7 +1008,7 @@ export default function PreparosScreen({ navigation }) {
 
       <CategoryPickerModal
         visible={showMoveModal}
-        title="Mover preparos para..."
+        title="Mover receitas base para..."
         subtitle={`${bulk.count} ${bulk.count === 1 ? 'item selecionado' : 'itens selecionados'}`}
         categorias={categorias}
         onSelect={moverEmMassa}
@@ -1017,9 +1017,9 @@ export default function PreparosScreen({ navigation }) {
 
       <BulkPriceAdjustModal
         visible={showPriceModal}
-        title="Reajustar custo de preparo"
+        title="Reajustar custo de receita base"
         subtitle={`${bulk.count} ${bulk.count === 1 ? 'item selecionado' : 'itens selecionados'} · custo será sobrescrito`}
-        currentLabel="custos de preparo"
+        currentLabel="custos de receita base"
         onConfirm={reajustarEmMassa}
         onCancel={() => setShowPriceModal(false)}
       />

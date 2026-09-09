@@ -158,7 +158,7 @@ export default function NotificacoesScreen() {
       <Item
         icon="package"
         title="Estoque baixo"
-        desc="Avisamos quando algum insumo ou embalagem ficar abaixo do mínimo definido."
+        desc="Avisamos quando algum ingrediente ou embalagem ficar abaixo do mínimo definido."
         value={prefs.estoque_baixo}
         onChange={() => toggle('estoque_baixo')}
         isCompact={isCompact}

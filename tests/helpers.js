@@ -22,6 +22,7 @@ async function skipWelcomeTour(page) {
   });
 }
 
+/** `tabName` é o ROUTE NAME (href), não o rótulo visível: 'Insumos' → "Ingredientes", 'Preparos' → "Receitas base". */
 async function goToTab(page, tabName) {
   const tab = page.locator(`a[href*="${tabName}"]`);
   await tab.click();

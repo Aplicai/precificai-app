@@ -139,7 +139,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
         <EmptyState
           icon="package"
           title="Nenhum item cadastrado"
-          description="Cadastre insumos ou embalagens primeiro para registrar uma entrada."
+          description="Cadastre ingredientes ou embalagens primeiro para registrar uma entrada."
         />
       </ModalFormWrapper>
     );
@@ -165,7 +165,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
         <Text style={styles.label}>Tipo de item</Text>
         <View style={styles.toggle}>
           {[
-            { v: 'materia_prima', l: 'Insumo' },
+            { v: 'materia_prima', l: 'Ingrediente' },
             { v: 'embalagem', l: 'Embalagem' },
           ].map((opt) => (
             <TouchableOpacity
@@ -184,7 +184,7 @@ export default function EntradaEstoqueScreen({ navigation, route }) {
           value={itemId}
           options={opcoesItens}
           onValueChange={setItemId}
-          placeholder={`Escolha ${tipo === 'embalagem' ? 'uma embalagem' : 'um insumo'}…`}
+          placeholder={`Escolha ${tipo === 'embalagem' ? 'uma embalagem' : 'um ingrediente'}…`}
         />
 
         {itemSelecionado && Number(itemSelecionado.custo_medio) > 0 && (

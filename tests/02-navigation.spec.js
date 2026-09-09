@@ -9,12 +9,12 @@ test.describe('Navigation - Tabs', () => {
 
   test('navigate to Insumos tab', async ({ page }) => {
     await goToTab(page, 'Insumos');
-    await expect(page.getByRole('heading', { name: 'Insumos' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Ingredientes' })).toBeVisible();
   });
 
   test('navigate to Preparos tab', async ({ page }) => {
     await goToTab(page, 'Preparos');
-    await expect(page.getByRole('heading', { name: 'Preparos' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Receitas base' })).toBeVisible();
   });
 
   test('navigate to Embalagens tab', async ({ page }) => {
@@ -54,8 +54,8 @@ test.describe('Navigation - Tabs', () => {
     // "Mais" é o route name real da tab em mobile (tabBarLabel 'Mais'), mas a
     // tela em si mantém o título "Ferramentas" (AppNavigator.js:377).
     const tabs = [
-      ['Insumos', 'Insumos'],
-      ['Preparos', 'Preparos'],
+      ['Insumos', 'Ingredientes'],
+      ['Preparos', 'Receitas base'],
       ['Embalagens', 'Embalagens'],
       ['Produtos', 'Produtos'],
       ['Mais', 'Ferramentas'],

@@ -423,7 +423,7 @@ export default function ListaComprasScreen({ navigation }) {
           <View style={{ flex: 1, marginLeft: 10 }}>
             <Text style={styles.infoTitle}>Lista de Compras</Text>
             <Text style={styles.infoDesc}>
-              Diga quanto vai produzir e gere a lista de ingredientes (preparos incluídos).
+              Diga quanto vai produzir e gere a lista de ingredientes (receitas base incluídas).
             </Text>
           </View>
         </View>
@@ -455,8 +455,8 @@ export default function ListaComprasScreen({ navigation }) {
           ) : produtos.length === 0 ? (
             <EmptyState
               icon="shopping-cart"
-              title="Nenhum insumo cadastrado"
-              description="Cadastre seus insumos em Insumos para gerar uma lista de compras automática a partir do estoque atual."
+              title="Nenhum ingrediente cadastrado"
+              description="Cadastre seus ingredientes em Ingredientes para gerar uma lista de compras automática a partir do estoque atual."
             />
           ) : (
             <View>

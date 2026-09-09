@@ -154,11 +154,11 @@ export default function HomeScreen({ navigation }) {
       const deliveryOk = delProdsN > 0 || combosN > 0;
       const setupEtapas = [
         { key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign', desc: 'Configure markup, despesas e margem de lucro', done: finCompleto, obrigatoria: true, tab: 'Financeiro', progresso: finConcluidas / 4 },
-        { key: 'insumos', label: 'Insumos', icon: 'shopping-bag', desc: 'Cadastre suas matérias-primas', done: insumosN > 0, tab: 'Insumos', count: insumosN },
+        { key: 'insumos', label: 'Ingredientes', icon: 'shopping-bag', desc: 'Cadastre seus ingredientes', done: insumosN > 0, tab: 'Insumos', count: insumosN },
         // UX audit 09/09 (Fase B, item 16): `opcional: true` = não segura o
         // banner "Configuração do app" sozinha (ver soFaltamEtapasOpcionais).
         { key: 'embalagens', label: 'Embalagens', icon: 'package', desc: 'Cadastre embalagens', done: embsN > 0, opcional: true, tab: 'Embalagens', count: embsN },
-        { key: 'preparos', label: 'Preparos', icon: 'layers', desc: 'Cadastre receitas base', done: prepsN > 0, opcional: true, tab: 'Preparos', count: prepsN },
+        { key: 'preparos', label: 'Receitas base', icon: 'layers', desc: 'Cadastre receitas base', done: prepsN > 0, opcional: true, tab: 'Preparos', count: prepsN },
         { key: 'produtos', label: 'Produtos', icon: 'box', desc: 'Monte fichas técnicas', done: prodsR.length > 0, tab: 'Produtos', count: prodsR.length },
         // Sessão 26 — etapa de Delivery só aparece se user marcou que faz delivery
         ...(usaDelivery ? [{ key: 'delivery', label: 'Delivery', icon: 'truck', desc: 'Configure delivery', done: deliveryOk, opcional: true, tab: 'Delivery', count: delProdsN + combosN }] : []),
@@ -348,7 +348,7 @@ export default function HomeScreen({ navigation }) {
         insights.push({ priority: 3, icon: 'target', color: colors.purple, title: 'Mínimo pra pagar as contas', text: `${formatCurrency(pontoEquilibrio / 30)} por dia`, hint: { title: 'Mínimo pra pagar as contas', text: 'Faturamento mínimo pra cobrir os custos do mês. Conta: custos do mês divididos pelo que sobra de cada venda depois dos ingredientes e taxas.' }, action: { tab: 'Financeiro', label: 'Ver financeiro' } });
       }
       if (cmvPercent > 0.35) {
-        insights.push({ priority: 2, icon: 'trending-up', color: colors.coral, title: 'Ingredientes pesando no preço', text: `Custo em ${formatPercent(cmvPercent)} · setor fica entre 30% e 35%`, action: { tab: 'Insumos', label: 'Revisar insumos' } });
+        insights.push({ priority: 2, icon: 'trending-up', color: colors.coral, title: 'Ingredientes pesando no preço', text: `Custo em ${formatPercent(cmvPercent)} · setor fica entre 30% e 35%`, action: { tab: 'Insumos', label: 'Revisar ingredientes' } });
       }
 
       // Sort by priority (1 = most critical first)
@@ -448,16 +448,16 @@ export default function HomeScreen({ navigation }) {
   // CTA
   let ctaLabel = null, ctaAction = null;
   if (pendente) { ctaLabel = 'Configurar Financeiro'; ctaAction = 'Financeiro'; }
-  else if (d.totalInsumos === 0) { ctaLabel = 'Cadastrar Insumos'; ctaAction = 'Insumos'; }
+  else if (d.totalInsumos === 0) { ctaLabel = 'Cadastrar Ingredientes'; ctaAction = 'Insumos'; }
   // UX audit 09/09 (Fase B, item 6): vazio com exemplo concreto.
   else if (d.totalProdutos === 0) { ctaLabel = 'Monte seu primeiro produto — ex.: Bolo de cenoura'; ctaAction = 'Produtos'; }
 
   // Quick actions
   const acoes = [];
   if (pendente) acoes.push({ label: 'Financeiro', icon: 'dollar-sign', set: 'feather', tab: 'Financeiro' });
-  if (d.totalInsumos === 0) acoes.push({ label: 'Cadastrar Insumo', icon: 'food-apple-outline', set: 'material', tab: 'Insumos' });
+  if (d.totalInsumos === 0) acoes.push({ label: 'Cadastrar Ingrediente', icon: 'food-apple-outline', set: 'material', tab: 'Insumos' });
   if (d.totalEmbalagens === 0 && acoes.length < 4) acoes.push({ label: 'Cadastrar Embalagem', icon: 'package', set: 'feather', tab: 'Embalagens' });
-  if (d.totalPreparos === 0 && acoes.length < 4) acoes.push({ label: 'Novo Preparo', icon: 'pot-steam-outline', set: 'material', tab: 'Preparos' });
+  if (d.totalPreparos === 0 && acoes.length < 4) acoes.push({ label: 'Nova Receita base', icon: 'pot-steam-outline', set: 'material', tab: 'Preparos' });
   if (d.totalProdutos === 0 && acoes.length < 4) acoes.push({ label: 'Novo Produto', icon: 'box', set: 'feather', tab: 'ProdutoFormHome' });
   if (usaDelivery && d.impactoDelivery === 0 && d.totalProdutos > 0 && acoes.length < 4) acoes.push({ label: 'Configurar Delivery', icon: 'moped-outline', set: 'material', tab: 'Delivery' });
   // Defaults proativos. Ordem reflete frequência de uso:
@@ -481,9 +481,9 @@ export default function HomeScreen({ navigation }) {
   // Base cards
   const baseCards = [
     // UX audit 09/09: contadores na cor da marca (cor só quando tem significado).
-    { label: 'Insumos', value: d.totalInsumos, icon: 'food-apple-outline', set: 'material', color: colors.primary, tab: 'Insumos' },
+    { label: 'Ingredientes', value: d.totalInsumos, icon: 'food-apple-outline', set: 'material', color: colors.primary, tab: 'Insumos' },
     { label: 'Embalagens', value: d.totalEmbalagens, icon: 'package', set: 'feather', color: colors.primary, tab: 'Embalagens' },
-    { label: 'Preparos', value: d.totalPreparos, icon: 'pot-steam-outline', set: 'material', color: colors.primary, tab: 'Preparos' },
+    { label: 'Receitas base', value: d.totalPreparos, icon: 'pot-steam-outline', set: 'material', color: colors.primary, tab: 'Preparos' },
     { label: 'Produtos', value: d.totalProdutos, icon: 'box', set: 'feather', color: colors.primary, tab: 'Produtos' },
   ];
 
@@ -628,7 +628,7 @@ export default function HomeScreen({ navigation }) {
             <View style={{ flex: 1 }}>
               <Text style={[styles.setupBannerTitle, { fontSize: fonts.medium }]}>Comece com o Kit de Início</Text>
               <Text style={styles.setupBannerDetail}>
-                Escolha seu segmento e receba insumos prontos para começar a precificar em minutos
+                Escolha seu segmento e receba ingredientes prontos para começar a precificar em minutos
               </Text>
             </View>
             <Feather name="chevron-right" size={20} color={colors.primary} />
@@ -643,9 +643,9 @@ export default function HomeScreen({ navigation }) {
             Como começar a precificar
           </Text>
           {[
-            { step: 1, label: 'Cadastre seus insumos', desc: 'Ingredientes e matérias-primas', icon: 'package', tab: 'Insumos', done: d.totalInsumos > 0, count: d.totalInsumos },
+            { step: 1, label: 'Cadastre seus ingredientes', desc: 'Tudo que você compra para produzir', icon: 'package', tab: 'Insumos', done: d.totalInsumos > 0, count: d.totalInsumos },
             { step: 2, label: 'Cadastre suas embalagens', desc: 'Caixas, potes, sacos, etc', icon: 'box', tab: 'Embalagens', done: d.totalEmbalagens > 0, count: d.totalEmbalagens },
-            { step: 3, label: 'Crie seus preparos', desc: 'Receitas base com insumos', icon: 'layers', tab: 'Preparos', done: d.totalPreparos > 0, count: d.totalPreparos, optional: true },
+            { step: 3, label: 'Crie suas receitas base', desc: 'Receitas base com ingredientes', icon: 'layers', tab: 'Preparos', done: d.totalPreparos > 0, count: d.totalPreparos, optional: true },
             { step: 4, label: 'Monte seus produtos', desc: 'Combine tudo e defina preços', icon: 'shopping-bag', tab: 'Produtos', done: d.totalProdutos > 0, count: d.totalProdutos },
           ].map((s, i) => {
             const isNext = !s.done && (i === 0 || [d.totalInsumos > 0, d.totalEmbalagens > 0, d.totalPreparos > 0 || true, d.totalProdutos > 0][i - 1]);
@@ -722,7 +722,7 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.statusDetail}>{finStatus.concluidas} de {finStatus.total} etapas do Financeiro</Text>
             )}
             {!pendente && baseIncompleta && (
-              <Text style={styles.statusDetail}>Cadastre insumos e produtos para começar</Text>
+              <Text style={styles.statusDetail}>Cadastre ingredientes e produtos para começar</Text>
             )}
             {!pendente && !baseIncompleta && d.produtosMargBaixa.length > 0 && (
               <Text style={styles.statusDetail}>Ver produtos afetados</Text>

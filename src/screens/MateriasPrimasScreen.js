@@ -127,12 +127,12 @@ function buildCascadeAviso(deps) {
   if (deps.produtos.length > 0) {
     const nomes = deps.produtos.slice(0, 3).map(p => `• ${p.nome}`).join('\n');
     const extra = deps.produtos.length > 3 ? `\n+${deps.produtos.length - 3} outros` : '';
-    linhas.push(`${deps.produtos.length} ${deps.produtos.length === 1 ? 'produto usa' : 'produtos usam'} este insumo:\n${nomes}${extra}`);
+    linhas.push(`${deps.produtos.length} ${deps.produtos.length === 1 ? 'produto usa' : 'produtos usam'} este ingrediente:\n${nomes}${extra}`);
   }
   if (deps.preparos.length > 0) {
     const nomes = deps.preparos.slice(0, 3).map(p => `• ${p.nome}`).join('\n');
     const extra = deps.preparos.length > 3 ? `\n+${deps.preparos.length - 3} outros` : '';
-    linhas.push(`${deps.preparos.length} ${deps.preparos.length === 1 ? 'preparo usa' : 'preparos usam'} este insumo:\n${nomes}${extra}`);
+    linhas.push(`${deps.preparos.length} ${deps.preparos.length === 1 ? 'receita base usa' : 'receitas base usam'} este ingrediente:\n${nomes}${extra}`);
   }
   return `${linhas.join('\n\n')}\n\nO ingrediente será removido deles. Custo e preço sugerido podem ficar desatualizados.`;
 }
@@ -353,7 +353,7 @@ export default function MateriasPrimasScreen({ navigation }) {
 
       setSections(secs);
     } catch (e) {
-      const msg = (e && e.message) ? e.message : 'Falha ao carregar insumos.';
+      const msg = (e && e.message) ? e.message : 'Falha ao carregar ingredientes.';
       setLoadError(msg);
       if (typeof console !== 'undefined' && console.error) console.error('[MateriasPrimasScreen.loadData]', e);
     } finally {
@@ -380,7 +380,7 @@ export default function MateriasPrimasScreen({ navigation }) {
     const deps = await getInsumoDependencies([id]);
     const aviso = buildCascadeAviso(deps);
     setConfirmDelete({
-      titulo: 'Excluir Insumo',
+      titulo: 'Excluir Ingrediente',
       nome,
       aviso,
       onConfirm: async () => {
@@ -388,7 +388,7 @@ export default function MateriasPrimasScreen({ navigation }) {
         // Soft-delete: esconde imediatamente, oferece desfazer por 5s (P1-11)
         await undoDelete.requestDelete({
           id,
-          message: `Insumo "${nome}" excluído`,
+          message: `Ingrediente "${nome}" excluído`,
           commit: async () => {
             const db = await getDatabase();
             await db.runAsync('DELETE FROM materias_primas WHERE id = ?', [id]);
@@ -406,7 +406,7 @@ export default function MateriasPrimasScreen({ navigation }) {
     const deps = await getInsumoDependencies(ids);
     const aviso = buildCascadeAviso(deps);
     setConfirmDelete({
-      titulo: ids.length === 1 ? 'Excluir Insumo' : `Excluir ${ids.length} insumos`,
+      titulo: ids.length === 1 ? 'Excluir Ingrediente' : `Excluir ${ids.length} ingredientes`,
       nome: ids.length === 1 ? null : `${ids.length} itens selecionados`,
       aviso,
       onConfirm: async () => {
@@ -414,7 +414,7 @@ export default function MateriasPrimasScreen({ navigation }) {
         // Hook já adiciona todos os ids ao hiddenIds (suporta array)
         await undoDelete.requestDelete({
           id: ids,
-          message: ids.length === 1 ? '1 insumo excluído' : `${ids.length} insumos excluídos`,
+          message: ids.length === 1 ? '1 ingrediente excluído' : `${ids.length} ingredientes excluídos`,
           commit: async () => {
             const db = await getDatabase();
             const placeholders = ids.map(() => '?').join(',');
@@ -450,7 +450,7 @@ export default function MateriasPrimasScreen({ navigation }) {
       [catId, ...ids]
     );
     bulk.clear();
-    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'insumo movido' : 'insumos movidos'}`, icon: 'folder' });
+    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'ingrediente movido' : 'ingredientes movidos'}`, icon: 'folder' });
     loadData();
   }
 
@@ -467,7 +467,7 @@ export default function MateriasPrimasScreen({ navigation }) {
       [item.nome + ' (cópia)', item.marca, item.categoria_id, item.quantidade_bruta, item.quantidade_liquida, item.fator_correcao, item.unidade_medida, item.valor_pago, item.preco_por_kg]
     )));
     bulk.clear();
-    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'insumo duplicado' : 'insumos duplicados'}`, icon: 'copy' });
+    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'ingrediente duplicado' : 'ingredientes duplicados'}`, icon: 'copy' });
     loadData();
   }
 
@@ -496,7 +496,7 @@ export default function MateriasPrimasScreen({ navigation }) {
     const sigStr = sign === 1 ? '+' : '−';
     const valStr = mode === 'percent' ? `${value}%` : `R$ ${value.toFixed(2).replace('.', ',')}`;
     setInfoToast({
-      message: `${ids.length} ${ids.length === 1 ? 'insumo reajustado' : 'insumos reajustados'} (${sigStr}${valStr})`,
+      message: `${ids.length} ${ids.length === 1 ? 'ingrediente reajustado' : 'ingredientes reajustados'} (${sigStr}${valStr})`,
       icon: 'trending-up',
     });
     loadData();
@@ -517,8 +517,8 @@ export default function MateriasPrimasScreen({ navigation }) {
     bulk.clear();
     setInfoToast({
       message: novoVal === 1
-        ? `${ids.length} ${ids.length === 1 ? 'insumo favoritado' : 'insumos favoritados'}`
-        : `${ids.length} ${ids.length === 1 ? 'insumo desfavoritado' : 'insumos desfavoritados'}`,
+        ? `${ids.length} ${ids.length === 1 ? 'ingrediente favoritado' : 'ingredientes favoritados'}`
+        : `${ids.length} ${ids.length === 1 ? 'ingrediente desfavoritado' : 'ingredientes desfavoritados'}`,
       icon: 'star',
     });
     loadData();
@@ -562,7 +562,7 @@ export default function MateriasPrimasScreen({ navigation }) {
     ]);
     if (ok) {
       bulk.clear();
-      setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'insumo exportado' : 'insumos exportados'}`, icon: 'download' });
+      setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'ingrediente exportado' : 'ingredientes exportados'}`, icon: 'download' });
     }
   }
 
@@ -614,13 +614,13 @@ export default function MateriasPrimasScreen({ navigation }) {
           icon: 'shopping-bag',
           title: 'Nenhum ingrediente ainda',
           description: 'Cadastre o primeiro — ex.: Farinha de trigo, 1 kg, R$ 5,90',
-          ctaLabel: 'Cadastrar insumo',
+          ctaLabel: 'Cadastrar ingrediente',
           onPress: () => navigation.navigate('MateriaPrimaForm', {}),
         }
       : {
           icon: 'filter',
-          title: 'Nenhum insumo com esse filtro',
-          description: soEstimados ? 'Todos os insumos visíveis já têm preço próprio.' : 'Tente outra categoria.',
+          title: 'Nenhum ingrediente com esse filtro',
+          description: soEstimados ? 'Todos os ingredientes visíveis já têm preço próprio.' : 'Tente outra categoria.',
           ctaLabel: 'Limpar filtros',
           ctaIcon: 'x',
           onPress: () => { setSoEstimados(false); setFiltroCategoria(null); },
@@ -634,7 +634,7 @@ export default function MateriasPrimasScreen({ navigation }) {
     : 0;
   const totalPago = visibleItems.reduce((acc, it) => acc + (Number(it.valor_pago) || 0), 0);
   const statsList = visCount > 0 ? [
-    { icon: 'box', label: 'Insumos', value: String(visCount), color: colors.primary },
+    { icon: 'box', label: 'Ingredientes', value: String(visCount), color: colors.primary },
     { icon: 'tag', label: 'Médio/kg', value: formatCurrency(avgKg), color: colors.accent || '#FFD37A' },
     { icon: 'shopping-cart', label: 'Total compras', value: formatCurrency(totalPago), color: colors.success || '#1a8a4f' },
   ] : [];
@@ -720,7 +720,7 @@ export default function MateriasPrimasScreen({ navigation }) {
         <View style={styles.errorBanner}>
           <Feather name="alert-triangle" size={16} color={colors.error || '#c0392b'} style={{ marginRight: 8, marginTop: 2 }} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.errorBannerTitle}>Não conseguimos carregar seus insumos</Text>
+            <Text style={styles.errorBannerTitle}>Não conseguimos carregar seus ingredientes</Text>
             <Text style={styles.errorBannerDesc} numberOfLines={3}>{loadError}</Text>
           </View>
           <TouchableOpacity onPress={() => loadData()} style={styles.errorBannerBtn}>
@@ -797,8 +797,8 @@ export default function MateriasPrimasScreen({ navigation }) {
                                     style={{ padding: 4 }}
                                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                                     accessibilityRole="button"
-                                    accessibilityLabel="Duplicar insumo"
-                                    {...(isWeb ? { title: 'Duplicar insumo' } : {})}
+                                    accessibilityLabel="Duplicar ingrediente"
+                                    {...(isWeb ? { title: 'Duplicar ingrediente' } : {})}
                                   >
                                     <Feather name="copy" size={12} color={colors.disabled} />
                                   </TouchableOpacity>
@@ -807,8 +807,8 @@ export default function MateriasPrimasScreen({ navigation }) {
                                     style={{ padding: 4 }}
                                     hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                                     accessibilityRole="button"
-                                    accessibilityLabel="Excluir insumo"
-                                    {...(isWeb ? { title: 'Excluir insumo' } : {})}
+                                    accessibilityLabel="Excluir ingrediente"
+                                    {...(isWeb ? { title: 'Excluir ingrediente' } : {})}
                                   >
                                     <Feather name="trash-2" size={12} color={colors.error || '#dc2626'} />
                                   </TouchableOpacity>
@@ -1007,7 +1007,7 @@ export default function MateriasPrimasScreen({ navigation }) {
         estoqueOn ? (
           <FABMenu
             primary={{
-              label: 'Novo Insumo',
+              label: 'Novo Ingrediente',
               icon: 'plus',
               onPress: () => navigation.navigate('MateriaPrimaForm', {}),
             }}
@@ -1027,7 +1027,7 @@ export default function MateriasPrimasScreen({ navigation }) {
             ]}
           />
         ) : (
-          <FAB onPress={() => navigation.navigate('MateriaPrimaForm', {})} label={isDesktop ? 'Novo Insumo' : undefined} />
+          <FAB onPress={() => navigation.navigate('MateriaPrimaForm', {})} label={isDesktop ? 'Novo Ingrediente' : undefined} />
         )
       )}
 
@@ -1108,7 +1108,7 @@ export default function MateriasPrimasScreen({ navigation }) {
       {/* Modal de mover em massa (P2-B) */}
       <CategoryPickerModal
         visible={showMoveModal}
-        title="Mover insumos para..."
+        title="Mover ingredientes para..."
         subtitle={`${bulk.count} ${bulk.count === 1 ? 'item selecionado' : 'itens selecionados'}`}
         categorias={categorias}
         onSelect={moverEmMassa}

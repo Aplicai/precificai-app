@@ -92,7 +92,7 @@ export default function SuggestPriceModal({
               <Feather name="alert-octagon" size={32} color={colors.error || '#c0392b'} />
               <Text style={styles.errorTitle}>Não foi possível calcular um preço válido</Text>
               <Text style={styles.errorText}>
-                Verifique se: o produto tem ingredientes/preparos cadastrados, a soma de despesas variáveis + fixas + margem alvo está abaixo de 100%, e a configuração financeira foi concluída.
+                Verifique se: o produto tem ingredientes/receitas base cadastradas, a soma de despesas variáveis + fixas + margem alvo está abaixo de 100%, e a configuração financeira foi concluída.
               </Text>
               <TouchableOpacity style={styles.retryBtn} onPress={onClose} activeOpacity={0.8}>
                 <Feather name="settings" size={16} color="#fff" />

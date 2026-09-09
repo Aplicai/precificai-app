@@ -251,7 +251,7 @@ export default function SimuladorScreen({ navigation }) {
           <View style={{ flex: 1, marginLeft: 10 }}>
             <Text style={styles.infoTitle}>Simulador de Impacto</Text>
             <Text style={styles.infoDesc}>
-              Simule o efeito de uma variação de preço nos seus custos e margens. Escolha um insumo específico ou aplique a todos.
+              Simule o efeito de uma variação de preço nos seus custos e margens. Escolha um ingrediente específico ou aplique a todos.
             </Text>
           </View>
         </View>
@@ -288,13 +288,13 @@ export default function SimuladorScreen({ navigation }) {
             onPress={() => setInsumoSelecionado(null)}
           >
             <Text style={[styles.insumoSelectText, !insumoSelecionado && styles.insumoSelectTextActive]}>
-              Todos os insumos
+              Todos os ingredientes
             </Text>
           </TouchableOpacity>
 
           <TextInput
             style={styles.searchInput}
-            placeholder="Buscar insumo específico..."
+            placeholder="Buscar ingrediente específico..."
             value={busca}
             onChangeText={setBusca}
           />
@@ -336,7 +336,7 @@ export default function SimuladorScreen({ navigation }) {
         {resultados && (
           <View style={styles.resultadosCard}>
             <Text style={styles.resultadosTitle}>
-              Impacto: {parseFloat(ajuste) > 0 ? '+' : ''}{ajuste}% {insumoSelecionado ? `em ${insumos.find(i => i.id === insumoSelecionado)?.nome}` : 'em todos os insumos'}
+              Impacto: {parseFloat(ajuste) > 0 ? '+' : ''}{ajuste}% {insumoSelecionado ? `em ${insumos.find(i => i.id === insumoSelecionado)?.nome}` : 'em todos os ingredientes'}
             </Text>
 
             {/* Resumo */}

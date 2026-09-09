@@ -15,12 +15,12 @@ test.describe('All Screens Load Without Crash', () => {
 
   test('Insumos loads', async ({ page }) => {
     await goToTab(page, 'Insumos');
-    await expect(page.getByRole('heading', { name: 'Insumos' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Ingredientes' })).toBeVisible();
   });
 
   test('Preparos loads', async ({ page }) => {
     await goToTab(page, 'Preparos');
-    await expect(page.getByRole('heading', { name: 'Preparos' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Receitas base' })).toBeVisible();
   });
 
   test('Embalagens loads', async ({ page }) => {

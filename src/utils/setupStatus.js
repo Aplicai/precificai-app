@@ -62,8 +62,8 @@ export async function getSetupStatus() {
       ],
     },
     {
-      key: 'insumos', label: 'Insumos', icon: 'shopping-bag',
-      desc: 'Cadastre suas matérias-primas e ingredientes',
+      key: 'insumos', label: 'Ingredientes', icon: 'shopping-bag',
+      desc: 'Cadastre seus ingredientes',
       done: insumosOk, obrigatoria: false, tab: 'Insumos',
       count: insumosN,
     },
@@ -74,8 +74,8 @@ export async function getSetupStatus() {
       count: embalagensN,
     },
     {
-      key: 'preparos', label: 'Preparos', icon: 'layers',
-      desc: 'Cadastre receitas base e pré-preparos',
+      key: 'preparos', label: 'Receitas base', icon: 'layers',
+      desc: 'Massas, recheios, molhos e outras bases',
       done: preparosOk, obrigatoria: false, opcional: true, tab: 'Preparos',
       count: preparosN,
     },

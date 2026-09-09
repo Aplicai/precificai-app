@@ -158,11 +158,11 @@ async function cleanupE2E(page) {
     await confirmDeleteModal(page);
   }
 
-  // Preparos: aria-label="Excluir preparo"
+  // Preparos (tab "Receitas base"): aria-label="Excluir receita base"
   await goToTab(page, 'Preparos');
   await search(page, 'E2E-');
   for (let i = 0; i < 5; i++) {
-    const btn = page.locator('[aria-label="Excluir preparo"]').first();
+    const btn = page.locator('[aria-label="Excluir receita base"]').first();
     if (!(await btn.isVisible().catch(() => false))) break;
     await btn.click();
     await confirmDeleteModal(page);
@@ -215,7 +215,7 @@ test('1. cria insumo E2E-Farinha a R$ 5,00/kg', async ({ page }) => {
   await fillPlaceholder(page, 'Ex: 1000 (use vírgula para decimais)', '1000');
   await fillPlaceholder(page, 'Ex: 800 (use vírgula para decimais)', '1000');
   await fillPlaceholder(page, 'Ex: 5,00 (total da nota por essa quantidade)', '5');
-  await page.getByText('Salvar Insumo', { exact: true }).click();
+  await page.getByText('Salvar Ingrediente', { exact: true }).click();
   await page.waitForTimeout(1500);
 
   await search(page, N.farinha);

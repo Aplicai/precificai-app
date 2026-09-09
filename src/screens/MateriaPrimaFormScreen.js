@@ -158,7 +158,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   }
 
   useEffect(() => {
-    navigation.setOptions({ title: editId ? 'Editar Insumo' : 'Novo Insumo' });
+    navigation.setOptions({ title: editId ? 'Editar Ingrediente' : 'Novo Ingrediente' });
     if (editId) {
       loadItem();
     } else {
@@ -352,7 +352,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   const labelPreco = getLabelPrecoBase(form.unidade_medida);
 
   const temDadosCalculo = qtBruta > 0 && qtLiquida > 0 && valorPago > 0;
-  const formTitle = editId ? 'Editar Insumo' : 'Novo Insumo';
+  const formTitle = editId ? 'Editar Ingrediente' : 'Novo Ingrediente';
   const perdaPercent = qtBruta > 0 ? ((1 - qtLiquida / qtBruta) * 100) : 0;
 
   function sufixoUnidade() {
@@ -758,7 +758,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
       try { showToast(`Erro ao salvar: ${msg}`, 'alert-circle', 4500); } catch (_) {}
       Alert.alert(
         'Erro ao salvar',
-        `Não foi possível salvar o insumo:\n\n${msg}\n\nVerifique sua conexão e tente novamente.`,
+        `Não foi possível salvar o ingrediente:\n\n${msg}\n\nVerifique sua conexão e tente novamente.`,
         [{ text: 'OK' }]
       );
     }
@@ -808,14 +808,14 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
       const db = await getDatabase();
       const deps = await contarDependencias(db, 'materia_prima', editId);
       if (deps.total > 0) {
-        mensagemDeps = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'insumo' });
+        mensagemDeps = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'ingrediente' });
       }
     } catch (e) {
       console.warn('[MateriaPrimaFormScreen.solicitarExclusao] erro ao checar dependências:', e?.message);
     }
     setConfirmDelete({
-      titulo: 'Excluir Insumo',
-      nome: form.nome || 'este insumo',
+      titulo: 'Excluir Ingrediente',
+      nome: form.nome || 'este ingrediente',
       mensagemExtra: mensagemDeps,
       onConfirm: async () => {
         const db = await getDatabase();
@@ -835,7 +835,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
 
         {/* Nome do insumo */}
         <InputField
-          label="Nome do insumo"
+          label="Nome do ingrediente"
           value={form.nome}
           onChangeText={(v) => {
             setForm(p => ({ ...p, nome: v }));
@@ -1047,7 +1047,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                 rightLabel={
                   <InfoTooltip
                     title="Quantidade comprada"
-                    text="Quantas unidades você comprou pelo valor pago. Pra insumos vendidos por unidade não tem perda de casca/osso, então é só esse valor."
+                    text="Quantas unidades você comprou pelo valor pago. Pra ingredientes vendidos por unidade não tem perda de casca/osso, então é só esse valor."
                     examples={['Ex: 12 ovos custaram R$ 18,00 → 12 unidades']}
                   />
                 }
@@ -1380,7 +1380,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             accessibilityRole="button"
             accessibilityState={{ disabled: saving, busy: saving }}
           >
-            <Text style={styles.btnSaveText}>{saving ? 'Salvando…' : 'Salvar Insumo'}</Text>
+            <Text style={styles.btnSaveText}>{saving ? 'Salvando…' : 'Salvar Ingrediente'}</Text>
           </TouchableOpacity>
         )}
 
@@ -1485,7 +1485,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             </View>
             <Text style={styles.incompleteTitle}>Salvar antes de sair?</Text>
             <Text style={styles.incompleteDesc}>
-              Você preencheu este insumo mas ainda não salvou. Se sair agora, os dados serão perdidos.
+              Você preencheu este ingrediente mas ainda não salvou. Se sair agora, os dados serão perdidos.
             </Text>
             <TouchableOpacity style={styles.incompleteBtnEdit} onPress={handleSaveAndExit} activeOpacity={0.7}>
               <Feather name="check" size={15} color="#fff" style={{ marginRight: 6 }} />
@@ -1511,7 +1511,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             </View>
             <Text style={styles.incompleteTitle}>Campos obrigatórios</Text>
             <Text style={styles.incompleteDesc}>
-              Preencha todos os campos obrigatórios antes de sair. Deseja excluir este insumo ou continuar editando?
+              Preencha todos os campos obrigatórios antes de sair. Deseja excluir este ingrediente ou continuar editando?
             </Text>
             <TouchableOpacity style={styles.incompleteBtnEdit} onPress={handleContinueEditing} activeOpacity={0.7}>
               <Feather name="edit-2" size={15} color="#fff" style={{ marginRight: 6 }} />
@@ -1519,7 +1519,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             </TouchableOpacity>
             <TouchableOpacity style={styles.incompleteBtnDelete} onPress={handleDeleteAndExit} activeOpacity={0.7}>
               <Feather name="trash-2" size={15} color={colors.error} style={{ marginRight: 6 }} />
-              <Text style={styles.incompleteBtnDeleteText}>Excluir insumo</Text>
+              <Text style={styles.incompleteBtnDeleteText}>Excluir ingrediente</Text>
             </TouchableOpacity>
           </View>
         </View>

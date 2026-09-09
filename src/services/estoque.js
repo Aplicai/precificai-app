@@ -138,7 +138,7 @@ export async function listarSaldosConsolidados(db) {
     'SELECT id, nome, quantidade_estoque, estoque_minimo, custo_medio FROM embalagens ORDER BY nome'
   );
   const itens = [
-    ...mps.map((i) => ({ ...i, _tipo: 'materia_prima', _label: 'Insumo' })),
+    ...mps.map((i) => ({ ...i, _tipo: 'materia_prima', _label: 'Ingrediente' })),
     ...embs.map((i) => ({ ...i, _tipo: 'embalagem', _label: 'Embalagem', unidade_medida: 'un' })),
   ];
   return itens.map((i) => ({ ...i, _status: statusEstoque(i) }));

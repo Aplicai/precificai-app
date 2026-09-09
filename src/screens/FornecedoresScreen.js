@@ -253,7 +253,7 @@ export default function FornecedoresScreen({ navigation }) {
           <EmptyState
             icon="search"
             title="Nenhuma comparação disponível"
-            description="Cadastre o mesmo insumo com marcas diferentes para comparar preços entre fornecedores."
+            description="Cadastre o mesmo ingrediente com marcas diferentes para comparar preços entre fornecedores."
           />
         )}
 

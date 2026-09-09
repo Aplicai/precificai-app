@@ -45,8 +45,8 @@ function getComboColor(index) {
 
 // Type badge colors
 function getTipoBadgeInfo(tipo) {
-  if (tipo === 'materia_prima') return { label: 'insumo', color: colors.primary };
-  if (tipo === 'preparo') return { label: 'preparo', color: colors.accent };
+  if (tipo === 'materia_prima') return { label: 'ingrediente', color: colors.primary };
+  if (tipo === 'preparo') return { label: 'receita base', color: colors.accent };
   if (tipo === 'produto' || tipo === 'delivery_produto') return { label: 'produto', color: colors.purple };
   if (tipo === 'embalagem') return { label: 'embalagem', color: colors.yellow };
   return { label: tipo, color: colors.disabled };
@@ -356,7 +356,7 @@ export default function DeliveryCombosScreen() {
         custoUnit = dp ? dp.custoUnitario : 0;
       } else if (item.tipo === 'materia_prima') {
         const mp = allMaterias.find(x => x.id === item.item_id);
-        nome = mp ? mp.nome : 'Insumo';
+        nome = mp ? mp.nome : 'Ingrediente';
         custoUnit = mp ? calcCustoIngrediente(mp.preco_por_kg, 1, mp.unidade_medida, 'g') : 0;
       } else if (item.tipo === 'embalagem') {
         const e = allEmbalagens.find(x => x.id === item.item_id);
@@ -364,7 +364,7 @@ export default function DeliveryCombosScreen() {
         custoUnit = e ? e.preco_unitario : 0;
       } else if (item.tipo === 'preparo') {
         const p = allPreparos.find(x => x.id === item.item_id);
-        nome = p ? p.nome : 'Preparo';
+        nome = p ? p.nome : 'Receita base';
         custoUnit = p ? calcCustoPreparo(p.custo_por_kg, 1, 'g') : 0;
       }
       return { tipo: item.tipo, item_id: item.item_id, quantidade: item.quantidade, nome, custoUnit };
@@ -779,8 +779,8 @@ export default function DeliveryCombosScreen() {
     itens.forEach(it => { if (counts[it.tipo] !== undefined) counts[it.tipo]++; });
     const subtitleParts = [];
     if (counts.produto) subtitleParts.push(`${counts.produto} ${counts.produto === 1 ? 'produto' : 'produtos'}`);
-    if (counts.preparo) subtitleParts.push(`${counts.preparo} ${counts.preparo === 1 ? 'preparo' : 'preparos'}`);
-    if (counts.materia_prima) subtitleParts.push(`${counts.materia_prima} ${counts.materia_prima === 1 ? 'insumo' : 'insumos'}`);
+    if (counts.preparo) subtitleParts.push(`${counts.preparo} ${counts.preparo === 1 ? 'receita base' : 'receitas base'}`);
+    if (counts.materia_prima) subtitleParts.push(`${counts.materia_prima} ${counts.materia_prima === 1 ? 'ingrediente' : 'ingredientes'}`);
     if (counts.embalagem) subtitleParts.push(`${counts.embalagem} ${counts.embalagem === 1 ? 'embalagem' : 'embalagens'}`);
     const subtitle = subtitleParts.length > 0 ? subtitleParts.join(' · ') : 'Combo vazio';
 
@@ -853,8 +853,8 @@ export default function DeliveryCombosScreen() {
     itens.forEach(it => { if (counts[it.tipo] !== undefined) counts[it.tipo]++; });
     const subtitleParts = [];
     if (counts.produto) subtitleParts.push(`${counts.produto} produto${counts.produto > 1 ? 's' : ''}`);
-    if (counts.preparo) subtitleParts.push(`${counts.preparo} preparo${counts.preparo > 1 ? 's' : ''}`);
-    if (counts.materia_prima) subtitleParts.push(`${counts.materia_prima} insumo${counts.materia_prima > 1 ? 's' : ''}`);
+    if (counts.preparo) subtitleParts.push(`${counts.preparo} ${counts.preparo > 1 ? 'receitas base' : 'receita base'}`);
+    if (counts.materia_prima) subtitleParts.push(`${counts.materia_prima} ingrediente${counts.materia_prima > 1 ? 's' : ''}`);
     if (counts.embalagem) subtitleParts.push(`${counts.embalagem} ${counts.embalagem > 1 ? 'embalagens' : 'embalagem'}`);
     const subtitle = subtitleParts.length > 0 ? subtitleParts.join(' · ') : 'Combo vazio';
 
@@ -1150,9 +1150,9 @@ export default function DeliveryCombosScreen() {
                   <View style={styles.comboResumoBreakdown}>
                     {custoProdutos > 0 && <Text style={styles.comboResumoBreakdownItem}>Produtos {formatCurrency(custoProdutos)}</Text>}
                     {custoProdutos > 0 && custoInsumos > 0 && <Text style={styles.comboResumoBreakdownSep}>{'\u00B7'}</Text>}
-                    {custoInsumos > 0 && <Text style={styles.comboResumoBreakdownItem}>Insumos {formatCurrency(custoInsumos)}</Text>}
+                    {custoInsumos > 0 && <Text style={styles.comboResumoBreakdownItem}>Ingredientes {formatCurrency(custoInsumos)}</Text>}
                     {(custoProdutos > 0 || custoInsumos > 0) && custoPreparosCombo > 0 && <Text style={styles.comboResumoBreakdownSep}>{'\u00B7'}</Text>}
-                    {custoPreparosCombo > 0 && <Text style={styles.comboResumoBreakdownItem}>Preparos {formatCurrency(custoPreparosCombo)}</Text>}
+                    {custoPreparosCombo > 0 && <Text style={styles.comboResumoBreakdownItem}>Receitas base {formatCurrency(custoPreparosCombo)}</Text>}
                     {(custoProdutos > 0 || custoInsumos > 0 || custoPreparosCombo > 0) && custoEmbalagensCombo > 0 && <Text style={styles.comboResumoBreakdownSep}>{'\u00B7'}</Text>}
                     {custoEmbalagensCombo > 0 && <Text style={styles.comboResumoBreakdownItem}>Emb. {formatCurrency(custoEmbalagensCombo)}</Text>}
                   </View>
@@ -1254,8 +1254,8 @@ export default function DeliveryCombosScreen() {
                 {[
                   { key: 'todos', label: 'Tudo', icon: 'grid' },
                   { key: 'produto', label: 'Produtos', icon: 'tag' },
-                  { key: 'preparo', label: 'Preparos', icon: 'pot-steam-outline', material: true },
-                  { key: 'materia_prima', label: 'Insumos', icon: 'shopping-bag' },
+                  { key: 'preparo', label: 'Receitas base', icon: 'pot-steam-outline', material: true },
+                  { key: 'materia_prima', label: 'Ingredientes', icon: 'shopping-bag' },
                   { key: 'embalagem', label: 'Embalagens', icon: 'package' },
                 ].map(opt => {
                   const isActive = (filtroTipoItem || 'todos') === opt.key;
@@ -1357,8 +1357,8 @@ export default function DeliveryCombosScreen() {
                 return (
                   <>
                     {renderCatBlock('produto', 'Produtos', filteredProdutos, (p) => renderRow(p, `prod-${p.id}`, 'produto', (x) => safeNum(x.preco_venda)))}
-                    {renderCatBlock('preparo', 'Preparos', filteredPreparos, (pr) => renderRow(pr, `prep-${pr.id}`, 'preparo', (x) => safeNum(x.custo_total)))}
-                    {renderCatBlock('materia_prima', 'Insumos', filteredMaterias, (m) => renderRow(m, `mp-${m.id}`, 'materia_prima', (x) => safeNum(x.preco_por_kg)))}
+                    {renderCatBlock('preparo', 'Receitas base', filteredPreparos, (pr) => renderRow(pr, `prep-${pr.id}`, 'preparo', (x) => safeNum(x.custo_total)))}
+                    {renderCatBlock('materia_prima', 'Ingredientes', filteredMaterias, (m) => renderRow(m, `mp-${m.id}`, 'materia_prima', (x) => safeNum(x.preco_por_kg)))}
                     {renderCatBlock('embalagem', 'Embalagens', filteredEmbalagens, (e) => renderRow(e, `emb-${e.id}`, 'embalagem', (x) => safeNum(x.preco_unitario)))}
                   </>
                 );

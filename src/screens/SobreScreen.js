@@ -27,11 +27,11 @@ async function openExternal(url, onError) {
 // Removidos: Simulador (virou CTA contextual na Ficha Técnica) e
 // Meta de Faturamento (tela órfã removida na Fase A1).
 const FEATURES_ESSENCIAIS = [
-  { icon: 'file-text', label: 'Cadastro completo', desc: 'Insumos, preparos, embalagens e produtos' },
+  { icon: 'file-text', label: 'Cadastro completo', desc: 'Ingredientes, receitas base, embalagens e produtos' },
   { icon: 'dollar-sign', label: 'Custo dos ingredientes (CMV) automático', desc: 'CMV e preço sugerido com markup e margem' },
   { icon: 'sliders', label: 'Configuração financeira completa', desc: 'Margem, custos do mês e por venda, faturamento' },
   { icon: 'shopping-cart', label: 'Lista de Compras automática', desc: 'Consolidação de ingredientes por produção' },
-  { icon: 'printer', label: 'Exportar Fichas Técnicas em PDF', desc: 'Produtos e preparos para impressão' },
+  { icon: 'printer', label: 'Exportar Fichas Técnicas em PDF', desc: 'Produtos e receitas base para impressão' },
   { icon: 'book-open', label: 'Relatório', desc: 'Seus números em linguagem simples' },
   { icon: 'trending-up', label: 'Histórico de preços com gráfico', desc: 'Acompanhe a evolução dos custos' },
   { icon: 'alert-triangle', label: 'Alerta de erosão de margem', desc: 'Notificação quando margens caem' },
@@ -47,8 +47,8 @@ const FEATURES_AVANCADAS = [
   { icon: 'truck', label: 'Precificação para Delivery', desc: 'iFood, Rappi e outras plataformas (ative em Onboarding ou Configurações)' },
   { icon: 'layers', label: 'Gestão de combos', desc: 'Monte e precifique combos para delivery' },
   { icon: 'bar-chart-2', label: 'Engenharia do Cardápio', desc: 'Análise de portfólio (ative o modo análise avançada)' },
-  { icon: 'users', label: 'Comparador de Fornecedores', desc: 'Encontre economia nos insumos (modo análise avançada)' },
-  { icon: 'archive', label: 'Controle de Estoque', desc: 'Entradas, ajustes e saldo por insumo (ative o modo estoque avançado)' },
+  { icon: 'users', label: 'Comparador de Fornecedores', desc: 'Encontre economia nos ingredientes (modo análise avançada)' },
+  { icon: 'archive', label: 'Controle de Estoque', desc: 'Entradas, ajustes e saldo por ingrediente (ative o modo estoque avançado)' },
 ];
 
 export default function SobreScreen() {

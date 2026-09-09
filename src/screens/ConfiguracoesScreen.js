@@ -23,7 +23,7 @@ const APP_VERSION = Constants?.expoConfig?.version || Constants?.manifest?.versi
 const OPCOES = [
   { key: 'perfil', icon: 'user', label: 'Perfil do Negócio', desc: 'Nome, segmento e telefone', screen: 'Perfil', color: colors.primary },
   { key: 'conta', icon: 'lock', label: 'Conta e Segurança', desc: 'Alterar e-mail e senha', screen: 'ContaSeguranca', color: colors.blue },
-  { key: 'kitinicio', icon: 'gift', label: 'Carregar kit de início rápido', desc: 'Insumos, embalagens e produtos de exemplo do seu segmento (opcional)', screen: 'KitInicio', color: colors.coral },
+  { key: 'kitinicio', icon: 'gift', label: 'Carregar kit de início rápido', desc: 'Ingredientes, embalagens e produtos de exemplo do seu segmento (opcional)', screen: 'KitInicio', color: colors.coral },
   { key: 'sobre', icon: 'info', label: 'Sobre o App', desc: 'Versão e informações', screen: 'Sobre', color: colors.accent },
   { key: 'termos', icon: 'file-text', label: 'Termos de Uso', desc: 'Condições de uso do aplicativo', screen: 'Termos', color: colors.primary },
   { key: 'privacidade', icon: 'shield', label: 'Política de Privacidade', desc: 'Como tratamos seus dados (LGPD)', screen: 'Privacidade', color: colors.accent },
@@ -184,7 +184,7 @@ export default function ConfiguracoesScreen({ navigation }) {
           </View>
           <View style={styles.rowBody}>
             <Text style={styles.rowLabel}>Aparência</Text>
-            <Text style={styles.rowDesc}>Densidade das listas (Insumos, Produtos, etc.)</Text>
+            <Text style={styles.rowDesc}>Densidade das listas (Ingredientes, Produtos, etc.)</Text>
           </View>
         </View>
         <View style={styles.densityRow}>
@@ -362,7 +362,7 @@ export default function ConfiguracoesScreen({ navigation }) {
               // bundle TUDO em UM CSV com seções separadas por cabeçalho.
               const sections = [
                 {
-                  titulo: 'INSUMOS',
+                  titulo: 'INGREDIENTES',
                   query: 'SELECT id, nome, marca, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg FROM materias_primas ORDER BY nome',
                   headers: ['ID','Nome','Marca','Qtd. Bruta','Qtd. Líquida','FC','Unidade','Valor pago (R$)','Preço base (R$)'],
                   keys: ['id','nome','marca','quantidade_bruta','quantidade_liquida','fator_correcao','unidade_medida','valor_pago','preco_por_kg'],
@@ -374,7 +374,7 @@ export default function ConfiguracoesScreen({ navigation }) {
                   keys: ['id','nome','preco_venda','margem_lucro_produto','rendimento_total','unidade_rendimento','validade_dias','modo_preparo'],
                 },
                 {
-                  titulo: 'PREPAROS',
+                  titulo: 'RECEITAS BASE',
                   query: 'SELECT id, nome, rendimento_total, unidade_medida, custo_total, custo_por_kg, validade_dias FROM preparos ORDER BY nome',
                   headers: ['ID','Nome','Rendimento','Unidade','Custo total (R$)','Custo/kg (R$)','Validade (dias)'],
                   keys: ['id','nome','rendimento_total','unidade_medida','custo_total','custo_por_kg','validade_dias'],
@@ -437,7 +437,7 @@ export default function ConfiguracoesScreen({ navigation }) {
                 }
               }
               if (secoesNaoVazias === 0) {
-                Alert.alert('Sem dados', 'Não há dados pra exportar ainda. Cadastre insumos e produtos primeiro.');
+                Alert.alert('Sem dados', 'Não há dados pra exportar ainda. Cadastre ingredientes e produtos primeiro.');
                 return;
               }
               // Download via blob URL

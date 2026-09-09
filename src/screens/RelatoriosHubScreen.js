@@ -27,7 +27,7 @@ import RelatorioInsumosScreen from './RelatorioInsumosScreen';
 
 const TABS = [
   { key: 'geral',   label: 'Geral',   icon: 'book-open' },
-  { key: 'insumos', label: 'Insumos', icon: 'bar-chart-2', feature: 'relatorio_insumos' }, // Planos: Pro+
+  { key: 'insumos', label: 'Ingredientes', icon: 'bar-chart-2', feature: 'relatorio_insumos' }, // Planos: Pro+
 ];
 
 export default function RelatoriosHubScreen({ navigation }) {
@@ -75,9 +75,9 @@ export default function RelatoriosHubScreen({ navigation }) {
                   if (locked) {
                     setUpgradeModal({
                       requiredPlan: 'pro',
-                      title: 'Relatório de Insumos é um recurso Pro',
-                      message: 'O relatório Geral é grátis. Para o de Insumos (saúde do cadastro, preços e curva), assine:',
-                      highlights: ['Relatório de insumos completo', 'Delivery, Lista de compras, PDF e mais'],
+                      title: 'Relatório de Ingredientes é um recurso Pro',
+                      message: 'O relatório Geral é grátis. Para o de Ingredientes (saúde do cadastro, preços e curva), assine:',
+                      highlights: ['Relatório de ingredientes completo', 'Delivery, Lista de compras, PDF e mais'],
                     });
                     return;
                   }

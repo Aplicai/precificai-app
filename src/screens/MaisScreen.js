@@ -46,7 +46,7 @@ const MENU_GROUPS = [
       {
         key: 'atualizar_precos',
         title: 'Atualizar Preços',
-        desc: 'Atualize preços de insumos e produtos rapidamente',
+        desc: 'Atualize preços de ingredientes e produtos rapidamente',
         icon: 'refresh-cw', // Sprint 4 S9 — alinhado com Sidebar (N22)
         set: 'feather',
         screen: 'AtualizarPrecos',
@@ -105,7 +105,7 @@ const MENU_GROUPS = [
       {
         key: 'relatorio',
         title: 'Relatórios',
-        desc: 'Visão geral do negócio e saúde do cadastro de insumos',
+        desc: 'Visão geral do negócio e saúde do cadastro de ingredientes',
         icon: 'bar-chart-2',
         set: 'feather',
         screen: 'Relatorios',

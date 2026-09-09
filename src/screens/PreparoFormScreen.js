@@ -103,7 +103,7 @@ export default function PreparoFormScreen({ route, navigation }) {
   }
 
   useEffect(() => {
-    navigation.setOptions({ title: editId ? 'Editar preparo' : 'Novo preparo' });
+    navigation.setOptions({ title: editId ? 'Editar receita base' : 'Nova receita base' });
     loadMateriasPrimas();
     if (editId) {
       loadItem();
@@ -393,8 +393,8 @@ export default function PreparoFormScreen({ route, navigation }) {
 
   function adicionarIngrediente() {
     if (!novoIng.materia_prima_id) {
-      try { showToast('Escolha um insumo antes de adicionar', 'alert-circle', 3000); } catch (_) {}
-      try { Alert.alert('Selecione', 'Escolha um insumo antes de adicionar.'); } catch (_) {}
+      try { showToast('Escolha um ingrediente antes de adicionar', 'alert-circle', 3000); } catch (_) {}
+      try { Alert.alert('Selecione', 'Escolha um ingrediente antes de adicionar.'); } catch (_) {}
       return;
     }
     openQuantityPrompt(novoIng.materia_prima_id);
@@ -587,12 +587,12 @@ export default function PreparoFormScreen({ route, navigation }) {
       if (typeof console !== 'undefined') console.warn('[PreparoForm.salvarNovo subpreparos]', e?.message || e);
     }
     // Área 4 — toast de confirmação após salvar preparo novo
-    try { showToast('Preparo salvo', 'check-circle'); } catch (_) {}
+    try { showToast('Receita base salva', 'check-circle'); } catch (_) {}
     navigation.goBack();
     } catch (e) {
       allowExit.current = false;
       if (typeof console !== 'undefined' && console.error) console.error('[PreparoForm.salvarNovo]', e);
-      try { showToast('Não foi possível salvar o preparo. Tente de novo.', 'alert-circle', 4500); } catch (_) {}
+      try { showToast('Não foi possível salvar a receita base. Tente de novo.', 'alert-circle', 4500); } catch (_) {}
     } finally {
       setSaving(false);
     }
@@ -628,14 +628,14 @@ export default function PreparoFormScreen({ route, navigation }) {
       const db = await getDatabase();
       const deps = await contarDependencias(db, 'preparo', editId);
       if (deps.total > 0) {
-        mensagemExtra = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'preparo' });
+        mensagemExtra = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'receita base', artigo: 'esta' });
       }
     } catch (e) {
       console.error('[PreparoForm.solicitarExclusao.deps]', e);
     }
     setConfirmDelete({
-      titulo: 'Excluir Preparo',
-      nome: form.nome || 'este preparo',
+      titulo: 'Excluir Receita base',
+      nome: form.nome || 'esta receita base',
       mensagemExtra,
       onConfirm: async () => {
         const db = await getDatabase();
@@ -648,16 +648,16 @@ export default function PreparoFormScreen({ route, navigation }) {
     });
   }
 
-  const formTitle = editId ? 'Editar Preparo' : 'Novo Preparo';
+  const formTitle = editId ? 'Editar Receita base' : 'Nova Receita base';
 
   return (
     <ModalFormWrapper title={formTitle} onClose={() => navigation.goBack()}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
         {/* Bloco 1 — Dados do Preparo */}
-        <Card title="Dados do Preparo">
+        <Card title="Dados da Receita base">
           <InputField
-            label="Nome do preparo"
+            label="Nome da receita base"
             value={form.nome}
             onChangeText={(v) => { setForm(p => ({ ...p, nome: v })); setErrors(p => ({ ...p, nome: undefined })); }}
             placeholder="Ex: Cebola Caramelizada"
@@ -688,7 +688,7 @@ export default function PreparoFormScreen({ route, navigation }) {
                 rightLabel={
                   <InfoTooltip
                     title="Rendimento Total"
-                    text="Quantidade final que o preparo rende após pronto. É a quantidade líquida que será usada nas receitas."
+                    text="Quantidade final que a receita base rende depois de pronta. É a quantidade líquida que será usada nas receitas."
                     examples={[
                       'Calda de chocolate: 500g após pronta',
                       'Massa de bolo: 1200g de massa crua',
@@ -716,11 +716,11 @@ export default function PreparoFormScreen({ route, navigation }) {
           <View style={styles.addIngSection}>
             <PickerSelect
               key={`pick-insumo-${pickerResetKey}`}
-              label="Adicionar insumo"
+              label="Adicionar ingrediente"
               value={null}
               onValueChange={(v) => { if (v) openQuantityPrompt(v); }}
               options={materiasPrimas.map(mp => ({ label: formatInsumoLabel(mp), value: mp.id }))}
-              placeholder="Selecione um insumo"
+              placeholder="Selecione um ingrediente"
               onCreateNew={async () => {
                 // Sessão 28.50 — cascata: marca pra que ao voltar de MateriaPrimaForm
                 // o user retorne pro PreparoForm com o preparoId preservado.
@@ -733,7 +733,7 @@ export default function PreparoFormScreen({ route, navigation }) {
                 } catch (_) {}
                 navigation.navigate('MateriaPrimaForm');
               }}
-              createLabel="Cadastrar novo insumo"
+              createLabel="Cadastrar novo ingrediente"
             />
             {/* Sessão 28.37: picker de preparo na MESMA seção. Só aparece se há
                 preparos disponíveis no catálogo OU já tem algum adicionado. */}
@@ -741,12 +741,12 @@ export default function PreparoFormScreen({ route, navigation }) {
               <View style={{ marginTop: spacing.sm }}>
                 <PickerSelect
                   key={`pick-subpreparo-${pickerResetKey}`}
-                  label="Adicionar preparo (opcional)"
+                  label="Adicionar receita base (opcional)"
                   value={null}
                   onValueChange={(v) => {
                     if (!v) return;
                     if (subpreparos.some(sp => sp.sub_preparo_id === v)) {
-                      try { showToast('Esse preparo já foi adicionado', 'alert-circle', 2500); } catch (_) {}
+                      try { showToast('Essa receita base já foi adicionada', 'alert-circle', 2500); } catch (_) {}
                       return;
                     }
                     const pr = preparosCatalogo.find(p => p.id === v);
@@ -761,7 +761,7 @@ export default function PreparoFormScreen({ route, navigation }) {
                     setPickerResetKey(k => k + 1);
                   }}
                   options={preparosCatalogo.map(p => ({ label: `${p.nome} — ${formatCurrency(p.custo_por_kg || 0)}/kg`, value: p.id }))}
-                  placeholder={preparosCatalogo.length === 0 ? 'Crie outro preparo primeiro' : 'Use um preparo como ingrediente (ex: fermento na massa)'}
+                  placeholder={preparosCatalogo.length === 0 ? 'Crie outra receita base primeiro' : 'Use uma receita base como ingrediente (ex: fermento na massa)'}
                   onCreateNew={async () => {
                     try {
                       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
@@ -772,7 +772,7 @@ export default function PreparoFormScreen({ route, navigation }) {
                     } catch (_) {}
                     navigation.navigate('PreparoForm', {});
                   }}
-                  createLabel="Cadastrar novo preparo"
+                  createLabel="Cadastrar nova receita base"
                 />
               </View>
             )}
@@ -871,7 +871,7 @@ export default function PreparoFormScreen({ route, navigation }) {
           {ingredientes.length === 0 && subpreparos.length === 0 && (
             <View style={styles.ingEmpty}>
               <Text style={styles.ingEmptyText}>
-                Selecione insumos {preparosCatalogo.length > 0 ? 'ou preparos ' : ''}acima para montar o preparo.
+                Selecione ingredientes {preparosCatalogo.length > 0 ? 'ou receitas base ' : ''}acima para montar a receita base.
               </Text>
             </View>
           )}
@@ -1120,7 +1120,7 @@ export default function PreparoFormScreen({ route, navigation }) {
               <SaveStatus status={saveStatus} variant="badge" />
             </View>
           )}
-          <TouchableOpacity style={styles.saveBackBtn} onPress={async () => { allowExit.current = true; try { await autoSave(); try { showToast('Preparo salvo', 'check-circle'); } catch (_) {} } catch(e) {
+          <TouchableOpacity style={styles.saveBackBtn} onPress={async () => { allowExit.current = true; try { await autoSave(); try { showToast('Receita base salva', 'check-circle'); } catch (_) {} } catch(e) {
             // CR-5: catch antes era silencioso — log + status de erro p/ feedback
             if (typeof console !== 'undefined' && console.error) console.error('[PreparoForm.saveBackBtn]', e);
             setSaveStatus('error');
@@ -1158,7 +1158,7 @@ export default function PreparoFormScreen({ route, navigation }) {
             onPress={salvarNovo}
             disabled={saving}
           >
-            <Text style={styles.btnSaveText}>{saving ? 'Salvando...' : 'Salvar Preparo'}</Text>
+            <Text style={styles.btnSaveText}>{saving ? 'Salvando...' : 'Salvar Receita base'}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -1300,7 +1300,7 @@ export default function PreparoFormScreen({ route, navigation }) {
             </View>
             <Text style={styles.incompleteTitle}>Campos obrigatórios</Text>
             <Text style={styles.incompleteDesc}>
-              Preencha todos os campos obrigatórios antes de sair. Deseja excluir este preparo ou continuar editando?
+              Preencha todos os campos obrigatórios antes de sair. Deseja excluir esta receita base ou continuar editando?
             </Text>
             <TouchableOpacity style={styles.incompleteBtnEdit} onPress={handleContinueEditing} activeOpacity={0.7}>
               <Feather name="edit-2" size={15} color="#fff" style={{ marginRight: 6 }} />
@@ -1308,7 +1308,7 @@ export default function PreparoFormScreen({ route, navigation }) {
             </TouchableOpacity>
             <TouchableOpacity style={styles.incompleteBtnDelete} onPress={handleDeleteAndExit} activeOpacity={0.7}>
               <Feather name="trash-2" size={15} color={colors.error} style={{ marginRight: 6 }} />
-              <Text style={styles.incompleteBtnDeleteText}>Excluir preparo</Text>
+              <Text style={styles.incompleteBtnDeleteText}>Excluir receita base</Text>
             </TouchableOpacity>
           </View>
         </View>

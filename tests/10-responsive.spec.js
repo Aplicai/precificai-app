@@ -18,6 +18,8 @@ const { waitForAppLoad, skipWelcomeTour, goToTab } = require('./helpers');
 const WIDTHS = [320, 360, 375, 390, 430, 768];
 
 // Telas alcançáveis pela tab bar em mobile (a sidebar só existe em desktop).
+// São ROUTE NAMES (usados no href por goToTab), não os rótulos visíveis:
+// 'Insumos' aparece como "Ingredientes" e 'Preparos' como "Receitas base".
 const TABS = ['Início', 'Insumos', 'Preparos', 'Embalagens', 'Produtos', 'Mais'];
 
 const MEASURE = `(() => {

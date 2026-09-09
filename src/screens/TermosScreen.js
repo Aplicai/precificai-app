@@ -25,7 +25,7 @@ const SECOES = [
     titulo: '2. Descrição do Serviço',
     paragrafos: [
       'O PrecificaApp é uma ferramenta SaaS (Software como Serviço) de auxílio à precificação de produtos e gestão de custos voltada para pequenos negócios do setor de gastronomia (lanchonetes, restaurantes, food trucks, confeitarias, marmitarias, pizzarias e estabelecimentos similares).',
-      'O Serviço executa cálculos a partir de dados fornecidos exclusivamente pelo Usuário (custos de insumos, embalagens, mão de obra, despesas operacionais, margens desejadas, vendas e demais informações comerciais) e apresenta sugestões de preço, indicadores de desempenho, fichas técnicas e relatórios.',
+      'O Serviço executa cálculos a partir de dados fornecidos exclusivamente pelo Usuário (custos de ingredientes, embalagens, mão de obra, despesas operacionais, margens desejadas, vendas e demais informações comerciais) e apresenta sugestões de preço, indicadores de desempenho, fichas técnicas e relatórios.',
       'TODOS os resultados gerados pelo Aplicativo têm caráter ESTRITAMENTE INFORMATIVO E AUXILIAR. Eles não constituem aconselhamento contábil, fiscal, tributário, financeiro, jurídico ou estratégico, e não substituem orientação profissional especializada.',
       'A Aplicais pode, a seu exclusivo critério e a qualquer tempo, adicionar, modificar, suspender ou descontinuar funcionalidades, integrações ou planos comerciais do Aplicativo, comunicando o Usuário por meios razoáveis (notificação dentro do app, e-mail ou aviso no site).',
     ],
@@ -59,7 +59,7 @@ const SECOES = [
     titulo: '6. Propriedade Intelectual',
     paragrafos: [
       'Todos os direitos de propriedade intelectual relativos ao Aplicativo — incluindo marcas registradas, nome empresarial, layout, design, código-fonte, textos, imagens, ícones, algoritmos, fluxos, conteúdo editorial, segmentos de mercado pré-cadastrados, preços de referência, fatores de correção e demais elementos — pertencem exclusivamente à Aplicais (razão social: [A definir antes da publicação], CNPJ: [A definir antes da publicação], com sede em [Endereço a definir]) ou a seus licenciantes, e são protegidos pela Lei 9.279/1996 (Propriedade Industrial), Lei 9.610/1998 (Direito Autoral), e tratados internacionais aplicáveis.',
-      'Os dados que o Usuário cadastra no Aplicativo (insumos, produtos, preços, faturamento, despesas, fichas técnicas, vendas, fornecedores) são e permanecem de sua propriedade. A Aplicais recebe licença limitada, não exclusiva, mundial, gratuita e revogável de uso desses dados exclusivamente para: (i) prestar o Serviço ao Usuário; (ii) realizar manutenções, backups e atualizações; (iii) gerar estatísticas anonimizadas e agregadas (sem identificação individual) para melhoria do produto e do mercado em geral.',
+      'Os dados que o Usuário cadastra no Aplicativo (ingredientes, produtos, preços, faturamento, despesas, fichas técnicas, vendas, fornecedores) são e permanecem de sua propriedade. A Aplicais recebe licença limitada, não exclusiva, mundial, gratuita e revogável de uso desses dados exclusivamente para: (i) prestar o Serviço ao Usuário; (ii) realizar manutenções, backups e atualizações; (iii) gerar estatísticas anonimizadas e agregadas (sem identificação individual) para melhoria do produto e do mercado em geral.',
       'A Aplicais NÃO comercializa, repassa nem disponibiliza dados identificáveis do Usuário a terceiros sem autorização expressa, exceto nas hipóteses previstas em lei ou em ordem judicial.',
     ],
   },
@@ -84,7 +84,7 @@ const SECOES = [
     titulo: '9. Privacidade e Proteção de Dados (LGPD)',
     paragrafos: [
       'O tratamento de dados pessoais do Usuário e dos dados comerciais por ele inseridos é regido pela Política de Privacidade do PrecificaApp, integrada a estes Termos por referência.',
-      'A Aplicais atua como Controladora dos dados de cadastro do Usuário e como Operadora dos dados comerciais inseridos pelo Usuário (insumos, vendas, etc.), em conformidade com a Lei Geral de Proteção de Dados (Lei 13.709/2018).',
+      'A Aplicais atua como Controladora dos dados de cadastro do Usuário e como Operadora dos dados comerciais inseridos pelo Usuário (ingredientes, vendas, etc.), em conformidade com a Lei Geral de Proteção de Dados (Lei 13.709/2018).',
       'O Usuário pode exercer os direitos previstos no Art. 18 da LGPD (acesso, correção, anonimização, portabilidade, eliminação, informação sobre compartilhamento, revogação de consentimento) pelos canais de contato indicados nestes Termos, com prazo de resposta legal.',
     ],
   },

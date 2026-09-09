@@ -225,7 +225,7 @@ export default function InviabilidadeModal({ visible, onClose, info }) {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.dicaTitle}>Reduza o custo unitário</Text>
                   <Text style={styles.dicaText}>
-                    Revise ingredientes, preparos e embalagens para baixar o CMV.
+                    Revise ingredientes, receitas base e embalagens para baixar o CMV.
                   </Text>
                 </View>
               </View>

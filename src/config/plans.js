@@ -37,7 +37,7 @@ export const PLAN_BENEFITS = {
     'Até 30 produtos e 30 combos',
     'Módulo Delivery completo (iFood, Rappi, próprio)',
     'Lista de compras automática',
-    'Relatório de insumos + Exportação de fichas em PDF',
+    'Relatório de ingredientes + Exportação de fichas em PDF',
   ],
   ilimitado: [
     'Produtos e combos ilimitados',
