@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { View, Text, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, Platform, RefreshControl } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused, useRoute } from '@react-navigation/native';
@@ -235,19 +235,28 @@ export default function PreparosScreen({ navigation }) {
   }, []);
 
   // Sessão 28.46: focus listener fallback + dataSync subscribe + visibilitychange
+  // Audit UX (limpeza QA 09/09): estes listeners eram registrados UMA vez e
+  // capturavam o `loadData` do PRIMEIRO render — ou seja, recarregavam a lista
+  // com `busca`/filtro/ordenação vazios. Sintoma: fechar um modal (ou trocar de
+  // aba do navegador) devolvia a lista COMPLETA enquanto a caixa de busca
+  // continuava com o texto digitado, e o item clicado deixava de ser o que
+  // estava na tela. `loadDataRef` mantém sempre a versão atual.
+  const loadDataRef = useRef(loadData);
+  useEffect(() => { loadDataRef.current = loadData; });
+
   useEffect(() => {
     const unsub = subscribeDataChanged((table) => {
-      if (table === 'preparos') loadData();
+      if (table === 'preparos') loadDataRef.current();
     });
     const unsubFocus = navigation.addListener('focus', () => {
-      loadData();
+      loadDataRef.current();
       checkReopenAndOpen();
     });
     let onVis;
     if (typeof document !== 'undefined' && document.addEventListener) {
       onVis = () => {
         if (!document.hidden) {
-          loadData();
+          loadDataRef.current();
           checkReopenAndOpen();
         }
       };
