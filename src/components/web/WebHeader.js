@@ -118,7 +118,7 @@ function getPageTitle(navState) {
   return ROUTE_TITLES[tabRoute.name] || tabRoute.name;
 }
 
-export default function WebHeader({ navigation, notifCount, onNotifPress }) {
+export default function WebHeader({ navigation, notifCount, onNotifPress, initialTab }) {
   const { user, signOut } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
   // Sessão UX — em viewports desktop estreitos (<1280) apertar padding e altura
@@ -131,7 +131,10 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
   const backIconSize = densityCompact ? 18 : 20;
 
   const navState = useNavigationState(s => s);
-  const tabState = navState?.routes?.[navState.index]?.state;
+  // Estado aninhado do Tab.Navigator só existe no pai após a 1ª mudança de
+  // navegação. Antes disso, usa a aba inicial (restaurada) como estado sintético.
+  const rawTabState = navState?.routes?.[navState.index]?.state;
+  const tabState = rawTabState || (initialTab ? { index: 0, routes: [{ name: initialTab }] } : undefined);
   const title = getPageTitle(tabState);
 
   // Check if current stack has screens to go back to

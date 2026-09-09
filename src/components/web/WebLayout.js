@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import Sidebar from './Sidebar';
 import WebHeader from './WebHeader';
 
-export default function WebLayout({ children, notifCount, onNotifPress }) {
+export default function WebLayout({ children, notifCount, onNotifPress, initialTab }) {
   const navigation = useNavigation();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -12,12 +12,14 @@ export default function WebLayout({ children, notifCount, onNotifPress }) {
     <View style={styles.container}>
       <Sidebar
         navigation={navigation}
+        initialTab={initialTab}
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed(!collapsed)}
       />
       <View style={styles.main}>
         <WebHeader
           navigation={navigation}
+          initialTab={initialTab}
           notifCount={notifCount}
           onNotifPress={onNotifPress}
         />

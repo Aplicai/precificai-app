@@ -162,9 +162,11 @@ function SidebarButton({ onPress, style, children, tooltip, label, selected }) {
   return <View style={style}>{children}</View>;
 }
 
-export default function Sidebar({ navigation, collapsed, onToggleCollapse }) {
+export default function Sidebar({ navigation, collapsed, onToggleCollapse, initialTab }) {
   const navState = useNavigationState(s => s);
-  const tabState = navState?.routes?.[navState.index]?.state;
+  // Ver WebHeader: estado aninhado ausente no 1º frame → aba inicial como fallback.
+  const rawTabState = navState?.routes?.[navState.index]?.state;
+  const tabState = rawTabState || (initialTab ? { index: 0, routes: [{ name: initialTab }] } : undefined);
   const activeKey = getActiveKey(tabState);
   // Sessão 28.8 — Header da Sidebar deve ter MESMA altura do WebHeader.container
   // (que usa headerHeight do useListDensity: 52 compact / 64 comfortable).

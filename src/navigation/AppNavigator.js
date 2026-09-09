@@ -508,9 +508,10 @@ function MainTabs({ route }) {
     getFinanceiroStatus().then(s => setFinPendente(!s.completo)).catch(() => {});
   }, []);
 
+  const initialTabName = savedTab && VALID_TABS.includes(savedTab) ? savedTab : 'Início';
   const tabNavigator = (
     <Tab.Navigator
-      initialRouteName={savedTab && VALID_TABS.includes(savedTab) ? savedTab : 'Início'}
+      initialRouteName={initialTabName}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ focused }) => (
@@ -598,7 +599,10 @@ function MainTabs({ route }) {
   );
 
   if (isDesktop) {
-    return <WebLayout>{tabNavigator}</WebLayout>;
+    // UX audit 09/09: até o Tab.Navigator publicar seu estado no pai, WebHeader e
+    // Sidebar não sabem qual aba está focada (fallback "Painel Geral" com conteúdo
+    // de outra aba após restaurar LAST_TAB_KEY). A aba inicial resolve o 1º frame.
+    return <WebLayout initialTab={initialTabName}>{tabNavigator}</WebLayout>;
   }
 
   return tabNavigator;
