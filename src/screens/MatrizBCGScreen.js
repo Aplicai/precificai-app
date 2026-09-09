@@ -17,29 +17,29 @@ import { classificarMatrizBCG } from '../utils/bcgClassify';
 // salvos; LABELS exibidos seguem a linguagem do audit (mina de ouro, aposta...).
 const CLASSIFICATIONS = {
   'Estrela': {
-    icon: 'star', label: 'Estrelas', emoji: '\u2B50',
-    bg: '#FFF8E1', border: '#FFD700', color: '#D4A017',
+    icon: 'star', label: 'Estrelas', emoji: '',
+    bg: '#FFFFFF', border: '#D4A017', color: '#B8860B',
     desc: 'Vendem muito E dão lucro alto. São seus campeões — mantenha sempre disponíveis e destaque no cardápio.',
     acao: 'Promover e manter',
     short: 'Estrela',
   },
   'Cavalo de Batalha': {
-    icon: 'trending-up', label: 'Mina de Ouro', emoji: '\uD83D\uDCB0',
-    bg: '#E8F5E9', border: '#4CAF50', color: '#388E3C',
+    icon: 'trending-up', label: 'Mina de Ouro', emoji: '',
+    bg: '#FFFFFF', border: '#388E3C', color: '#2E7D32',
     desc: 'Vendem muito mas a margem está apertada. Renegocie ingredientes ou suba o preço aos poucos — uma alta de 5% pode dobrar o lucro.',
     acao: 'Otimizar custos',
     short: 'Mina',
   },
   'Quebra-Cabeça': {
-    icon: 'help-circle', label: 'Apostas', emoji: '\uD83C\uDFB2',
-    bg: '#E3F2FD', border: '#2196F3', color: '#1565C0',
+    icon: 'help-circle', label: 'Apostas', emoji: '',
+    bg: '#FFFFFF', border: '#1565C0', color: '#1565C0',
     desc: 'Margem alta mas vendem pouco. Vale divulgar mais, fazer combo ou colocar em destaque — o potencial está aí.',
     acao: 'Divulgar mais',
     short: 'Aposta',
   },
   'Abacaxi': {
-    icon: 'alert-triangle', label: 'Repensar', emoji: '\uD83C\uDF4D',
-    bg: '#FFEBEE', border: '#F44336', color: '#C62828',
+    icon: 'alert-triangle', label: 'Repensar', emoji: '',
+    bg: '#FFFFFF', border: '#C62828', color: '#C62828',
     desc: 'Vendem pouco e dão pouco lucro. Hora de decidir: reformular a receita, subir o preço ou tirar do cardápio.',
     acao: 'Reformular ou retirar',
     short: 'Repensar',
@@ -580,7 +580,7 @@ export default function MatrizBCGScreen({ navigation }) {
               return (
                 <TouchableOpacity
                   key={key}
-                  style={[styles.summaryBadge, { backgroundColor: cfg.bg, borderColor: isActive ? cfg.color : cfg.border, borderWidth: isActive ? 2 : 1 }]}
+                  style={[styles.summaryBadge, { backgroundColor: cfg.bg, borderColor: colors.border, borderWidth: 1, borderLeftWidth: 4, borderLeftColor: cfg.border, opacity: isActive ? 1 : 0.92 }]}
                   activeOpacity={0.7}
                   onPress={() => setFilterClass(isActive ? null : key)}
                   accessibilityRole="button"
@@ -588,7 +588,6 @@ export default function MatrizBCGScreen({ navigation }) {
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                     <Feather name={cfg.icon} size={12} color={cfg.color} />
-                    <Text style={styles.summaryEmoji}>{cfg.emoji}</Text>
                   </View>
                   <Text style={[styles.summaryCount, { color: cfg.color }]}>{counts[key]}</Text>
                   <Text style={[styles.summaryLabel, { color: cfg.color }]}>{cfg.label}</Text>
@@ -839,7 +838,7 @@ export default function MatrizBCGScreen({ navigation }) {
                     return (
                       <View key={key} style={{ flex: 1, backgroundColor: cfg.bg, borderRadius: borderRadius.md, borderWidth: 1, borderColor: cfg.border + '40', padding: spacing.sm }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                          <Text style={{ fontSize: 14 }}>{cfg.emoji}</Text>
+                          <Feather name={cfg.icon} size={14} color={cfg.color} />
                           <Text style={{ fontSize: 12, fontFamily: fontFamily.bold, color: cfg.color, flex: 1 }}>{cfg.label}</Text>
                           <View style={{ backgroundColor: cfg.color + '20', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 }}>
                             <Text style={{ fontSize: 11, fontFamily: fontFamily.bold, color: cfg.color }}>{counts[key]}</Text>
@@ -868,7 +867,7 @@ export default function MatrizBCGScreen({ navigation }) {
                     return (
                       <View key={key} style={{ flex: 1, backgroundColor: cfg.bg, borderRadius: borderRadius.md, borderWidth: 1, borderColor: cfg.border + '40', padding: spacing.sm }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                          <Text style={{ fontSize: 14 }}>{cfg.emoji}</Text>
+                          <Feather name={cfg.icon} size={14} color={cfg.color} />
                           <Text style={{ fontSize: 12, fontFamily: fontFamily.bold, color: cfg.color, flex: 1 }}>{cfg.label}</Text>
                           <View style={{ backgroundColor: cfg.color + '20', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 }}>
                             <Text style={{ fontSize: 11, fontFamily: fontFamily.bold, color: cfg.color }}>{counts[key]}</Text>

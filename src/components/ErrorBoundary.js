@@ -61,7 +61,6 @@ export default class ErrorBoundary extends React.Component {
 
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-        <Text style={{ fontSize: 40, marginBottom: 12 }}>😕</Text>
         <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 8 }}>
           Algo deu errado nesta tela
         </Text>

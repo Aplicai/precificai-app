@@ -1523,7 +1523,6 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 <Text style={[styles.aiSuggestText, custoUnitario <= 0 && { color: colors.textSecondary }]}>
                   {custoUnitario <= 0 ? 'Sugerir preço (adicione custos)' : 'Sugerir preço'}
                 </Text>
-                {custoUnitario > 0 && <Text style={styles.aiSuggestEmoji}>💡</Text>}
               </TouchableOpacity>
 
               <InputField
@@ -1812,7 +1811,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
             {/* Histórico de Preço de Venda */}
             {editId && historicoPrecos.length > 1 && (
               <View style={[styles.costsSummaryCard, { marginTop: spacing.sm }]}>
-                <Text style={[styles.costsTitle, { fontSize: 13, marginBottom: 8 }]}>📈 Histórico de Preço</Text>
+                <Text style={[styles.costsTitle, { fontSize: 13, marginBottom: 8 }]}>Histórico de Preço</Text>
                 {(() => {
                   const sorted = [...historicoPrecos].reverse();
                   const prices = sorted.map(x => x.valor_pago);
@@ -2057,11 +2056,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
                   autoFocus
                 />
                 <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 12, fontStyle: 'italic' }}>
-                  💡 O custo do preparo normalmente é recalculado pelos insumos. Editar aqui sobrescreve o valor e propaga em TODOS os produtos/combos que usam.
+                  O custo do preparo normalmente é recalculado pelos insumos. Editar aqui sobrescreve o valor e propaga em TODOS os produtos/combos que usam.
                 </Text>
                 <TouchableOpacity onPress={abrirPreparoCompleto} style={{ paddingVertical: 8, marginBottom: 12 }}>
                   <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13, textAlign: 'center' }}>
-                    ✏️ Editar receita completa do preparo →
+                    Editar receita completa do preparo →
                   </Text>
                 </TouchableOpacity>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -2093,7 +2092,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                   autoFocus
                 />
                 <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 12, fontStyle: 'italic' }}>
-                  💡 Atualizar aqui muda o preço do insumo em TODA a aplicação (insumos, preparos, produtos, combos).
+                  Atualizar aqui muda o preço do insumo em TODA a aplicação (insumos, preparos, produtos, combos).
                 </Text>
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <TouchableOpacity style={{ flex: 1, padding: 12, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: colors.border }} onPress={() => setEditPrecoModal(null)}>

@@ -396,23 +396,20 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginVertical: 8,
   },
+  // UX audit 09/09: navegação PLANA — antes cada item era um cartão cinza com
+  // borda (14 caixinhas empilhadas, item ativo quase invisível). Agora: texto +
+  // ícone, e só o ativo ganha fundo suave + barra à esquerda.
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 11,
-    paddingHorizontal: 16,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
     marginHorizontal: 12,
-    marginVertical: 3,
-    borderRadius: 10,
+    marginVertical: 1,
+    borderRadius: 8,
     position: 'relative',
-    backgroundColor: colors.background,
-    borderTopWidth: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
+    backgroundColor: 'transparent',
     borderLeftWidth: 3,
-    borderTopColor: colors.border,
-    borderRightColor: colors.border,
-    borderBottomColor: colors.border,
     borderLeftColor: 'transparent',
   },
   navItemCollapsed: {
@@ -421,10 +418,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
   },
   navItemActive: {
-    backgroundColor: colors.primary + '10',
-    borderTopColor: colors.primary + '40',
-    borderRightColor: colors.primary + '40',
-    borderBottomColor: colors.primary + '40',
+    backgroundColor: colors.primary + '12',
     borderLeftColor: colors.primary,
   },
   activeBar: {

@@ -114,7 +114,7 @@ function buildCascadeAviso(deps) {
     const extra = deps.preparos.length > 3 ? `\n+${deps.preparos.length - 3} outros` : '';
     linhas.push(`${deps.preparos.length} ${deps.preparos.length === 1 ? 'preparo usa' : 'preparos usam'} este insumo:\n${nomes}${extra}`);
   }
-  return `⚠️ ${linhas.join('\n\n')}\n\nO ingrediente será removido deles. Custo e preço sugerido podem ficar desatualizados.`;
+  return `${linhas.join('\n\n')}\n\nO ingrediente será removido deles. Custo e preço sugerido podem ficar desatualizados.`;
 }
 
 export default function MateriasPrimasScreen({ navigation }) {
@@ -662,14 +662,7 @@ export default function MateriasPrimasScreen({ navigation }) {
         </View>
       )}
 
-      {/* Botão Adicionar */}
-      <TouchableOpacity
-        style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '10', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 14, marginHorizontal: 16, marginTop: 8, marginBottom: 4, borderWidth: 1, borderColor: colors.primary + '30', borderStyle: 'dashed' }}
-        onPress={() => navigation.navigate('MateriaPrimaForm', {})}
-      >
-        <Feather name="plus-circle" size={18} color={colors.primary} style={{ marginRight: 8 }} />
-        <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 14 }}>Novo Insumo</Text>
-      </TouchableOpacity>
+      {/* UX audit 09/09: barra tracejada "Novo Insumo" removida — CTA duplicada com o FAB. */}
 
       {/* Lista agrupada */}
       {isGrid ? (

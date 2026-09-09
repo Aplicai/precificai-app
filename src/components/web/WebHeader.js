@@ -261,7 +261,7 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
               userSelect: 'none', position: 'relative', zIndex: 10000,
             }}
           >
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', pointerEvents: 'none' }}>{initials}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', pointerEvents: 'none', fontFamily: 'DM Sans, system-ui, sans-serif' }}>{initials}</span>
           </div>
         ) : (
           <TouchableOpacity style={styles.avatar} onPress={() => setShowMenu(!showMenu)} activeOpacity={0.7}>

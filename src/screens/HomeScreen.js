@@ -13,8 +13,6 @@ import InfoTooltip from '../components/InfoTooltip';
 import Loader from '../components/Loader';
 import MobileOnboardingOverlay from '../components/MobileOnboardingOverlay';
 import OnboardingChecklist from '../components/OnboardingChecklist';
-import MobileDesktopHint from '../components/MobileDesktopHint';
-import InstallPWABanner from '../components/InstallPWABanner';
 import HomeInstallBanner from '../components/HomeInstallBanner';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { useAuth } from '../contexts/AuthContext';
@@ -466,10 +464,11 @@ export default function HomeScreen({ navigation }) {
 
   // Base cards
   const baseCards = [
-    { label: 'Insumos', value: d.totalInsumos, icon: 'food-apple-outline', set: 'material', color: colors.success, tab: 'Insumos' },
-    { label: 'Embalagens', value: d.totalEmbalagens, icon: 'package', set: 'feather', color: colors.accent, tab: 'Embalagens' },
-    { label: 'Preparos', value: d.totalPreparos, icon: 'pot-steam-outline', set: 'material', color: colors.coral, tab: 'Preparos' },
-    { label: 'Produtos', value: d.totalProdutos, icon: 'box', set: 'feather', color: colors.purple, tab: 'Produtos' },
+    // UX audit 09/09: contadores na cor da marca (cor só quando tem significado).
+    { label: 'Insumos', value: d.totalInsumos, icon: 'food-apple-outline', set: 'material', color: colors.primary, tab: 'Insumos' },
+    { label: 'Embalagens', value: d.totalEmbalagens, icon: 'package', set: 'feather', color: colors.primary, tab: 'Embalagens' },
+    { label: 'Preparos', value: d.totalPreparos, icon: 'pot-steam-outline', set: 'material', color: colors.primary, tab: 'Preparos' },
+    { label: 'Produtos', value: d.totalProdutos, icon: 'box', set: 'feather', color: colors.primary, tab: 'Produtos' },
   ];
 
   // Alert icons
@@ -549,19 +548,13 @@ export default function HomeScreen({ navigation }) {
           contador de aberturas) e filtra mobile via useResponsiveLayout. */}
       <MobileOnboardingOverlay navigation={navigation} />
 
-      {/* Área 9 — banner discreto sugerindo experiência desktop. Aparece 1 a
-          cada 5 sessões em mobile (e no 1º uso). Dismissível. */}
-      <MobileDesktopHint />
-
-      {/* Sessão 28.61 — banner "Instalar como app" (versão discreta).
-          Mantido como fallback caso user já tenha dismissed o
-          HomeInstallBanner principal. TODO: remover quando o novo banner
-          provar conversão suficiente. */}
-      <InstallPWABanner />
+      {/* UX audit 09/09: removidos MobileDesktopHint ("use no computador") e o
+          2º banner de instalação. A Home mobile chegava a 5 avisos antes do
+          conteúdo; agora: 1 de onboarding + 1 de instalação, ambos dispensáveis. */}
 
       {/* Greeting */}
       <View style={[styles.greetingRow, isMobile && styles.greetingRowMobile]}>
-        <Text style={[styles.greetingText, isMobile && styles.greetingTextMobile]}>{getGreeting()} 👋</Text>
+        <Text style={[styles.greetingText, isMobile && styles.greetingTextMobile]}>{getGreeting()}</Text>
         <Text style={styles.greetingDesc}>
           {pendente ? 'Complete a configuração para começar' : d.totalProdutos === 0 ? 'Cadastre seus primeiros produtos' : 'Veja como está sua precificação'}
         </Text>
@@ -786,14 +779,14 @@ export default function HomeScreen({ navigation }) {
           const margBench = d.margemMedia >= margTarget ? 'green' : d.margemMedia >= (margTarget - 0.10) ? 'yellow' : 'red';
           const benchColors = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
           return [
-          { label: 'CMV Médio', value: formatPercent(d.cmvPercent), icon: 'tag', color: colors.accent,
+          { label: 'CMV Médio', value: formatPercent(d.cmvPercent), icon: 'tag', color: colors.primary,
             tip: { title: 'CMV Médio', text: 'Custo de Mercadoria Vendida em % do preço de venda. Abra o card para alterar a meta.', examples: ['Referência do setor alimentício:', 'Restaurantes: 28-35%', 'Pizzarias: 25-32%', 'Confeitarias: 20-30%', 'Fast food: 25-35%', `Sua meta: < ${cmvMetaValue}%`] },
             meta: `Atual: ${formatPercent(d.cmvPercent)} · Meta: < ${cmvMetaValue}%`, bench: pendente ? null : cmvBench, onPress: () => setShowCmvMeta(true) },
           { label: 'Resultado Operacional', value: pendente ? '--' : formatCurrency(d.resultadoFinanceiro), icon: 'dollar-sign', color: pendente ? colors.disabled : (d.resultadoFinanceiro >= 0 ? colors.success : colors.error),
-            tip: { title: 'Resultado Operacional', text: 'Calculado automaticamente: faturamento médio mensal menos os custos do mês. Para alterar, ajuste o faturamento ou os custos do mês no Financeiro.', examples: ['Fórmula: Faturamento − Custos do mês', 'Positivo: receita cobre os custos mensais', 'Negativo: custos do mês maiores que o faturamento', '💡 Ajuste no Financeiro (aba Mais)'] },
+            tip: { title: 'Resultado Operacional', text: 'Calculado automaticamente: faturamento médio mensal menos os custos do mês. Para alterar, ajuste o faturamento ou os custos do mês no Financeiro.', examples: ['Fórmula: Faturamento − Custos do mês', 'Positivo: receita cobre os custos mensais', 'Negativo: custos do mês maiores que o faturamento', 'Ajuste no Financeiro (aba Mais)'] },
             meta: d.resultadoFinanceiro >= 0 ? 'Receita cobre custos' : 'Receita abaixo dos custos', bench: pendente ? null : resBench },
-          { label: 'Ponto de Equilíbrio', value: pendente ? '--' : formatCurrency(d.pontoEquilibrio), icon: 'target', color: pendente ? colors.disabled : colors.purple,
-            tip: { title: 'Ponto de Equilíbrio', text: 'Calculado automaticamente: faturamento mensal mínimo para cobrir todos os custos. Para alterar, ajuste seus custos e CMV no Financeiro.', examples: ['Fórmula: Custos do mês / (1 - CMV% - Custos por venda%)', 'Compare com seu faturamento médio', '💡 Ajuste no Financeiro (aba Mais)'] },
+          { label: 'Ponto de Equilíbrio', value: pendente ? '--' : formatCurrency(d.pontoEquilibrio), icon: 'target', color: pendente ? colors.disabled : colors.primary,
+            tip: { title: 'Ponto de Equilíbrio', text: 'Calculado automaticamente: faturamento mensal mínimo para cobrir todos os custos. Para alterar, ajuste seus custos e CMV no Financeiro.', examples: ['Fórmula: Custos do mês / (1 - CMV% - Custos por venda%)', 'Compare com seu faturamento médio', 'Ajuste no Financeiro (aba Mais)'] },
             meta: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0
               ? (d.fatMedio >= d.pontoEquilibrio ? `Faturamento ${formatPercent(d.fatMedio / d.pontoEquilibrio - 1)} acima` : `Falta ${formatCurrency(d.pontoEquilibrio - d.fatMedio)}`)
               : 'Configure o financeiro', bench: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0

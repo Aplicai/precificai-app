@@ -35,7 +35,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 const QUADRANTES = {
   estrela: {
     titulo: 'Estrela',
-    emoji: '\u2B50',
+    emoji: '',
     icon: 'star',
     color: '#D4A017',
     bg: '#FFF8E1',
@@ -53,7 +53,7 @@ const QUADRANTES = {
   },
   vaca: {
     titulo: 'Vaca Leiteira',
-    emoji: '\uD83D\uDC2E',
+    emoji: '',
     icon: 'help-circle',
     color: '#1565C0',
     bg: '#E3F2FD',
@@ -71,7 +71,7 @@ const QUADRANTES = {
   },
   interrogacao: {
     titulo: 'Interrogação',
-    emoji: '\u2753',
+    emoji: '',
     icon: 'trending-up',
     color: '#388E3C',
     bg: '#E8F5E9',
@@ -89,7 +89,7 @@ const QUADRANTES = {
   },
   abacaxi: {
     titulo: 'Abacaxi',
-    emoji: '\uD83C\uDF4D',
+    emoji: '',
     icon: 'alert-triangle',
     color: '#C62828',
     bg: '#FFEBEE',
@@ -131,7 +131,6 @@ export default function BCGQuadranteModal({ visible, onClose, quadrante }) {
           {/* Header colorido por quadrante */}
           <View style={[styles.header, { backgroundColor: data.bg, borderColor: data.border }]}>
             <View style={styles.titleRow}>
-              <Text style={styles.emoji}>{data.emoji}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.title, { color: data.color }]}>{data.titulo}</Text>
                 <Text style={styles.subtitle}>Saiba como agir nesse quadrante</Text>

@@ -847,7 +847,7 @@ export default function DeliveryHubScreen({ navigation }) {
                       ) : (
                         <View style={{ padding: 10, backgroundColor: colors.error + '15', borderRadius: 8 }}>
                           <Text style={{ fontSize: 12, color: colors.error, fontFamily: fontFamily.medium }}>
-                            ⚠️ Custos somam mais de 100% do preço — impossível cobrar mantendo lucro. Reduza comissão, cupom ou custos fixos.
+                            Custos somam mais de 100% do preço — impossível cobrar mantendo lucro. Reduza comissão, cupom ou custos fixos.
                           </Text>
                         </View>
                       )}
@@ -942,7 +942,7 @@ export default function DeliveryHubScreen({ navigation }) {
                               </View>
                               {lucroLiquidoReais < 0 && (
                                 <Text style={{ fontSize: 11, color: colors.error, marginTop: 6, fontStyle: 'italic' }}>
-                                  ⚠️ Você teria PREJUÍZO cobrando este valor. Aumente o preço ou reduza custos.
+                                  Você teria PREJUÍZO cobrando este valor. Aumente o preço ou reduza custos.
                                 </Text>
                               )}
                             </View>

@@ -358,7 +358,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
             )}
             {lucroLiquido < 0 && (
               <Text style={styles.alertText}>
-                ⚠️ Você teria PREJUÍZO cobrando este valor. Aumente o preço ou reduza custos.
+                Você teria PREJUÍZO cobrando este valor. Aumente o preço ou reduza custos.
               </Text>
             )}
           </View>

@@ -463,7 +463,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
     `).join('');
     const atencaoHtml = (data.atencao || []).slice(0, 5).map(p => `
       <li style="margin: 6px 0; padding: 8px 12px; background: #fef2f2; border-left: 3px solid #dc2626; border-radius: 4px;">
-        <strong>⚠️ ${escapeHtml(p.nome || '')}</strong>
+        <strong>${escapeHtml(p.nome || '')}</strong>
         <span style="color: #6b7280; float: right;">${formatCurrency(p.precoVenda || 0)} (CMV ${formatCurrency(p.custoUn || 0)})</span>
       </li>
     `).join('');
@@ -480,7 +480,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
       : 1;
     const graficoMargemHtml = todosProdutosOrdenados.length > 0 ? `
       <div class="card">
-        <h3>📊 Margem por produto (top 10)</h3>
+        <h3>Margem por produto (top 10)</h3>
         <p style="color: #6b7280; margin: 0 0 12px 0; font-size: 13px;">
           Visualização do lucro líquido por unidade vendida.
         </p>
@@ -508,7 +508,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
       : (categorias.find(c => c.id === filtroCategoria)?.nome || null);
     const filtroCatHtml = _categoriaAtivaNomeNoPdf
       ? `<div style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 10px 14px; border-radius: 4px; margin-bottom: 14px; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
-          <strong style="color: #92400e;">📌 Filtrado por categoria:</strong>
+          <strong style="color: #92400e;">Filtrado por categoria:</strong>
           <span style="color: #78350f;"> ${escapeHtml(_categoriaAtivaNomeNoPdf)}</span>
         </div>`
       : '';
@@ -547,8 +547,8 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
       <div class="kpi"><div class="kpi-label">Custos do mês</div><div class="kpi-value">R$ ${formatBR(data.resumo.fixas)}</div></div>
     </div>` : ''}
     ${sections.map(s => `<div class="card"><h3>${escapeHtml(s.title)}</h3><p>${escapeHtml(s.text)}</p></div>`).join('')}
-    ${melhoresHtml ? `<div class="card"><h3>🏆 Top 5 — seus campeões</h3><ul class="list">${melhoresHtml}</ul></div>` : ''}
-    ${atencaoHtml ? `<div class="card"><h3>⚠️ Atenção — produtos com margem apertada</h3><ul class="list">${atencaoHtml}</ul></div>` : ''}
+    ${melhoresHtml ? `<div class="card"><h3>Top 5 — seus campeões</h3><ul class="list">${melhoresHtml}</ul></div>` : ''}
+    ${atencaoHtml ? `<div class="card"><h3>Atenção — produtos com margem apertada</h3><ul class="list">${atencaoHtml}</ul></div>` : ''}
     ${graficoMargemHtml}
     <p class="footer">Gerado por Precificaí · www.precificaiapp.com</p>
     </body></html>`;

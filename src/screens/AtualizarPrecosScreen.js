@@ -562,7 +562,7 @@ export default function AtualizarPrecosScreen({ navigation }) {
                   </Text>
                   {isDramatic ? (
                     <Text style={styles.modalDeltaWarning}>
-                      ⚠️ Variação significativa — confira antes de salvar.
+                      Variação significativa — confira antes de salvar.
                     </Text>
                   ) : null}
                 </View>

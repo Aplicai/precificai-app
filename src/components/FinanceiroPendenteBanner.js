@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 
@@ -31,7 +32,7 @@ export default function FinanceiroPendenteBanner() {
 
   return (
     <TouchableOpacity style={styles.banner} activeOpacity={0.8} onPress={goToFinanceiro}>
-      <Text style={styles.icon}>⚠️</Text>
+      <Feather name="alert-triangle" size={18} color="#E65100" style={styles.icon} />
       <View style={styles.body}>
         <Text style={styles.title}>Configuração financeira pendente</Text>
         <Text style={styles.desc}>Markup, margens e preços sugeridos podem estar incorretos. Configure agora para corrigir.</Text>

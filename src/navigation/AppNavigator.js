@@ -202,11 +202,14 @@ function TabIcon({ label, focused, badge, baseSize }) {
 // Sessão 28.9 — Wrapper que adiciona o FinanceiroPendenteBanner global acima
 // do Stack. Com isso o banner aparece em TODAS as telas dentro de cada tab,
 // sem precisar editar cada screen individualmente.
-function StackWithBanner({ children }) {
+// UX audit 09/09: a faixa "confira os preços dos insumos" aparecia em TODAS as
+// telas (e acima do header no mobile). É um aviso sobre insumos — só faz sentido
+// em Início e Insumos. Uma faixa por vez; o resto do app respira.
+function StackWithBanner({ children, precosBanner = false }) {
   return (
     <View style={{ flex: 1 }}>
       <FinanceiroPendenteBanner />
-      <PrecosZeradosBanner />
+      {precosBanner ? <PrecosZeradosBanner /> : null}
       {children}
     </View>
   );
@@ -214,7 +217,7 @@ function StackWithBanner({ children }) {
 
 function HomeStack() {
   return (
-    <StackWithBanner>
+    <StackWithBanner precosBanner>
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen name="HomeMain" component={HomeScreen} options={{
           header: () => null, // Custom header rendered inside HomeScreen
@@ -273,7 +276,7 @@ function backToHomeOption(navigation) {
 
 function InsumosStack() {
   return (
-    <StackWithBanner>
+    <StackWithBanner precosBanner>
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen name="MateriasPrimas" component={MateriasPrimasScreen} options={({ navigation }) => ({ title: 'Insumos', ...backToHomeOption(navigation) })} />
         <Stack.Screen name="MateriaPrimaForm" component={MateriaPrimaFormScreen} options={{ title: 'Insumo', presentation: 'transparentModal', headerShown: false }} />

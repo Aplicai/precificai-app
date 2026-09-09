@@ -619,7 +619,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         {/* Histórico de Preço */}
         {editId && historicoPrecos.length > 1 && (
           <View style={styles.historicoCard}>
-            <Text style={styles.historicoTitle}>📈 Histórico de Preço</Text>
+            <Text style={styles.historicoTitle}>Histórico de Preço</Text>
             {(() => {
               const sorted = [...historicoPrecos].reverse();
               const prices = sorted.map(x => x.valor_pago);

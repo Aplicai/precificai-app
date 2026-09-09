@@ -74,6 +74,10 @@ export default function FinanceiroConfigScreen() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [editModal, setEditModal] = useState(null);
   const [finStatus, setFinStatus] = useState(null);
+  // UX audit 09/09: o card "Configuração completa!" (com botão "Voltar ao Início")
+  // aparecia em TODA visita. Agora só quando o usuário acabou de completar aqui.
+  const [mostrarCompleto, setMostrarCompleto] = useState(false);
+  const completoAntesRef = useRef(null);
   const [savedFeedback, setSavedFeedback] = useState(null);
   const [margemSeguranca, setMargemSeguranca] = useState('0');
   const [currencyModal, setCurrencyModal] = useState(null);
@@ -219,6 +223,8 @@ export default function FinanceiroConfigScreen() {
 
     const status = await getFinanceiroStatus();
     setFinStatus(status);
+    if (completoAntesRef.current === false && status?.completo) setMostrarCompleto(true);
+    completoAntesRef.current = !!status?.completo;
     } catch (e) {
       setLoadError(true);
       if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.loadData]', e);
@@ -457,7 +463,7 @@ export default function FinanceiroConfigScreen() {
       const placeholderInicial = isProLabore ? String(SALARIO_MINIMO_VIGENTE).replace('.', ',') : '0,00';
       // D-13: ao abrir modal pra pró-labore, título traz a explicação
       const tituloModal = isProLabore
-        ? `${descricao}  💡 Quanto você se paga pelo trabalho. Sugestão: ${SALARIO_MINIMO_FMT}+`
+        ? `${descricao} Quanto você se paga pelo trabalho. Sugestão: ${SALARIO_MINIMO_FMT}+`
         : descricao;
       setTimeout(() => {
         setCurrencyModal({
@@ -629,7 +635,6 @@ export default function FinanceiroConfigScreen() {
                          : colors.error;
           const corValor = corBorda;
           const tituloFaixa = FAIXAS_SAUDE_CUSTO_FIXO[faixa].label;
-          const emojiFaixa = FAIXAS_SAUDE_CUSTO_FIXO[faixa].emoji;
           const textoExpl = faixa === 'saudavel'
             ? 'Seus custos fixos estão em nível saudável. Negócios de alimentação tendem a ficar abaixo de 30% do faturamento.'
             : faixa === 'atencao'
@@ -637,7 +642,7 @@ export default function FinanceiroConfigScreen() {
             : 'Seus custos fixos estão acima da faixa saudável. Negócios sustentáveis no setor mantêm abaixo de 30%.';
           return (
             <View style={[s.saudeBox, { backgroundColor: corFundo, borderLeftColor: corBorda }]}>
-              <Text style={s.saudeBoxTitle}>📊 Saúde dos seus custos fixos</Text>
+              <Text style={s.saudeBoxTitle}>Saúde dos seus custos fixos</Text>
               <View style={s.saudeBoxRow}>
                 <Text style={s.saudeBoxLabel}>Faturamento mensal:</Text>
                 <Text style={s.saudeBoxValue}>{formatCurrency(faturamentoMedio)}</Text>
@@ -653,13 +658,22 @@ export default function FinanceiroConfigScreen() {
                 </Text>
               </View>
               <Text style={[s.saudeBoxStatus, { color: corValor }]}>
-                {emojiFaixa} {tituloFaixa}
+                {tituloFaixa}
               </Text>
               <Text style={s.saudeBoxExplain}>{textoExpl}</Text>
               <View style={s.saudeBoxFaixas}>
-                <Text style={s.saudeBoxFaixasItem}>🟢 Até 25% — Saudável</Text>
-                <Text style={s.saudeBoxFaixasItem}>🟡 25% a 35% — Atenção</Text>
-                <Text style={s.saudeBoxFaixasItem}>🔴 Acima de 35% — Crítico</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.success, marginRight: 6 }} />
+                  <Text style={s.saudeBoxFaixasItem}>Até 25% — Saudável</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.warning, marginRight: 6 }} />
+                  <Text style={s.saudeBoxFaixasItem}>25% a 35% — Atenção</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.error, marginRight: 6 }} />
+                  <Text style={s.saudeBoxFaixasItem}>Acima de 35% — Crítico</Text>
+                </View>
               </View>
             </View>
           );
@@ -737,7 +751,7 @@ export default function FinanceiroConfigScreen() {
             </View>
           </View>
         )}
-        {finStatus && finStatus.completo && (
+        {finStatus && finStatus.completo && mostrarCompleto && (
           <View style={[s.progressSection, { backgroundColor: colors.success + '10', borderColor: colors.success + '30' }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
               <Feather name="check-circle" size={20} color={colors.success} />
@@ -1211,7 +1225,7 @@ export default function FinanceiroConfigScreen() {
                 title="O que são Custos por venda?"
                 text={
                   'São porcentagens que somam da sua venda toda vez que alguém compra: imposto, taxa do cartão, etc.\n\n' +
-                  '⚠️ IMPORTANTE — Taxas do cartão (maquininha):\n' +
+                  'IMPORTANTE — Taxas do cartão (maquininha):\n' +
                   'NÃO cadastre as taxas de débito e crédito separadas. Se você cadastrar as duas, o sistema vai aplicar AS DUAS sobre cada produto e o preço vai ficar errado.\n\n' +
                   'Use só UMA "Taxa maquininha" e coloque a MAIOR taxa que você cobra (normalmente a do crédito parcelado). Assim o preço cobre o pior caso e você nunca sai no prejuízo — se receber no PIX ou débito, ganha um pouco a mais.'
                 }
@@ -1383,17 +1397,13 @@ export default function FinanceiroConfigScreen() {
           )}
         </View>
 
-        {/* APP-11: aviso explícito de auto-save pra usuária não ficar com medo de perder dados */}
-        <View style={s.autoSaveBanner} accessibilityRole="alert">
-          <View style={s.autoSaveIcon}>
-            <Feather name="check-circle" size={16} color={colors.success} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={s.autoSaveTitle}>Tudo é salvo automaticamente</Text>
-            <Text style={s.autoSaveText}>
-              Cada valor que você confirma já fica gravado. Você pode sair desta tela quando quiser, nada se perde.
-            </Text>
-          </View>
+        {/* APP-11 → UX audit 09/09: o aviso de auto-save era uma faixa verde em
+            toda visita; virou uma legenda discreta (a informação continua). */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: spacing.sm, paddingHorizontal: 4 }}>
+          <Feather name="check-circle" size={13} color={colors.success} />
+          <Text style={{ fontSize: fonts.tiny, fontFamily: fontFamily.regular, color: colors.textSecondary }}>
+            Salvo automaticamente a cada valor confirmado.
+          </Text>
         </View>
 
         {/* Desktop: 2-column layout */}
@@ -1450,7 +1460,7 @@ export default function FinanceiroConfigScreen() {
                 <Text style={s.stickyFooterBtnText}>Salvar e voltar ao painel</Text>
               </TouchableOpacity>
               <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 8, textAlign: 'center' }}>
-                💾 As alterações já foram salvas automaticamente — esse botão só te leva pro Painel Geral.
+                As alterações já foram salvas automaticamente — esse botão só te leva pro Painel Geral.
               </Text>
             </View>
           </View>

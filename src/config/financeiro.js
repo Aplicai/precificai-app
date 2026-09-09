@@ -66,9 +66,9 @@ export function getSugestaoMargemSeguranca(segmento) {
  * Cores aplicadas dinamicamente no SummaryPanel.
  */
 export const FAIXAS_SAUDE_CUSTO_FIXO = {
-  saudavel: { ate: 0.25, label: 'Saudável', emoji: '🟢' },
-  atencao: { ate: 0.35, label: 'Atenção', emoji: '🟡' },
-  critico: { ate: 999, label: 'Crítico', emoji: '🔴' },
+  saudavel: { ate: 0.25, label: 'Saudável', emoji: '' },
+  atencao: { ate: 0.35, label: 'Atenção', emoji: '' },
+  critico: { ate: 999, label: 'Crítico', emoji: '' },
 };
 
 /**

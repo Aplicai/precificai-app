@@ -309,7 +309,7 @@ export default function DeliveryCombosScreen() {
       const next = upgradeTo || 'pro';
       setUpgradeModal({
         requiredPlan: next,
-        title: 'Você atingiu o limite de combos 🎉',
+        title: 'Você atingiu o limite de combos',
         message: `No plano ${PLAN_LABELS[plano]} você cria até ${limitFor('combos')} combos. Faça upgrade pra montar mais:`,
         highlights: next === 'ilimitado'
           ? ['Produtos e combos ilimitados', 'Ranking de Produtos (Matriz BCG)']
@@ -596,7 +596,7 @@ export default function DeliveryCombosScreen() {
       const next = upgradeTo || 'pro';
       setUpgradeModal({
         requiredPlan: next,
-        title: 'Você atingiu o limite de combos 🎉',
+        title: 'Você atingiu o limite de combos',
         message: `No plano ${PLAN_LABELS[plano]} você cria até ${limitFor('combos')} combos. Faça upgrade pra montar mais:`,
         highlights: next === 'ilimitado'
           ? ['Produtos e combos ilimitados', 'Ranking de Produtos (Matriz BCG)']

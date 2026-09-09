@@ -556,7 +556,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             }
             if (warnings.length > 0) {
               Alert.alert(
-                '⚠️ Margem em risco',
+                'Margem em risco',
                 `A alteração de preço impactou ${warnings.length} produto(s):\n\n${warnings.join('\n')}\n\nConsidere ajustar os preços de venda.`,
                 [{ text: 'Entendi' }]
               );

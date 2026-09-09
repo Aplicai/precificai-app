@@ -394,7 +394,7 @@ export default function KitInicioScreen({ navigation, route }) {
         const catRows = categoriasTemplate.map(nome => ({
           user_id: userId,
           nome,
-          icone: '📦',
+          icone: '',
         }));
         const { data: catData, error: catErr } = await supabase
           .from('categorias_insumos')
@@ -524,7 +524,7 @@ export default function KitInicioScreen({ navigation, route }) {
 
         // 4a — categorias de embalagens
         if (catEmbTemplate.length > 0) {
-          const catEmbRows = catEmbTemplate.map(nome => ({ user_id: userId, nome, icone: '📦' }));
+          const catEmbRows = catEmbTemplate.map(nome => ({ user_id: userId, nome, icone: '' }));
           const { data: catEmbData, error: catEmbErr } = await supabase
             .from('categorias_embalagens').insert(catEmbRows).select('id, nome');
           if (catEmbErr) console.warn('[KitInicio.embalagens.categorias]', catEmbErr);
@@ -566,7 +566,7 @@ export default function KitInicioScreen({ navigation, route }) {
 
         // 5a — categorias de preparos
         if (catPrepTemplate.length > 0) {
-          const catPrepRows = catPrepTemplate.map(nome => ({ user_id: userId, nome, icone: '🥄' }));
+          const catPrepRows = catPrepTemplate.map(nome => ({ user_id: userId, nome, icone: '' }));
           const { data: catPrepData, error: catPrepErr } = await supabase
             .from('categorias_preparos').insert(catPrepRows).select('id, nome');
           if (catPrepErr) console.warn('[KitInicio.preparos.categorias]', catPrepErr);
@@ -646,7 +646,7 @@ export default function KitInicioScreen({ navigation, route }) {
 
         // 6a — categorias de produtos
         if (catProdTemplate.length > 0) {
-          const catProdRows = catProdTemplate.map(nome => ({ user_id: userId, nome, icone: '🍰' }));
+          const catProdRows = catProdTemplate.map(nome => ({ user_id: userId, nome, icone: '' }));
           const { data: catProdData, error: catProdErr } = await supabase
             .from('categorias_produtos').insert(catProdRows).select('id, nome');
           if (catProdErr) console.warn('[KitInicio.produtos.categorias]', catProdErr);
@@ -959,7 +959,7 @@ export default function KitInicioScreen({ navigation, route }) {
                 </Text>
                 <Text style={{ fontSize: 12, color: sobrescrever ? '#991B1B' : '#6B7280', marginTop: 2 }}>
                   {sobrescrever
-                    ? '⚠️ APAGA todos os insumos, preparos, produtos, embalagens e categorias antes de aplicar.'
+                    ? 'APAGA todos os insumos, preparos, produtos, embalagens e categorias antes de aplicar.'
                     : 'O kit será adicionado AOS dados existentes (nada é apagado).'}
                 </Text>
               </View>

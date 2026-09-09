@@ -33,6 +33,9 @@ export default function InstallPrompt() {
   const { isMobile } = useResponsiveLayout();
   // Sessão 28 — em mobile (web), o card precisa ficar acima do BottomTab (66pt).
   const cardBottom = isMobile ? 80 : 16;
+  // UX audit 09/09: no desktop o card ficava no canto inferior ESQUERDO, em cima
+  // do item "Suporte" da sidebar. Vai para a direita, com largura fixa.
+  const cardPos = isMobile ? { left: 16, right: 16 } : { right: 24, width: 380, maxWidth: 380 };
   const [available, setAvailable] = useState(false);
   const [showIosHint, setShowIosHint] = useState(false);
   const [dismissed, setDismissed] = useState(false);
@@ -83,7 +86,7 @@ export default function InstallPrompt() {
 
   if (showIosHint) {
     return (
-      <View style={[styles.card, { bottom: cardBottom }]}>
+      <View style={[styles.card, { bottom: cardBottom }, cardPos]}>
         <Feather name="share" size={20} color={colors.primary} />
         <View style={{ flex: 1, marginHorizontal: spacing.sm }}>
           <Text style={styles.title}>Instalar Precificaí</Text>
@@ -97,7 +100,7 @@ export default function InstallPrompt() {
   }
 
   return (
-    <View style={[styles.card, { bottom: cardBottom }]}>
+    <View style={[styles.card, { bottom: cardBottom }, cardPos]}>
       <Feather name="download" size={20} color={colors.primary} />
       <View style={{ flex: 1, marginHorizontal: spacing.sm }}>
         <Text style={styles.title}>Instalar app</Text>
@@ -115,8 +118,7 @@ export default function InstallPrompt() {
 
 const styles = StyleSheet.create({
   card: {
-    position: 'absolute',
-    left: 16, right: 16, // bottom inline via useResponsiveLayout (Sessão 28).
+    position: 'absolute', // left/right/bottom via cardPos + cardBottom (responsivo)
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.surface,
     padding: spacing.md, borderRadius: borderRadius.md,

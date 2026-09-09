@@ -136,7 +136,7 @@ export default function AjusteEstoqueScreen({ navigation, route }) {
     const deltaAbs = Math.abs(delta);
     const verbo = delta < 0 ? 'reduzir' : 'aumentar';
     const aviso = saldoNegativo
-      ? `\n\n⚠ ATENÇÃO: o saldo final ficará NEGATIVO (${fmt(saldoNovo)} ${unidade}). Continuar mesmo assim?`
+      ? `\n\nATENÇÃO: o saldo final ficará NEGATIVO (${fmt(saldoNovo)} ${unidade}). Continuar mesmo assim?`
       : '';
     const resumo = modo === 'saldo'
       ? `Vamos ajustar o saldo de "${itemSelecionado?.nome}" para ${fmt(saldoNovo)} ${unidade} (${verbo} ${fmt(deltaAbs)} ${unidade}).`

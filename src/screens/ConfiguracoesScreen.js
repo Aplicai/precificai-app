@@ -126,7 +126,7 @@ export default function ConfiguracoesScreen({ navigation }) {
           usuário ativava e mexia no plano). Em produção este bloco NUNCA renderiza. */}
       {(typeof __DEV__ !== 'undefined' && __DEV__) && (
         <View style={{ backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#F59E0B', borderRadius: 12, padding: 14, marginBottom: 16 }}>
-          <Text style={{ fontSize: 14, fontFamily: fontFamily.bold, color: '#92400E', marginBottom: 2 }}>🧪 Teste de planos (DEV)</Text>
+          <Text style={{ fontSize: 14, fontFamily: fontFamily.bold, color: '#92400E', marginBottom: 2 }}>Teste de planos (DEV)</Text>
           <Text style={{ fontSize: 12, color: '#92400E', marginBottom: 10 }}>
             Alterne o plano localmente pra testar cadeados e limites. Será removido na produção.
           </Text>
