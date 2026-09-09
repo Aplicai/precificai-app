@@ -685,19 +685,50 @@ export default function EmbalagensScreen({ navigation }) {
                             onPress={() => handleRowPress(item)}
                             onLongPress={() => handleRowLongPress(item)}
                           >
-                            {bulk.active && (
-                              <View style={[styles.checkbox, selected && styles.checkboxChecked, { marginRight: 8 }]}>
-                                {selected && <Feather name="check" size={12} color="#fff" />}
-                              </View>
-                            )}
-                            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }} {...(Platform.OS === 'web' ? { title: item.nome + (item.marca ? ' (' + item.marca + ')' : '') } : {})}>
-                              {Number(item.favorito) === 1 && (
-                                <Feather name="star" size={11} color={colors.yellow || '#FFC83A'} style={{ marginRight: 4 }} />
+                            <View style={styles.gridCardTop}>
+                              {bulk.active && (
+                                <View style={[styles.checkbox, selected && styles.checkboxChecked, { marginRight: 8, marginLeft: 0 }]}>
+                                  {selected && <Feather name="check" size={12} color="#fff" />}
+                                </View>
                               )}
-                              <HighlightedText text={item.nome} query={busca} style={styles.gridCardName} numberOfLines={1} />
-                              {item.marca ? <Text style={[styles.gridCardName, { color: colors.textSecondary, fontWeight: '400' }]} numberOfLines={1}> ({item.marca})</Text> : null}
+                              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }} {...(Platform.OS === 'web' ? { title: item.nome + (item.marca ? ' (' + item.marca + ')' : '') } : {})}>
+                                {Number(item.favorito) === 1 && (
+                                  <Feather name="star" size={11} color={colors.yellow || '#FFC83A'} style={{ marginRight: 4 }} />
+                                )}
+                                <HighlightedText text={item.nome} query={busca} style={styles.gridCardName} numberOfLines={1} />
+                                {item.marca ? <Text style={[styles.gridCardName, { color: colors.textSecondary, fontWeight: '400' }]} numberOfLines={1}> ({item.marca})</Text> : null}
+                              </View>
                             </View>
-                            <Text style={styles.gridCardPrice}>{formatCurrency(item.preco_unitario)}</Text>
+                            {/* UX audit 09/09: 2 linhas (nome inteiro em cima) + duplicar/excluir no
+                                desktop, como em Preparos/Produtos — antes não havia como excluir
+                                uma embalagem direto da tela no desktop. */}
+                            <View style={styles.gridCardBottom}>
+                              <Text style={styles.gridCardPrice}>{formatCurrency(item.preco_unitario)}</Text>
+                              {!bulk.active && (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 6, gap: 2 }}>
+                                  <TouchableOpacity
+                                    onPress={(e) => { e.stopPropagation && e.stopPropagation(); duplicarEmbalagem(item); }}
+                                    style={{ padding: 4 }}
+                                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Duplicar embalagem"
+                                    {...(isWeb ? { title: 'Duplicar embalagem' } : {})}
+                                  >
+                                    <Feather name="copy" size={12} color={colors.disabled} />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    onPress={(e) => { e.stopPropagation && e.stopPropagation(); solicitarExclusao(item.id, item.nome); }}
+                                    style={{ padding: 4 }}
+                                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Excluir embalagem"
+                                    {...(isWeb ? { title: 'Excluir embalagem' } : {})}
+                                  >
+                                    <Feather name="trash-2" size={12} color={colors.error || '#dc2626'} />
+                                  </TouchableOpacity>
+                                </View>
+                              )}
+                            </View>
                           </TouchableOpacity>
                           );
                         })}
@@ -1189,18 +1220,31 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     paddingHorizontal: spacing.sm,
     paddingVertical: 8,
+    // UX audit 09/09: largura mínima — em telas ~1250px o card caía a ~210px e
+    // o nome sumia. flexGrow preenche a linha; 3 ou 4 por linha conforme couber.
     width: '23.5%',
+    minWidth: 220,
+    flexGrow: 1,
+    maxWidth: 420,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  gridCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  gridCardBottom: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   gridCardName: {
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: fontFamily.medium,
     fontWeight: '500',
     color: colors.text,
-    flex: 1,
-    marginRight: 8,
+    flexShrink: 1,
   },
   gridCardPrice: {
     fontSize: 13,

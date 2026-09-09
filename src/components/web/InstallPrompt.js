@@ -32,7 +32,8 @@ function isStandalone() {
 export default function InstallPrompt() {
   const { isMobile } = useResponsiveLayout();
   // Sessão 28 — em mobile (web), o card precisa ficar acima do BottomTab (66pt).
-  const cardBottom = isMobile ? 80 : 16;
+  // Desktop: acima do FAB (bottom 20 + 56 de altura + folga) pra não cobrir "Novo X".
+  const cardBottom = isMobile ? 80 : 96;
   // UX audit 09/09: no desktop o card ficava no canto inferior ESQUERDO, em cima
   // do item "Suporte" da sidebar. Vai para a direita, com largura fixa.
   const cardPos = isMobile ? { left: 16, right: 16 } : { right: 24, width: 380, maxWidth: 380 };

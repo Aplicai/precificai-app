@@ -715,23 +715,54 @@ export default function MateriasPrimasScreen({ navigation }) {
                             onLongPress={() => handleRowLongPress(item)}
                             delayLongPress={300}
                           >
-                            {bulk.active && (
-                              <View style={[styles.checkbox, selected && styles.checkboxChecked, { marginRight: 8, marginLeft: 0 }]}>
-                                {selected && <Feather name="check" size={12} color="#fff" />}
+                            <View style={styles.gridCardTop}>
+                              {bulk.active && (
+                                <View style={[styles.checkbox, selected && styles.checkboxChecked, { marginRight: 8, marginLeft: 0 }]}>
+                                  {selected && <Feather name="check" size={12} color="#fff" />}
+                                </View>
+                              )}
+                              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }} {...(Platform.OS === 'web' ? { title: item.nome + (marcaVisivel(item.marca) ? ' (' + marcaVisivel(item.marca) + ')' : '') } : {})}>
+                                {Number(item.favorito) === 1 && (
+                                  <Feather name="star" size={11} color={colors.yellow || '#FFC83A'} style={{ marginRight: 4 }} />
+                                )}
+                                {/* APP-14: indicador visual sutil quando o valor ainda é a estimativa do Kit */}
+                                {isMarcaEstimada(item.marca) && (
+                                  <Feather name="info" size={10} color={colors.warning || '#F39C12'} style={{ marginRight: 4 }} />
+                                )}
+                                <HighlightedText text={item.nome} query={busca} style={styles.gridCardName} numberOfLines={1} />
+                                {marcaVisivel(item.marca) ? <Text style={[styles.gridCardName, { color: colors.textSecondary, fontWeight: '400' }]} numberOfLines={1}> ({marcaVisivel(item.marca)})</Text> : null}
                               </View>
-                            )}
-                            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }} {...(Platform.OS === 'web' ? { title: item.nome + (marcaVisivel(item.marca) ? ' (' + marcaVisivel(item.marca) + ')' : '') } : {})}>
-                              {Number(item.favorito) === 1 && (
-                                <Feather name="star" size={11} color={colors.yellow || '#FFC83A'} style={{ marginRight: 4 }} />
-                              )}
-                              {/* APP-14: indicador visual sutil quando o valor ainda é a estimativa do Kit */}
-                              {isMarcaEstimada(item.marca) && (
-                                <Feather name="info" size={10} color={colors.warning || '#F39C12'} style={{ marginRight: 4 }} />
-                              )}
-                              <HighlightedText text={item.nome} query={busca} style={styles.gridCardName} numberOfLines={1} />
-                              {marcaVisivel(item.marca) ? <Text style={[styles.gridCardName, { color: colors.textSecondary, fontWeight: '400' }]} numberOfLines={1}> ({marcaVisivel(item.marca)})</Text> : null}
                             </View>
-                            <Text style={styles.gridCardPrice}>{formatCurrency(item.preco_por_kg)}</Text>
+                            {/* UX audit 09/09: 2 linhas (nome inteiro em cima) + duplicar/excluir no
+                                desktop, como em Preparos/Produtos — antes não havia como excluir
+                                um insumo direto da tela no desktop. */}
+                            <View style={styles.gridCardBottom}>
+                              <Text style={styles.gridCardPrice}>{formatCurrency(item.preco_por_kg)}</Text>
+                              {!bulk.active && (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 6, gap: 2 }}>
+                                  <TouchableOpacity
+                                    onPress={(e) => { e.stopPropagation && e.stopPropagation(); duplicarInsumo(item); }}
+                                    style={{ padding: 4 }}
+                                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Duplicar insumo"
+                                    {...(isWeb ? { title: 'Duplicar insumo' } : {})}
+                                  >
+                                    <Feather name="copy" size={12} color={colors.disabled} />
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    onPress={(e) => { e.stopPropagation && e.stopPropagation(); solicitarExclusao(item.id, item.nome); }}
+                                    style={{ padding: 4 }}
+                                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Excluir insumo"
+                                    {...(isWeb ? { title: 'Excluir insumo' } : {})}
+                                  >
+                                    <Feather name="trash-2" size={12} color={colors.error || '#dc2626'} />
+                                  </TouchableOpacity>
+                                </View>
+                              )}
+                            </View>
                           </TouchableOpacity>
                           );
                         })}
@@ -1360,18 +1391,31 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     paddingHorizontal: spacing.sm,
     paddingVertical: 8,
+    // UX audit 09/09: largura mínima — em telas ~1250px o card caía a ~210px e
+    // o nome sumia. flexGrow preenche a linha; 3 ou 4 por linha conforme couber.
     width: '23.5%',
+    minWidth: 220,
+    flexGrow: 1,
+    maxWidth: 420,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  gridCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  gridCardBottom: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   gridCardName: {
-    fontSize: 12,
+    fontSize: 13,
     fontFamily: fontFamily.medium,
     fontWeight: '500',
     color: colors.text,
-    flex: 1,
-    marginRight: 8,
+    flexShrink: 1,
   },
   gridCardPrice: {
     fontSize: 13,

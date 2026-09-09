@@ -433,7 +433,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     paddingHorizontal: spacing.sm,
     paddingVertical: 8,
+    // UX audit 09/09: largura mínima — em telas ~1250px o card caía a ~210px e
+    // o nome sumia. flexGrow preenche a linha; 3 ou 4 por linha conforme couber.
     width: '23.5%',
+    minWidth: 220,
+    flexGrow: 1,
+    maxWidth: 420,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

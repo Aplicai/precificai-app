@@ -1575,7 +1575,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface, borderRadius: borderRadius.sm,
     borderWidth: 1, borderColor: colors.border,
     paddingHorizontal: spacing.sm, paddingVertical: 8,
-    width: '23.5%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    width: '23.5%', minWidth: 220, flexGrow: 1, maxWidth: 420, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   gridCardActive: {
     borderColor: colors.primary + '60',

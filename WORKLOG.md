@@ -11,6 +11,12 @@ Status possíveis: `não iniciado` · `em análise` · `validado` · `com risco`
 
 ---
 
+### 09/09 (cont.) — Fase A.2: grid desktop + card Instalar + verificação do Financeiro
+- **Financeiro "vazio" em prod (observado após deploy `index-49b8367c`)**: era transitório. Recarregado com tracking: dados corretos (15% / 5% / R$ 15.000 / fixas R$ 3.332,80 / variáveis 11,50%), aggregate no banco íntegro (27 configuracao com lucro>0, 226 faturamento>0, 248 despesas_fixas). Sem `[SupabaseDb] COUNT error` no console; contadores da Home 96/4/7/1 corretos. O tracker de rede da extensão do Chrome lista requisições HEAD (COUNT) como **503** — falso: `fetch` HEAD feito na própria página retorna 200 com `content-range: 0-14/15`.
+- **Bugs visuais achados na verificação e corrigidos**: (17) card "Instalar app" cobria o FAB no desktop → `bottom: 96`; (18) card do grid desktop truncava o nome em ~1250 px → 2 linhas nas 4 listas CRUD + `minWidth: 220`/`flexGrow` nas 8 telas com grid; (19) Insumos/Embalagens sem duplicar/excluir no grid desktop → adicionados.
+- **Conta TE**: `E2E-Bolo-25088`, `E2E-Massa-05254/25088` e 3× `E2E-Farinha-*` (resíduo de e2e com cleanup falho) excluídos pelo app; aggregate `LIKE 'E2E-%'/'QA-%'` = 0 em materias_primas/preparos/produtos/embalagens/delivery_combos.
+- Verificação: 213 unit; Playwright 10-responsive + 01-home (ver log da sessão).
+
 ## Sessão atual (2026-04-22) — Auditoria de produto + fix do modal de Estoque
 
 ### Diagnóstico inicial
