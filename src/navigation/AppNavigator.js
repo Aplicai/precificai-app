@@ -585,8 +585,9 @@ function MainTabs({ route }) {
         um preparo — confundia o modelo mental do usuário.
       */}
       <Tab.Screen name="Início" component={HomeStack} />
-      <Tab.Screen name="Insumos" component={InsumosStack} />
-      <Tab.Screen name="Preparos" component={PreparosStack} />
+      {/* UX audit 09/09 — rótulos de balcão; route names ficam (persistência/hrefs). */}
+      <Tab.Screen name="Insumos" component={InsumosStack} options={{ tabBarLabel: !isDesktop ? 'Ingred.' : 'Ingredientes' }} />
+      <Tab.Screen name="Preparos" component={PreparosStack} options={{ tabBarLabel: !isDesktop ? 'Receitas' : 'Receitas base' }} />
       {/* Sessão UX — "Embalagens" tem 10 chars e trunca em telas estreitas; encurta para "Embal." em mobile. */}
       <Tab.Screen name="Embalagens" component={EmbalagensStack} options={{ tabBarLabel: !isDesktop ? 'Embal.' : 'Embalagens' }} />
       <Tab.Screen name="Produtos" component={ProdutosStack} />

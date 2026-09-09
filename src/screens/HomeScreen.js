@@ -675,7 +675,8 @@ export default function HomeScreen({ navigation }) {
       )}
 
       {/* Setup progress banner */}
-      {emSetup && setupStatus && (
+      {/* Não empilha com o checklist "Como começar" (mesma informação). */}
+      {emSetup && setupStatus && !mostrarComoComecar && (
         <TouchableOpacity style={styles.setupBanner} activeOpacity={0.7} onPress={() => nav('Onboarding')}>
           <View style={styles.setupBannerTop}>
             <View style={styles.setupBannerLeft}>
@@ -827,10 +828,8 @@ export default function HomeScreen({ navigation }) {
                 <View style={[styles.kpiIconCircle, { backgroundColor: k.color + '15' }]}>
                   <Feather name={k.icon} size={14} color={k.color} />
                 </View>
-                <Text style={styles.kpiLabel} numberOfLines={2}>
-                  {k.label}
-                  {k.caption ? <Text style={styles.kpiCaption}> {k.caption}</Text> : null}
-                </Text>
+                {/* caption "(CMV)" fica no tooltip: inline estourava as 2 linhas do card. */}
+                <Text style={styles.kpiLabel} numberOfLines={2}>{k.label}</Text>
                 {k.tip && <InfoTooltip {...k.tip} />}
               </View>
               <Text style={[styles.kpiValue, { color: k.color }]} numberOfLines={1} adjustsFontSizeToFit>{k.value}</Text>
