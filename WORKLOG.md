@@ -1,3 +1,8 @@
+## 2026-09-09 — Auditoria visual/UX (product-audit)
+- Diagnóstico: `docs/UX-AUDIT-2026-09-09.md` (16 itens, decisão 1-6 por item).
+- Fase A implementada e deployada: banners (1 por vez), emoji zero, sidebar plana, CTA única, KPIs na cor da marca, quadrantes neutros, avatar em DM Sans, Financeiro sem celebração recorrente.
+- Fase B pendente de decisão (ver doc).
+
 # WORKLOG — Precificaí
 
 Memória operacional viva. Atualizar ao final de cada bloco de trabalho.
