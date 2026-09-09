@@ -448,7 +448,7 @@ export default function MatrizBCGScreen({ navigation }) {
         {/* Área 9 — texto compactado pra caber em 1 linha no mobile. Detalhe completo
             fica no InfoTooltip acima ("Como funciona?"). */}
         <Text style={styles.subtitle} numberOfLines={1}>
-          Baseado nas vendas do mês anterior (mais estável que o mês em curso).
+          Com base nas vendas do mês passado.
         </Text>
       </View>
 
@@ -765,7 +765,7 @@ export default function MatrizBCGScreen({ navigation }) {
                           <Text style={styles.prodName} numberOfLines={1}>{p.nome}</Text>
                           {p.isCombo && (
                             <View style={{ backgroundColor: colors.accent + '20', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 }}>
-                              <Text style={{ fontSize: 9, fontFamily: fontFamily.semiBold, color: colors.accent }}>KIT</Text>
+                              <Text style={{ fontSize: 10, fontFamily: fontFamily.semiBold, color: colors.accent }}>KIT</Text>
                             </View>
                           )}
                         </View>
@@ -820,13 +820,13 @@ export default function MatrizBCGScreen({ navigation }) {
             <View style={{ flexDirection: 'row', marginBottom: 4 }}>
               <View style={{ width: 20 }} />
               <View style={{ flex: 1, alignItems: 'center' }}>
-                <Text style={{ fontSize: 10, fontFamily: fontFamily.medium, color: colors.textSecondary }}>← Baixa lucratividade | Alta lucratividade →</Text>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.medium, color: colors.textSecondary }}>← Baixa lucratividade | Alta lucratividade →</Text>
               </View>
             </View>
             <View style={{ flexDirection: 'row' }}>
               {/* Y axis label */}
               <View style={{ width: 20, justifyContent: 'center', alignItems: 'center' }}>
-                <Text style={{ fontSize: 10, fontFamily: fontFamily.medium, color: colors.textSecondary, transform: [{ rotate: '-90deg' }], width: 100, textAlign: 'center' }}>Popularidade →</Text>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.medium, color: colors.textSecondary, transform: [{ rotate: '-90deg' }], width: 100, textAlign: 'center' }}>Popularidade →</Text>
               </View>
               {/* 2x2 grid */}
               <View style={{ flex: 1 }}>
@@ -853,8 +853,8 @@ export default function MatrizBCGScreen({ navigation }) {
                             <Feather name="help-circle" size={14} color={cfg.color} />
                           </TouchableOpacity>
                         </View>
-                        <Text style={{ fontSize: 10, fontFamily: fontFamily.regular, color: colors.textSecondary, lineHeight: 14 }}>{cfg.desc}</Text>
-                        <Text style={{ fontSize: 9, fontFamily: fontFamily.semiBold, color: cfg.color, marginTop: 4 }}>→ {cfg.acao}</Text>
+                        <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary, lineHeight: 14 }}>{cfg.desc}</Text>
+                        <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: cfg.color, marginTop: 4 }}>→ {cfg.acao}</Text>
                       </View>
                     );
                   })}
@@ -882,8 +882,8 @@ export default function MatrizBCGScreen({ navigation }) {
                             <Feather name="help-circle" size={14} color={cfg.color} />
                           </TouchableOpacity>
                         </View>
-                        <Text style={{ fontSize: 10, fontFamily: fontFamily.regular, color: colors.textSecondary, lineHeight: 14 }}>{cfg.desc}</Text>
-                        <Text style={{ fontSize: 9, fontFamily: fontFamily.semiBold, color: cfg.color, marginTop: 4 }}>→ {cfg.acao}</Text>
+                        <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary, lineHeight: 14 }}>{cfg.desc}</Text>
+                        <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: cfg.color, marginTop: 4 }}>→ {cfg.acao}</Text>
                       </View>
                     );
                   })}
@@ -977,7 +977,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   vendasCardPrev: {
-    fontSize: 10, fontFamily: fontFamily.regular, color: colors.disabled,
+    fontSize: 11, fontFamily: fontFamily.regular, color: colors.disabled,
     marginBottom: 4,
   },
   vendasCardInputRow: {
@@ -992,7 +992,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   vendasColHeader: {
-    fontSize: 10, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    fontSize: 11, fontFamily: fontFamily.semiBold, fontWeight: '600',
     color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5,
   },
   vendaRow: {
@@ -1043,7 +1043,7 @@ const styles = StyleSheet.create({
   },
   summaryEmoji: { fontSize: 16 },
   summaryCount: { fontSize: fonts.xlarge || 22, fontFamily: fontFamily.bold, fontWeight: '700', marginTop: 2 },
-  summaryLabel: { fontSize: 9, fontFamily: fontFamily.semiBold, fontWeight: '600', textAlign: 'center', marginTop: 1 },
+  summaryLabel: { fontSize: 11, fontFamily: fontFamily.semiBold, fontWeight: '600', textAlign: 'center', marginTop: 1 },
 
   // Product table card
   tableCard: {
@@ -1103,7 +1103,7 @@ const styles = StyleSheet.create({
   marginText: { fontSize: 13, fontFamily: fontFamily.bold, fontWeight: '700' },
 
   salesText: { fontSize: 13, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text },
-  salesUnit: { fontSize: 9, fontFamily: fontFamily.regular, color: colors.disabled, marginTop: 1 },
+  salesUnit: { fontSize: 11, fontFamily: fontFamily.regular, color: colors.disabled, marginTop: 1 },
 
   classBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 3,
@@ -1112,7 +1112,7 @@ const styles = StyleSheet.create({
   },
   classBadgeEmoji: { fontSize: 11 },
   classBadgeText: { fontSize: 10, fontFamily: fontFamily.semiBold, fontWeight: '600' },
-  acaoSuggestion: { fontSize: 9, fontFamily: fontFamily.regular, marginTop: 3 },
+  acaoSuggestion: { fontSize: 11, fontFamily: fontFamily.regular, marginTop: 3 },
 
   // Explicação didática por item
   explicacaoRow: {
@@ -1122,7 +1122,7 @@ const styles = StyleSheet.create({
     marginTop: 6, width: '100%',
   },
   explicacaoText: {
-    fontSize: 10, fontFamily: fontFamily.regular, lineHeight: 14, flex: 1,
+    fontSize: 11, fontFamily: fontFamily.regular, lineHeight: 14, flex: 1,
   },
 
   // Section title

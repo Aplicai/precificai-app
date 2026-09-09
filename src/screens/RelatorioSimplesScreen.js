@@ -634,7 +634,6 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
         <View style={styles.header}>
           <Feather name="book-open" size={24} color={colors.primary} />
           <Text style={styles.headerTitle}>Relatório</Text>
-          <Text style={styles.headerSub}>Seus números traduzidos em linguagem simples</Text>
         </View>
       )}
 
@@ -777,7 +776,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
           {/* Pie Chart */}
           {Platform.OS === 'web' && (() => {
             const slices = [
-              { label: 'CMV', color: colors.coral, pct: data.resumo.percIng },
+              { label: 'Ingredientes', color: colors.coral, pct: data.resumo.percIng },
               { label: 'Fixas', color: colors.accent, pct: data.resumo.percFixas },
               { label: 'Variáveis', color: colors.purple, pct: data.resumo.percVar },
               { label: data.resumo.lucroPositivo ? 'Lucro' : 'Prejuízo', color: data.resumo.lucroPositivo ? colors.success : colors.error, pct: Math.abs(data.resumo.percLucro) },
@@ -810,7 +809,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
                 </View>
                 <View style={styles.chartLegend}>
                   {[
-                    { label: 'CMV (Ingredientes)', color: colors.coral, pct: (data.resumo.percIng * 100).toFixed(1) },
+                    { label: 'Custo dos ingredientes (CMV)', color: colors.coral, pct: (data.resumo.percIng * 100).toFixed(1) },
                     { label: 'Custos do mês', color: colors.accent, pct: (data.resumo.percFixas * 100).toFixed(1) },
                     { label: 'Custos por venda', color: colors.purple, pct: (data.resumo.percVar * 100).toFixed(1) },
                     { label: data.resumo.lucroPositivo ? 'Lucro' : 'Prejuízo', color: data.resumo.lucroPositivo ? colors.success : colors.error, pct: (Math.abs(data.resumo.percLucro) * 100).toFixed(1) },
@@ -849,7 +848,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
           {Platform.OS === 'web' && (
             <View style={styles.precHeader}>
               <Text style={[styles.precHeaderText, { flex: 2 }]}>Produto</Text>
-              <Text style={[styles.precHeaderText, { flex: 1, textAlign: 'right' }]}>CMV</Text>
+              <Text style={[styles.precHeaderText, { flex: 1, textAlign: 'right' }]}>Custo dos ingredientes</Text>
               <Text style={[styles.precHeaderText, { flex: 1, textAlign: 'right' }]}>Preço</Text>
               <Text style={[styles.precHeaderText, { flex: 1, textAlign: 'right' }]}>Lucro</Text>
               <Text style={[styles.precHeaderText, { flex: 0.8, textAlign: 'right' }]}>Margem</Text>
@@ -910,7 +909,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
                 </View>
                 <View style={styles.precCardGrid}>
                   <View style={styles.precCardItem}>
-                    <Text style={styles.precCardItemLabel}>CMV</Text>
+                    <Text style={styles.precCardItemLabel}>Custo dos ingredientes</Text>
                     <Text style={styles.precCardItemValue}>{formatCurrency(p.cmv)}</Text>
                   </View>
                   <View style={styles.precCardItem}>

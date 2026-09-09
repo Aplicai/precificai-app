@@ -13,6 +13,12 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, calcDespesasFixasPercentual, calcMarkup, parseDecimalBR } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
+// UX audit 09/09 (Fase B) — wizard guiado de primeiro uso: helpers puros + copy dos passos
+import {
+  WIZARD_STEPS, SUGESTOES_LUCRO, wizardProgressLabel, deveMostrarWizard,
+  passoConcluido, primeiroPassoPendente, validarLucroInput, validarFaturamentoInput,
+  fracaoParaInputPercentual,
+} from '../components/financeiro/wizardSteps';
 // APP-30/33/34 — config centralizada de constantes financeiras
 import {
   SALARIO_MINIMO_VIGENTE, SALARIO_MINIMO_FMT,
@@ -89,6 +95,15 @@ export default function FinanceiroConfigScreen() {
   // APP-43 — quantitativo de vendas por canal (balcão e delivery)
   const [vendasBalcao, setVendasBalcao] = useState('');
   const [vendasDelivery, setVendasDelivery] = useState('');
+  // Wizard guiado (UX audit 09/09, Fase B): `wizardMode` null = formulário completo;
+  // 'steps' = um passo por tela; 'resumo' = markup/CMV + botão Concluir.
+  // A decisão de ENTRAR no wizard acontece UMA vez por montagem (wizardDecidedRef),
+  // pra não expulsar o usuário do formulário completo a cada autosave/refocus.
+  const [wizardMode, setWizardMode] = useState(null);
+  const [wizardStep, setWizardStep] = useState(0);
+  const [wizardLucroInput, setWizardLucroInput] = useState('');
+  const [wizardFatInput, setWizardFatInput] = useState('');
+  const wizardDecidedRef = useRef(false);
   // Densidade global de listas (P3-G)
 
   const mesesCurtos = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -168,6 +183,7 @@ export default function FinanceiroConfigScreen() {
     ]);
     setSegmentoUsuario(perfilRows?.[0]?.segmento || '');
     let config = configs?.[0];
+    let avgStr = '';
     // Audit A10: `[]` por ERRO (rede/RLS) não é "usuário sem dados" — semear
     // aqui duplicava faturamento_mensal (sem UNIQUE) e tentava duplicar configuracao.
     const leituraFalhou = isDbErrorResult(configs) || isDbErrorResult(fatRaw);
@@ -218,37 +234,60 @@ export default function FinanceiroConfigScreen() {
     // Set the media input from average
     if (filledMonths.length > 0) {
       const avg = filledMonths.reduce((a, f) => a + f.valor, 0) / filledMonths.length;
-      setFaturamentoMedioInput(String(avg).replace('.', ','));
+      avgStr = String(avg).replace('.', ',');
+      setFaturamentoMedioInput(avgStr);
     }
 
     const status = await getFinanceiroStatus();
     setFinStatus(status);
     if (completoAntesRef.current === false && status?.completo) setMostrarCompleto(true);
     completoAntesRef.current = !!status?.completo;
+    // Roteamento de entrada (design wizard-financeiro): financeiro incompleto →
+    // Modo Guiado, começando no primeiro passo pendente. Quem já completou cai
+    // direto no formulário completo. Decidido uma única vez por montagem.
+    if (!wizardDecidedRef.current) {
+      wizardDecidedRef.current = true;
+      if (deveMostrarWizard(status)) {
+        setWizardLucroInput(fracaoParaInputPercentual(config?.lucro_desejado));
+        setWizardFatInput(avgStr);
+        setWizardStep(Math.max(0, primeiroPassoPendente(status)));
+        setWizardMode('steps');
+      }
+    }
+    return status;
     } catch (e) {
       setLoadError(true);
       if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.loadData]', e);
+      return null;
+    }
+  }
+
+  // Save ÚNICO da margem de lucro — usado pelo formulário completo (modal) e pelo
+  // wizard. Audit A5 (browser): "abc"/vazio + OK ZERAVA a margem salva sem aviso →
+  // validação em `validarLucroInput`. Retorna o status recarregado, ou null se falhou.
+  async function persistLucro(valStr) {
+    const r = validarLucroInput(valStr);
+    if (!r.ok) {
+      showError(r.erro);
+      loadData();
+      return null;
+    }
+    try {
+      const db = await getDatabase();
+      // Sessão 28.17 BUG FIX: o `runAsync` precisa ser awaited ANTES do loadData,
+      // senão o state era sobrescrito com o valor antigo (user clicava 2x).
+      await db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [r.valor]);
+      showSaved('Margem salva');
+      return await loadData();
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.salvarLucro]', e);
+      showError('Não foi possível salvar. Tente de novo.');
+      return null;
     }
   }
 
   async function salvarLucro() {
-    try {
-      const db = await getDatabase();
-      const p = parseNum(lucroDesejado);
-      // Audit A5 (browser): "abc"/vazio + OK ZERAVA a margem salva (auto-save) sem aviso.
-      if (!Number.isFinite(p) || p < 0) {
-        showError('Digite uma margem de lucro válida (ex.: 20).');
-        loadData();
-        return;
-      }
-      const valor = p / 100;
-      await db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [valor]);
-      showSaved('Margem salva');
-      loadData();
-    } catch (e) {
-      if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.salvarLucro]', e);
-      showError('Não foi possível salvar. Tente de novo.');
-    }
+    return persistLucro(lucroDesejado);
   }
 
   // APP-43 — salvar volumes de venda por canal (defensivo se coluna não existir)
@@ -426,22 +465,26 @@ export default function FinanceiroConfigScreen() {
     }
   }
 
+  // Save ÚNICO do faturamento médio — formulário completo (modal) e wizard.
+  // Retorna o status recarregado, ou null se inválido/falhou.
   async function salvarFaturamentoMedio(valorStr) {
-    const valor = parseNum(valorStr);
-    if (!Number.isFinite(valor) || valor <= 0) {
-      return Alert.alert('Valor inválido', 'O faturamento médio deve ser maior que zero.');
+    const r = validarFaturamentoInput(valorStr);
+    if (!r.ok) {
+      Alert.alert('Valor inválido', r.erro);
+      return null;
     }
     try {
       const db = await getDatabase();
       // Apply same value to all 12 months
       for (const f of faturamento) {
-        await db.runAsync('UPDATE faturamento_mensal SET valor = ? WHERE id = ?', [valor, f.id]);
+        await db.runAsync('UPDATE faturamento_mensal SET valor = ? WHERE id = ?', [r.valor, f.id]);
       }
       showSaved('Faturamento salvo');
-      loadData();
+      return await loadData();
     } catch (e) {
       if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.salvarFaturamentoMedio]', e);
       showError('Não foi possível salvar o faturamento.');
+      return null;
     }
   }
 
@@ -576,7 +619,8 @@ export default function FinanceiroConfigScreen() {
   }
 
   // ===== SUMMARY PANEL =====
-  function SummaryPanel() {
+  // `fullWidth`: no wizard (resumo) o painel ocupa a coluna inteira, sem sticky.
+  function SummaryPanel({ fullWidth = false } = {}) {
     const slices = [
       { label: 'CMV', value: custoMaxPerc, color: colors.primary },
       { label: 'Custos Fixos', value: despFixasPerc, color: colors.coral },
@@ -586,14 +630,20 @@ export default function FinanceiroConfigScreen() {
     const total = slices.reduce((a, sl) => a + sl.value, 0);
 
     return (
-      <View style={[s.summaryPanel, isDesktop && s.summaryPanelDesktop]}>
+      <View style={[s.summaryPanel, isDesktop && !fullWidth && s.summaryPanelDesktop]}>
         <Text style={s.summaryTitle}>Resumo Financeiro</Text>
 
         {/* KPI Cards */}
         <View style={s.kpiRow}>
           <View style={s.kpiCard}>
             <Text style={[s.kpiValue, !markupValido && { color: colors.error }]}>{markupDisplay}</Text>
-            <Text style={s.kpiLabel}>Mark-up</Text>
+            <View style={s.kpiLabelRow}>
+              <Text style={s.kpiLabel}>Mark-up</Text>
+              <InfoTooltip
+                title="Como o mark-up é calculado"
+                text={'Mark-up = 1 / (1 - custos fixos % - custos por venda % - margem de lucro %).\n\nPreço de venda = custo dos ingredientes x mark-up.'}
+              />
+            </View>
           </View>
           <View style={s.kpiCard}>
             <Text style={s.kpiValue}>{totalFixas > 0 && !(faturamentoMedio > 0) ? '—' : formatPercent(despFixasPerc)}</Text>
@@ -609,7 +659,13 @@ export default function FinanceiroConfigScreen() {
             <Text style={[s.kpiValue, custoMaxPerc < 0.2 && { color: colors.error }]}>
               {formatPercent(custoMaxPerc)}
             </Text>
-            <Text style={s.kpiLabel}>CMV Máximo</Text>
+            <View style={s.kpiLabelRow}>
+              <Text style={s.kpiLabel}>CMV Máximo</Text>
+              <InfoTooltip
+                title="Como o CMV máximo é calculado"
+                text={'CMV máximo = 100% - custos fixos % - custos por venda % - margem de lucro %.\n\nÉ o máximo que os ingredientes podem pesar no preço sem comer o lucro.'}
+              />
+            </View>
           </View>
         </View>
 
@@ -636,10 +692,10 @@ export default function FinanceiroConfigScreen() {
           const corValor = corBorda;
           const tituloFaixa = FAIXAS_SAUDE_CUSTO_FIXO[faixa].label;
           const textoExpl = faixa === 'saudavel'
-            ? 'Seus custos fixos estão em nível saudável. Negócios de alimentação tendem a ficar abaixo de 30% do faturamento.'
+            ? 'Nível saudável: no setor, o comum é ficar abaixo de 30% do faturamento.'
             : faixa === 'atencao'
-            ? 'Seus custos fixos estão na faixa de atenção. Vale revisar contas que podem ser reduzidas.'
-            : 'Seus custos fixos estão acima da faixa saudável. Negócios sustentáveis no setor mantêm abaixo de 30%.';
+            ? 'Faixa de atenção: vale revisar contas que podem ser reduzidas.'
+            : 'Acima do saudável: no setor, o comum é ficar abaixo de 30% do faturamento.';
           return (
             <View style={[s.saudeBox, { backgroundColor: corFundo, borderLeftColor: corBorda }]}>
               <Text style={s.saudeBoxTitle}>Saúde dos seus custos fixos</Text>
@@ -712,7 +768,7 @@ export default function FinanceiroConfigScreen() {
           <View style={s.inviabilityBanner}>
             <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: 6 }} />
             <Text style={s.inviabilityText}>
-              Modelo financeiro inviável: despesas + lucro ({formatPercent(despFixasPerc + totalVariaveis + lucroPerc)}) absorvem 100% ou mais do preço. Reduza despesas, aumente faturamento, ou diminua a margem de lucro.
+              Custos + lucro ({formatPercent(despFixasPerc + totalVariaveis + lucroPerc)}) passam de 100% do preço. Reduza custos ou a margem.
             </Text>
           </View>
         )}
@@ -723,6 +779,428 @@ export default function FinanceiroConfigScreen() {
             <Text style={s.summaryWarningText}>Valores preliminares. Complete a configuração.</Text>
           </View>
         )}
+      </View>
+    );
+  }
+
+  // ===== MARKUP PREVIEW (STEP 1 e wizard) =====
+  function renderMarkupPreview() {
+    return (
+      <View style={s.markupPreview}>
+        <Feather name="zap" size={13} color={colors.accent} />
+        <Text style={s.markupPreviewText}>
+          Mark-up resultante: <Text style={{ fontWeight: '800', color: markupValido ? colors.primary : colors.error }}>{markupDisplay}</Text>
+        </Text>
+      </View>
+    );
+  }
+
+  // ===== WIZARD GUIADO (design .specs/plans/wizard-financeiro.design.md) =====
+  // Entrada: loadData() na 1ª carga com financeiro incompleto, ou "Configurar com
+  // ajuda". Saída: "Ver formulário completo" (pula) ou "Concluir" no resumo.
+  function abrirWizard() {
+    setWizardLucroInput(lucroDesejado ? String(lucroDesejado).replace('.', ',') : '');
+    setWizardFatInput(faturamentoMedioInput);
+    setWizardStep(Math.max(0, primeiroPassoPendente(finStatus)));
+    setWizardMode('steps');
+  }
+
+  function fecharWizard() {
+    setWizardMode(null);
+  }
+
+  async function avancarWizard() {
+    const step = WIZARD_STEPS[wizardStep];
+    if (!step) return fecharWizard();
+    let status = finStatus;
+    if (step.key === 'lucro') {
+      const r = validarLucroInput(wizardLucroInput);
+      if (!r.ok) return showError(r.erro);
+      if (!(r.valor > 0)) return Alert.alert('Falta preencher', step.pendente);
+      status = await persistLucro(wizardLucroInput);
+      if (!status) return;
+    } else if (step.key === 'faturamento') {
+      status = await salvarFaturamentoMedio(wizardFatInput);
+      if (!status) return;
+    }
+    if (!passoConcluido(status, step.key)) {
+      return Alert.alert('Falta preencher', step.pendente);
+    }
+    if (wizardStep >= WIZARD_STEPS.length - 1) setWizardMode('resumo');
+    else setWizardStep(wizardStep + 1);
+  }
+
+  function voltarWizard() {
+    if (wizardMode === 'resumo') { setWizardMode('steps'); setWizardStep(WIZARD_STEPS.length - 1); return; }
+    if (wizardStep > 0) setWizardStep(wizardStep - 1);
+  }
+
+  function WizardContent() {
+    const isResumo = wizardMode === 'resumo';
+    const step = WIZARD_STEPS[wizardStep] || WIZARD_STEPS[0];
+    const total = WIZARD_STEPS.length;
+    const progresso = isResumo ? 1 : wizardStep / total;
+    return (
+      <View style={s.wizardWrap}>
+        <View style={s.wizardTop}>
+          <Text style={s.wizardProgress}>{isResumo ? 'Pronto' : wizardProgressLabel(wizardStep, total)}</Text>
+          <TouchableOpacity
+            onPress={fecharWizard}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Ver formulário completo"
+          >
+            <Text style={s.wizardLink}>Ver formulário completo</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={[s.progressBarBg, { marginBottom: spacing.md }]}>
+          <View style={[s.progressBarFill, { width: `${progresso * 100}%`, backgroundColor: colors.primary }]} />
+        </View>
+
+        {isResumo ? (
+          <View>
+            <Text style={s.wizardTitle}>Tudo pronto</Text>
+            <Text style={s.wizardHelp}>Esses números guiam o preço de cada produto. Ajuste quando quiser.</Text>
+            {SummaryPanel({ fullWidth: true })}
+            <TouchableOpacity
+              style={s.wizardPrimaryBtn}
+              activeOpacity={0.8}
+              onPress={fecharWizard}
+              accessibilityRole="button"
+              accessibilityLabel="Concluir configuração e ver o formulário completo"
+            >
+              <Feather name="check" size={18} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={s.wizardPrimaryBtnText}>Concluir</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={s.wizardBackBtn}
+              onPress={voltarWizard}
+              accessibilityRole="button"
+              accessibilityLabel="Voltar ao passo anterior"
+            >
+              <Text style={s.wizardBackText}>Voltar</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={s.stepCard}>
+            <View style={s.stepBody}>
+              <Text style={s.wizardTitle}>{step.titulo}</Text>
+              <Text style={s.wizardHelp}>{step.ajuda}</Text>
+              <Text style={s.wizardExample}>{step.exemplo}</Text>
+
+              {step.key === 'lucro' && (
+                <View>
+                  <View style={s.wizardInputRow}>
+                    <TextInput
+                      style={s.wizardInput}
+                      value={wizardLucroInput}
+                      onChangeText={setWizardLucroInput}
+                      keyboardType="decimal-pad"
+                      placeholder="20"
+                      placeholderTextColor={colors.placeholder}
+                      accessibilityLabel="Margem de lucro em porcentagem"
+                    />
+                    <Text style={s.wizardInputUnit}>%</Text>
+                  </View>
+                  <View style={[s.suggestionsRow, { marginBottom: spacing.sm }]}>
+                    {SUGESTOES_LUCRO.map(p => (
+                      <TouchableOpacity
+                        key={p}
+                        style={s.suggestionChip}
+                        onPress={() => { setWizardLucroInput(String(p)); persistLucro(String(p)); }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Usar margem de ${p} por cento`}
+                      >
+                        <Text style={s.suggestionChipText}>{p}%</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {lucroPerc > 0 && renderMarkupPreview()}
+                </View>
+              )}
+
+              {step.key === 'faturamento' && (
+                <View>
+                  <View style={s.wizardInputRow}>
+                    <Text style={s.wizardInputUnit}>R$</Text>
+                    <TextInput
+                      style={s.wizardInput}
+                      value={wizardFatInput}
+                      onChangeText={setWizardFatInput}
+                      keyboardType="decimal-pad"
+                      placeholder="15.000,00"
+                      placeholderTextColor={colors.placeholder}
+                      accessibilityLabel="Faturamento médio por mês em reais"
+                    />
+                  </View>
+                  <Text style={s.fieldMicroCopy}>Varia muito de um mês pro outro? Preencha mês a mês no formulário completo.</Text>
+                </View>
+              )}
+
+              {step.key === 'fixas' && renderFixasBody()}
+              {step.key === 'variaveis' && renderVariaveisBody()}
+            </View>
+          </View>
+        )}
+
+        {!isResumo && (
+          <View style={s.wizardNav}>
+            {wizardStep > 0 ? (
+              <TouchableOpacity
+                style={s.wizardBackBtn}
+                onPress={voltarWizard}
+                accessibilityRole="button"
+                accessibilityLabel="Voltar ao passo anterior"
+              >
+                <Text style={s.wizardBackText}>Voltar</Text>
+              </TouchableOpacity>
+            ) : <View />}
+            <TouchableOpacity
+              style={s.wizardPrimaryBtn}
+              activeOpacity={0.8}
+              onPress={avancarWizard}
+              accessibilityRole="button"
+              accessibilityLabel="Continuar para o próximo passo"
+            >
+              <Text style={s.wizardPrimaryBtnText}>Continuar</Text>
+              <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  // ===== CORPO COMPARTILHADO: custos do mês / custos por venda =====
+  // Usado pelo formulário completo (STEP 3/4) e pelo wizard (passos 3/4) — a
+  // lógica de sugestão, tabela, adição inline e total vive UMA vez aqui.
+  // Invocar como função ({renderFixasBody()}), nunca como <Componente /> — ver
+  // nota da Sessão 28.50 sobre perda de foco do TextInput.
+  function renderFixasBody() {
+    return (
+      <View>
+        {/* Sugestões como lista selecionável */}
+        {(() => {
+          const existentes = despesasFixas.map(d => d.descricao?.toLowerCase());
+          const disponiveis = SUGESTOES_FIXAS.filter(s => !existentes.includes(s.toLowerCase()));
+          if (disponiveis.length === 0) return null;
+          return (
+            <View style={s.suggestionsList}>
+              <Text style={s.suggestionsLabel}>Selecione para adicionar:</Text>
+              <View style={s.suggestionsRow}>
+                {disponiveis.map(sug => (
+                  // D-13: tooltip de pró-labore movido pro modal que abre ao clicar
+                  // (estava esquisito ao lado do chip). Aqui só o chip clean.
+                  <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoFixa(sug)}>
+                    <Feather name="plus" size={12} color={colors.primary} />
+                    <Text style={s.suggestionChipText}>{sug}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          );
+        })()}
+
+        {/* Clean table */}
+        {despesasFixas.length > 0 && (
+          <View style={s.despTable}>
+            {/* Header */}
+            <View style={s.despTableHeader}>
+              <Text style={[s.despTableHeaderText, { flex: 1 }]}>Descrição</Text>
+              <Text style={[s.despTableHeaderText, { width: 100, textAlign: 'right' }]}>Valor (R$)</Text>
+              <View style={{ width: 32 }} />
+            </View>
+            {/* Rows */}
+            {despesasFixas.map((d, index) => (
+              <View key={d.id} style={[s.despTableRow, index % 2 === 0 && s.despTableRowAlt]}>
+                <TouchableOpacity style={{ flex: 1 }} onPress={() => editarDespesaFixa(d)}>
+                  <Text style={s.despTableName} numberOfLines={1}>{d.descricao}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.despTableValueBtn}
+                  onPress={() => setCurrencyModal({
+                    title: d.descricao,
+                    value: d.valor > 0 ? String(d.valor).replace('.', ',') : '',
+                    prefix: 'R$',
+                    placeholder: '0,00',
+                    onConfirm: async (val) => {
+                      const db = await getDatabase();
+                      const parsed = parseNum(val);
+                      const novoValor = Number.isFinite(parsed) ? parsed : 0;
+                      await db.runAsync('UPDATE despesas_fixas SET valor = ? WHERE id = ?',
+                        [novoValor, d.id]);
+                      setCurrencyModal(null);
+                      showSaved('Salvo');
+                      loadData();
+                    },
+                  })}
+                >
+                  <Text style={[s.despTableValue, d.valor > 0 && s.despTableValueFilled]}>
+                    {d.valor > 0 ? formatCurrency(d.valor) : 'R$ 0,00'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.despDeleteBtn}
+                  onPress={() => removerDespesaFixa(d.id, d.descricao)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Feather name="trash-2" size={14} color={colors.disabled} />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Add inline */}
+        <View style={s.addRow}>
+          <TextInput
+            style={[s.addInput, { flex: 1 }]}
+            value={novaFixa.descricao}
+            onChangeText={(v) => setNovaFixa(prev => ({ ...prev, descricao: v }))}
+            placeholder="Descrição (ex: Aluguel)"
+            placeholderTextColor={colors.placeholder}
+          />
+          <TouchableOpacity
+            style={s.addValueBtn}
+            onPress={() => setCurrencyModal({
+              title: 'Valor do custo mensal',
+              value: novaFixa.valor,
+              prefix: 'R$',
+              placeholder: '0,00',
+              onConfirm: (val) => {
+                setNovaFixa(prev => ({ ...prev, valor: val }));
+                setCurrencyModal(null);
+              },
+            })}
+          >
+            <Text style={[s.addValueText, novaFixa.valor ? s.addValueTextFilled : null]}>
+              {novaFixa.valor ? `R$ ${novaFixa.valor}` : 'R$ 0,00'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.addCircleBtn} onPress={adicionarDespesaFixa}>
+            <Feather name="plus" size={18} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Total */}
+        <View style={s.totalRow}>
+          <Text style={s.totalLabel}>Total mensal</Text>
+          <Text style={s.totalValue}>{formatCurrency(totalFixas)}</Text>
+        </View>
+        {faturamentoMedio > 0 && (
+          <Text style={s.totalSub}>Representa {formatPercent(despFixasPerc)} do faturamento</Text>
+        )}
+      </View>
+    );
+  }
+
+  function renderVariaveisBody() {
+    return (
+      <View>
+        {/* Sugestões como lista selecionável */}
+        {(() => {
+          const existentes = despesasVariaveis.map(d => d.descricao?.toLowerCase());
+          const disponiveis = SUGESTOES_VARIAVEIS.filter(s => !existentes.includes(s.toLowerCase()));
+          if (disponiveis.length === 0) return null;
+          return (
+            <View style={s.suggestionsList}>
+              <Text style={s.suggestionsLabel}>Selecione para adicionar:</Text>
+              <View style={s.suggestionsRow}>
+                {disponiveis.map(sug => (
+                  <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoVariavel(sug)}>
+                    <Feather name="plus" size={12} color={colors.primary} />
+                    <Text style={s.suggestionChipText}>{sug}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          );
+        })()}
+
+        {/* Clean table */}
+        {despesasVariaveis.length > 0 && (
+          <View style={s.despTable}>
+            <View style={s.despTableHeader}>
+              <Text style={[s.despTableHeaderText, { flex: 1 }]}>Descrição</Text>
+              <Text style={[s.despTableHeaderText, { width: 80, textAlign: 'right' }]}>Percentual</Text>
+              <View style={{ width: 32 }} />
+            </View>
+            {despesasVariaveis.map((d, index) => (
+              <View key={d.id} style={[s.despTableRow, index % 2 === 0 && s.despTableRowAlt]}>
+                <TouchableOpacity style={{ flex: 1 }} onPress={() => editarDespesaVariavel(d)}>
+                  <Text style={s.despTableName} numberOfLines={1}>{d.descricao}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.despTableValueBtn}
+                  onPress={() => setCurrencyModal({
+                    title: d.descricao,
+                    value: String(((d.percentual || 0) * 100).toFixed(2)).replace('.', ','),
+                    suffix: '%',
+                    placeholder: '0,00',
+                    onConfirm: async (val) => {
+                      const p = parseNum(val);
+                      const finalPerc = Number.isFinite(p) ? p / 100 : 0;
+                      const db = await getDatabase();
+                      await db.runAsync('UPDATE despesas_variaveis SET percentual = ? WHERE id = ?',
+                        [finalPerc, d.id]);
+                      setCurrencyModal(null);
+                      showSaved('Salvo');
+                      loadData();
+                    },
+                  })}
+                >
+                  <Text style={[s.despTableValue, d.percentual > 0 && s.despTableValueFilled]}>
+                    {d.percentual > 0 ? formatPercent(d.percentual) : '0%'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={s.despDeleteBtn}
+                  onPress={() => removerDespesaVariavel(d.id, d.descricao)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Feather name="trash-2" size={14} color={colors.disabled} />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Add inline */}
+        <View style={s.addRow}>
+          <TextInput
+            style={[s.addInput, { flex: 1 }]}
+            value={novaVariavel.descricao}
+            onChangeText={(v) => setNovaVariavel(prev => ({ ...prev, descricao: v }))}
+            placeholder="Descrição (ex: Impostos)"
+            placeholderTextColor={colors.placeholder}
+          />
+          <TouchableOpacity
+            style={s.addValueBtn}
+            onPress={() => setCurrencyModal({
+              title: 'Percentual da Despesa',
+              value: novaVariavel.percentual,
+              suffix: '%',
+              placeholder: '0,00',
+              onConfirm: (val) => {
+                setNovaVariavel(prev => ({ ...prev, percentual: val }));
+                setCurrencyModal(null);
+              },
+            })}
+          >
+            <Text style={[s.addValueText, novaVariavel.percentual ? s.addValueTextFilled : null]}>
+              {novaVariavel.percentual ? `${novaVariavel.percentual}%` : '0%'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.addCircleBtn} onPress={adicionarDespesaVariavel}>
+            <Feather name="plus" size={18} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Total */}
+        <View style={s.totalRow}>
+          <Text style={s.totalLabel}>Total variável</Text>
+          <Text style={s.totalValue}>{formatPercent(totalVariaveis)}</Text>
+        </View>
       </View>
     );
   }
@@ -738,6 +1216,15 @@ export default function FinanceiroConfigScreen() {
               <Text style={s.progressLabel}>Progresso</Text>
               <Text style={s.progressCount}>{finStatus.concluidas}/{finStatus.total} etapas</Text>
             </View>
+            <TouchableOpacity
+              onPress={abrirWizard}
+              style={{ alignSelf: 'flex-start', marginBottom: spacing.xs }}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              accessibilityRole="button"
+              accessibilityLabel="Configurar com ajuda, passo a passo"
+            >
+              <Text style={s.wizardLink}>Configurar com ajuda</Text>
+            </TouchableOpacity>
             <View style={s.progressBarBg}>
               <View style={[s.progressBarFill, { width: `${finStatus.progresso * 100}%` }]} />
             </View>
@@ -776,26 +1263,8 @@ export default function FinanceiroConfigScreen() {
           <View style={s.stepHeader}>
             <StepNumber number={1} color={colors.success} />
             <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={s.stepTitle}>Margem de Lucro</Text>
-                <InfoTooltip
-                  title="Referências do mercado"
-                  text="Margens de lucro líquido típicas do mercado brasileiro de alimentação:"
-                  examples={[
-                    'Confeitaria artesanal: 15-30%',
-                    'Bolos e tortas: 20-35%',
-                    'Doces finos/gourmet: 25-40%',
-                    'Salgados e empadas: 15-25%',
-                    'Marmitas/refeições: 10-20%',
-                    'Food truck: 12-22%',
-                    'Pizzaria delivery: 15-25%',
-                    'Hamburgueria: 12-20%',
-                    'Padaria artesanal: 10-18%',
-                    'Alimentação geral: 10-20%',
-                  ]}
-                />
-              </View>
-              <Text style={s.stepSubtitle}>Rentabilidade desejada por produto</Text>
+              <Text style={s.stepTitle}>Quanto você quer ganhar por venda</Text>
+              <Text style={s.stepSubtitle}>Margem de lucro</Text>
             </View>
             {lucroPerc > 0 && (
               <Chip
@@ -818,22 +1287,7 @@ export default function FinanceiroConfigScreen() {
                 onConfirm: async (val) => {
                   setLucroDesejado(val);
                   setCurrencyModal(null);
-                  const db_val = parseFloat(val.replace(',', '.')) / 100;
-                  if (!isNaN(db_val) && db_val > 0) {
-                    // Sessão 28.17 BUG FIX: ANTES o `db.runAsync` não era awaited,
-                    // então `loadData()` rodava ANTES do save completar e podia
-                    // sobrescrever o state com o valor antigo do DB. Por isso o
-                    // user precisava clicar 2x pra "atualizar". Agora await garante
-                    // ordem correta.
-                    try {
-                      const db = await getDatabase();
-                      await db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [db_val]);
-                      showSaved('Margem salva');
-                      await loadData();
-                    } catch (e) {
-                      console.error('[FinanceiroConfigScreen.lucro.save]', e);
-                    }
-                  }
+                  await persistLucro(val);
                 },
               })}
             >
@@ -843,13 +1297,10 @@ export default function FinanceiroConfigScreen() {
               <Feather name="edit-2" size={14} color={colors.primary} style={{ marginLeft: 8 }} />
             </TouchableOpacity>
 
+            <Text style={s.fieldMicroCopy}>Referência: confeitaria 15-30%, marmitas 10-20%, padaria 10-18%.</Text>
+
             {/* Real-time markup preview */}
-            <View style={s.markupPreview}>
-              <Feather name="zap" size={13} color={colors.accent} />
-              <Text style={s.markupPreviewText}>
-                Mark-up resultante: <Text style={{ fontWeight: '800', color: markupValido ? colors.primary : colors.error }}>{markupDisplay}</Text>
-              </Text>
-            </View>
+            {renderMarkupPreview()}
 
 
             {/* APP-30 — Margem de Segurança com sugestão dinâmica por segmento + warning >30% */}
@@ -915,10 +1366,7 @@ export default function FinanceiroConfigScreen() {
                     <Feather name="edit-2" size={12} color={colors.textSecondary} />
                   </TouchableOpacity>
                   {/* APP-30 — microcopy abaixo do campo */}
-                  <Text style={s.fieldMicroCopy}>
-                    Protege você de aumentos de fornecedor sem precisar atualizar preços.
-                    {segmentoUsuario ? ` Sugestão pra ${segmentoUsuario}: ${sug.label}.` : ` Sugestão geral: ${sug.label}.`}
-                  </Text>
+                  <Text style={s.fieldMicroCopy}>Cobre aumentos de fornecedor. Sugestão: {sug.label}.</Text>
                   {/* APP-30 — aviso amarelo se acima do comum */}
                   {acimaDoComum && (
                     <View style={s.warningInline}>
@@ -939,8 +1387,8 @@ export default function FinanceiroConfigScreen() {
           <View style={s.stepHeader}>
             <StepNumber number={2} color={colors.accent} />
             <View style={{ flex: 1 }}>
-              <Text style={s.stepTitle}>Faturamento Mensal</Text>
-              <Text style={s.stepSubtitle}>Peso dos custos mensais sobre cada produto</Text>
+              <Text style={s.stepTitle}>Quanto entra por mês</Text>
+              <Text style={s.stepSubtitle}>Faturamento mensal</Text>
             </View>
             {faturamentoMedio > 0 && (
               <Chip
@@ -987,7 +1435,7 @@ export default function FinanceiroConfigScreen() {
 
             {faturamentoMode === 'media' ? (
               <View>
-                <Text style={s.fieldHint}>Informe o faturamento médio mensal do seu negócio:</Text>
+                <Text style={s.fieldHint}>Faturamento médio por mês:</Text>
                 <TouchableOpacity
                   style={s.bigValueBtn}
                   activeOpacity={0.7}
@@ -1018,7 +1466,7 @@ export default function FinanceiroConfigScreen() {
               </View>
             ) : (
               <View>
-                <Text style={s.fieldHint}>Preencha os meses com valores reais ou estimativas:</Text>
+                <Text style={s.fieldHint}>Preencha os meses que você tem:</Text>
                 <View style={s.fatGrid}>
                   {faturamentoOrdenado.map((f) => (
                     <TouchableOpacity
@@ -1082,11 +1530,6 @@ export default function FinanceiroConfigScreen() {
             <StepNumber number={3} color={colors.coral} />
             <View style={[{ flex: 1, flexDirection: 'row', alignItems: 'center' }]}>
               <Text style={s.stepTitle}>Custos do mês</Text>
-              <InfoTooltip
-                title="O que são Custos do mês?"
-                text="São contas que você paga TODO mês, mesmo que não venda nada. Aluguel, luz, internet, salário... esse dinheiro sai da sua conta no mesmo dia, independente de quanto você produziu."
-                examples={['Aluguel', 'Conta de luz', 'Internet', 'Salário do funcionário', 'Contador']}
-              />
             </View>
             {totalFixas > 0 && (
               <Chip
@@ -1099,119 +1542,7 @@ export default function FinanceiroConfigScreen() {
 
           <View style={s.stepBody}>
             <Text style={s.stepSubtitle}>O que sai todo mês, independente do que você vende</Text>
-
-            {/* Sugestões como lista selecionável */}
-            {(() => {
-              const existentes = despesasFixas.map(d => d.descricao?.toLowerCase());
-              const disponiveis = SUGESTOES_FIXAS.filter(s => !existentes.includes(s.toLowerCase()));
-              if (disponiveis.length === 0) return null;
-              return (
-                <View style={s.suggestionsList}>
-                  <Text style={s.suggestionsLabel}>Selecione para adicionar:</Text>
-                  <View style={s.suggestionsRow}>
-                    {disponiveis.map(sug => (
-                      // D-13: tooltip de pró-labore movido pro modal que abre ao clicar
-                      // (estava esquisito ao lado do chip). Aqui só o chip clean.
-                      <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoFixa(sug)}>
-                        <Feather name="plus" size={12} color={colors.primary} />
-                        <Text style={s.suggestionChipText}>{sug}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              );
-            })()}
-
-            {/* Clean table */}
-            {despesasFixas.length > 0 && (
-              <View style={s.despTable}>
-                {/* Header */}
-                <View style={s.despTableHeader}>
-                  <Text style={[s.despTableHeaderText, { flex: 1 }]}>Descrição</Text>
-                  <Text style={[s.despTableHeaderText, { width: 100, textAlign: 'right' }]}>Valor (R$)</Text>
-                  <View style={{ width: 32 }} />
-                </View>
-                {/* Rows */}
-                {despesasFixas.map((d, index) => (
-                  <View key={d.id} style={[s.despTableRow, index % 2 === 0 && s.despTableRowAlt]}>
-                    <TouchableOpacity style={{ flex: 1 }} onPress={() => editarDespesaFixa(d)}>
-                      <Text style={s.despTableName} numberOfLines={1}>{d.descricao}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={s.despTableValueBtn}
-                      onPress={() => setCurrencyModal({
-                        title: d.descricao,
-                        value: d.valor > 0 ? String(d.valor).replace('.', ',') : '',
-                        prefix: 'R$',
-                        placeholder: '0,00',
-                        onConfirm: async (val) => {
-                          const db = await getDatabase();
-                          const parsed = parseNum(val);
-                          const novoValor = Number.isFinite(parsed) ? parsed : 0;
-                          await db.runAsync('UPDATE despesas_fixas SET valor = ? WHERE id = ?',
-                            [novoValor, d.id]);
-                          setCurrencyModal(null);
-                          showSaved('Salvo');
-                          loadData();
-                        },
-                      })}
-                    >
-                      <Text style={[s.despTableValue, d.valor > 0 && s.despTableValueFilled]}>
-                        {d.valor > 0 ? formatCurrency(d.valor) : 'R$ 0,00'}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={s.despDeleteBtn}
-                      onPress={() => removerDespesaFixa(d.id, d.descricao)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Feather name="trash-2" size={14} color={colors.disabled} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* Add inline */}
-            <View style={s.addRow}>
-              <TextInput
-                style={[s.addInput, { flex: 1 }]}
-                value={novaFixa.descricao}
-                onChangeText={(v) => setNovaFixa(prev => ({ ...prev, descricao: v }))}
-                placeholder="Descrição (ex: Aluguel)"
-                placeholderTextColor={colors.placeholder}
-              />
-              <TouchableOpacity
-                style={s.addValueBtn}
-                onPress={() => setCurrencyModal({
-                  title: 'Valor do custo mensal',
-                  value: novaFixa.valor,
-                  prefix: 'R$',
-                  placeholder: '0,00',
-                  onConfirm: (val) => {
-                    setNovaFixa(prev => ({ ...prev, valor: val }));
-                    setCurrencyModal(null);
-                  },
-                })}
-              >
-                <Text style={[s.addValueText, novaFixa.valor ? s.addValueTextFilled : null]}>
-                  {novaFixa.valor ? `R$ ${novaFixa.valor}` : 'R$ 0,00'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.addCircleBtn} onPress={adicionarDespesaFixa}>
-                <Feather name="plus" size={18} color="#fff" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Total */}
-            <View style={s.totalRow}>
-              <Text style={s.totalLabel}>Total mensal</Text>
-              <Text style={s.totalValue}>{formatCurrency(totalFixas)}</Text>
-            </View>
-            {faturamentoMedio > 0 && (
-              <Text style={s.totalSub}>Representa {formatPercent(despFixasPerc)} do faturamento</Text>
-            )}
-
+            {renderFixasBody()}
           </View>
         </View>
 
@@ -1248,112 +1579,7 @@ export default function FinanceiroConfigScreen() {
 
           <View style={s.stepBody}>
             <Text style={s.stepSubtitle}>Percentuais descontados sobre cada venda</Text>
-
-            {/* Sugestões como lista selecionável */}
-            {(() => {
-              const existentes = despesasVariaveis.map(d => d.descricao?.toLowerCase());
-              const disponiveis = SUGESTOES_VARIAVEIS.filter(s => !existentes.includes(s.toLowerCase()));
-              if (disponiveis.length === 0) return null;
-              return (
-                <View style={s.suggestionsList}>
-                  <Text style={s.suggestionsLabel}>Selecione para adicionar:</Text>
-                  <View style={s.suggestionsRow}>
-                    {disponiveis.map(sug => (
-                      <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoVariavel(sug)}>
-                        <Feather name="plus" size={12} color={colors.primary} />
-                        <Text style={s.suggestionChipText}>{sug}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              );
-            })()}
-
-            {/* Clean table */}
-            {despesasVariaveis.length > 0 && (
-              <View style={s.despTable}>
-                <View style={s.despTableHeader}>
-                  <Text style={[s.despTableHeaderText, { flex: 1 }]}>Descrição</Text>
-                  <Text style={[s.despTableHeaderText, { width: 80, textAlign: 'right' }]}>Percentual</Text>
-                  <View style={{ width: 32 }} />
-                </View>
-                {despesasVariaveis.map((d, index) => (
-                  <View key={d.id} style={[s.despTableRow, index % 2 === 0 && s.despTableRowAlt]}>
-                    <TouchableOpacity style={{ flex: 1 }} onPress={() => editarDespesaVariavel(d)}>
-                      <Text style={s.despTableName} numberOfLines={1}>{d.descricao}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={s.despTableValueBtn}
-                      onPress={() => setCurrencyModal({
-                        title: d.descricao,
-                        value: String(((d.percentual || 0) * 100).toFixed(2)).replace('.', ','),
-                        suffix: '%',
-                        placeholder: '0,00',
-                        onConfirm: async (val) => {
-                          const p = parseNum(val);
-                          const finalPerc = Number.isFinite(p) ? p / 100 : 0;
-                          const db = await getDatabase();
-                          await db.runAsync('UPDATE despesas_variaveis SET percentual = ? WHERE id = ?',
-                            [finalPerc, d.id]);
-                          setCurrencyModal(null);
-                          showSaved('Salvo');
-                          loadData();
-                        },
-                      })}
-                    >
-                      <Text style={[s.despTableValue, d.percentual > 0 && s.despTableValueFilled]}>
-                        {d.percentual > 0 ? formatPercent(d.percentual) : '0%'}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={s.despDeleteBtn}
-                      onPress={() => removerDespesaVariavel(d.id, d.descricao)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Feather name="trash-2" size={14} color={colors.disabled} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* Add inline */}
-            <View style={s.addRow}>
-              <TextInput
-                style={[s.addInput, { flex: 1 }]}
-                value={novaVariavel.descricao}
-                onChangeText={(v) => setNovaVariavel(prev => ({ ...prev, descricao: v }))}
-                placeholder="Descrição (ex: Impostos)"
-                placeholderTextColor={colors.placeholder}
-              />
-              <TouchableOpacity
-                style={s.addValueBtn}
-                onPress={() => setCurrencyModal({
-                  title: 'Percentual da Despesa',
-                  value: novaVariavel.percentual,
-                  suffix: '%',
-                  placeholder: '0,00',
-                  onConfirm: (val) => {
-                    setNovaVariavel(prev => ({ ...prev, percentual: val }));
-                    setCurrencyModal(null);
-                  },
-                })}
-              >
-                <Text style={[s.addValueText, novaVariavel.percentual ? s.addValueTextFilled : null]}>
-                  {novaVariavel.percentual ? `${novaVariavel.percentual}%` : '0%'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.addCircleBtn} onPress={adicionarDespesaVariavel}>
-                <Feather name="plus" size={18} color="#fff" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Total */}
-            <View style={s.totalRow}>
-              <Text style={s.totalLabel}>Total variável</Text>
-              <Text style={s.totalValue}>{formatPercent(totalVariaveis)}</Text>
-            </View>
-
+            {renderVariaveisBody()}
           </View>
         </View>
 
@@ -1381,6 +1607,7 @@ export default function FinanceiroConfigScreen() {
             </TouchableOpacity>
           </View>
         )}
+        {wizardMode ? WizardContent() : (<>
         {/* Page header */}
         <View style={s.pageHeader}>
           <View style={s.pageHeaderIcon}>
@@ -1388,7 +1615,6 @@ export default function FinanceiroConfigScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.pageTitle}>Configuração Financeira</Text>
-            <Text style={s.pageSubtitle}>Base de cálculo de preços e margens</Text>
           </View>
           {finStatus && !finStatus.completo && (
             <View style={[s.statusBadge, s.statusBadgePending]}>
@@ -1460,11 +1686,12 @@ export default function FinanceiroConfigScreen() {
                 <Text style={s.stickyFooterBtnText}>Salvar e voltar ao painel</Text>
               </TouchableOpacity>
               <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 8, textAlign: 'center' }}>
-                As alterações já foram salvas automaticamente — esse botão só te leva pro Painel Geral.
+                Já está tudo salvo. Esse botão só volta ao painel.
               </Text>
             </View>
           </View>
         )}
+        </>)}
       </ScrollView>
 
       {/* Save feedback toast */}
@@ -1541,6 +1768,42 @@ export default function FinanceiroConfigScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, width: '100%' },
+
+  // Wizard guiado (UX audit 09/09, Fase B)
+  wizardWrap: { width: '100%', maxWidth: 560, alignSelf: 'center' },
+  wizardTop: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  wizardProgress: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, color: colors.textSecondary },
+  wizardLink: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, color: colors.primary, textDecorationLine: 'underline' },
+  wizardTitle: { fontSize: fonts.large, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.text, marginBottom: 4 },
+  wizardHelp: { fontSize: fonts.body, color: colors.text, lineHeight: 20 },
+  wizardExample: { fontSize: fonts.small, color: colors.textSecondary, marginTop: 2, marginBottom: spacing.md },
+  wizardInputRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.primary + '08',
+    borderWidth: 1.5, borderColor: colors.primary + '25',
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md, marginBottom: spacing.sm,
+  },
+  wizardInput: {
+    flex: 1, fontSize: fonts.title, fontFamily: fontFamily.bold, fontWeight: '800', color: colors.primary,
+    paddingVertical: spacing.md, minHeight: 56,
+  },
+  wizardInputUnit: { fontSize: fonts.title, fontFamily: fontFamily.bold, color: colors.primary, marginHorizontal: 4 },
+  wizardNav: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: spacing.sm, gap: spacing.sm,
+  },
+  wizardPrimaryBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.primary, borderRadius: borderRadius.md,
+    paddingVertical: spacing.md, paddingHorizontal: spacing.lg, minHeight: 48, flexGrow: 1,
+  },
+  wizardPrimaryBtnText: { color: '#fff', fontFamily: fontFamily.semiBold, fontSize: fonts.body },
+  wizardBackBtn: { paddingVertical: spacing.md, paddingHorizontal: spacing.md, minHeight: 48, justifyContent: 'center', alignItems: 'center' },
+  wizardBackText: { color: colors.textSecondary, fontFamily: fontFamily.semiBold, fontSize: fonts.body },
   // Sessão 28.15: footer agora inline, padding normal
   // Bug-fix (Agent 4): paddingBottom era spacing.lg (24), insuficiente —
   // os botões "+" inline (adicionar custo mensal / custo por venda) e o
@@ -1756,6 +2019,7 @@ const s = StyleSheet.create({
     fontSize: fonts.large, fontFamily: fontFamily.bold, fontWeight: '800',
     color: colors.primary, marginBottom: 2,
   },
+  kpiLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   kpiLabel: {
     fontSize: 10, color: colors.textSecondary, fontFamily: fontFamily.medium,
   },

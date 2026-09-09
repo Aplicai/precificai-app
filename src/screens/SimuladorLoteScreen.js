@@ -290,11 +290,11 @@ export default function SimuladorLoteScreen() {
                 </View>
                 <View style={{ flexDirection: 'row', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
                   <View>
-                    <Text style={{ fontSize: 10, color: colors.textSecondary }}>CMV</Text>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>Custo dos ingredientes <Text style={{ fontSize: 10 }}>(CMV)</Text></Text>
                     <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>{formatCurrency(linha.prod.cmv)}</Text>
                   </View>
                   <View>
-                    <Text style={{ fontSize: 10, color: colors.textSecondary }}>CMV %</Text>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>% do preço em ingredientes</Text>
                     <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>
                       {linha.prod.precoVendaBalcao > 0
                         ? ((linha.prod.cmv / linha.prod.precoVendaBalcao) * 100).toFixed(1) + '%'
@@ -302,13 +302,13 @@ export default function SimuladorLoteScreen() {
                     </Text>
                   </View>
                   <View>
-                    <Text style={{ fontSize: 10, color: colors.textSecondary }}>Preço balcão</Text>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>Preço balcão</Text>
                     <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>
                       {linha.prod.precoVendaBalcao > 0 ? formatCurrency(linha.prod.precoVendaBalcao) : '—'}
                     </Text>
                   </View>
                   <View>
-                    <Text style={{ fontSize: 10, color: colors.textSecondary }}>Margem atual</Text>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>Margem atual</Text>
                     <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>{(linha.margemBrutaBalcao * 100).toFixed(1)}%</Text>
                   </View>
                 </View>
@@ -326,19 +326,19 @@ export default function SimuladorLoteScreen() {
                     >
                       <Text style={{ flex: 1, fontSize: 12, fontFamily: fontFamily.bold, color: colors.text }}>{plat.plataforma}</Text>
                       <View style={{ alignItems: 'center', minWidth: 70 }}>
-                        <Text style={{ fontSize: 9, color: '#92400E', fontFamily: fontFamily.bold }}>MEU PREÇO</Text>
+                        <Text style={{ fontSize: 10, color: '#92400E', fontFamily: fontFamily.bold }}>MEU PREÇO</Text>
                         <Text style={{ fontSize: 12, color: meuPreco > 0 ? '#92400E' : colors.disabled, fontFamily: fontFamily.medium }}>
                           {meuPreco > 0 ? formatCurrency(meuPreco) : 'cadastrar'}
                         </Text>
                       </View>
                       <View style={{ alignItems: 'center', minWidth: 70 }}>
-                        <Text style={{ fontSize: 9, color: colors.primary, fontFamily: fontFamily.bold }}>MESMO LUCRO</Text>
+                        <Text style={{ fontSize: 10, color: colors.primary, fontFamily: fontFamily.bold }}>MESMO LUCRO</Text>
                         <Text style={{ fontSize: 12, color: okMantem ? colors.primary : colors.disabled, fontFamily: fontFamily.medium }}>
                           {okMantem ? formatCurrency(sugMantemMargem.preco) : '—'}
                         </Text>
                       </View>
                       <View style={{ alignItems: 'center', minWidth: 70 }}>
-                        <Text style={{ fontSize: 9, color: colors.success, fontFamily: fontFamily.bold }}>SUGERIDO</Text>
+                        <Text style={{ fontSize: 10, color: colors.success, fontFamily: fontFamily.bold }}>SUGERIDO</Text>
                         <Text style={{ fontSize: 12, color: okFin ? colors.success : colors.error, fontFamily: fontFamily.medium }}>
                           {okFin ? formatCurrency(sugFinanceiro.preco) : '—'}
                         </Text>
@@ -346,7 +346,7 @@ export default function SimuladorLoteScreen() {
                     </TouchableOpacity>
                   );
                 })}
-                <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 8, fontStyle: 'italic', textAlign: 'center' }}>
+                <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 8, fontStyle: 'italic', textAlign: 'center' }}>
                   Toque numa plataforma pra simular preço
                 </Text>
               </View>
@@ -362,11 +362,11 @@ export default function SimuladorLoteScreen() {
                 <Text style={styles.headerText}>Produto</Text>
               </View>
               <View style={[styles.cellNumeric, styles.headerCell, styles.stickyColHeader, { left: 170, borderRightWidth: 1, borderRightColor: colors.border }]}>
-                <Text style={styles.headerText}>CMV</Text>
+                <Text style={[styles.headerText, { fontSize: 11 }]}>Custo dos{'\n'}ingredientes</Text>
               </View>
               {/* Sessão 28.47 — CMV em % por produto (relativo ao preço atual do balcão). */}
               <View style={[styles.cellNumeric, styles.headerCell, styles.stickyColHeader, { left: 262, borderRightWidth: 1, borderRightColor: colors.border }]}>
-                <Text style={styles.headerText}>CMV %</Text>
+                <Text style={[styles.headerText, { fontSize: 11 }]}>Ingredientes{'\n'}% do preço</Text>
               </View>
               <View style={[styles.cellNumeric, styles.headerCell, styles.stickyColHeader, { left: 354, borderRightWidth: 1, borderRightColor: colors.border }]}>
                 <Text style={styles.headerText}>Preço{'\n'}Atual</Text>
@@ -379,16 +379,16 @@ export default function SimuladorLoteScreen() {
                   </View>
                   <View style={{ flexDirection: 'row', width: '100%' }}>
                     <View style={{ width: 90, alignItems: 'center', padding: 4, borderRightWidth: 1, borderRightColor: colors.border }}>
-                      <Text style={{ fontSize: 9, color: '#92400E', fontFamily: fontFamily.bold }}>MEU PREÇO</Text>
-                      <Text style={{ fontSize: 8, color: colors.textSecondary }}>cobrado hoje</Text>
+                      <Text style={{ fontSize: 10, color: '#92400E', fontFamily: fontFamily.bold }}>MEU PREÇO</Text>
+                      <Text style={{ fontSize: 11, color: colors.textSecondary }}>cobrado hoje</Text>
                     </View>
                     <View style={{ width: 90, alignItems: 'center', padding: 4, borderRightWidth: 1, borderRightColor: colors.border }}>
-                      <Text style={{ fontSize: 9, color: colors.primary, fontFamily: fontFamily.bold }}>MESMO LUCRO</Text>
-                      <Text style={{ fontSize: 8, color: colors.textSecondary }}>R$ líq./un do balcão</Text>
+                      <Text style={{ fontSize: 10, color: colors.primary, fontFamily: fontFamily.bold }}>MESMO LUCRO</Text>
+                      <Text style={{ fontSize: 11, color: colors.textSecondary }}>R$ líq./un do balcão</Text>
                     </View>
                     <View style={{ width: 90, alignItems: 'center', padding: 4 }}>
-                      <Text style={{ fontSize: 9, color: colors.success, fontFamily: fontFamily.bold }}>SUGERIDO</Text>
-                      <Text style={{ fontSize: 8, color: colors.textSecondary }}>margem financ.</Text>
+                      <Text style={{ fontSize: 10, color: colors.success, fontFamily: fontFamily.bold }}>SUGERIDO</Text>
+                      <Text style={{ fontSize: 11, color: colors.textSecondary }}>margem financ.</Text>
                     </View>
                   </View>
                 </View>
@@ -449,7 +449,7 @@ export default function SimuladorLoteScreen() {
                                 {formatCurrency(meuPreco)}
                               </Text>
                             ) : (
-                              <Text style={{ fontSize: 10, color: colors.textSecondary, fontStyle: 'italic' }}>cadastrar</Text>
+                              <Text style={{ fontSize: 11, color: colors.textSecondary, fontStyle: 'italic' }}>cadastrar</Text>
                             )}
                           </TouchableOpacity>
                         );
@@ -466,14 +466,14 @@ export default function SimuladorLoteScreen() {
                             </Text>
                             {/* Sessão 28.34: lucro R$/un vem direto do cálculo (lucroReais),
                                 que por construção é o mesmo R$ do balcão. */}
-                            <Text style={{ fontSize: 8, color: colors.textSecondary }}>
+                            <Text style={{ fontSize: 11, color: colors.textSecondary }}>
                               lucro {formatCurrency(Number.isFinite(sugMantemMargem.lucroReais) ? sugMantemMargem.lucroReais : linha.lucroLiqBalcaoReais)}
                             </Text>
                           </View>
                         ) : (
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
                             <Feather name="info" size={11} color={colors.disabled} />
-                            <Text style={{ fontSize: 10, color: colors.disabled }}>—</Text>
+                            <Text style={{ fontSize: 11, color: colors.disabled }}>—</Text>
                           </View>
                         )}
                       </TouchableOpacity>

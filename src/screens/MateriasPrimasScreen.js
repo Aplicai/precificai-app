@@ -16,6 +16,25 @@ import { subscribeDataChanged } from '../utils/dataSync';
 const MARCA_VALOR_ESTIMADO = '__VALOR_ESTIMADO_KIT__';
 const isMarcaEstimada = (m) => m === MARCA_VALOR_ESTIMADO;
 const marcaVisivel = (m) => (m && !isMarcaEstimada(m) ? m : '');
+// UX audit 09/09 (item 12): "estimado" vira tag neutra; vermelho só pra preço zerado.
+const isSemPreco = (item) => !(Number(item && item.preco_por_kg) > 0);
+function StatusTag({ item }) {
+  if (isSemPreco(item)) {
+    return (
+      <View style={[styles.statusTag, styles.statusTagError]} accessibilityLabel="Sem preço">
+        <Text style={[styles.statusTagText, styles.statusTagTextError]}>sem preço</Text>
+      </View>
+    );
+  }
+  if (isMarcaEstimada(item && item.marca)) {
+    return (
+      <View style={styles.statusTag} accessibilityLabel="Valor estimado">
+        <Text style={styles.statusTagText}>estimado</Text>
+      </View>
+    );
+  }
+  return null;
+}
 import SearchBar from '../components/SearchBar';
 import PrecosZeradosBanner from '../components/PrecosZeradosBanner';
 import EmptyState from '../components/EmptyState';
@@ -130,6 +149,9 @@ export default function MateriasPrimasScreen({ navigation }) {
   const [novaCategoria, setNovaCategoria] = useState('');
   const [novoIcone, setNovoIcone] = useState('tag');
   const [busca, setBusca] = useState('');
+  // UX audit 09/09 (item 12): filtro "Só estimados (N)"
+  const [soEstimados, setSoEstimados] = useState(false);
+  const [estimadosCount, setEstimadosCount] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(null);
   // Mapa de cores por categoria ID
   const [catColorMap, setCatColorMap] = useState({});
@@ -149,7 +171,7 @@ export default function MateriasPrimasScreen({ navigation }) {
   // Força layout de lista no mobile; toggle só aparece em desktop (onde grid é o default).
   const isGrid = isDesktop;
   // Densidade global (P3-G) — Sessão 28.6 expõe tokens dimensionais novos
-  const { rowOverride, nameOverride, avatarSize, isCompact, rowMinHeight, titleFontSize, listItemSubtitleFontSize, sectionGap } = useListDensity();
+  const { rowOverride, nameOverride, isCompact, rowMinHeight, titleFontSize, listItemSubtitleFontSize, sectionGap } = useListDensity();
   // Sessão 26 — Estoque absorvido em Insumos atrás do flag (default OFF)
   const [estoqueOn] = useFeatureFlag('modo_avancado_estoque');
   // Seleção múltipla (P1-21)
@@ -244,7 +266,7 @@ export default function MateriasPrimasScreen({ navigation }) {
     loadData();
     checkReopenFlag();
     return () => setConfirmDelete(null);
-  }, [filtroCategoria, busca, sortBy, checkReopenFlag]));
+  }, [filtroCategoria, busca, sortBy, soEstimados, checkReopenFlag]));
 
   async function loadData() {
     setLoading(true);
@@ -281,8 +303,12 @@ export default function MateriasPrimasScreen({ navigation }) {
         });
       }
       setTotalInsumos(materias.length);
+      setEstimadosCount(materias.filter(m => isMarcaEstimada(m.marca)).length);
 
       let materiasFiltradas = materias;
+      if (soEstimados) {
+        materiasFiltradas = materiasFiltradas.filter(m => isMarcaEstimada(m.marca));
+      }
       if (busca.trim()) {
         const termo = normalizeSearch(busca);
         materiasFiltradas = materias.filter(m =>
@@ -307,7 +333,7 @@ export default function MateriasPrimasScreen({ navigation }) {
       });
 
       let secs = Object.values(grouped)
-        .filter(g => g.data.length > 0 || filtroCategoria === g.id)
+        .filter(g => g.data.length > 0 || (filtroCategoria !== null && filtroCategoria === g.id))
         .sort((a, b) => {
           if (a.id === null) return 1;
           if (b.id === null) return -1;
@@ -576,7 +602,29 @@ export default function MateriasPrimasScreen({ navigation }) {
   // Filtra linhas em janela de undo (P1-11)
   const visibleSections = sections
     .map((s) => ({ ...s, data: s.data.filter((it) => !undoDelete.hiddenIds.has(it.id)) }))
-    .filter((s) => s.data.length > 0 || filtroCategoria === s.catId);
+    .filter((s) => s.data.length > 0 || (filtroCategoria !== null && filtroCategoria === s.catId));
+
+  // UX audit 09/09: estado vazio com exemplo real quando não há NADA; variante de
+  // busca/filtro quando a lista está vazia só por causa de busca ou "Só estimados".
+  const buscaAtiva = !!busca.trim();
+  const emptyProps = buscaAtiva
+    ? { icon: 'search', title: `Nenhum resultado para "${busca.trim()}"`, description: 'Tente outro termo ou limpe a busca.' }
+    : totalInsumos === 0
+      ? {
+          icon: 'shopping-bag',
+          title: 'Nenhum ingrediente ainda',
+          description: 'Cadastre o primeiro — ex.: Farinha de trigo, 1 kg, R$ 5,90',
+          ctaLabel: 'Cadastrar insumo',
+          onPress: () => navigation.navigate('MateriaPrimaForm', {}),
+        }
+      : {
+          icon: 'filter',
+          title: 'Nenhum insumo com esse filtro',
+          description: soEstimados ? 'Todos os insumos visíveis já têm preço próprio.' : 'Tente outra categoria.',
+          ctaLabel: 'Limpar filtros',
+          ctaIcon: 'x',
+          onPress: () => { setSoEstimados(false); setFiltroCategoria(null); },
+        };
 
   // P3-B Stats summary
   const visibleItems = visibleSections.flatMap((s) => s.data);
@@ -628,6 +676,21 @@ export default function MateriasPrimasScreen({ navigation }) {
           <TouchableOpacity style={styles.addCatBtn} onPress={() => setModalVisible(true)}>
             <Feather name="plus" size={12} color={colors.primary} />
           </TouchableOpacity>
+          {/* UX audit 09/09 (item 12): filtro discreto em vez de alerta em cada linha */}
+          {estimadosCount > 0 && (
+            <TouchableOpacity
+              style={[styles.filtroChip, styles.estimadosChip, soEstimados && styles.estimadosChipAtivo]}
+              onPress={() => setSoEstimados((v) => !v)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: soEstimados }}
+              accessibilityLabel={`Só estimados, ${estimadosCount}`}
+            >
+              <Feather name="tag" size={11} color={soEstimados ? '#fff' : colors.textSecondary} style={{ marginRight: 3 }} />
+              <Text style={[styles.filtroTexto, { maxWidth: 140 }, soEstimados ? styles.filtroTextoAtivo : { color: colors.textSecondary }]} numberOfLines={1}>
+                Só estimados ({estimadosCount})
+              </Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
         <View style={[styles.searchSortRow, !isDesktop && styles.searchSortRowMobile]}>
           <View style={!isDesktop ? { width: '100%' } : { flex: 1 }}>
@@ -675,16 +738,8 @@ export default function MateriasPrimasScreen({ navigation }) {
             <View style={styles.desktopContentInner}>
               {loading ? (
                 <Skeleton.List count={6} />
-              ) : sections.length === 0 ? (
-                <EmptyState
-                  icon={busca.trim() ? 'search' : 'shopping-bag'}
-                  title={busca.trim() ? 'Nenhum insumo encontrado' : 'Nenhum insumo cadastrado'}
-                  description={busca.trim()
-                    ? `Não encontramos resultados para "${busca}".`
-                    : 'Passo 1 · Comece por aqui! Cadastre ingredientes e matérias-primas — eles são a base de toda precificação.'}
-                  ctaLabel={!busca.trim() ? 'Cadastrar primeiro insumo' : undefined}
-                  onPress={!busca.trim() ? () => navigation.navigate('MateriaPrimaForm', {}) : undefined}
-                />
+              ) : visibleSections.length === 0 ? (
+                <EmptyState {...emptyProps} />
               ) : (
                 <View style={styles.desktopGrid}>
                   {visibleSections.map((section, catIdx) => (
@@ -725,12 +780,9 @@ export default function MateriasPrimasScreen({ navigation }) {
                                 {Number(item.favorito) === 1 && (
                                   <Feather name="star" size={11} color={colors.yellow || '#FFC83A'} style={{ marginRight: 4 }} />
                                 )}
-                                {/* APP-14: indicador visual sutil quando o valor ainda é a estimativa do Kit */}
-                                {isMarcaEstimada(item.marca) && (
-                                  <Feather name="info" size={10} color={colors.warning || '#F39C12'} style={{ marginRight: 4 }} />
-                                )}
-                                <HighlightedText text={item.nome} query={busca} style={styles.gridCardName} numberOfLines={1} />
-                                {marcaVisivel(item.marca) ? <Text style={[styles.gridCardName, { color: colors.textSecondary, fontWeight: '400' }]} numberOfLines={1}> ({marcaVisivel(item.marca)})</Text> : null}
+                                <HighlightedText text={item.nome} query={busca} style={[styles.gridCardName, { flexShrink: 1 }]} numberOfLines={1} />
+                                {marcaVisivel(item.marca) ? <Text style={[styles.gridCardName, { color: colors.textSecondary, fontWeight: '400', flexShrink: 1 }]} numberOfLines={1}> ({marcaVisivel(item.marca)})</Text> : null}
+                                <StatusTag item={item} />
                               </View>
                             </View>
                             {/* UX audit 09/09: 2 linhas (nome inteiro em cima) + duplicar/excluir no
@@ -798,15 +850,7 @@ export default function MateriasPrimasScreen({ navigation }) {
             loading ? (
               <Skeleton.List count={6} />
             ) : (
-              <EmptyState
-                icon={busca.trim() ? 'search' : 'shopping-bag'}
-                title={busca.trim() ? 'Nenhum insumo encontrado' : 'Nenhum insumo cadastrado'}
-                description={busca.trim()
-                  ? `Não encontramos resultados para "${busca}".`
-                  : 'Passo 1 · Comece por aqui! Cadastre ingredientes e matérias-primas — eles são a base de toda precificação.'}
-                ctaLabel={!busca.trim() ? 'Cadastrar primeiro insumo' : undefined}
-                onPress={!busca.trim() ? () => navigation.navigate('MateriaPrimaForm', {}) : undefined}
-              />
+              <EmptyState {...emptyProps} />
             )
           }
           renderSectionHeader={({ section }) => {
@@ -842,7 +886,7 @@ export default function MateriasPrimasScreen({ navigation }) {
             const isFirst = index === 0;
             const isLast = index === section.data.length - 1;
             const catColor = catColorMap[item.categoria_id] || catColorMap['null'] || colors.disabled;
-            const inicial = (item.nome || '?').charAt(0).toUpperCase();
+            const hasCatColor = !!(item.categoria_id && catColorMap[item.categoria_id]);
             const unidadeInfo = getUnidadeInfo(item.unidade_medida);
 
             const selected = bulk.isSelected(item.id);
@@ -862,15 +906,13 @@ export default function MateriasPrimasScreen({ navigation }) {
                 delayLongPress={300}
                 activeOpacity={0.6}
               >
-                {/* Checkbox em modo bulk OU Avatar */}
+                {/* Checkbox em modo bulk OU ponto de cor da categoria (UX audit 09/09, item 13) */}
                 {bulk.active ? (
                   <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
                     {selected && <Feather name="check" size={14} color="#fff" />}
                   </View>
                 ) : (
-                  <View style={[styles.avatar, { backgroundColor: catColor + '18', width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}>
-                    <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
-                  </View>
+                  <View style={[styles.catDot, hasCatColor ? { backgroundColor: catColor } : { backgroundColor: 'transparent' }]} />
                 )}
 
                 {/* Info */}
@@ -880,18 +922,10 @@ export default function MateriasPrimasScreen({ navigation }) {
                       <Feather name="star" size={11} color={colors.yellow || '#FFC83A'} />
                     )}
                     <HighlightedText text={item.nome} query={busca} style={[styles.rowNome, nameOverride, { flexShrink: 1 }]} numberOfLines={1} />
+                    <StatusTag item={item} />
                   </View>
                   {marcaVisivel(item.marca) ? (
                     <HighlightedText text={marcaVisivel(item.marca)} query={busca} style={[styles.rowMarca, { fontSize: listItemSubtitleFontSize }]} numberOfLines={1} />
-                  ) : null}
-                  {/* APP-14: badge "valor estimado" pra usuária identificar itens que precisa atualizar */}
-                  {isMarcaEstimada(item.marca) ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                      <Feather name="info" size={10} color={colors.warning || '#F39C12'} style={{ marginRight: 4 }} />
-                      <Text style={{ fontSize: fonts.tiny - 1, color: colors.warning || '#F39C12', fontFamily: fontFamily.medium }} numberOfLines={1}>
-                        Valor estimado — atualize com seu preço
-                      </Text>
-                    </View>
                   ) : null}
                   {estoqueOn ? (() => {
                     const st = statusEstoque(item);
@@ -1277,15 +1311,29 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
 
-  // Avatar
-  avatar: {
-    width: 36, height: 36, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
+  // Ponto de cor da categoria (substitui o avatar-letra — UX audit 09/09, item 13)
+  catDot: {
+    width: 8, height: 8, borderRadius: 4,
     marginRight: spacing.sm,
+    flexShrink: 0,
   },
-  avatarText: {
-    fontSize: 15, fontFamily: fontFamily.bold, fontWeight: '700',
+  // Tags "estimado" (neutra) / "sem preço" (erro) — UX audit 09/09, item 12
+  statusTag: {
+    backgroundColor: colors.textSecondary + '14',
+    borderRadius: 8,
+    paddingHorizontal: 6, paddingVertical: 1,
+    marginLeft: 4,
+    flexShrink: 0,
   },
+  statusTagText: {
+    fontSize: 10, lineHeight: 14,
+    fontFamily: fontFamily.medium, fontWeight: '500',
+    color: colors.textSecondary,
+  },
+  statusTagError: { backgroundColor: colors.error + '14' },
+  statusTagTextError: { color: colors.error },
+  estimadosChip: { marginLeft: 8 },
+  estimadosChipAtivo: { backgroundColor: colors.textSecondary, borderColor: colors.textSecondary },
 
   // Bulk selection (P1-21)
   checkbox: {

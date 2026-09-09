@@ -185,7 +185,7 @@ export const entityCreateModalStyles = StyleSheet.create({
   },
   resumoCell: { flex: 1 },
   resumoLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textSecondary,
     fontFamily: fontFamily.medium,
   },
@@ -204,12 +204,12 @@ export const entityCreateModalStyles = StyleSheet.create({
     marginTop: 6,
   },
   resumoBreakdownItem: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textSecondary,
     fontFamily: fontFamily.medium,
   },
   resumoBreakdownSep: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textSecondary + '60',
   },
   resumoComparacao: {
@@ -226,7 +226,7 @@ export const entityCreateModalStyles = StyleSheet.create({
     borderTopColor: colors.border,
   },
   analiseTitulo: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: fontFamily.semiBold,
     color: colors.textSecondary,
     textTransform: 'uppercase',
@@ -274,7 +274,7 @@ export const entityCreateModalStyles = StyleSheet.create({
   },
   analiseHintText: {
     flex: 1,
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textSecondary,
     fontFamily: fontFamily.regular,
     fontStyle: 'italic',
@@ -296,7 +296,7 @@ export const entityCreateModalStyles = StyleSheet.create({
     gap: 4,
   },
   itensHint: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textSecondary,
     fontFamily: fontFamily.regular,
     fontStyle: 'italic',

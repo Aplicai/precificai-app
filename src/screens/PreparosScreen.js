@@ -177,7 +177,7 @@ export default function PreparosScreen({ navigation }) {
   const [viewMode, setViewMode] = usePersistedState('preparos.viewMode', 'list');
   // Bug fix: no mobile o grid renderiza apenas chips com preço (sem nome). Força lista no mobile.
   const isGrid = isDesktop;
-  const { rowOverride, nameOverride, avatarSize, isCompact, rowMinHeight, titleFontSize, listItemSubtitleFontSize } = useListDensity();
+  const { rowOverride, nameOverride, isCompact, rowMinHeight, titleFontSize, listItemSubtitleFontSize } = useListDensity();
   const bulk = useBulkSelection();
   // Mapa de cores por categoria ID
   const [catColorMap, setCatColorMap] = useState({});
@@ -356,7 +356,7 @@ export default function PreparosScreen({ navigation }) {
     });
 
     let secs = Object.values(grouped)
-      .filter(g => g.data.length > 0 || filtroCategoria === g.id)
+      .filter(g => g.data.length > 0 || (filtroCategoria !== null && filtroCategoria === g.id))
       .sort((a, b) => {
         if (a.id === null) return 1;
         if (b.id === null) return -1;
@@ -729,8 +729,20 @@ export default function PreparosScreen({ navigation }) {
   // Filtra linhas em janela de undo (P1-11) — memoizado para evitar map+filter a cada render.
   const visibleSections = useMemo(() => sections
     .map((s) => ({ ...s, data: s.data.filter((it) => !undoDelete.hiddenIds.has(it.id)) }))
-    .filter((s) => s.data.length > 0 || filtroCategoria === s.catId),
+    .filter((s) => s.data.length > 0 || (filtroCategoria !== null && filtroCategoria === s.catId)),
     [sections, undoDelete.hiddenIds, filtroCategoria]);
+
+  // UX audit 09/09: estado vazio com exemplo real quando não há NADA; variante de busca
+  // quando a lista está vazia só por causa da busca.
+  const emptyProps = busca.trim()
+    ? { icon: 'search', title: `Nenhum resultado para "${busca.trim()}"`, description: 'Tente outro termo ou limpe a busca.' }
+    : {
+        icon: 'layers',
+        title: 'Nenhum preparo ainda',
+        description: 'Crie o primeiro — ex.: Massa de bolo — rende 700 g',
+        ctaLabel: 'Criar preparo',
+        onPress: () => abrirCriacao(),
+      };
 
   // P3-B Stats summary — flatMap + reduces só recomputam quando visibleSections muda.
   const visibleItems = useMemo(() => visibleSections.flatMap((s) => s.data), [visibleSections]);
@@ -823,15 +835,7 @@ export default function PreparosScreen({ navigation }) {
                 loading ? (
                   <Skeleton.List count={6} />
                 ) : (
-                  <EmptyState
-                    icon={busca.trim() ? 'search' : 'layers'}
-                    title={busca.trim() ? 'Nenhum preparo encontrado' : 'Nenhum preparo cadastrado'}
-                    description={busca.trim()
-                      ? `Não encontramos resultados para "${busca}".`
-                      : 'Passo 3 · Crie receitas base combinando seus insumos. Cadastre insumos primeiro se ainda não fez.'}
-                    ctaLabel={!busca.trim() ? 'Cadastrar preparo' : undefined}
-                    onPress={!busca.trim() ? () => abrirCriacao() : undefined}
-                  />
+                  <EmptyState {...emptyProps} />
                 )
               ) : (
                 renderDesktopGrid()
@@ -867,17 +871,7 @@ export default function PreparosScreen({ navigation }) {
             loading ? (
               <Skeleton.List count={6} />
             ) : (
-              <EmptyState
-                icon={busca.trim() ? 'search' : 'layers'}
-                title={busca.trim()
-                  ? 'Nenhum preparo encontrado'
-                  : 'Nenhum preparo cadastrado'}
-                description={busca.trim()
-                  ? `Não encontramos resultados para "${busca}".`
-                  : 'Passo 3 · Crie receitas base combinando seus insumos. Cadastre insumos primeiro se ainda não fez.'}
-                ctaLabel={!busca.trim() ? 'Cadastrar preparo' : undefined}
-                onPress={!busca.trim() ? () => abrirCriacao() : undefined}
-              />
+              <EmptyState {...emptyProps} />
             )
           }
           renderSectionHeader={({ section }) => {
@@ -904,7 +898,7 @@ export default function PreparosScreen({ navigation }) {
             const isFirst = index === 0;
             const isLast = index === section.data.length - 1;
             const catColor = catColorMap[item.categoria_id] || catColorMap['null'] || colors.disabled;
-            const inicial = (item.nome || '?').charAt(0).toUpperCase();
+            const hasCatColor = !!(item.categoria_id && catColorMap[item.categoria_id]);
             const unidadeInfo = getUnidadeInfo(item.unidade_medida);
             const selected = bulk.isSelected(item.id);
 
@@ -923,15 +917,13 @@ export default function PreparosScreen({ navigation }) {
                 onLongPress={() => handleRowLongPress(item)}
                 activeOpacity={0.6}
               >
-                {/* Avatar com inicial OU checkbox no modo bulk */}
+                {/* Checkbox em modo bulk OU ponto de cor da categoria (UX audit 09/09, item 13) */}
                 {bulk.active ? (
                   <View style={[styles.checkbox, selected && styles.checkboxChecked, { marginRight: spacing.sm }]}>
                     {selected && <Feather name="check" size={14} color="#fff" />}
                   </View>
                 ) : (
-                  <View style={[styles.avatar, { backgroundColor: catColor + '18', width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}>
-                    <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
-                  </View>
+                  <View style={[styles.catDot, hasCatColor ? { backgroundColor: catColor } : { backgroundColor: 'transparent' }]} />
                 )}
 
                 {/* Info */}
@@ -1266,14 +1258,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary + '0E',
   },
 
-  // Avatar
-  avatar: {
-    width: 36, height: 36, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
+  // Ponto de cor da categoria (substitui o avatar-letra — UX audit 09/09, item 13)
+  catDot: {
+    width: 8, height: 8, borderRadius: 4,
     marginRight: spacing.sm,
-  },
-  avatarText: {
-    fontSize: 15, fontFamily: fontFamily.bold, fontWeight: '700',
+    flexShrink: 0,
   },
 
   // Info

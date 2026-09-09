@@ -111,8 +111,6 @@ export default function ConfiguracoesScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.subtitle}>Ajustes gerais do aplicativo</Text>
-
       {/* Sessão 28.63: botão manual de instalar/reinstalar PWA.
           Só renderiza no web; em iOS/Android nativo o próprio componente
           retorna null (já existe app nativo). Posicionado no topo porque
@@ -498,7 +496,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   // Sessão 28 — paddingBottom 40→100 para não ficar atrás do BottomTab (66pt)
   content: { padding: spacing.md, paddingBottom: 100, maxWidth: 600, width: '100%', alignSelf: 'center' },
-  subtitle: { fontSize: fonts.small, color: colors.textSecondary, marginBottom: spacing.md, textAlign: 'center' },
   row: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.surface,

@@ -85,7 +85,7 @@ export default function EmbalagensScreen({ navigation }) {
   const [viewMode, setViewMode] = usePersistedState('embalagens.viewMode', 'list');
   // Bug fix: no mobile o grid renderiza apenas chips com preço (sem nome). Força lista no mobile.
   const isGrid = isDesktop;
-  const { rowOverride, nameOverride, avatarSize, isCompact, rowMinHeight, titleFontSize, listItemSubtitleFontSize } = useListDensity();
+  const { rowOverride, nameOverride, isCompact, rowMinHeight, titleFontSize, listItemSubtitleFontSize } = useListDensity();
   const bulk = useBulkSelection();
   // Mapa de cores por categoria ID
   const [catColorMap, setCatColorMap] = useState({});
@@ -269,7 +269,7 @@ export default function EmbalagensScreen({ navigation }) {
     });
 
     let secs = Object.values(grouped)
-      .filter(g => g.data.length > 0 || filtroCategoria === g.id)
+      .filter(g => g.data.length > 0 || (filtroCategoria !== null && filtroCategoria === g.id))
       .sort((a, b) => {
         if (a.id === null) return 1;
         if (b.id === null) return -1;
@@ -557,7 +557,19 @@ export default function EmbalagensScreen({ navigation }) {
   // Filtra linhas em janela de undo (P1-11)
   const visibleSections = sections
     .map((s) => ({ ...s, data: s.data.filter((it) => !undoDelete.hiddenIds.has(it.id)) }))
-    .filter((s) => s.data.length > 0 || filtroCategoria === s.catId);
+    .filter((s) => s.data.length > 0 || (filtroCategoria !== null && filtroCategoria === s.catId));
+
+  // UX audit 09/09: estado vazio com exemplo real quando não há NADA; variante de busca
+  // quando a lista está vazia só por causa da busca.
+  const emptyProps = busca.trim()
+    ? { icon: 'search', title: `Nenhum resultado para "${busca.trim()}"`, description: 'Tente outro termo ou limpe a busca.' }
+    : {
+        icon: 'package',
+        title: 'Nenhuma embalagem ainda',
+        description: 'Cadastre a primeira — ex.: Caixa para bolo, R$ 2,50',
+        ctaLabel: 'Cadastrar embalagem',
+        onPress: () => navigation.navigate('EmbalagemForm', {}),
+      };
 
   // P3-B Stats summary
   const visibleItems = visibleSections.flatMap((s) => s.data);
@@ -650,17 +662,7 @@ export default function EmbalagensScreen({ navigation }) {
               {loading ? (
                 <Skeleton.List count={6} />
               ) : visibleSections.length === 0 ? (
-                <EmptyState
-                  icon={busca.trim() ? 'search' : 'package'}
-                  title={busca.trim()
-                    ? 'Nenhuma embalagem encontrada'
-                    : 'Nenhuma embalagem cadastrada'}
-                  description={busca.trim()
-                    ? `Não encontramos resultados para "${busca}".`
-                    : 'Passo 2 · Cadastre caixas, potes e sacos para incluí-los no custo final dos produtos.'}
-                  ctaLabel={!busca.trim() ? 'Cadastrar embalagem' : undefined}
-                  onPress={!busca.trim() ? () => navigation.navigate('EmbalagemForm', {}) : undefined}
-                />
+                <EmptyState {...emptyProps} />
               ) : (
                 <View style={styles.desktopGrid}>
                   {visibleSections.map((section, catIdx) => (
@@ -764,17 +766,7 @@ export default function EmbalagensScreen({ navigation }) {
             loading ? (
               <Skeleton.List count={6} />
             ) : (
-              <EmptyState
-                icon={busca.trim() ? 'search' : 'package'}
-                title={busca.trim()
-                  ? 'Nenhuma embalagem encontrada'
-                  : 'Nenhuma embalagem cadastrada'}
-                description={busca.trim()
-                  ? `Não encontramos resultados para "${busca}".`
-                  : 'Passo 2 · Cadastre caixas, potes e sacos para incluí-los no custo final dos produtos.'}
-                ctaLabel={!busca.trim() ? 'Cadastrar embalagem' : undefined}
-                onPress={!busca.trim() ? () => navigation.navigate('EmbalagemForm', {}) : undefined}
-              />
+              <EmptyState {...emptyProps} />
             )
           }
           renderSectionHeader={({ section }) => {
@@ -801,7 +793,6 @@ export default function EmbalagensScreen({ navigation }) {
             const isFirst = index === 0;
             const isLast = index === section.data.length - 1;
             const catColor = catColorMap[item.categoria_id] || catColorMap['null'] || colors.disabled;
-            const inicial = (item.nome || '?').charAt(0).toUpperCase();
             const unidadeInfo = getUnidadeInfo(item.unidade_medida);
             const selected = bulk.isSelected(item.id);
 
@@ -820,14 +811,11 @@ export default function EmbalagensScreen({ navigation }) {
                 onLongPress={() => handleRowLongPress(item)}
                 activeOpacity={0.6}
               >
-                {/* Avatar com inicial OU checkbox no modo bulk */}
-                {bulk.active ? (
+                {/* Checkbox no modo bulk (avatar-letra removido — UX audit 09/09, item 13;
+                    a cor da categoria já aparece no chip ao lado do nome) */}
+                {bulk.active && (
                   <View style={[styles.checkbox, selected && styles.checkboxChecked, { marginRight: spacing.sm }]}>
                     {selected && <Feather name="check" size={14} color="#fff" />}
-                  </View>
-                ) : (
-                  <View style={[styles.avatar, { backgroundColor: catColor + '18', width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}>
-                    <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
                   </View>
                 )}
 
@@ -1132,15 +1120,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary + '0E',
   },
 
-  // Avatar
-  avatar: {
-    width: 36, height: 36, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
-    marginRight: spacing.sm,
-  },
-  avatarText: {
-    fontSize: 15, fontFamily: fontFamily.bold, fontWeight: '700',
-  },
 
   // Info
   rowInfo: {

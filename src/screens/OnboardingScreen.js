@@ -520,7 +520,7 @@ const styles = StyleSheet.create({
   stepBadgeText: { fontSize: 11, fontWeight: '700', color: colors.success },
   stepDesc: { fontSize: fonts.tiny, color: colors.textSecondary, lineHeight: 16 },
   stepDescLocked: { color: colors.disabled },
-  stepLockedHint: { fontSize: 10, color: '#E65100', marginTop: 2, fontStyle: 'italic' },
+  stepLockedHint: { fontSize: 11, color: '#E65100', marginTop: 2, fontStyle: 'italic' },
   stepChevron: { fontSize: 22, color: colors.disabled, marginLeft: spacing.xs },
 
   // Skip

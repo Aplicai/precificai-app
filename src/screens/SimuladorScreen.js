@@ -519,7 +519,7 @@ export default function SimuladorScreen({ navigation }) {
               </View>
 
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.error }}>− CMV médio ({formatPercent(metaCmvPercent)})</Text>
+                <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.error }}>− Custo dos ingredientes (CMV médio {formatPercent(metaCmvPercent)})</Text>
                 <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.error }}>-{formatCurrency(metaResultado.cmvValor)}</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>

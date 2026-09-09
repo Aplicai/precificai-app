@@ -75,14 +75,17 @@ const MODAL_FORM_ROUTES = new Set([
   'PreparoForm',
 ]);
 
+// Fallback para o frame em que o estado do Tab.Navigator ainda não existe.
+// UX audit 09/09: o fallback era 'Ferramentas' fixo, então o header dizia
+// "Ferramentas" enquanto a sidebar destacava "Painel Geral" (Sidebar.getActiveKey
+// devolve 'home' no mesmo caso). A tab inicial padrão é 'Início' — os dois
+// precisam bater. Quando o estado existe, o título é sempre o da rota focada.
+const FALLBACK_TITLE = ROUTE_TITLES['Início'];
+
 function getPageTitle(navState) {
-  // Sessão 28.X — antes retornávamos 'Painel Geral' como fallback global, o que
-  // causava título errado no primeiro render (ex.: refresh em /Configuracoes
-  // mostrava "Painel Geral" no header por um frame). Agora preferimos o título
-  // da própria tab ativa quando o inner stack ainda não montou.
-  if (!navState) return 'Ferramentas';
+  if (!navState) return FALLBACK_TITLE;
   const tabRoute = navState.routes?.[navState.index];
-  if (!tabRoute) return 'Ferramentas';
+  if (!tabRoute) return FALLBACK_TITLE;
 
   // Check nested stack
   const stackState = tabRoute.state;
@@ -163,10 +166,12 @@ export default function WebHeader({ navigation, notifCount, onNotifPress }) {
     'Fornecedores': { tab: 'Mais', screen: 'Relatorios' },
     'RelatorioInsumos': { tab: 'Mais', screen: 'Relatorios' },
     'RelatorioSimples': { tab: 'Mais', screen: 'Relatorios' },
-    'Relatorios': { tab: 'Mais', screen: 'MaisMain' },
+    // Desktop: MaisMain redireciona para Financeiro (UX audit 09/09, item 14),
+    // então "voltar" de páginas de topo da sidebar leva ao Painel Geral.
+    'Relatorios': { tab: 'Início', screen: 'HomeMain' },
     'PrecosPlataforma': { tab: 'Mais', screen: 'DeliveryHub' },
     'SimulacaoProduto': { tab: 'Mais', screen: 'DeliveryHub' },
-    'Suporte': { tab: 'Mais', screen: 'MaisMain' },
+    'Suporte': { tab: 'Início', screen: 'HomeMain' },
     'ComparativoCanais': { tab: 'Mais', screen: 'DeliveryHub' },
     'Termos': { tab: 'Mais', screen: 'Configuracoes' },
     'Privacidade': { tab: 'Mais', screen: 'Configuracoes' },
@@ -354,7 +359,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badgeText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
     color: '#fff',
   },

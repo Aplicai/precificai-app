@@ -610,7 +610,7 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   badgeText: {
-    fontSize: 9,
+    fontSize: 10,
     fontFamily: fontFamily.bold,
     fontWeight: '700',
     textTransform: 'uppercase',

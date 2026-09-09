@@ -59,9 +59,6 @@ export default function RelatoriosHubScreen({ navigation }) {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.pageHeaderTitle}>Relatórios</Text>
-            <Text style={styles.pageHeaderSubtitle}>
-              Visão geral do negócio e saúde do cadastro de insumos
-            </Text>
           </View>
         </View>
 

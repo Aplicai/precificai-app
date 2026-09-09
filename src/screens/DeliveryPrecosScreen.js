@@ -1091,7 +1091,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   comboBadgeText: {
-    fontSize: 9,
+    fontSize: 10,
     fontFamily: fontFamily.bold,
     color: colors.textLight,
     fontWeight: '700',

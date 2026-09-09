@@ -442,7 +442,7 @@ export default function DeliveryPlataformasScreen() {
                     <Text style={{ fontSize: fonts.tiny, color: colors.primary, fontFamily: fontFamily.semiBold }}>
                       {p.plataforma}
                     </Text>
-                    <Text style={{ fontSize: 10, color: colors.textSecondary }}>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>
                       {p.taxa_plataforma > 0 ? `${p.taxa_plataforma}%` : 'sem comissão'}
                     </Text>
                   </TouchableOpacity>
@@ -597,7 +597,7 @@ const styles = StyleSheet.create({
     width: 6, height: 6, borderRadius: 3, marginRight: 4,
   },
   statusIndicatorText: {
-    fontSize: 10, fontFamily: fontFamily.medium, fontWeight: '500',
+    fontSize: 11, fontFamily: fontFamily.medium, fontWeight: '500',
   },
 
   // Taxa badge

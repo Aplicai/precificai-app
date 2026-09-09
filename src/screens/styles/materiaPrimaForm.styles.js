@@ -91,7 +91,7 @@ export const materiaPrimaFormStyles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 2, marginBottom: 2,
   },
   resultChipLabel: {
-    fontSize: 10, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    fontSize: 11, fontFamily: fontFamily.semiBold, fontWeight: '600',
     color: colors.textSecondary, textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
@@ -187,7 +187,7 @@ export const materiaPrimaFormStyles = StyleSheet.create({
     marginTop: 4,
   },
   historicoBarPrice: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: fontFamily.semiBold,
     fontWeight: '600',
     color: colors.text,
@@ -195,7 +195,7 @@ export const materiaPrimaFormStyles = StyleSheet.create({
     textAlign: 'center',
   },
   historicoBarDate: {
-    fontSize: 9,
+    fontSize: 11,
     fontFamily: fontFamily.regular,
     color: colors.textSecondary,
     marginTop: 3,

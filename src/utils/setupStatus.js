@@ -1,5 +1,20 @@
 import { getDatabase } from '../database/database';
 
+/**
+ * UX audit 09/09 (Fase B, item 16): a barra "Configuração do app 83% —
+ * Próxima: Delivery" ficava na Home pra sempre pra quem não usa delivery.
+ *
+ * Retorna true quando NÃO há etapa pendente que valha um banner: ou está
+ * tudo concluído, ou só faltam etapas marcadas `opcional: true`
+ * (Embalagens, Preparos, Delivery). Etapas sem flag (Insumos, Produtos)
+ * e `obrigatoria: true` (Financeiro) contam como núcleo.
+ * Puro (sem DB) — testado em `__tests__/setupStatus.test.mjs`.
+ */
+export function soFaltamEtapasOpcionais(etapas) {
+  if (!Array.isArray(etapas)) return true;
+  return etapas.filter(e => e && !e.done).every(e => e.opcional === true);
+}
+
 export async function getSetupStatus() {
   const db = await getDatabase();
 
@@ -55,13 +70,13 @@ export async function getSetupStatus() {
     {
       key: 'embalagens', label: 'Embalagens', icon: 'package',
       desc: 'Cadastre embalagens e itens de apresentação',
-      done: embalagensOk, obrigatoria: false, tab: 'Embalagens',
+      done: embalagensOk, obrigatoria: false, opcional: true, tab: 'Embalagens',
       count: embalagensN,
     },
     {
       key: 'preparos', label: 'Preparos', icon: 'layers',
       desc: 'Cadastre receitas base e pré-preparos',
-      done: preparosOk, obrigatoria: false, tab: 'Preparos',
+      done: preparosOk, obrigatoria: false, opcional: true, tab: 'Preparos',
       count: preparosN,
     },
     {
@@ -73,7 +88,7 @@ export async function getSetupStatus() {
     {
       key: 'delivery', label: 'Delivery', icon: 'truck',
       desc: 'Configure plataformas e preços de delivery',
-      done: deliveryOk, obrigatoria: false, tab: 'Delivery',
+      done: deliveryOk, obrigatoria: false, opcional: true, tab: 'Delivery',
       count: delProdsN + combosN,
     },
   ];
@@ -92,5 +107,7 @@ export async function getSetupStatus() {
     progresso,
     proximaEtapa,
     financeiroCompleto,
+    // true = não vale mostrar banner de progresso (só opcionais pendentes).
+    soFaltamOpcionais: soFaltamEtapasOpcionais(etapas),
   };
 }

@@ -68,7 +68,7 @@ export default function ComoCalculadoModal({ visible, onClose, resultado, modo =
               <>
                 {/* Quebra detalhada em formato tabela */}
                 <View style={styles.table}>
-                  <Row label="CMV (insumos + embalagem + preparos)" value={`R$ ${fmt(c.cmv)}`} pct={pct(c.cmvPercDoPreco)} bold />
+                  <Row label="Custo dos ingredientes (CMV: insumos + preparos + embalagem)" value={`R$ ${fmt(c.cmv)}`} pct={pct(c.cmvPercDoPreco)} bold />
                   {c.custosAbsolutos > 0 && (
                     <Row label="+ Custos absolutos (cupons, frete subsidiado)" value={`R$ ${fmt(c.custosAbsolutos)}`} />
                   )}

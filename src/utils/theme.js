@@ -81,6 +81,16 @@ export const fonts = {
   xlarge: 24,
 };
 
+// UX audit 2026-09-09 (Fase B) — escala tipográfica única. Mínimo legível é
+// 10 (badges/contadores) e 11 para qualquer texto corrido/legenda; nada abaixo.
+export const typography = {
+  title: 24,
+  section: 16,
+  body: 14,
+  caption: 12,
+  micro: 11,
+};
+
 export const fontFamily = {
   regular: 'DMSans-Regular',
   medium: 'DMSans-Medium',

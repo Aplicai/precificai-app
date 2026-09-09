@@ -667,7 +667,7 @@ const styles = StyleSheet.create({
   kpiTileInfo:  { borderColor: colors.info + '40', backgroundColor: colors.info + '06' },
   kpiTileLabel: { fontSize: fonts.tiny, color: colors.textSecondary, marginBottom: 6, fontFamily: fontFamily.medium },
   kpiTileValue: { fontSize: 24, fontFamily: fontFamily.bold, color: colors.text, fontWeight: '700', lineHeight: 28 },
-  kpiTileSub:   { fontSize: 10, color: colors.textSecondary, marginTop: 4 },
+  kpiTileSub:   { fontSize: 11, color: colors.textSecondary, marginTop: 4 },
 
   // Sessão 28.41: alertPanel — sub-bloco dentro de "Precisa atenção"
   alertPanel: {
@@ -723,7 +723,7 @@ const styles = StyleSheet.create({
   catRowCount: { fontSize: fonts.tiny, color: colors.textSecondary },
   catRowStats: { flexDirection: 'row', gap: spacing.sm },
   catRowStat: { flex: 1 },
-  catRowStatLabel: { fontSize: 10, color: colors.textSecondary, marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.4 },
+  catRowStatLabel: { fontSize: 11, color: colors.textSecondary, marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.4 },
   catRowStatValue: { fontSize: fonts.regular, fontFamily: fontFamily.semiBold, color: colors.text },
 
   // Histórico

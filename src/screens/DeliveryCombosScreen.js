@@ -815,7 +815,7 @@ export default function DeliveryCombosScreen() {
         {/* D-30: métricas alinhadas com card de produto (CMV / Sugerido / Lucro Líquido / Margem Líq.) */}
         <View style={styles.comboCardV2Metrics}>
           <View style={styles.comboCardV2Metric}>
-            <Text style={styles.comboCardV2MetricLabel}>CMV</Text>
+            <Text style={styles.comboCardV2MetricLabel}>Custo dos ingredientes</Text>
             <Text style={styles.comboCardV2MetricValue}>{formatCurrency(custoC)}</Text>
           </View>
           <View style={styles.comboCardV2Metric}>
@@ -886,7 +886,7 @@ export default function DeliveryCombosScreen() {
         </View>
         <View style={styles.comboCardV2Metrics}>
           <View style={styles.comboCardV2Metric}>
-            <Text style={styles.comboCardV2MetricLabel}>CMV</Text>
+            <Text style={styles.comboCardV2MetricLabel}>Custo dos ingredientes</Text>
             <Text style={styles.comboCardV2MetricValue}>{formatCurrency(custoC)}</Text>
           </View>
           <View style={styles.comboCardV2Metric}>
@@ -1127,7 +1127,7 @@ export default function DeliveryCombosScreen() {
                   </View>
                   <View style={styles.comboResumoGrid}>
                     <View style={styles.comboResumoCell}>
-                      <Text style={styles.comboResumoCellLabel}>CMV Unit.</Text>
+                      <Text style={styles.comboResumoCellLabel}>Custo dos ingredientes/un</Text>
                       <Text style={styles.comboResumoCellValue}>{formatCurrency(custoTotal)}</Text>
                     </View>
                     <View style={styles.comboResumoCell}>
@@ -1621,7 +1621,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   comboCardV2MetricLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: fontFamily.medium,
     color: colors.textSecondary,
     textTransform: 'uppercase',
@@ -1836,7 +1836,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   modalAddItemV2BadgeText: {
-    fontSize: 9,
+    fontSize: 10,
     fontFamily: fontFamily.bold,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -1914,7 +1914,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5, paddingVertical: 1, borderRadius: 6, marginTop: 2,
   },
   margemBadgeText: {
-    fontSize: 9, fontFamily: fontFamily.bold, fontWeight: '700',
+    fontSize: 10, fontFamily: fontFamily.bold, fontWeight: '700',
   },
 
   // Delete
@@ -2069,7 +2069,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
   },
   tipoBadgeText: {
-    fontSize: 9, fontFamily: fontFamily.bold, fontWeight: '700',
+    fontSize: 10, fontFamily: fontFamily.bold, fontWeight: '700',
   },
 
   // Item picker
@@ -2250,7 +2250,7 @@ const styles = StyleSheet.create({
     color: colors.text, marginBottom: 2,
   },
   gridSubtitle: {
-    fontSize: 10, fontFamily: fontFamily.regular,
+    fontSize: 11, fontFamily: fontFamily.regular,
     color: colors.textSecondary, marginBottom: spacing.xs,
   },
   gridBottom: {
@@ -2295,7 +2295,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   comboResumoCellLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textSecondary,
     textTransform: 'uppercase',
     fontWeight: '600',
@@ -2318,11 +2318,11 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   comboResumoBreakdownItem: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textSecondary,
   },
   comboResumoBreakdownSep: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.disabled,
   },
 });

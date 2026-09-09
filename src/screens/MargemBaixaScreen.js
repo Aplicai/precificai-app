@@ -189,7 +189,7 @@ export default function MargemBaixaScreen({ navigation }) {
           <View style={styles.cardMeta}>
             <Text style={styles.cardMetaText}>Venda: {formatCurrency(item.preco)}</Text>
             <Text style={styles.cardMetaSep}>·</Text>
-            <Text style={styles.cardMetaText}>CMV: {formatCurrency(item.cmv)}</Text>
+            <Text style={styles.cardMetaText}>Ingredientes: {formatCurrency(item.cmv)}</Text>
           </View>
         </View>
         <View style={styles.cardRight}>

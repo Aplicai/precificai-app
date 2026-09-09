@@ -154,7 +154,7 @@ export default function FornecedoresScreen({ navigation }) {
                     {item.isCheapest && (
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 2 }}>
                         <Feather name="check-circle" size={9} color={colors.success} />
-                        <Text style={{ fontSize: 9, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.success }}>Melhor preço</Text>
+                        <Text style={{ fontSize: 10, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.success }}>Melhor preço</Text>
                       </View>
                     )}
                   </View>

@@ -966,7 +966,7 @@ export default function EntityCreateModal({
                 >
                   <Text style={styles.itemNome} numberOfLines={1}>{it.nome} <Feather name="edit-2" size={10} color={colors.primary} /></Text>
                   {rateLabel && (
-                    <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 1 }} numberOfLines={1}>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 1 }} numberOfLines={1}>
                       {rateLabel}
                     </Text>
                   )}
@@ -1090,7 +1090,7 @@ export default function EntityCreateModal({
                   <View style={styles.analiseBox}>
                     <Text style={styles.analiseTitulo}>Composição por unidade vendida</Text>
                     <View style={styles.analiseLinha}>
-                      <Text style={styles.analiseLabel}>CMV</Text>
+                      <Text style={styles.analiseLabel}>Custo dos ingredientes (CMV)</Text>
                       <Text style={styles.analiseValor}>{formatCurrency(cmvUnitario)} <Text style={styles.analisePerc}>({formatPercent(cmvPerc)})</Text></Text>
                     </View>
                     {pricingConfig.despFixasPerc > 0 && (

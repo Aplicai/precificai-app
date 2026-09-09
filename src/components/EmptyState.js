@@ -11,7 +11,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
  *  - compact: para usar dentro de modais/cards onde o espaço é limitado
  *    (icone menor, padding reduzido, sem círculo gigante)
  */
-export default function EmptyState({ icon = 'inbox', title, description, ctaLabel, onPress, compact = false }) {
+export default function EmptyState({ icon = 'inbox', title, description, ctaLabel, ctaIcon = 'plus', onPress, compact = false }) {
   if (compact) {
     return (
       <View style={styles.compactContainer}>
@@ -24,13 +24,13 @@ export default function EmptyState({ icon = 'inbox', title, description, ctaLabe
   return (
     <View style={styles.container}>
       <View style={styles.iconCircle}>
-        <Feather name={icon} size={36} color={colors.primaryLight} />
+        <Feather name={icon} size={32} color={colors.primary} />
       </View>
       <Text style={styles.title}>{title || 'Nenhum item'}</Text>
       {description && <Text style={styles.description}>{description}</Text>}
       {ctaLabel && onPress && (
-        <TouchableOpacity style={styles.cta} activeOpacity={0.7} onPress={onPress}>
-          <Feather name="plus" size={18} color="#fff" style={{ marginRight: 6 }} />
+        <TouchableOpacity style={styles.cta} activeOpacity={0.7} onPress={onPress} accessibilityRole="button" accessibilityLabel={ctaLabel}>
+          {ctaIcon ? <Feather name={ctaIcon} size={16} color="#fff" style={{ marginRight: 6 }} /> : null}
           <Text style={styles.ctaText}>{ctaLabel}</Text>
         </TouchableOpacity>
       )}
@@ -46,18 +46,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   iconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.primary + '10',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.primary + '12',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
   },
+  // UX audit 09/09: escala tipográfica — título 16 semibold, descrição 14
   title: {
-    fontSize: fonts.large,
-    fontFamily: fontFamily.bold,
-    fontWeight: '700',
+    fontSize: 16,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
     color: colors.text,
     marginBottom: spacing.xs,
     textAlign: 'center',

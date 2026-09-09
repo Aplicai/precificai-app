@@ -353,9 +353,6 @@ export default function SuporteScreen({ navigation }) {
       {/* Section 2: Guide */}
       <Text style={styles.sectionTitle}>Como utilizar</Text>
       <View style={styles.card}>
-        <Text style={styles.guideIntro}>
-          Siga estes passos para configurar o app e precificar seus produtos corretamente:
-        </Text>
         {GUIDE_STEPS.map((step, index) => (
           <View key={index} style={styles.stepRow}>
             <View style={styles.stepNumber}>

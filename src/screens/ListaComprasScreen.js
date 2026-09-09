@@ -423,7 +423,7 @@ export default function ListaComprasScreen({ navigation }) {
           <View style={{ flex: 1, marginLeft: 10 }}>
             <Text style={styles.infoTitle}>Lista de Compras</Text>
             <Text style={styles.infoDesc}>
-              Informe quantas unidades pretende produzir e gere a lista consolidada de todos os ingredientes necessários (incluindo ingredientes dos preparos).
+              Diga quanto vai produzir e gere a lista de ingredientes (preparos incluídos).
             </Text>
           </View>
         </View>

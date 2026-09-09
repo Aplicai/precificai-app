@@ -123,35 +123,12 @@ if (typeof document !== 'undefined') {
     }
   }
 
-  // === PWA INSTALL PROMPT (Android/Chrome) ======================
-  // Captura o evento beforeinstallprompt pra o componente InstallPWABanner
-  // poder disparar o diálogo na hora certa.
-  window.__pwaInstallPrompt = null;
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    window.__pwaInstallPrompt = e;
-    window.dispatchEvent(new CustomEvent('pwa-install-available'));
-  });
-  window.addEventListener('appinstalled', () => {
-    window.__pwaInstallPrompt = null;
-    try {
-      // Marca no localStorage pra esconder banner de install no futuro
-      localStorage.setItem('pwa_installed', '1');
-    } catch (_) {}
-    window.dispatchEvent(new CustomEvent('pwa-installed'));
-  });
-
-  // Limpa flag `pwa_installed` quando carregamos NÃO-standalone — o usuário
-  // desinstalou (browsers não disparam evento de uninstall, então o flag
-  // ficaria preso "true" pra sempre, fazendo o botão "Instalar app" em
-  // Configurações mostrar erradamente "✓ App instalado").
+  // === PWA INSTALL PROMPT ======================================
+  // UX audit 09/09 (item 15): captura de `beforeinstallprompt`, flag
+  // `pwa_installed` e eventos de compat vivem em src/utils/pwaInstall.js —
+  // fonte única para o card da Home e o botão em Configurações.
   try {
-    const inStandalone =
-      (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
-      window.navigator.standalone === true;
-    if (!inStandalone && localStorage.getItem('pwa_installed') === '1') {
-      localStorage.removeItem('pwa_installed');
-    }
+    require('./src/utils/pwaInstall').setupPwaInstallCapture();
   } catch (_) {}
 }
 

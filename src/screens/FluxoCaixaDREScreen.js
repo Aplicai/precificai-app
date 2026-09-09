@@ -957,7 +957,7 @@ function DRETab({
           isDesktop={isDesktop}
         />
         <KPICard
-          label="CMV"
+          label="Custo dos ingredientes (CMV)"
           value={formatCurrency(dreNum.cmv)}
           color={colors.warning}
           icon="package"
@@ -1296,7 +1296,7 @@ const styles = StyleSheet.create({
   },
   monthCenter: { flex: 1, alignItems: 'center' },
   monthEyebrow: {
-    fontSize: 10, fontFamily: fontFamily.semiBold,
+    fontSize: 11, fontFamily: fontFamily.semiBold,
     color: colors.textSecondary, letterSpacing: 1.2,
     marginBottom: 2,
   },
@@ -1545,7 +1545,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border + '60',
   },
   dreSectionHeaderText: {
-    fontSize: 10, fontFamily: fontFamily.bold,
+    fontSize: 11, fontFamily: fontFamily.bold,
     color: colors.textSecondary, letterSpacing: 1.4,
     textTransform: 'uppercase',
     paddingTop: 6,
@@ -1585,7 +1585,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
   drePctText: {
-    fontSize: 10, fontFamily: fontFamily.medium,
+    fontSize: 11, fontFamily: fontFamily.medium,
     color: colors.textSecondary,
     marginTop: 3,
     paddingRight: 4,

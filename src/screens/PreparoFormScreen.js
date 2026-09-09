@@ -1380,7 +1380,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary + '10',
   },
   resultChipLabel: {
-    fontSize: 10, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    fontSize: 11, fontFamily: fontFamily.semiBold, fontWeight: '600',
     color: colors.textSecondary, textTransform: 'uppercase',
     letterSpacing: 0.3, marginBottom: 2,
   },

@@ -1084,7 +1084,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
             </View>
             <View style={styles.costsGrid}>
               <View style={styles.costsItem}>
-                <Text style={styles.costsItemLabel}>CMV{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : ' Unit.'}</Text>
+                <Text style={styles.costsItemLabel}>Custo dos ingredientes{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : '/un'}</Text>
                 <Text style={styles.costsItemValue}>{formatCurrency(custoUnitario)}</Text>
               </View>
               <TouchableOpacity
@@ -1545,7 +1545,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               <View style={styles.separator} />
 
               {/* Análise final */}
-              <View style={styles.custoRow}><Text style={styles.custoLabel}>CMV</Text><Text style={styles.custoValue}>{formatPercent(cmvPerc)}</Text></View>
+              <View style={styles.custoRow}><Text style={styles.custoLabel}>Custo dos ingredientes (CMV)</Text><Text style={styles.custoValue}>{formatPercent(cmvPerc)}</Text></View>
               <View style={styles.custoRow}><Text style={styles.custoLabel}>Custos do mês</Text><Text style={styles.custoValue}>{formatCurrency(despFixasValor)} ({formatPercent(config.despFixasPerc)})</Text></View>
               <View style={styles.custoRow}><Text style={styles.custoLabel}>Custos por venda</Text><Text style={styles.custoValue}>{formatCurrency(despVarValor)} ({formatPercent(config.despVarPerc)})</Text></View>
               <View style={[styles.custoRow, styles.custoTotal]}>
@@ -1682,7 +1682,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </View>
               <View style={[styles.costsGrid, { flexWrap: 'wrap' }]}>
                 <View style={[styles.costsItem, { minWidth: '45%' }]}>
-                  <Text style={styles.costsItemLabel}>CMV{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : ' Unit.'}</Text>
+                  <Text style={styles.costsItemLabel}>Custo dos ingredientes{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : '/un'}</Text>
                   <Text style={styles.costsItemValue}>{formatCurrency(custoUnitario)}</Text>
                 </View>
                 <View style={[styles.costsItem, { minWidth: '45%' }]}>
@@ -1737,7 +1737,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                       <Text style={styles.custoValue}>{formatCurrency(custoEmbalagens / divisor)} {pv > 0 ? `(${formatPercent(percEmbalagens)})` : ''}</Text>
                     </View>
                     <View style={[styles.custoRow, styles.custoTotal]}>
-                      <Text style={[styles.custoLabel, styles.custoTotalText]}>CMV{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : ' Unitário'}</Text>
+                      <Text style={[styles.custoLabel, styles.custoTotalText]}>Custo dos ingredientes{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : ' por unidade'}</Text>
                       <Text style={[styles.custoValue, styles.custoTotalText]}>{formatCurrency(custoUnitario)} {pv > 0 ? `(${formatPercent(cmvPerc)})` : ''}</Text>
                     </View>
                     <View style={styles.separator} />
@@ -2484,5 +2484,5 @@ const styles = StyleSheet.create({
   historicoBarWrapper: { alignItems: 'center', flex: 1, maxWidth: 64 },
   historicoBar: { width: '70%', maxWidth: 28, borderRadius: 4, minHeight: 8 },
   historicoBarPrice: { fontSize: 11, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text, marginBottom: 4, textAlign: 'center' },
-  historicoBarDate: { fontSize: 10, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 3 },
+  historicoBarDate: { fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 3 },
 });

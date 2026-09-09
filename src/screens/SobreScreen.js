@@ -28,7 +28,7 @@ async function openExternal(url, onError) {
 // Meta de Faturamento (tela órfã removida na Fase A1).
 const FEATURES_ESSENCIAIS = [
   { icon: 'file-text', label: 'Cadastro completo', desc: 'Insumos, preparos, embalagens e produtos' },
-  { icon: 'dollar-sign', label: 'Cálculo automático de CMV', desc: 'CMV e preço sugerido com markup e margem' },
+  { icon: 'dollar-sign', label: 'Custo dos ingredientes (CMV) automático', desc: 'CMV e preço sugerido com markup e margem' },
   { icon: 'sliders', label: 'Configuração financeira completa', desc: 'Margem, custos do mês e por venda, faturamento' },
   { icon: 'shopping-cart', label: 'Lista de Compras automática', desc: 'Consolidação de ingredientes por produção' },
   { icon: 'printer', label: 'Exportar Fichas Técnicas em PDF', desc: 'Produtos e preparos para impressão' },

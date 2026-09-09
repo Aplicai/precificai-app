@@ -1,51 +1,27 @@
 /**
- * InstallAppButton — botão de instalar app (PWA) na tela de Configurações.
+ * InstallAppButton — entrada PERMANENTE de instalar app (PWA) em Configurações.
  *
  * Por que existe: depois que o usuário desinstala uma PWA, o browser NÃO
  * dispara `beforeinstallprompt` automaticamente de novo (Chrome só mostra
  * na 1ª visita ou após resetar heurística). Esse botão é uma reentrada
- * manual — sempre disponível em Configurações.
+ * manual — sempre disponível em Configurações. (UX audit 09/09, item 15:
+ * junto com o card dispensável da Home, é o único outro convite de instalação.)
  *
  * Estados:
- *  - installed: rodando como standalone → mostra "✓ App instalado".
- *  - installable: `window.__pwaInstallPrompt` populado (mesmo evento usado
- *    pelo InstallPWABanner) → botão verde dispara prompt nativo.
- *  - unavailable: nem instalado nem com prompt disponível (caso comum após
- *    desinstalar no Chrome, ou Firefox/Safari) → botão "Como instalar"
- *    abre modal com instruções por navegador/SO.
+ *  - installed: rodando como standalone → mostra "App instalado".
+ *  - installable: prompt nativo disponível (`pwaInstall.canInstall`) →
+ *    botão verde dispara o diálogo.
+ *  - unavailable: nem instalado nem com prompt (após desinstalar no Chrome,
+ *    Firefox, Safari/iOS) → "Como instalar" abre instruções por navegador/SO
+ *    (iOS: Compartilhar → Adicionar à Tela de Início).
  *
- * Eventos consumidos (registrados em index.js):
- *  - `pwa-install-available`  → o evento beforeinstallprompt foi capturado
- *  - `pwa-installed`          → o app acabou de ser instalado
+ * Toda a lógica de prompt/estado vive em `src/utils/pwaInstall.js`.
  */
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, ScrollView, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-
-function detectPlatform() {
-  if (typeof navigator === 'undefined') return 'unknown';
-  const ua = (navigator.userAgent || '').toLowerCase();
-  const isIOS = /iphone|ipad|ipod/.test(ua) ||
-    (ua.includes('mac') && typeof document !== 'undefined' && 'ontouchend' in document);
-  if (isIOS) return 'ios';
-  if (ua.includes('android')) return 'android';
-  if (ua.includes('edg/')) return 'edge';
-  if (ua.includes('firefox') || ua.includes('fxios')) return 'firefox';
-  if (ua.includes('chrome') || ua.includes('crios')) return 'chrome';
-  if (ua.includes('safari')) return 'safari';
-  return 'unknown';
-}
-
-function isStandaloneNow() {
-  if (typeof window === 'undefined') return false;
-  try {
-    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
-    if (window.navigator && window.navigator.standalone === true) return true;
-    if (typeof localStorage !== 'undefined' && localStorage.getItem('pwa_installed') === '1') return true;
-  } catch (_) {}
-  return false;
-}
+import { canInstall, isInstalled, promptInstall, subscribe, detectPlatform } from '../utils/pwaInstall';
 
 export default function InstallAppButton() {
   const [installed, setInstalled] = useState(false);
@@ -55,67 +31,24 @@ export default function InstallAppButton() {
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-
-    setInstalled(isStandaloneNow());
+    setInstalled(isInstalled());
+    setInstallable(canInstall());
     setPlatform(detectPlatform());
-
-    if (typeof window === 'undefined') return;
-
-    // Estado inicial: o index.js pode já ter capturado o evento
-    if (window.__pwaInstallPrompt) setInstallable(true);
-
-    const onAvail = () => setInstallable(true);
-    const onInstalled = () => {
-      setInstalled(true);
-      setInstallable(false);
-    };
-    window.addEventListener('pwa-install-available', onAvail);
-    window.addEventListener('pwa-installed', onInstalled);
-
-    // Detecta também mudança de display-mode (entrou/saiu de standalone)
-    let mql = null;
-    let mqlHandler = null;
-    try {
-      mql = window.matchMedia('(display-mode: standalone)');
-      mqlHandler = (e) => setInstalled(e.matches || isStandaloneNow());
-      if (mql.addEventListener) mql.addEventListener('change', mqlHandler);
-      else if (mql.addListener) mql.addListener(mqlHandler);
-    } catch (_) {}
-
-    return () => {
-      window.removeEventListener('pwa-install-available', onAvail);
-      window.removeEventListener('pwa-installed', onInstalled);
-      try {
-        if (mql && mqlHandler) {
-          if (mql.removeEventListener) mql.removeEventListener('change', mqlHandler);
-          else if (mql.removeListener) mql.removeListener(mqlHandler);
-        }
-      } catch (_) {}
-    };
+    return subscribe((state) => {
+      setInstallable(state.canInstall);
+      setInstalled(state.installed);
+    });
   }, []);
 
   // Não renderiza em iOS/Android nativo
   if (Platform.OS !== 'web') return null;
 
   const triggerInstall = async () => {
-    if (typeof window === 'undefined' || !window.__pwaInstallPrompt) {
+    const outcome = await promptInstall();
+    if (outcome === 'accepted') {
+      setInstalled(true);
+    } else if (outcome === 'unavailable') {
       // Sumiu entre o render e o clique — fallback pras instruções manuais
-      setShowHowTo(true);
-      return;
-    }
-    try {
-      const promptEvent = window.__pwaInstallPrompt;
-      promptEvent.prompt();
-      const result = await promptEvent.userChoice;
-      if (result?.outcome === 'accepted') {
-        setInstalled(true);
-      }
-      window.__pwaInstallPrompt = null;
-      setInstallable(false);
-    } catch (e) {
-      if (typeof console !== 'undefined' && console.warn) {
-        console.warn('[InstallAppButton] prompt failed', e?.message || e);
-      }
       setShowHowTo(true);
     }
   };

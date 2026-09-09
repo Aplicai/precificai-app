@@ -1064,6 +1064,6 @@ const styles = StyleSheet.create({
   historicoBarWrapper: { alignItems: 'center', flex: 1, maxWidth: 64 },
   historicoBar: { width: '70%', maxWidth: 28, borderRadius: 4, minHeight: 8 },
   historicoBarPrice: { fontSize: 11, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text, marginBottom: 4, textAlign: 'center' },
-  historicoBarDate: { fontSize: 10, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 3 },
+  historicoBarDate: { fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 3 },
   historicoDeleteBtn: { width: 16, height: 16, borderRadius: 8, backgroundColor: colors.error + '12', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
 });

@@ -246,7 +246,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
         {/* KPI atual */}
         <View style={styles.kpiRow}>
           <View style={styles.kpiCard}>
-            <Text style={styles.kpiLabel}>CMV</Text>
+            <Text style={styles.kpiLabel}>Custo dos ingredientes</Text>
             <Text style={styles.kpiValue}>{formatCurrency(cmv)}</Text>
           </View>
           <View style={styles.kpiCard}>
@@ -319,7 +319,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
             <Text style={styles.compTitle}>Composição com este preço:</Text>
             {[
               { label: 'Preço cobrado', val: numEscolhido, color: colors.text, bold: true },
-              { label: 'CMV (insumos + embalagem)', val: -cmv, color: colors.error },
+              { label: 'Custo dos ingredientes e embalagem (CMV)', val: -cmv, color: colors.error },
               { label: `Custos fixos (${((contexto.fixoPerc || 0) * 100).toFixed(1)}%)`, val: -valFixos, color: colors.error },
               { label: `Imposto (${((contexto.impostoPerc || 0) * 100).toFixed(1)}%)`, val: -valImposto, color: colors.error },
               { label: `Comissão plataforma (${(comissaoPct * 100).toFixed(1)}%)`, val: -valComissao, color: colors.error },
@@ -426,17 +426,17 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: colors.surface, padding: spacing.sm,
     borderRadius: borderRadius.md, alignItems: 'center',
   },
-  kpiLabel: { fontSize: 10, color: colors.textSecondary, marginBottom: 2 },
+  kpiLabel: { fontSize: 11, color: colors.textSecondary, marginBottom: 2 },
   kpiValue: { fontSize: 18, fontFamily: fontFamily.bold, color: colors.text },
-  kpiSub: { fontSize: 10, color: colors.textSecondary, marginTop: 2 },
+  kpiSub: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
   sectionTitle: { fontSize: fonts.regular, fontFamily: fontFamily.bold, color: colors.text, marginBottom: spacing.sm },
   sugRow: { flexDirection: 'row', gap: 10 },
   sugCard: {
     flex: 1, backgroundColor: colors.surface, padding: spacing.md,
     borderRadius: borderRadius.md, borderWidth: 2, alignItems: 'center',
   },
-  sugLabel: { fontSize: 10, fontFamily: fontFamily.bold, letterSpacing: 0.5 },
-  sugSub: { fontSize: 10, color: colors.textSecondary, marginTop: 2 },
+  sugLabel: { fontSize: 11, fontFamily: fontFamily.bold, letterSpacing: 0.5 },
+  sugSub: { fontSize: 11, color: colors.textSecondary, marginTop: 2 },
   sugPrice: { fontSize: 22, fontFamily: fontFamily.bold, marginTop: 6 },
   inputBox: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface,

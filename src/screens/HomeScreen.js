@@ -8,7 +8,7 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
-import { getSetupStatus } from '../utils/setupStatus';
+import { getSetupStatus, soFaltamEtapasOpcionais } from '../utils/setupStatus';
 import InfoTooltip from '../components/InfoTooltip';
 import Loader from '../components/Loader';
 import MobileOnboardingOverlay from '../components/MobileOnboardingOverlay';
@@ -155,17 +155,20 @@ export default function HomeScreen({ navigation }) {
       const setupEtapas = [
         { key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign', desc: 'Configure markup, despesas e margem de lucro', done: finCompleto, obrigatoria: true, tab: 'Financeiro', progresso: finConcluidas / 4 },
         { key: 'insumos', label: 'Insumos', icon: 'shopping-bag', desc: 'Cadastre suas matérias-primas', done: insumosN > 0, tab: 'Insumos', count: insumosN },
-        { key: 'embalagens', label: 'Embalagens', icon: 'package', desc: 'Cadastre embalagens', done: embsN > 0, tab: 'Embalagens', count: embsN },
-        { key: 'preparos', label: 'Preparos', icon: 'layers', desc: 'Cadastre receitas base', done: prepsN > 0, tab: 'Preparos', count: prepsN },
+        // UX audit 09/09 (Fase B, item 16): `opcional: true` = não segura o
+        // banner "Configuração do app" sozinha (ver soFaltamEtapasOpcionais).
+        { key: 'embalagens', label: 'Embalagens', icon: 'package', desc: 'Cadastre embalagens', done: embsN > 0, opcional: true, tab: 'Embalagens', count: embsN },
+        { key: 'preparos', label: 'Preparos', icon: 'layers', desc: 'Cadastre receitas base', done: prepsN > 0, opcional: true, tab: 'Preparos', count: prepsN },
         { key: 'produtos', label: 'Produtos', icon: 'box', desc: 'Monte fichas técnicas', done: prodsR.length > 0, tab: 'Produtos', count: prodsR.length },
         // Sessão 26 — etapa de Delivery só aparece se user marcou que faz delivery
-        ...(usaDelivery ? [{ key: 'delivery', label: 'Delivery', icon: 'truck', desc: 'Configure delivery', done: deliveryOk, tab: 'Delivery', count: delProdsN + combosN }] : []),
+        ...(usaDelivery ? [{ key: 'delivery', label: 'Delivery', icon: 'truck', desc: 'Configure delivery', done: deliveryOk, opcional: true, tab: 'Delivery', count: delProdsN + combosN }] : []),
       ];
       const setupConcluidas = setupEtapas.filter(e => e.done).length;
       const setup = {
         etapas: setupEtapas, concluidas: setupConcluidas, total: setupEtapas.length,
         completo: setupConcluidas === setupEtapas.length, progresso: setupConcluidas / setupEtapas.length,
         proximaEtapa: setupEtapas.find(e => !e.done) || null, financeiroCompleto: finCompleto,
+        soFaltamOpcionais: soFaltamEtapasOpcionais(setupEtapas),
       };
       setSetupStatus(setup);
 
@@ -321,27 +324,31 @@ export default function HomeScreen({ navigation }) {
         }
 
         // Priority: 1 = critical (color coral/red, push for action), 2 = warning, 3 = positive/info
+        // UX audit 09/09 (Fase B, item 11): copy curta (1 linha, sem parênteses).
+        // O "como calculo" vai pro `hint` (tooltip no card), não pro texto.
+        const hintMargem = { title: 'Como calculamos', text: 'Sobra por venda = preço menos ingredientes, embalagem, custos do mês e taxas por venda. É a margem real, não a de balcão.' };
         if (worstProd && worstMargem < 0) {
-          insights.push({ priority: 1, icon: 'alert-triangle', color: colors.error, title: 'Margem negativa detectada', text: `${worstProd.nome} está com margem líquida de ${formatPercent(worstMargem)} (já com despesas e taxas) — você está pagando para vender. Aumente o preço ou reduza custos.`, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ajustar preço' } });
+          insights.push({ priority: 1, icon: 'alert-triangle', color: colors.error, title: 'Você paga pra vender', text: `${worstProd.nome} · prejuízo de ${formatPercent(Math.abs(worstMargem))} por venda`, hint: hintMargem, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ajustar preço' } });
         } else if (worstProd && worstMargem < 0.10) {
-          insights.push({ priority: 1, icon: 'alert-triangle', color: colors.coral, title: 'Margem crítica', text: `${worstProd.nome} tem margem líquida de apenas ${formatPercent(worstMargem)} (já com despesas e taxas). Considere aumentar o preço.`, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ajustar preço' } });
+          insights.push({ priority: 1, icon: 'alert-triangle', color: colors.coral, title: 'Sobra quase nada', text: `${worstProd.nome} · sobra só ${formatPercent(worstMargem)} por venda`, hint: hintMargem, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ajustar preço' } });
         } else if (worstProd && worstMargem < 0.15) {
-          insights.push({ priority: 2, icon: 'alert-triangle', color: colors.coral, title: 'Margem baixa', text: `${worstProd.nome} está com margem líquida de ${formatPercent(worstMargem)}, abaixo do ideal (15%).`, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ver produto' } });
+          insights.push({ priority: 2, icon: 'alert-triangle', color: colors.coral, title: 'Sobra pouco', text: `${worstProd.nome} · sobra ${formatPercent(worstMargem)}, ideal é mais de 15%`, hint: hintMargem, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ver produto' } });
         }
         // Audit P1 (Fase 2 - Fix #5): TODO insight precisa de action navegável.
-        if (bestProd) insights.push({ priority: 3, icon: 'award', color: colors.success, title: 'Produto campeão', text: `${bestProd.nome} é seu mais lucrativo com margem líquida de ${formatPercent(bestMargem)} (margem real, já descontando despesas fixas e taxas).`, action: { tab: 'ProdutoFormHome', id: bestProd.id, label: 'Ver produto' } });
-        insights.push({ priority: 3, icon: 'pie-chart', color: colors.accent, title: 'Carteira saudável', text: `${healthyCount} de ${prodsComPreco} produtos com margem saudável (>15%).`, action: { tab: 'Produtos', label: 'Ver produtos' } });
+        if (bestProd) insights.push({ priority: 3, icon: 'award', color: colors.success, title: 'Produto campeão', text: `${bestProd.nome} · sobra ${formatPercent(bestMargem)} por venda`, hint: hintMargem, action: { tab: 'ProdutoFormHome', id: bestProd.id, label: 'Ver produto' } });
+        insights.push({ priority: 3, icon: 'pie-chart', color: colors.accent, title: 'Carteira saudável', text: `${healthyCount} de ${prodsComPreco} produtos com sobra acima de 15%`, action: { tab: 'Produtos', label: 'Ver produtos' } });
       }
       if (produtosSemPreco.length > 0) {
-        insights.push({ priority: 1, icon: 'tag', color: colors.warning, title: `${produtosSemPreco.length} produto(s) sem preço`, text: 'Defina o preço de venda para começar a calcular sua margem real.', action: { tab: 'Produtos', label: 'Definir preços' } });
+        const nSem = produtosSemPreco.length;
+        insights.push({ priority: 1, icon: 'tag', color: colors.warning, title: nSem === 1 ? '1 produto sem preço' : `${nSem} produtos sem preço`, text: 'Defina o preço pra ver quanto sobra por venda', action: { tab: 'Produtos', label: 'Definir preços' } });
       }
       if (pontoEquilibrio > 0 && fatMedio > 0 && fatMedio < pontoEquilibrio) {
-        insights.push({ priority: 1, icon: 'target', color: colors.coral, title: 'Faturamento abaixo do equilíbrio', text: `Faltam ${formatCurrency(pontoEquilibrio - fatMedio)} por mês para cobrir seus custos. Você precisa faturar ${formatCurrency(pontoEquilibrio / 30)}/dia.`, action: { tab: 'Financeiro', label: 'Abrir financeiro' } });
+        insights.push({ priority: 1, icon: 'target', color: colors.coral, title: 'Faturamento abaixo do mínimo', text: `Faltam ${formatCurrency(pontoEquilibrio - fatMedio)} por mês pra pagar as contas`, hint: { title: 'Mínimo pra pagar as contas', text: `Você precisa faturar ${formatCurrency(pontoEquilibrio / 30)} por dia. Conta: custos do mês divididos pelo que sobra de cada venda depois dos ingredientes e taxas.` }, action: { tab: 'Financeiro', label: 'Abrir financeiro' } });
       } else if (pontoEquilibrio > 0) {
-        insights.push({ priority: 3, icon: 'target', color: colors.purple, title: 'Ponto de equilíbrio', text: `Você precisa faturar ${formatCurrency(pontoEquilibrio / 30)} por dia para cobrir seus custos.`, action: { tab: 'Financeiro', label: 'Ver financeiro' } });
+        insights.push({ priority: 3, icon: 'target', color: colors.purple, title: 'Mínimo pra pagar as contas', text: `${formatCurrency(pontoEquilibrio / 30)} por dia`, hint: { title: 'Mínimo pra pagar as contas', text: 'Faturamento mínimo pra cobrir os custos do mês. Conta: custos do mês divididos pelo que sobra de cada venda depois dos ingredientes e taxas.' }, action: { tab: 'Financeiro', label: 'Ver financeiro' } });
       }
       if (cmvPercent > 0.35) {
-        insights.push({ priority: 2, icon: 'trending-up', color: colors.coral, title: 'CMV acima da média', text: `Seu CMV está em ${formatPercent(cmvPercent)}, acima da referência do setor (30-35%). Renegocie ingredientes-chave.`, action: { tab: 'Insumos', label: 'Revisar insumos' } });
+        insights.push({ priority: 2, icon: 'trending-up', color: colors.coral, title: 'Ingredientes pesando no preço', text: `Custo em ${formatPercent(cmvPercent)} · setor fica entre 30% e 35%`, action: { tab: 'Insumos', label: 'Revisar insumos' } });
       }
 
       // Sort by priority (1 = most critical first)
@@ -398,7 +405,14 @@ export default function HomeScreen({ navigation }) {
 
   const pendente = finStatus && !finStatus.completo;
   const baseIncompleta = d.totalInsumos === 0 || d.totalProdutos === 0;
-  const emSetup = setupStatus && !setupStatus.completo;
+  // UX audit 09/09 (Fase B, item 16): banner "Configuração do app" só quando
+  // falta etapa de núcleo. Só opcionais (Delivery, Preparos, Embalagens)
+  // pendentes = sem banner, senão ele nunca chega a 100% pra quem não usa delivery.
+  const emSetup = setupStatus && !setupStatus.completo && !setupStatus.soFaltamOpcionais;
+  // UX audit 09/09 (Fase B, item 5): só UMA lista de passos por vez. Quando o
+  // bloco "Como começar a precificar" (com contagens) está visível, o
+  // OnboardingChecklist não renderiza — eram dois checklists quase iguais empilhados.
+  const mostrarComoComecar = (d.totalProdutos === 0 || d.totalInsumos === 0) && !loading;
 
   // Status
   let StatusIcon, statusColor, statusText, statusBg, statusOnPress;
@@ -435,7 +449,8 @@ export default function HomeScreen({ navigation }) {
   let ctaLabel = null, ctaAction = null;
   if (pendente) { ctaLabel = 'Configurar Financeiro'; ctaAction = 'Financeiro'; }
   else if (d.totalInsumos === 0) { ctaLabel = 'Cadastrar Insumos'; ctaAction = 'Insumos'; }
-  else if (d.totalProdutos === 0) { ctaLabel = 'Criar Primeiro Produto'; ctaAction = 'Produtos'; }
+  // UX audit 09/09 (Fase B, item 6): vazio com exemplo concreto.
+  else if (d.totalProdutos === 0) { ctaLabel = 'Monte seu primeiro produto — ex.: Bolo de cenoura'; ctaAction = 'Produtos'; }
 
   // Quick actions
   const acoes = [];
@@ -560,9 +575,13 @@ export default function HomeScreen({ navigation }) {
       {/* Greeting */}
       <View style={[styles.greetingRow, isMobile && styles.greetingRowMobile]}>
         <Text style={[styles.greetingText, isMobile && styles.greetingTextMobile]}>{getGreeting()}</Text>
-        <Text style={styles.greetingDesc}>
-          {pendente ? 'Complete a configuração para começar' : d.totalProdutos === 0 ? 'Cadastre seus primeiros produtos' : 'Veja como está sua precificação'}
-        </Text>
+        {/* UX audit 09/09 (Fase B, item 9): subtítulo só quando informa algo.
+            "Veja como está sua precificação" era eco do título — removido. */}
+        {(pendente || d.totalProdutos === 0) && (
+          <Text style={styles.greetingDesc}>
+            {pendente ? 'Complete a configuração para começar' : 'Cadastre seus primeiros produtos'}
+          </Text>
+        )}
       </View>
 
       {/* Banner de erro do loadAll — antes era catch silencioso, agora superficie
@@ -583,8 +602,9 @@ export default function HomeScreen({ navigation }) {
       {/* Checklist guiado de onboarding (não-bloqueante). Orienta a ordem
           ideal Financeiro → Insumos → Preparos → Produtos. Some sozinho
           quando os 4 passos estão completos, ou se o usuário ocultar.
-          Reusa os dados já carregados por loadAll (zero queries extras). */}
-      {!loading && (
+          Reusa os dados já carregados por loadAll (zero queries extras).
+          Não renderiza junto com "Como começar a precificar" (item 5 da auditoria). */}
+      {!loading && !mostrarComoComecar && (
         <OnboardingChecklist
           financeiroCompleto={!!(finStatus && finStatus.completo)}
           totalInsumos={d.totalInsumos}
@@ -617,13 +637,10 @@ export default function HomeScreen({ navigation }) {
       )}
 
       {/* Step-by-step guide for new users */}
-      {(d.totalProdutos === 0 || d.totalInsumos === 0) && !loading && (
+      {mostrarComoComecar && (
         <View style={styles.setupBanner}>
-          <Text style={[styles.setupBannerTitle, { fontSize: fonts.medium, marginBottom: spacing.sm }]}>
+          <Text style={[styles.setupBannerTitle, { fontSize: fonts.medium, marginBottom: spacing.md }]}>
             Como começar a precificar
-          </Text>
-          <Text style={[styles.setupBannerDetail, { marginBottom: spacing.md }]}>
-            Siga os passos na ordem para montar seus produtos corretamente
           </Text>
           {[
             { step: 1, label: 'Cadastre seus insumos', desc: 'Ingredientes e matérias-primas', icon: 'package', tab: 'Insumos', done: d.totalInsumos > 0, count: d.totalInsumos },
@@ -745,7 +762,10 @@ export default function HomeScreen({ navigation }) {
             <Feather name={d.featuredInsight.icon} size={18} color={d.featuredInsight.color} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.featuredInsightTitle}>{d.featuredInsight.title}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.featuredInsightTitle}>{d.featuredInsight.title}</Text>
+              {d.featuredInsight.hint && <InfoTooltip {...d.featuredInsight.hint} />}
+            </View>
             <Text style={styles.featuredInsightText}>{d.featuredInsight.text}</Text>
             {d.featuredInsight.action && (
               <Text style={[styles.featuredInsightCta, { color: d.featuredInsight.color }]}>
@@ -761,12 +781,9 @@ export default function HomeScreen({ navigation }) {
 
       {/* KPIs - Saúde da Precificação */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        {/* UX audit 09/09 (Fase B, item 10): sem "?" no título da seção; a
+            regra 30-30-30-10 foi pro tooltip do card de ingredientes (CMV). */}
         <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }, isMobile && styles.sectionTitleMobile]}>Saúde da Precificação</Text>
-        <InfoTooltip
-          title="Regra 30-30-30-10"
-          text="Referência do setor de alimentação para composição saudável do preço de venda."
-          examples={['CMV: até 30%', 'Mão de obra: até 30%', 'Despesas: até 30%', 'Lucro: mínimo 10%']}
-        />
       </View>
       <View style={[styles.kpiRow, isDesktop && styles.kpiRowDesktop, isMobile && styles.kpiRowMobile]}>
         {(() => {
@@ -784,20 +801,22 @@ export default function HomeScreen({ navigation }) {
           const margBench = d.margemMedia >= margTarget ? 'green' : d.margemMedia >= (margTarget - 0.10) ? 'yellow' : 'red';
           const benchColors = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
           return [
-          { label: 'CMV Médio', value: formatPercent(d.cmvPercent), icon: 'tag', color: colors.primary,
-            tip: { title: 'CMV Médio', text: 'Custo de Mercadoria Vendida em % do preço de venda. Abra o card para alterar a meta.', examples: ['Referência do setor alimentício:', 'Restaurantes: 28-35%', 'Pizzarias: 25-32%', 'Confeitarias: 20-30%', 'Fast food: 25-35%', `Sua meta: < ${cmvMetaValue}%`] },
+          // UX audit 09/09 (Fase B, item 10): rótulos em português de balcão;
+          // tooltip fica só onde há fórmula. `caption` = termo técnico pequeno.
+          { label: 'Custo dos ingredientes', caption: '(CMV)', value: formatPercent(d.cmvPercent), icon: 'tag', color: colors.primary,
+            tip: { title: 'Custo dos ingredientes (CMV)', text: 'Quanto do preço de venda vai pra ingredientes e embalagem. Toque no card pra mudar a meta.', examples: ['Regra 30-30-30-10: ingredientes 30%, mão de obra 30%, despesas 30%, lucro 10%', 'Restaurantes: 28-35%', 'Pizzarias: 25-32%', 'Confeitarias: 20-30%', 'Fast food: 25-35%', `Sua meta: < ${cmvMetaValue}%`] },
             meta: `Atual: ${formatPercent(d.cmvPercent)} · Meta: < ${cmvMetaValue}%`, bench: pendente ? null : cmvBench, onPress: () => setShowCmvMeta(true) },
-          { label: 'Resultado Operacional', value: pendente ? '--' : formatCurrency(d.resultadoFinanceiro), icon: 'dollar-sign', color: pendente ? colors.disabled : (d.resultadoFinanceiro >= 0 ? colors.success : colors.error),
-            tip: { title: 'Resultado Operacional', text: 'Calculado automaticamente: faturamento médio mensal menos os custos do mês. Para alterar, ajuste o faturamento ou os custos do mês no Financeiro.', examples: ['Fórmula: Faturamento − Custos do mês', 'Positivo: receita cobre os custos mensais', 'Negativo: custos do mês maiores que o faturamento', 'Ajuste no Financeiro (aba Mais)'] },
+          { label: 'Sobra do mês', value: pendente ? '--' : formatCurrency(d.resultadoFinanceiro), icon: 'dollar-sign', color: pendente ? colors.disabled : (d.resultadoFinanceiro >= 0 ? colors.success : colors.error),
+            tip: { title: 'Sobra do mês', text: 'Faturamento médio do mês menos os custos do mês. Pra mudar, ajuste faturamento ou custos no Financeiro.', examples: ['Conta: faturamento menos custos do mês', 'Positivo: as vendas pagam as contas', 'Negativo: as contas são maiores que as vendas'] },
             meta: d.resultadoFinanceiro >= 0 ? 'Receita cobre custos' : 'Receita abaixo dos custos', bench: pendente ? null : resBench },
-          { label: 'Ponto de Equilíbrio', value: pendente ? '--' : formatCurrency(d.pontoEquilibrio), icon: 'target', color: pendente ? colors.disabled : colors.primary,
-            tip: { title: 'Ponto de Equilíbrio', text: 'Calculado automaticamente: faturamento mensal mínimo para cobrir todos os custos. Para alterar, ajuste seus custos e CMV no Financeiro.', examples: ['Fórmula: Custos do mês / (1 - CMV% - Custos por venda%)', 'Compare com seu faturamento médio', 'Ajuste no Financeiro (aba Mais)'] },
+          { label: 'Mínimo pra pagar as contas', value: pendente ? '--' : formatCurrency(d.pontoEquilibrio), icon: 'target', color: pendente ? colors.disabled : colors.primary,
+            tip: { title: 'Mínimo pra pagar as contas', text: 'Quanto você precisa faturar no mês só pra cobrir os custos. Pra mudar, ajuste custos e meta de ingredientes no Financeiro.', examples: ['Conta: custos do mês divididos pelo que sobra de cada venda depois dos ingredientes e taxas', 'Compare com seu faturamento médio'] },
             meta: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0
               ? (d.fatMedio >= d.pontoEquilibrio ? `Faturamento ${formatPercent(d.fatMedio / d.pontoEquilibrio - 1)} acima` : `Falta ${formatCurrency(d.pontoEquilibrio - d.fatMedio)}`)
               : 'Configure o financeiro', bench: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0
               ? (d.fatMedio >= d.pontoEquilibrio * 1.2 ? 'green' : d.fatMedio >= d.pontoEquilibrio ? 'yellow' : 'red') : null },
-          { label: 'Margem Líquida', value: pendente ? '--' : formatPercent(d.margemMedia), icon: 'trending-up', color: pendente ? colors.disabled : (d.margemMedia >= parseFloat(margemMetaValue)/100 ? colors.success : colors.coral),
-            tip: { title: 'Margem Líquida Média', text: 'Margem de lucro média já descontando CMV, custos do mês e custos por venda. Abra o card para alterar a meta.', examples: ['Acima de 15%: saudável', '5-15%: atenção', `Meta atual: > ${margemMetaValue}%`] },
+          { label: 'Quanto sobra por venda', value: pendente ? '--' : formatPercent(d.margemMedia), icon: 'trending-up', color: pendente ? colors.disabled : (d.margemMedia >= parseFloat(margemMetaValue)/100 ? colors.success : colors.coral),
+            tip: { title: 'Quanto sobra por venda', text: 'Média do que sobra de cada venda depois de pagar ingredientes, custos do mês e taxas por venda. Toque no card pra mudar a meta.', examples: ['Conta: preço menos ingredientes, custos do mês e taxas, dividido pelo preço', 'Acima de 15%: saudável', '5-15%: atenção', `Meta atual: > ${margemMetaValue}%`] },
             meta: d.margemMedia >= parseFloat(margemMetaValue)/100 ? `Meta: > ${margemMetaValue}%  ✓` : `Meta: > ${margemMetaValue}%`, bench: pendente ? null : margBench, onPress: () => setShowMargemMeta(true) },
         ].map(k => {
           const Wrapper = k.onPress ? TouchableOpacity : View;
@@ -808,7 +827,10 @@ export default function HomeScreen({ navigation }) {
                 <View style={[styles.kpiIconCircle, { backgroundColor: k.color + '15' }]}>
                   <Feather name={k.icon} size={14} color={k.color} />
                 </View>
-                <Text style={styles.kpiLabel} numberOfLines={2}>{k.label}</Text>
+                <Text style={styles.kpiLabel} numberOfLines={2}>
+                  {k.label}
+                  {k.caption ? <Text style={styles.kpiCaption}> {k.caption}</Text> : null}
+                </Text>
                 {k.tip && <InfoTooltip {...k.tip} />}
               </View>
               <Text style={[styles.kpiValue, { color: k.color }]} numberOfLines={1} adjustsFontSizeToFit>{k.value}</Text>
@@ -893,7 +915,12 @@ export default function HomeScreen({ navigation }) {
               <Wrapper key={i} style={[styles.insightCard, { borderLeftColor: insight.color }]} {...wrapperProps}>
                 <Feather name={insight.icon} size={16} color={insight.color} style={{ marginTop: 2 }} />
                 <View style={{ flex: 1 }}>
-                  {insight.title && <Text style={styles.insightTitle}>{insight.title}</Text>}
+                  {insight.title && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={styles.insightTitle}>{insight.title}</Text>
+                      {insight.hint && <InfoTooltip {...insight.hint} />}
+                    </View>
+                  )}
                   <Text style={styles.insightText}>{insight.text}</Text>
                   {a && (
                     <Text style={[styles.insightCta, { color: insight.color }]}>
@@ -1217,7 +1244,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     paddingVertical: spacing.sm, borderRadius: borderRadius.md, marginTop: spacing.sm,
   },
-  ctaBtnText: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: '#fff' },
+  ctaBtnText: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: '#fff', flexShrink: 1, textAlign: 'center' },
 
   // KPIs
   sectionTitle: {
@@ -1245,6 +1272,7 @@ const styles = StyleSheet.create({
     width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 8,
   },
   kpiLabel: { flex: 1, fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.textSecondary },
+  kpiCaption: { fontSize: fonts.tiny, fontFamily: fontFamily.regular, color: colors.disabled },
   kpiValue: { fontSize: 22, fontFamily: fontFamily.bold, fontWeight: '700' },
   kpiMeta: { fontSize: 12, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 6 },
   kpiBenchBar: { height: 5, borderRadius: 2.5, marginTop: 10 },

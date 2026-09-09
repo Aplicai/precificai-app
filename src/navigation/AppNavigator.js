@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { NavigationContainer, CommonActions, StackActions } from '@react-navigation/native';
+import { NavigationContainer, CommonActions, StackActions, useFocusEffect } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Text, View, Image, Platform, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native';
@@ -389,19 +389,40 @@ let __pendingMaisRestore = null;
 // Substituí o initialRouteName dinâmico antigo (Sessão 28.65 — bug fix:
 // botão voltar não funcionava em /Configuracoes em mobile, e double-tap
 // na tab Mais não voltava pra MaisMain).
+//
+// UX audit 09/09 (item 14) — no DESKTOP a grade de Ferramentas repete a sidebar
+// inteira. Sempre que MaisMain ganha foco em desktop, é substituída por
+// Financeiro (`replace`: MaisMain sai do stack, sem seta "voltar" órfã).
+// Route names ('Mais' / 'MaisMain') NÃO mudam: LAST_TAB_KEY no AsyncStorage,
+// deep-links e navegações cross-tab continuam válidos. Mobile mantém a grade.
+const DESKTOP_MAIS_HOME = 'FinanceiroMain';
+
 function MaisMainWithRestore(props) {
+  const { isDesktop } = useResponsiveLayout();
+  const { navigation } = props;
+
   React.useEffect(() => {
     const target = __pendingMaisRestore;
-    if (target && target !== 'MaisMain' && RESTORABLE_MAIS_SCREENS.has(target)) {
-      __pendingMaisRestore = null;
-      // Empurra a tela salva no topo do stack. MaisMain fica embaixo
-      // pra que o botão voltar e o popToTop continuem funcionando.
-      props.navigation.navigate(target);
-    } else {
-      __pendingMaisRestore = null;
-    }
+    __pendingMaisRestore = null;
+    if (!target || target === 'MaisMain' || !RESTORABLE_MAIS_SCREENS.has(target)) return;
+    // Desktop + alvo = Financeiro: o replace abaixo já leva pra lá (evita
+    // duas instâncias de FinanceiroMain no stack).
+    if (isDesktop && target === DESKTOP_MAIS_HOME) return;
+    // Empurra a tela salva no topo do stack. MaisMain fica embaixo (mobile)
+    // pra que o botão voltar e o popToTop continuem funcionando; no desktop
+    // o replace abaixo troca essa base por Financeiro → [Financeiro, alvo].
+    navigation.navigate(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!isDesktop) return;
+      if (typeof navigation.replace === 'function') navigation.replace(DESKTOP_MAIS_HOME);
+      else navigation.navigate(DESKTOP_MAIS_HOME);
+    }, [isDesktop, navigation])
+  );
+
   return <MaisScreen {...props} />;
 }
 
@@ -468,11 +489,12 @@ function MainTabs({ route }) {
   // Sessão 28 — em telas estreitas (≤360pt) "Ferramentas" e "Embalagens" truncavam.
   // Encolher fonte e padding mantém label legível sem clip.
   const isNarrow = !isDesktop && width <= 360;
-  // Sessão 28.6 — densidade aplicada à tabBar mobile (compact=60h/9pt, comfortable=70h/11pt).
+  // Sessão 28.6 — densidade aplicada à tabBar mobile (compact=60h/10pt, comfortable=70h/11pt).
+  // UX audit 09/09 (escala tipográfica): mínimo 10 — era 9.
   // No desktop o tabBar é hidden (display:none), preservamos comportamento atual.
   const { isCompact: densityCompact, iconSize: tabIconSize } = useListDensity();
   const tabBarHeightMobile = densityCompact ? 60 : 70;
-  const tabBarFontSize = isNarrow ? 9 : (densityCompact ? 9 : 11);
+  const tabBarFontSize = isNarrow ? 10 : (densityCompact ? 10 : 11);
   const tabFontSize = tabBarFontSize;
 
   // Audit A7-perf: `screenListeners.state` dispara a CADA mudança de navegação e

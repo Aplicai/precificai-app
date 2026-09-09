@@ -1224,7 +1224,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start', marginTop: 4,
   },
   segBadgeFullText: {
-    fontSize: 9, color: '#fff',
+    fontSize: 10, color: '#fff',
     fontFamily: fontFamily.semiBold, fontWeight: '700',
   },
 

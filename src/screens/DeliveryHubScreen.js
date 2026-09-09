@@ -482,7 +482,6 @@ export default function DeliveryHubScreen({ navigation }) {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.pageHeaderTitle}>Delivery</Text>
-          <Text style={styles.pageHeaderSubtitle}>Gerencie produtos, plataformas e combos para iFood, Rappi e outros</Text>
         </View>
       </View>
 
@@ -813,7 +812,7 @@ export default function DeliveryHubScreen({ navigation }) {
                               Composição do preço sugerido:
                             </Text>
                             {[
-                              { label: 'CMV (insumos + embalagem)', value: simResult.sugCompleta.cmv },
+                              { label: 'Custo dos ingredientes e embalagem (CMV)', value: simResult.sugCompleta.cmv },
                               { label: `Lucro desejado (${((contextoFin.lucroPerc || 0) * 100).toFixed(1)}%)`, value: simResult.sugCompleta.preco * (contextoFin.lucroPerc || 0) },
                               { label: `Custos fixos (${((contextoFin.fixoPerc || 0) * 100).toFixed(1)}% do faturamento)`, value: simResult.sugCompleta.preco * (contextoFin.fixoPerc || 0) },
                               { label: `Imposto (${((contextoFin.impostoPerc || 0) * 100).toFixed(1)}%)`, value: simResult.sugCompleta.preco * (contextoFin.impostoPerc || 0) },
@@ -912,7 +911,7 @@ export default function DeliveryHubScreen({ navigation }) {
                             </Text>
                             {[
                               { label: 'Preço cobrado na plataforma', value: custom.preco, bold: true, color: colors.text },
-                              { label: 'CMV (insumos + embalagem)', value: -simResult.custoUnit, color: colors.error },
+                              { label: 'Custo dos ingredientes e embalagem (CMV)', value: -simResult.custoUnit, color: colors.error },
                               { label: `Custos fixos (${((contextoFin.fixoPerc || 0) * 100).toFixed(1)}% do faturamento)`, value: -valFixos, color: colors.error },
                               { label: `Imposto (${((contextoFin.impostoPerc || 0) * 100).toFixed(1)}%)`, value: -valImposto, color: colors.error },
                               { label: `Comissão plataforma (${simResult.comissaoPct.toFixed(1)}%)`, value: -valComissao, color: colors.error },
@@ -1132,9 +1131,9 @@ export default function DeliveryHubScreen({ navigation }) {
             ) : (
               <ScrollView style={{ maxHeight: 460 }} contentContainerStyle={{ padding: spacing.md }}>
                 <View style={{ flexDirection: 'row', paddingHorizontal: 4, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 6 }}>
-                  <Text style={{ flex: 2, fontSize: 10, color: colors.textSecondary, fontFamily: fontFamily.bold, letterSpacing: 0.5 }}>PRODUTO</Text>
-                  <Text style={{ width: 80, fontSize: 10, color: colors.textSecondary, fontFamily: fontFamily.bold, letterSpacing: 0.5, textAlign: 'right' }}>BALCÃO</Text>
-                  <Text style={{ width: 110, fontSize: 10, color: colors.primary, fontFamily: fontFamily.bold, letterSpacing: 0.5, textAlign: 'right' }}>QUANTO COBRO</Text>
+                  <Text style={{ flex: 2, fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.bold, letterSpacing: 0.5 }}>PRODUTO</Text>
+                  <Text style={{ width: 80, fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.bold, letterSpacing: 0.5, textAlign: 'right' }}>BALCÃO</Text>
+                  <Text style={{ width: 110, fontSize: 11, color: colors.primary, fontFamily: fontFamily.bold, letterSpacing: 0.5, textAlign: 'right' }}>QUANTO COBRO</Text>
                 </View>
                 {precosProdutos.map((p, idx) => {
                   const balcao = typeof p.preco_venda === 'number' ? p.preco_venda : Number(p.preco_venda) || 0;

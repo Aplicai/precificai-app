@@ -100,7 +100,7 @@ export default function ProdutosListScreen({ navigation }) {
   const [filtroLucro, setFiltroLucro] = usePersistedState('produtos.filtroLucro', null);
   // Bug fix: no mobile o grid renderiza apenas chips com preço (sem nome). Força lista no mobile.
   const isGrid = isDesktop;
-  const { rowOverride, nameOverride, avatarSize, isCompact, rowMinHeight, titleFontSize, listItemSubtitleFontSize } = useListDensity();
+  const { rowOverride, nameOverride, isCompact, rowMinHeight, titleFontSize, listItemSubtitleFontSize } = useListDensity();
   const bulk = useBulkSelection();
   const [totalProdutos, setTotalProdutos] = useState(0);
   // Mapa de cores por categoria ID
@@ -399,7 +399,7 @@ export default function ProdutosListScreen({ navigation }) {
     });
 
     let secs = Object.values(grouped)
-      .filter(g => g.data.length > 0 || filtroCategoria === g.id)
+      .filter(g => g.data.length > 0 || (filtroCategoria !== null && filtroCategoria === g.id))
       .sort((a, b) => {
         if (a.id === null) return 1;
         if (b.id === null) return -1;
@@ -816,7 +816,28 @@ export default function ProdutosListScreen({ navigation }) {
         return true;
       }),
     }))
-    .filter((s) => s.data.length > 0 || filtroCategoria === s.catId);
+    .filter((s) => s.data.length > 0 || (filtroCategoria !== null && filtroCategoria === s.catId));
+
+  // UX audit 09/09: estado vazio com exemplo real quando não há NADA; variante de
+  // busca/filtro quando a lista está vazia só por causa de busca ou faixa de lucro.
+  const emptyProps = busca.trim()
+    ? { icon: 'search', title: `Nenhum resultado para "${busca.trim()}"`, description: 'Tente outro termo ou limpe a busca.' }
+    : totalProdutos === 0
+      ? {
+          icon: 'box',
+          title: 'Nenhum produto ainda',
+          description: 'Monte o primeiro — ex.: Bolo de cenoura',
+          ctaLabel: 'Criar produto',
+          onPress: () => abrirCriacao(),
+        }
+      : {
+          icon: 'filter',
+          title: 'Nenhum produto com esse filtro',
+          description: 'Tente outra faixa de lucro ou categoria.',
+          ctaLabel: 'Limpar filtros',
+          ctaIcon: 'x',
+          onPress: () => { setFiltroLucro(null); setFiltroCategoria(null); },
+        };
 
   // P3-B Stats summary
   const visibleItems = visibleSections.flatMap((s) => s.data);
@@ -981,15 +1002,7 @@ export default function ProdutosListScreen({ navigation }) {
                 loading ? (
                   <Skeleton.List count={6} />
                 ) : (
-                  <EmptyState
-                    icon={busca.trim() ? 'search' : 'box'}
-                    title={busca.trim() ? 'Nenhum produto encontrado' : 'Nenhum produto cadastrado'}
-                    description={busca.trim()
-                      ? `Não encontramos resultados para "${busca}".`
-                      : 'Último passo · Monte a ficha técnica completa combinando insumos, preparos e embalagens.'}
-                    ctaLabel={!busca.trim() ? 'Criar Produto' : undefined}
-                    onPress={!busca.trim() ? () => abrirCriacao() : undefined}
-                  />
+                  <EmptyState {...emptyProps} />
                 )
               ) : (
                 renderDesktopGrid()
@@ -1021,15 +1034,7 @@ export default function ProdutosListScreen({ navigation }) {
             loading ? (
               <Skeleton.List count={6} />
             ) : (
-              <EmptyState
-                icon={busca.trim() ? 'search' : 'box'}
-                title={busca.trim() ? 'Nenhum produto encontrado' : 'Nenhum produto cadastrado'}
-                description={busca.trim()
-                  ? `Não encontramos resultados para "${busca}".`
-                  : 'Crie sua primeira ficha técnica com ingredientes, preparos e embalagens.'}
-                ctaLabel={!busca.trim() ? 'Criar Produto' : undefined}
-                onPress={!busca.trim() ? () => abrirCriacao() : undefined}
-              />
+              <EmptyState {...emptyProps} />
             )
           }
           renderSectionHeader={({ section }) => {
@@ -1056,7 +1061,7 @@ export default function ProdutosListScreen({ navigation }) {
             const isFirst = index === 0;
             const isLast = index === section.data.length - 1;
             const catColor = catColorMap[item.categoria_id] || catColorMap['null'] || colors.disabled;
-            const inicial = (item.nome || '?').charAt(0).toUpperCase();
+            const hasCatColor = !!(item.categoria_id && catColorMap[item.categoria_id]);
             const selected = bulk.isSelected(item.id);
 
             return (
@@ -1075,15 +1080,13 @@ export default function ProdutosListScreen({ navigation }) {
                 onLongPress={() => handleRowLongPress(item)}
                 activeOpacity={0.6}
               >
-                {/* Avatar com inicial OU checkbox no modo bulk */}
+                {/* Checkbox em modo bulk OU ponto de cor da categoria (UX audit 09/09, item 13) */}
                 {bulk.active ? (
                   <View style={[styles.checkbox, selected && styles.checkboxChecked, { marginRight: spacing.sm }]}>
                     {selected && <Feather name="check" size={14} color="#fff" />}
                   </View>
                 ) : (
-                  <View style={[styles.avatar, { backgroundColor: catColor + '18', width: avatarSize, height: avatarSize, borderRadius: avatarSize / 2 }]}>
-                    <Text style={[styles.avatarText, { color: catColor }]}>{inicial}</Text>
-                  </View>
+                  <View style={[styles.catDot, hasCatColor ? { backgroundColor: catColor } : { backgroundColor: 'transparent' }]} />
                 )}
 
                 {/* Info */}
@@ -1479,14 +1482,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary + '0E',
   },
 
-  // Avatar
-  avatar: {
-    width: 36, height: 36, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
+  // Ponto de cor da categoria (substitui o avatar-letra — UX audit 09/09, item 13)
+  catDot: {
+    width: 8, height: 8, borderRadius: 4,
     marginRight: spacing.sm,
-  },
-  avatarText: {
-    fontSize: 15, fontFamily: fontFamily.bold, fontWeight: '700',
+    flexShrink: 0,
   },
 
   // Info

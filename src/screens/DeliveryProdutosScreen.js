@@ -717,7 +717,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start', overflow: 'hidden',
   },
   tipoBadgeText: {
-    fontSize: 9, fontFamily: fontFamily.bold, fontWeight: '700',
+    fontSize: 10, fontFamily: fontFamily.bold, fontWeight: '700',
   },
   modalItemDeleteBtn: {
     marginLeft: spacing.xs, padding: spacing.xs,

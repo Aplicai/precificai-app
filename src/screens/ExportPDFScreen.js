@@ -842,7 +842,7 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
         <div class="section-title">Resumo de Custos</div>
         <div class="resumo-grid">
           <div class="resumo-item">
-            <span class="resumo-label">CMV</span>
+            <span class="resumo-label">Custo dos ingredientes (CMV)</span>
             <span class="resumo-value">${fmtCur(cmv)}</span>
           </div>
           <div class="resumo-item">
@@ -906,7 +906,7 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
         <div class="composicao-grid">
           <div class="comp-item">
             <div class="comp-bar" style="width:${Math.min(cmvPerc * 100, 100)}%; background-color:#e3704d;"></div>
-            <span class="comp-label">CMV</span>
+            <span class="comp-label">Custo dos ingredientes (CMV)</span>
             <span class="comp-value">${fmtPct(cmvPerc)}</span>
           </div>
           <div class="comp-item">
