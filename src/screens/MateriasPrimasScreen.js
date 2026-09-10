@@ -600,8 +600,11 @@ export default function MateriasPrimasScreen({ navigation }) {
   }
 
   // Filtra linhas em janela de undo (P1-11)
+  // Walkthrough 10/09 (P0): filtro de busca também na renderização (ver ProdutosListScreen).
+  const termoBusca = normalizeSearch(busca);
+  const casaBusca = (it) => !termoBusca || normalizeSearch(it.nome).includes(termoBusca) || normalizeSearch(it.marca || '').includes(termoBusca);
   const visibleSections = sections
-    .map((s) => ({ ...s, data: s.data.filter((it) => !undoDelete.hiddenIds.has(it.id)) }))
+    .map((s) => ({ ...s, data: s.data.filter((it) => !undoDelete.hiddenIds.has(it.id) && casaBusca(it)) }))
     .filter((s) => s.data.length > 0 || (filtroCategoria !== null && filtroCategoria === s.catId));
 
   // UX audit 09/09: estado vazio com exemplo real quando não há NADA; variante de

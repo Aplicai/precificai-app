@@ -734,10 +734,12 @@ export default function PreparosScreen({ navigation }) {
   }
 
   // Filtra linhas em janela de undo (P1-11) — memoizado para evitar map+filter a cada render.
+  // Walkthrough 10/09 (P0): filtro de busca também na renderização (ver ProdutosListScreen).
+  const termoBusca = normalizeSearch(busca);
   const visibleSections = useMemo(() => sections
-    .map((s) => ({ ...s, data: s.data.filter((it) => !undoDelete.hiddenIds.has(it.id)) }))
+    .map((s) => ({ ...s, data: s.data.filter((it) => !undoDelete.hiddenIds.has(it.id) && (!termoBusca || normalizeSearch(it.nome).includes(termoBusca))) }))
     .filter((s) => s.data.length > 0 || (filtroCategoria !== null && filtroCategoria === s.catId)),
-    [sections, undoDelete.hiddenIds, filtroCategoria]);
+    [sections, undoDelete.hiddenIds, filtroCategoria, termoBusca]);
 
   // UX audit 09/09: estado vazio com exemplo real quando não há NADA; variante de busca
   // quando a lista está vazia só por causa da busca.

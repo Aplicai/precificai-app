@@ -846,6 +846,11 @@ export default function ProdutosListScreen({ navigation }) {
       data: s.data.filter((it) => {
         if (undoDelete.hiddenIds.has(it.id)) return false;
         if (filtroLucro && getMargemClass(it.margem, config.margemMeta) !== filtroLucro) return false;
+        // Walkthrough 10/09 (P0): o filtro de busca só entrava quando o loadData
+        // assíncrono voltava; nesse intervalo a lista mostrava TUDO e o 1º "Excluir"
+        // visível podia ser outro item (apagou um produto QA no e2e). Filtra na
+        // renderização também — imediato e independente do banco.
+        if (busca.trim() && !normalizeSearch(it.nome).includes(normalizeSearch(busca))) return false;
         return true;
       }),
     }))
