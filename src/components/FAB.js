@@ -39,6 +39,8 @@ export default function FAB({ onPress, iconName = 'plus', size, label, accessibi
 }
 
 const styles = StyleSheet.create({
+  // Refinamento visual 09/09: sombra suave (opacity 0.18, raio 12, offset 0/4) —
+  // único lugar do app (além de modal) onde sombra é permitida.
   fab: {
     position: 'absolute',
     right: 20,
@@ -47,9 +49,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     elevation: 6,
     shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
   },
   fabExpanded: {
     flexDirection: 'row',

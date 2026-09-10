@@ -21,7 +21,7 @@ import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendiment
 // Sprint 2 S3 — fonte única da verdade para precificação delivery (substitui fórmula inline duplicada).
 import { calcResultadoDelivery, sugerirPrecoDelivery, calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
 // Sessão 28.12 (D-22b): adapter pra extrair imposto% das despesas variáveis
-import { buildContextoFinanceiro, normalizePlataforma } from '../utils/deliveryAdapter';
+import { buildContextoFinanceiro, normalizePlataforma, custoDelivery, embalagemDeliveryDoProduto } from '../utils/deliveryAdapter';
 // Sessão 28.26: service unificado de upsert do "preço delivery cobrado pelo user"
 import { upsertPrecoDelivery } from '../services/precoDeliveryService';
 // D-24: simulador em lote renderiza inline dentro do hub
@@ -223,7 +223,11 @@ export default function DeliveryHubScreen({ navigation }) {
       const custoUnit = (custoIng + custoPr + custoEmb) / getDivisorRendimento(p);
       // Sessão 28.9 — Auditoria P0-02: usar calcMargem (bruta — delivery view não considera despesas operacionais)
       const margem = calcMargem(p.preco_venda, custoUnit);
-      return { ...p, custoUnit, margem };
+      // Custo no delivery = ingredientes + embalagem de delivery do produto
+      // (produtos.embalagem_delivery_id × quantidade). Sem embalagem → igual ao custoUnit.
+      const embDelivery = embalagemDeliveryDoProduto(p, embsAll || []);
+      const custoDeliveryUnit = custoDelivery({ cmv: custoUnit, embalagemDeliveryPreco: embDelivery.preco, embalagemDeliveryQtd: embDelivery.qtd });
+      return { ...p, custoUnit, custoDelivery: custoDeliveryUnit, embDeliveryCusto: embDelivery.custo, embDeliveryNome: embDelivery.nome, margem };
     });
     setProdutos(prodData);
 
@@ -254,7 +258,8 @@ export default function DeliveryHubScreen({ navigation }) {
         return a; // delivery_produto: custo não disponível nesta tela
       }, 0);
       const margem = calcMargem(c.preco_venda, custoUnit);
-      return { ...c, custoUnit, margem, isCombo: true };
+      // Combo: sem embalagem de delivery própria — custo no delivery = custo dos itens.
+      return { ...c, custoUnit, custoDelivery: custoUnit, embDeliveryCusto: 0, margem, isCombo: true };
     });
     setCombos(comboData);
     } catch (e) {
@@ -352,9 +357,12 @@ export default function DeliveryHubScreen({ navigation }) {
     // Mantém os mesmos campos no setSimResult para preservar o render existente.
     const precoBalcao = prod.preco_venda;
     const custoUnit = prod.custoUnit;
+    // Custo no delivery (cmv + embalagem de delivery) — é o que entra em TODOS os
+    // cálculos de delivery abaixo. O lucro líquido do balcão continua usando custoUnit.
+    const custoUnitDelivery = Number.isFinite(prod.custoDelivery) ? prod.custoDelivery : custoUnit;
     const margemBalcao = precoBalcao > 0 ? (precoBalcao - custoUnit) / precoBalcao : 0;
 
-    const r = calcResultadoDelivery({ precoVenda: precoBalcao, custoUnit, plat });
+    const r = calcResultadoDelivery({ precoVenda: precoBalcao, custoUnit: custoUnitDelivery, plat });
     const comissaoPct = r.comissaoPct;
     const descontoPct = r.descontoPct;
     const cupomR$ = r.cupomR$;
@@ -370,14 +378,14 @@ export default function DeliveryHubScreen({ navigation }) {
 
     const margemAlvoRaw = parseFloat(margemDesejada);
     const margemAlvo = (Number.isFinite(margemAlvoRaw) ? margemAlvoRaw : 30) / 100;
-    const sug = sugerirPrecoDelivery({ custoUnit, plat, margemAlvo, arredondar: false });
+    const sug = sugerirPrecoDelivery({ custoUnit: custoUnitDelivery, plat, margemAlvo, arredondar: false });
     const precoSugerido = sug.precoSugerido;
     const precoMinimo = sug.precoMinimo;
     const divisorMin = (1 - descontoPct) * (1 - comissaoPct);
 
     // D-22b (sessão 28.12): preço sugerido COMPLETO usa MARGEM DO FINANCEIRO
     const sugCompleta = calcSugestaoDeliveryCompleta({
-      cmv: custoUnit,
+      cmv: custoUnitDelivery,
       plat,
       contexto: contextoFin,
     });
@@ -391,14 +399,18 @@ export default function DeliveryHubScreen({ navigation }) {
       ? Math.max(0, precoBalcao - custoUnit - precoBalcao * ((contextoFin.fixoPerc || 0) + (contextoFin.variavelPerc || 0)))
       : 0;
     const sugMantemMargem = (precoBalcao > 0 && lucroLiqBalcaoReais > 0)
-      ? calcPrecoMesmoLucroReais({ cmv: custoUnit, lucroAlvoReais: lucroLiqBalcaoReais, plat, contexto: contextoFin })
+      ? calcPrecoMesmoLucroReais({ cmv: custoUnitDelivery, lucroAlvoReais: lucroLiqBalcaoReais, plat, contexto: contextoFin })
       : null;
 
     setSimResult({
       prodNome: isComboSel ? prod.nome + ' (Combo)' : prod.nome,
       platNome: plat.plataforma,
       precoBalcao,
-      custoUnit,
+      // custoUnit = custo NO DELIVERY (cmv + embalagem de delivery) — é o que o
+      // render subtrai/compõe. custoBalcao/embDeliveryCusto ficam pra exibição.
+      custoUnit: custoUnitDelivery,
+      custoBalcao: custoUnit,
+      embDeliveryCusto: safeNum(prod.embDeliveryCusto),
       comissaoPct: comissaoPct * 100,
       descontoPct: descontoPct * 100,
       cupomReais: cupomR$,
@@ -812,7 +824,7 @@ export default function DeliveryHubScreen({ navigation }) {
                               Composição do preço sugerido:
                             </Text>
                             {[
-                              { label: 'Custo dos ingredientes e embalagem (CMV)', value: simResult.sugCompleta.cmv },
+                              { label: simResult.embDeliveryCusto > 0 ? 'Custo no delivery (ingredientes + embalagem de delivery)' : 'Custo dos ingredientes e embalagem (CMV)', value: simResult.sugCompleta.cmv },
                               { label: `Lucro desejado (${((contextoFin.lucroPerc || 0) * 100).toFixed(1)}%)`, value: simResult.sugCompleta.preco * (contextoFin.lucroPerc || 0) },
                               { label: `Custos fixos (${((contextoFin.fixoPerc || 0) * 100).toFixed(1)}% do faturamento)`, value: simResult.sugCompleta.preco * (contextoFin.fixoPerc || 0) },
                               { label: `Imposto (${((contextoFin.impostoPerc || 0) * 100).toFixed(1)}%)`, value: simResult.sugCompleta.preco * (contextoFin.impostoPerc || 0) },
@@ -911,7 +923,7 @@ export default function DeliveryHubScreen({ navigation }) {
                             </Text>
                             {[
                               { label: 'Preço cobrado na plataforma', value: custom.preco, bold: true, color: colors.text },
-                              { label: 'Custo dos ingredientes e embalagem (CMV)', value: -simResult.custoUnit, color: colors.error },
+                              { label: simResult.embDeliveryCusto > 0 ? 'Custo no delivery (ingredientes + embalagem de delivery)' : 'Custo dos ingredientes e embalagem (CMV)', value: -simResult.custoUnit, color: colors.error },
                               { label: `Custos fixos (${((contextoFin.fixoPerc || 0) * 100).toFixed(1)}% do faturamento)`, value: -valFixos, color: colors.error },
                               { label: `Imposto (${((contextoFin.impostoPerc || 0) * 100).toFixed(1)}%)`, value: -valImposto, color: colors.error },
                               { label: `Comissão plataforma (${simResult.comissaoPct.toFixed(1)}%)`, value: -valComissao, color: colors.error },
@@ -1158,7 +1170,8 @@ export default function DeliveryHubScreen({ navigation }) {
                     );
                     if (lucroLiqBalcaoReais > 0) {
                       const r = calcPrecoMesmoLucroReais({
-                        cmv: prodComCusto.custoUnit,
+                        // Custo no delivery = ingredientes + embalagem de delivery do produto
+                        cmv: Number.isFinite(prodComCusto.custoDelivery) ? prodComCusto.custoDelivery : prodComCusto.custoUnit,
                         lucroAlvoReais: lucroLiqBalcaoReais,
                         plat: platRow,
                         contexto: contextoFin,
@@ -1168,7 +1181,14 @@ export default function DeliveryHubScreen({ navigation }) {
                   }
                   return (
                     <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4, borderRadius: 6, backgroundColor: idx % 2 === 0 ? 'transparent' : colors.background }}>
-                      <Text style={{ flex: 2, fontSize: fonts.small, color: colors.text }} numberOfLines={2}>{p.nome}</Text>
+                      <View style={{ flex: 2 }}>
+                        <Text style={{ fontSize: fonts.small, color: colors.text }} numberOfLines={2}>{p.nome}</Text>
+                        {prodComCusto && (
+                          <Text style={{ fontSize: 11, color: colors.textSecondary }} numberOfLines={1}>
+                            Custo no delivery {formatCurrency(Number.isFinite(prodComCusto.custoDelivery) ? prodComCusto.custoDelivery : prodComCusto.custoUnit)}
+                          </Text>
+                        )}
+                      </View>
                       <Text style={{ width: 80, fontSize: fonts.small, color: colors.textSecondary, textAlign: 'right' }}>
                         R$ {balcao.toFixed(2).replace('.', ',')}
                       </Text>

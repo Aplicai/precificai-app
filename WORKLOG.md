@@ -22,6 +22,10 @@ Status possíveis: `não iniciado` · `em análise` · `validado` · `com risco`
 - Verificado ao vivo (localhost): sidebar resolve todas as rotas com título certo; Financeiro "Voltar" → Painel Geral; Insumos com tag "estimado" + chip; Produtos vazio com exemplo + CTA; abas "Ingredientes"/"Receitas base"; zero erros de console.
 - Deixados de fora (por decisão técnica): rótulos `DEPENDENCY_QUERIES` ("• 3 preparos") — teste unitário fixa o literal; "CMV R$ x" compacto nas linhas densas (specs e2e dependem); categoria `'Insumos'` do Fluxo de Caixa (valor persistido).
 
+### 09/09 (cont.) — header/sidebar após restaurar aba
+- Bug real (prod): ao abrir o app com última aba = Ingredientes, header e sidebar mostravam "Painel Geral". Causa: estado aninhado ausente no pai no 1º frame. Fix em `AppNavigator`/`WebLayout`/`WebHeader`/`Sidebar` (`initialTab`). Verificado ao vivo (reload em Receitas base → header/sidebar corretos).
+- Também: `useUndoableDelete` commit no `pagehide`; labels a11y nas linhas mobile; tab bar mobile "Ingred."/"Receitas".
+
 ## Sessão atual (2026-04-22) — Auditoria de produto + fix do modal de Estoque
 
 ### Diagnóstico inicial

@@ -3,6 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Sidebar from './Sidebar';
 import WebHeader from './WebHeader';
+import { colors } from '../../utils/theme';
 
 export default function WebLayout({ children, notifCount, onNotifPress, initialTab }) {
   const navigation = useNavigation();
@@ -41,5 +42,8 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    // Refinamento visual 09/09: fundo quente único para todas as telas web
+    // (evita cada tela hardcodar seu próprio cinza de fundo).
+    backgroundColor: colors.background,
   },
 });

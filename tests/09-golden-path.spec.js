@@ -220,9 +220,10 @@ test('1. cria insumo E2E-Farinha a R$ 5,00/kg', async ({ page }) => {
 
   await fillPlaceholder(page, 'Ex: Farinha de trigo', N.farinha);
   // Unidade padrão do form é "g": 1000 g por R$ 5,00 ⇒ R$ 5,00/kg
-  await fillPlaceholder(page, 'Ex: 1000 (use vírgula para decimais)', '1000');
-  await fillPlaceholder(page, 'Ex: 800 (use vírgula para decimais)', '1000');
-  await fillPlaceholder(page, 'Ex: 5,00 (total da nota por essa quantidade)', '5');
+  // Placeholders curtos desde o walkthrough 09/09 ("Ex.: 1000" / "Igual à bruta se vazio" / "Ex.: 5,90").
+  await fillPlaceholder(page, 'Ex.: 1000', '1000');
+  await fillPlaceholder(page, 'Igual à bruta se vazio', '1000');
+  await fillPlaceholder(page, 'Ex.: 5,90', '5');
   await page.getByText('Salvar Ingrediente', { exact: true }).click();
   await page.waitForTimeout(1500);
 

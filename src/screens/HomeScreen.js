@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDatabase } from '../database/database';
-import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import { colors, spacing, fonts, fontFamily, borderRadius, typography, numeric, radius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual } from '../utils/calculations';
 import { calcSobraMes } from '../utils/breakeven';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
@@ -56,7 +56,7 @@ export default function HomeScreen({ navigation }) {
   // ≤360pt: 1 coluna (100%); demais mobile: 2 colunas (48%); desktop usa kpiCardDesktop.
   const kpiCardWidth = width <= 360 ? '100%' : '48%';
   // Sessão 28.6 — densidade aplicada em cards e títulos da Home
-  const { isCompact, cardPadding, sectionGap, titleFontSize } = useListDensity();
+  const { isCompact, cardPadding, sectionGap } = useListDensity();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [d, setD] = useState({
@@ -804,7 +804,7 @@ export default function HomeScreen({ navigation }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
         {/* UX audit 09/09 (Fase B, item 10): sem "?" no título da seção; a
             regra 30-30-30-10 foi pro tooltip do card de ingredientes (CMV). */}
-        <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }, isMobile && styles.sectionTitleMobile]}>Saúde da Precificação</Text>
+        <Text style={styles.sectionTitle}>Saúde da Precificação</Text>
       </View>
       <View style={[styles.kpiRow, isDesktop && styles.kpiRowDesktop, isMobile && styles.kpiRowMobile]}>
         {(() => {
@@ -853,15 +853,14 @@ export default function HomeScreen({ navigation }) {
             : { accessibilityLabel: a11yLabel };
           return (
             <Wrapper key={k.label} style={[styles.kpiCard, { padding: cardPadding, minHeight: isCompact ? 80 : 96 }, !isDesktop && { width: kpiCardWidth, minWidth: undefined }, isDesktop && styles.kpiCardDesktop, isMobile && styles.kpiCardMobile]} {...wrapperProps}>
+              {/* Refinamento visual 09/09: sem círculo de ícone colorido — label
+                  12 px acima do valor, cor só no número e na barra de benchmark. */}
               <View style={styles.kpiHeader}>
-                <View style={[styles.kpiIconCircle, { backgroundColor: k.color + '15' }]}>
-                  <Feather name={k.icon} size={14} color={k.color} />
-                </View>
                 {/* caption "(CMV)" fica no tooltip: inline estourava as 2 linhas do card. */}
                 <Text style={styles.kpiLabel} numberOfLines={2}>{k.label}</Text>
                 {k.tip && <InfoTooltip {...k.tip} />}
               </View>
-              <Text style={[styles.kpiValue, { color: k.color }]} numberOfLines={1} adjustsFontSizeToFit>{k.value}</Text>
+              <Text style={[styles.kpiValue, numeric, { color: k.color }]} numberOfLines={1} adjustsFontSizeToFit>{k.value}</Text>
               {k.meta && <Text style={styles.kpiMeta} numberOfLines={1}>{k.meta}</Text>}
               {k.bench && <View style={[styles.kpiBenchBar, { backgroundColor: benchColors[k.bench] }]} />}
             </Wrapper>
@@ -883,7 +882,7 @@ export default function HomeScreen({ navigation }) {
       {/* Análises locked */}
       {pendente && (
         <>
-          <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }]}>Análises</Text>
+          <Text style={styles.sectionTitle}>Análises</Text>
           <View style={styles.analysisLocked}>
             <View style={styles.lockedIconCircle}>
               <Feather name="lock" size={24} color={colors.textSecondary} />
@@ -900,20 +899,18 @@ export default function HomeScreen({ navigation }) {
         </>
       )}
 
-      {/* Ações Rápidas */}
-      <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }, isMobile && styles.sectionTitleMobile]}>Ações Rápidas</Text>
+      {/* Ações Rápidas — refinamento visual 09/09: 4 botões secundários (borda,
+          sem fundo colorido) em linha no desktop, grade 2x2 no mobile. */}
+      <Text style={styles.sectionTitle}>Ações Rápidas</Text>
       <View style={[styles.acoesRow, isMobile && styles.acoesRowMobile]}>
         {acoes.map((a) => (
           <TouchableOpacity key={a.label} style={[styles.acaoBtn, isMobile && styles.acaoBtnMobile]} activeOpacity={0.7} onPress={() => nav(a.tab)}>
-            <View style={styles.acaoIconCircle}>
-              {a.set === 'material' ? (
-                <MaterialCommunityIcons name={a.icon} size={18} color={colors.primary} />
-              ) : (
-                <Feather name={a.icon} size={18} color={colors.primary} />
-              )}
-            </View>
+            {a.set === 'material' ? (
+              <MaterialCommunityIcons name={a.icon} size={16} color={colors.primary} />
+            ) : (
+              <Feather name={a.icon} size={16} color={colors.primary} />
+            )}
             <Text style={styles.acaoLabel} numberOfLines={1}>{a.label}</Text>
-            <Feather name="chevron-right" size={14} color={colors.disabled} />
           </TouchableOpacity>
         ))}
       </View>
@@ -928,7 +925,7 @@ export default function HomeScreen({ navigation }) {
 
       {insightsLista.length > 0 && (
         <>
-          <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }, isMobile && styles.sectionTitleMobile]}>Análises Rápidas</Text>
+          <Text style={styles.sectionTitle}>Análises Rápidas</Text>
           {insightsLista.map((insight, i) => {
             const a = insight.action;
             const Wrapper = a ? TouchableOpacity : View;
@@ -1145,7 +1142,6 @@ const styles = StyleSheet.create({
   // Sessão 29 — overrides mobile (apenas spacing). Áreas de toque ≥ 44pt preservadas.
   greetingRowMobile: { marginBottom: spacing.sm },
   greetingTextMobile: { fontSize: 18 },
-  sectionTitleMobile: { marginTop: 0, marginBottom: 6 },
   statusCardMobile: { padding: spacing.sm + 2, marginBottom: spacing.sm + 2 },
   kpiRowMobile: { gap: 6, marginBottom: spacing.sm + 2 },
   kpiCardMobile: { padding: spacing.sm + 2 },
@@ -1174,7 +1170,7 @@ const styles = StyleSheet.create({
 
   // Greeting
   greetingRow: { marginBottom: spacing.md },
-  greetingText: { fontSize: 20, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.text },
+  greetingText: { fontSize: typography.title, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.text },
   greetingDesc: { fontSize: 13, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 2 },
 
   // Error banner — usado quando loadAll() falha. Cor coral/error + retry inline.
@@ -1212,10 +1208,9 @@ const styles = StyleSheet.create({
 
   // Setup banner
   setupBanner: {
-    backgroundColor: colors.surface, borderRadius: borderRadius.lg,
-    borderWidth: 1, borderColor: colors.primary + '20',
+    backgroundColor: colors.surface, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border,
     padding: spacing.md, marginBottom: spacing.md,
-    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
   },
   setupBannerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   setupBannerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
@@ -1255,11 +1250,11 @@ const styles = StyleSheet.create({
   stepLabelDone: { color: colors.textSecondary, textDecorationLine: 'line-through' },
   stepDesc: { fontSize: fonts.tiny, color: colors.textSecondary, fontFamily: fontFamily.regular, marginTop: 1 },
 
-  // Status
+  // Status — refinamento visual 09/09: sem sombra, borda 1px (regra: sombra só em modal/FAB).
   statusCard: {
-    backgroundColor: colors.surface, borderRadius: borderRadius.lg,
+    backgroundColor: colors.surface, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border,
     padding: spacing.md, marginBottom: spacing.lg,
-    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
   },
   statusRow: { flexDirection: 'row', alignItems: 'center' },
   statusIconCircle: {
@@ -1278,10 +1273,12 @@ const styles = StyleSheet.create({
   },
   ctaBtnText: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: '#fff', flexShrink: 1, textAlign: 'center' },
 
-  // KPIs
+  // KPIs — refinamento visual 09/09: título de seção vem do token único
+  // (13/600 uppercase, tracking 0.6, 8px abaixo) em vez da escala por densidade.
   sectionTitle: {
-    fontSize: fonts.body, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.text,
-    marginBottom: spacing.sm, marginTop: spacing.xs,
+    fontSize: typography.section, fontFamily: fontFamily.semiBold, fontWeight: '600',
+    color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.6,
+    marginBottom: 8, marginTop: spacing.xs,
   },
   kpiRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: GAP, marginBottom: spacing.md,
@@ -1289,37 +1286,33 @@ const styles = StyleSheet.create({
   kpiRowDesktop: {
     gap: 16,
   },
+  // Refinamento visual 09/09: sem sombra; borda 1px + raio 10 (mesmo tratamento dos cards de lista).
   kpiCard: {
     width: '48.5%', minWidth: 150,
-    backgroundColor: colors.surface, borderRadius: borderRadius.lg,
+    backgroundColor: colors.surface, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border,
     padding: spacing.md,
     minHeight: 96,
-    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 1,
   },
   kpiCardDesktop: {
     width: undefined, flex: 1, minWidth: 200,
   },
-  kpiHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm + 2 },
-  kpiIconCircle: {
-    width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 8,
-  },
-  kpiLabel: { flex: 1, fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.textSecondary },
+  kpiHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm },
+  kpiLabel: { flex: 1, fontSize: typography.caption, fontFamily: fontFamily.medium, color: colors.textSecondary },
   kpiCaption: { fontSize: fonts.tiny, fontFamily: fontFamily.regular, color: colors.disabled },
-  kpiValue: { fontSize: 22, fontFamily: fontFamily.bold, fontWeight: '700' },
-  kpiMeta: { fontSize: 12, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 6 },
-  kpiBenchBar: { height: 5, borderRadius: 2.5, marginTop: 10 },
+  kpiValue: { fontSize: typography.value, fontFamily: fontFamily.semiBold, fontWeight: '600' },
+  kpiMeta: { fontSize: typography.caption, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 6 },
+  kpiBenchBar: { height: 4, borderRadius: 2, marginTop: 10 },
   benchmarkRef: { fontSize: 10, fontFamily: fontFamily.regular, color: colors.textSecondary, marginBottom: spacing.sm, marginTop: -4 },
 
-  // Resumo
+  // Resumo — "tira de contadores": 4 números, sem borda de card (regra: cor só com significado).
   resumoRow: {
     flexDirection: 'row', justifyContent: 'space-around',
-    backgroundColor: colors.surface, borderRadius: borderRadius.lg,
     paddingVertical: spacing.md, marginBottom: spacing.lg,
-    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 1,
   },
   resumoItem: { alignItems: 'center', flex: 1 },
-  resumoValue: { fontSize: fonts.xlarge, fontFamily: fontFamily.bold, fontWeight: '700' },
-  resumoLabel: { fontSize: 10, fontFamily: fontFamily.medium, color: colors.textSecondary, marginTop: 2 },
+  resumoValue: { fontSize: typography.value, fontFamily: fontFamily.semiBold, fontWeight: '600', ...numeric },
+  resumoLabel: { fontSize: typography.caption, fontFamily: fontFamily.medium, color: colors.textSecondary, marginTop: 2 },
 
   // Alertas / Pendências
   alertsCard: {
@@ -1341,9 +1334,8 @@ const styles = StyleSheet.create({
 
   // Analysis locked
   analysisLocked: {
-    backgroundColor: colors.surface, borderRadius: borderRadius.lg, padding: spacing.md,
-    alignItems: 'center', marginBottom: spacing.md,
-    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 1,
+    backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+    padding: spacing.md, alignItems: 'center', marginBottom: spacing.md,
   },
   lockedIconCircle: {
     width: 48, height: 48, borderRadius: 24, backgroundColor: colors.border + '40',
@@ -1358,21 +1350,24 @@ const styles = StyleSheet.create({
   },
   analysisLockedCtaText: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: '#fff' },
 
-  // Ações rápidas
+  // Ações rápidas — botões secundários em linha (desktop) / grade 2x2 (mobile).
   acoesRow: {
-    backgroundColor: colors.surface, borderRadius: borderRadius.lg, overflow: 'hidden',
-    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 1,
+    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm,
+  },
+  acoesRowMobile: {
+    gap: spacing.sm,
   },
   acaoBtn: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 4,
-    borderBottomWidth: 1, borderBottomColor: colors.border,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingHorizontal: spacing.sm, paddingVertical: spacing.sm + 4, minHeight: 44,
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    flexGrow: 1, flexBasis: '23%', minWidth: 150,
   },
-  acaoIconCircle: {
-    width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primary + '10',
-    alignItems: 'center', justifyContent: 'center', marginRight: spacing.sm,
+  acaoBtnMobile: {
+    flexBasis: '47%', minWidth: 0,
   },
-  acaoLabel: { flex: 1, fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.text },
+  acaoLabel: { fontSize: typography.body, fontFamily: fontFamily.medium, color: colors.text, textAlign: 'center' },
 
   // Insights
   insightCard: {

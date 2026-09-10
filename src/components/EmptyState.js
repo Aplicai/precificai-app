@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import { colors, spacing, fonts, fontFamily, borderRadius, radius } from '../utils/theme';
 
 /**
  * EmptyState — placeholder amigável para listas vazias.
@@ -24,7 +24,7 @@ export default function EmptyState({ icon = 'inbox', title, description, ctaLabe
   return (
     <View style={styles.container}>
       <View style={styles.iconCircle}>
-        <Feather name={icon} size={32} color={colors.primary} />
+        <Feather name={icon} size={40} color={colors.primary} />
       </View>
       <Text style={styles.title}>{title || 'Nenhum item'}</Text>
       {description && <Text style={styles.description}>{description}</Text>}
@@ -49,7 +49,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: colors.primary + '12',
+    backgroundColor: colors.surfaceTint,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
@@ -75,16 +75,18 @@ const styles = StyleSheet.create({
   cta: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: colors.primary,
-    borderRadius: borderRadius.sm,
+    borderRadius: radius.md,
+    minHeight: 44,
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.lg,
   },
   ctaText: {
     color: '#fff',
-    fontFamily: fontFamily.bold,
-    fontWeight: '700',
-    fontSize: fonts.small,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    fontSize: 15,
   },
   // Variante compacta (dentro de modais/cards)
   compactContainer: {

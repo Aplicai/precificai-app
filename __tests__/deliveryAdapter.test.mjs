@@ -10,6 +10,8 @@ import {
   extrairImpostoPercentual,
   normalizePlataforma,
   buildContextoFinanceiro,
+  custoDelivery,
+  embalagemDeliveryDoProduto,
 } from '../src/utils/deliveryAdapter.js';
 
 const close = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `esperado ${b}, obtido ${a}`);
@@ -103,4 +105,38 @@ test('buildContextoFinanceiro — sem faturamento, fixo% é 0 (não NaN/Infinity
   const ctx = buildContextoFinanceiro({ cfgRows: [{}], fixasRows: [{ valor: 3000 }], fatRows: [], varsRows: [] });
   assert.equal(ctx.fixoPerc, 0);
   assert.ok(Number.isFinite(ctx.fixoPerc));
+});
+
+// ── Embalagem de delivery no produto (design 2026-09-09) ──────────────────
+test('custoDelivery — cmv + preço × qtd (critério de pronto: bolo 4,13 + caixa 2,50 = 6,63)', () => {
+  close(custoDelivery({ cmv: 4.13, embalagemDeliveryPreco: 2.5, embalagemDeliveryQtd: 1 }), 6.63);
+  close(custoDelivery({ cmv: 4.13, embalagemDeliveryPreco: 2.5, embalagemDeliveryQtd: 2 }), 9.13);
+});
+
+test('custoDelivery — sem embalagem (null/0/undefined) devolve só o cmv', () => {
+  assert.equal(custoDelivery({ cmv: 10 }), 10);
+  assert.equal(custoDelivery({ cmv: 10, embalagemDeliveryPreco: null, embalagemDeliveryQtd: 3 }), 10);
+  assert.equal(custoDelivery({ cmv: 10, embalagemDeliveryPreco: 0, embalagemDeliveryQtd: 3 }), 10);
+  assert.equal(custoDelivery({ cmv: 10, embalagemDeliveryPreco: -2 }), 10);
+});
+
+test('custoDelivery — qtd ausente/null/"" vale 1; qtd 0 vale 0; entradas inválidas nunca dão NaN', () => {
+  close(custoDelivery({ cmv: 10, embalagemDeliveryPreco: 2.5 }), 12.5);
+  close(custoDelivery({ cmv: 10, embalagemDeliveryPreco: 2.5, embalagemDeliveryQtd: null }), 12.5);
+  close(custoDelivery({ cmv: 10, embalagemDeliveryPreco: 2.5, embalagemDeliveryQtd: '' }), 12.5);
+  close(custoDelivery({ cmv: 10, embalagemDeliveryPreco: 2.5, embalagemDeliveryQtd: 0 }), 10);
+  assert.equal(custoDelivery({ cmv: 'abc', embalagemDeliveryPreco: 'x', embalagemDeliveryQtd: 'y' }), 0);
+  assert.equal(custoDelivery(), 0);
+  assert.ok(Number.isFinite(custoDelivery({ cmv: NaN, embalagemDeliveryPreco: NaN })));
+});
+
+test('embalagemDeliveryDoProduto — resolve id contra mapa OU array; qtd default 1; embalagem apagada → custo 0', () => {
+  const embsArr = [{ id: 7, nome: 'Caixa para bolo', preco_unitario: 2.5 }];
+  const embsMap = { 7: embsArr[0] };
+  const prod = { id: 1, embalagem_delivery_id: 7, embalagem_delivery_quantidade: 2 };
+  assert.deepEqual(embalagemDeliveryDoProduto(prod, embsArr), { id: 7, nome: 'Caixa para bolo', preco: 2.5, qtd: 2, custo: 5 });
+  assert.deepEqual(embalagemDeliveryDoProduto({ ...prod, embalagem_delivery_quantidade: null }, embsMap).custo, 2.5);
+  assert.deepEqual(embalagemDeliveryDoProduto({ id: 1, embalagem_delivery_id: null }, embsMap), { id: null, nome: null, preco: 0, qtd: 0, custo: 0 });
+  assert.deepEqual(embalagemDeliveryDoProduto({ id: 1, embalagem_delivery_id: 99 }, embsMap), { id: 99, nome: null, preco: 0, qtd: 0, custo: 0 });
+  assert.equal(embalagemDeliveryDoProduto(null, embsMap).custo, 0);
 });

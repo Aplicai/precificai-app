@@ -10,7 +10,7 @@ import InfoTooltip from '../components/InfoTooltip';
 import Chip from '../components/Chip';
 import { Feather } from '@expo/vector-icons';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
-import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import { colors, spacing, fonts, fontFamily, borderRadius, radius } from '../utils/theme';
 import { formatCurrency, formatPercent, calcDespesasFixasPercentual, calcMarkup, parseDecimalBR } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 // UX audit 09/09 (Fase B) — wizard guiado de primeiro uso: helpers puros + copy dos passos
@@ -1285,7 +1285,7 @@ export default function FinanceiroConfigScreen() {
               </View>
             </View>
             <TouchableOpacity
-              style={{ marginTop: spacing.sm, backgroundColor: colors.success, borderRadius: borderRadius.md, paddingVertical: spacing.sm, alignItems: 'center' }}
+              style={{ marginTop: spacing.sm, backgroundColor: colors.success, borderRadius: radius.md, paddingVertical: spacing.sm, alignItems: 'center' }}
               onPress={() => navigation.navigate('Início')}
               accessibilityRole="button"
               accessibilityLabel="Voltar ao Início"
@@ -1836,7 +1836,7 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.primary + '08',
     borderWidth: 1.5, borderColor: colors.primary + '25',
-    borderRadius: borderRadius.md,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.md, marginBottom: spacing.sm,
   },
   wizardInput: {
@@ -1850,11 +1850,11 @@ const s = StyleSheet.create({
   },
   wizardPrimaryBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.primary, borderRadius: borderRadius.md,
-    paddingVertical: spacing.md, paddingHorizontal: spacing.lg, minHeight: 48, flexGrow: 1,
+    backgroundColor: colors.primary, borderRadius: radius.md,
+    paddingHorizontal: spacing.lg, minHeight: 44, flexGrow: 1,
   },
-  wizardPrimaryBtnText: { color: '#fff', fontFamily: fontFamily.semiBold, fontSize: fonts.body },
-  wizardBackBtn: { paddingVertical: spacing.md, paddingHorizontal: spacing.md, minHeight: 48, justifyContent: 'center', alignItems: 'center' },
+  wizardPrimaryBtnText: { color: '#fff', fontFamily: fontFamily.semiBold, fontWeight: '600', fontSize: 15 },
+  wizardBackBtn: { paddingVertical: spacing.md, paddingHorizontal: spacing.md, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
   wizardBackText: { color: colors.textSecondary, fontFamily: fontFamily.semiBold, fontSize: fonts.body },
   // Sessão 28.15: footer agora inline, padding normal
   // Bug-fix (Agent 4): paddingBottom era spacing.lg (24), insuficiente —
@@ -1887,7 +1887,7 @@ const s = StyleSheet.create({
   modeBtnCard: {
     flex: 1, padding: spacing.sm + 2,
     borderWidth: 1, borderColor: colors.border,
-    borderRadius: borderRadius.md, marginHorizontal: 4,
+    borderRadius: radius.md, marginHorizontal: 4,
     backgroundColor: colors.surface,
   },
   modeBtnCardActive: {
@@ -1919,7 +1919,7 @@ const s = StyleSheet.create({
   saudeBox: {
     marginTop: spacing.md,
     padding: spacing.md,
-    borderRadius: borderRadius.md,
+    borderRadius: radius.md,
     borderLeftWidth: 3,
     borderLeftColor: colors.textSecondary,
     backgroundColor: colors.surface,
@@ -1981,23 +1981,23 @@ const s = StyleSheet.create({
   },
   // Sessão 28.20: stickyFooter morto removido (não tem mais call site após o
   // botão "Salvar e voltar" virar inline na sessão 28.15).
+  // Botão primário full-width — refinamento visual 09/09: altura 44, raio 10, texto 15/600.
   stickyFooterBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
-    paddingVertical: 14,
     paddingHorizontal: spacing.lg,
-    borderRadius: borderRadius.md,
-    minHeight: 48,
+    borderRadius: radius.md,
+    minHeight: 44,
     width: '100%',
     maxWidth: 420,
   },
   stickyFooterBtnText: {
     color: '#fff',
-    fontSize: fonts.regular,
-    fontFamily: fontFamily.bold,
-    fontWeight: '700',
+    fontSize: 15,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
   },
 
   // Page header
@@ -2032,17 +2032,14 @@ const s = StyleSheet.create({
     gap: spacing.md,
   },
 
-  // Summary Panel
+  // Summary Panel — refinamento visual 09/09: sem sombra, borda 1px (regra: sombra só em modal/FAB).
   summaryPanel: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.md,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
   },
   summaryPanelDesktop: {
     width: 320,
@@ -2172,17 +2169,14 @@ const s = StyleSheet.create({
     fontWeight: '700',
   },
 
-  // Progress
+  // Progress — refinamento visual 09/09: sem sombra, borda 1px.
   progressSection: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.md,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 1,
   },
   progressHeader: {
     flexDirection: 'row',
@@ -2216,16 +2210,13 @@ const s = StyleSheet.create({
   formColumn: { flex: 1 },
   formColumnDesktop: { flex: 1, marginRight: 0 },
 
-  // Step cards
+  // Step cards — refinamento visual 09/09: sem sombra, borda 1px.
   stepCard: {
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
     marginBottom: spacing.md,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
     overflow: 'hidden',
   },
   stepHeader: {
@@ -2268,7 +2259,7 @@ const s = StyleSheet.create({
     backgroundColor: colors.primary + '08',
     borderWidth: 1.5,
     borderColor: colors.primary + '25',
-    borderRadius: borderRadius.md,
+    borderRadius: radius.md,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.sm,
@@ -2366,13 +2357,9 @@ const s = StyleSheet.create({
     borderRadius: borderRadius.sm - 2,
     gap: spacing.xs,
   },
+  // Refinamento visual 09/09: sem sombra — contraste de cor já marca o estado ativo.
   modeBtnActive: {
     backgroundColor: colors.primary,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
   },
   modeBtnText: {
     fontSize: fonts.small, fontFamily: fontFamily.semiBold, fontWeight: '600', color: colors.textSecondary,
@@ -2426,7 +2413,7 @@ const s = StyleSheet.create({
 
   // Despesas table
   despTable: {
-    borderRadius: borderRadius.md,
+    borderRadius: radius.md,
     overflow: 'hidden',
     marginBottom: spacing.sm,
     borderWidth: 1,
@@ -2593,7 +2580,7 @@ const s = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', padding: spacing.lg,
   },
   modalContent: {
-    backgroundColor: '#fff', borderRadius: borderRadius.lg,
+    backgroundColor: '#fff', borderRadius: radius.lg,
     padding: spacing.lg, width: '100%', maxWidth: 400,
   },
   modalTitle: {

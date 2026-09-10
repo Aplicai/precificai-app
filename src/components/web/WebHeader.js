@@ -268,7 +268,7 @@ export default function WebHeader({ navigation, notifCount, onNotifPress, initia
             aria-expanded={showMenu}
             aria-label="Menu da conta"
             style={{
-              width: 36, height: 36, borderRadius: 18,
+              width: 32, height: 32, borderRadius: 16,
               backgroundColor: 'rgba(255,255,255,0.2)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', border: '1.5px solid rgba(255,255,255,0.4)',
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '600',
     fontFamily: fontFamily.semiBold,
     color: '#fff',
@@ -373,9 +373,9 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',

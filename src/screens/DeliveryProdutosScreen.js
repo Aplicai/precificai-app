@@ -335,10 +335,10 @@ export default function DeliveryProdutosScreen() {
         )}
 
         <Card
-          title="Produtos Delivery"
+          title="Itens só do delivery"
           headerRight={
             <InfoTooltip
-              title="Produtos Delivery"
+              title="Itens só do delivery"
               text="Crie produtos exclusivos para delivery combinando produtos existentes com embalagens, receitas base ou ingredientes extras."
               examples={[
                 'Ex: Bolo Delivery = Bolo + Caixa + Gelo seco',
@@ -348,6 +348,20 @@ export default function DeliveryProdutosScreen() {
             />
           }
         >
+          {/* Design embalagem-delivery-no-produto (2026-09-09) — desde que o produto
+              ganhou embalagem de delivery própria (ProdutoFormScreen/EntityCreateModal),
+              esta tela deixou de ser o caminho principal do delivery — vira só a
+              exceção (item que não existe no balcão). */}
+          <View style={{
+            flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+            backgroundColor: colors.primary + '0c', borderRadius: borderRadius.md,
+            padding: spacing.sm, marginBottom: spacing.md,
+          }}>
+            <Feather name="info" size={13} color={colors.primary} style={{ marginTop: 1 }} />
+            <Text style={{ fontSize: fonts.small, color: colors.text, flex: 1, lineHeight: 17 }}>
+              Produtos do cardápio já entram no delivery automaticamente — aqui só o que não existe no balcão.
+            </Text>
+          </View>
           {(() => {
           const visibleProdutos = deliveryProdutos.filter(dp => !undoDelete.hiddenIds.has(dp.id));
           return visibleProdutos.length === 0 ? (

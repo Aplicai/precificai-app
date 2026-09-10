@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, TextInput, StyleSheet, TouchableOpacity, Platform, Text } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { colors, spacing, fonts, borderRadius, fontFamily } from '../utils/theme';
+import { colors, spacing, fonts, borderRadius, fontFamily, radius } from '../utils/theme';
 import useListDensity from '../hooks/useListDensity';
 
 /**
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.inputBg,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: borderRadius.sm,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.sm + 2,
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,

@@ -50,7 +50,10 @@ export default function EmbalagemFormScreen({ route, navigation }) {
   const [categorias, setCategorias] = useState([]);
   // APP-36 — categorias DE PRODUTO (não da embalagem) para marcar como padrão
   const [categoriasProduto, setCategoriasProduto] = useState([]);
-  const [categoriasPadraoSel, setCategoriasPadraoSel] = useState([]); // array de categoria_id
+  const [categoriasPadraoSel, setCategoriasPadraoSel] = useState([]); // array de categoria_id — canal 'balcao'
+  // Design embalagem-delivery-no-produto (2026-09-09): mesma embalagem pode ser
+  // padrão de categorias diferentes por canal (balcão vs delivery).
+  const [categoriasPadraoSelDelivery, setCategoriasPadraoSelDelivery] = useState([]); // canal 'delivery'
   const [catPickerVisible, setCatPickerVisible] = useState(false);
   const [novaCatMode, setNovaCatMode] = useState(false);
   const [novaCatNome, setNovaCatNome] = useState('');
@@ -203,11 +206,16 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         unidade_medida: item.unidade_medida || 'Unidades',
         preco_embalagem: formatMoneyBR(item.preco_embalagem),
       });
-      // APP-36 — carrega categorias para as quais esta embalagem é padrão (canal balcão)
+      // APP-36 — carrega categorias para as quais esta embalagem é padrão,
+      // por canal (balcão e delivery são independentes).
       try {
         const { getCategoriasPadraoDaEmbalagem } = await import('../services/embalagemPadrao');
-        const padroes = await getCategoriasPadraoDaEmbalagem(db, editId, 'balcao');
-        setCategoriasPadraoSel(padroes);
+        const [padroesBalcao, padroesDelivery] = await Promise.all([
+          getCategoriasPadraoDaEmbalagem(db, editId, 'balcao'),
+          getCategoriasPadraoDaEmbalagem(db, editId, 'delivery'),
+        ]);
+        setCategoriasPadraoSel(padroesBalcao);
+        setCategoriasPadraoSelDelivery(padroesDelivery);
       } catch (_) { /* defensivo */ }
       // Audit A16: `historico_precos` é exclusiva de INSUMO (FK materia_prima_id).
       // Ler com o id da embalagem mostrava (e deixava apagar) o histórico de um
@@ -259,10 +267,11 @@ export default function EmbalagemFormScreen({ route, navigation }) {
         'UPDATE embalagens SET nome=?, marca=?, categoria_id=?, quantidade=?, unidade_medida=?, preco_embalagem=?, preco_unitario=?, updated_at=? WHERE id=?',
         [f.nome, f.marca, f.categoria_id, q, f.unidade_medida, p, pu, new Date().toISOString(), editId]
       );
-      // APP-36 — persiste categorias padrão (canal balcão por enquanto; delivery vem com APP-29c UI)
+      // APP-36 — persiste categorias padrão por canal (balcão e delivery independentes)
       try {
         const { setCategoriasPadraoDaEmbalagem } = await import('../services/embalagemPadrao');
         await setCategoriasPadraoDaEmbalagem(db, editId, categoriasPadraoSel, 'balcao');
+        await setCategoriasPadraoDaEmbalagem(db, editId, categoriasPadraoSelDelivery, 'delivery');
       } catch (_) {}
       // Sessão 28.43: notifica list screens
       try {
@@ -307,11 +316,16 @@ export default function EmbalagemFormScreen({ route, navigation }) {
       'INSERT INTO embalagens (nome, marca, categoria_id, quantidade, unidade_medida, preco_embalagem, preco_unitario) VALUES (?,?,?,?,?,?,?)',
       params
     );
-    // APP-36 — persiste categorias padrão da nova embalagem
-    if (categoriasPadraoSel.length > 0 && result?.lastInsertRowId) {
+    // APP-36 — persiste categorias padrão da nova embalagem (balcão e delivery)
+    if ((categoriasPadraoSel.length > 0 || categoriasPadraoSelDelivery.length > 0) && result?.lastInsertRowId) {
       try {
         const { setCategoriasPadraoDaEmbalagem } = await import('../services/embalagemPadrao');
-        await setCategoriasPadraoDaEmbalagem(db, result.lastInsertRowId, categoriasPadraoSel, 'balcao');
+        if (categoriasPadraoSel.length > 0) {
+          await setCategoriasPadraoDaEmbalagem(db, result.lastInsertRowId, categoriasPadraoSel, 'balcao');
+        }
+        if (categoriasPadraoSelDelivery.length > 0) {
+          await setCategoriasPadraoDaEmbalagem(db, result.lastInsertRowId, categoriasPadraoSelDelivery, 'delivery');
+        }
       } catch (_) {}
     }
     // Sessão 28.71: modo modal empilhado (cascata) — notifica list screens,
@@ -577,7 +591,10 @@ export default function EmbalagemFormScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* APP-36 — Definir como embalagem padrão para categorias de produto */}
+        {/* APP-36 — Definir como embalagem padrão para categorias de produto.
+            Design embalagem-delivery-no-produto (2026-09-09): duas linhas de chip,
+            uma por canal — a mesma embalagem pode ser padrão de categorias
+            diferentes no balcão e no delivery (são leituras/gravações independentes). */}
         {categoriasProduto.length > 0 && (
           <View style={{ marginTop: spacing.md, padding: spacing.md, backgroundColor: colors.surface, borderRadius: borderRadius.md }}>
             <Text style={{ fontSize: fonts.small, fontFamily: fontFamily.semiBold, color: colors.text, marginBottom: 4 }}>
@@ -586,7 +603,11 @@ export default function EmbalagemFormScreen({ route, navigation }) {
             <Text style={{ fontSize: fonts.tiny, color: colors.textSecondary, marginBottom: spacing.sm, lineHeight: 14 }}>
               Quando você cadastrar um novo produto nessas categorias, esta embalagem virá pré-selecionada.
             </Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+
+            <Text style={{ fontSize: fonts.tiny, fontFamily: fontFamily.semiBold, color: colors.textSecondary, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.3 }}>
+              No balcão
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: spacing.sm }}>
               {categoriasProduto.map(cat => {
                 const selected = categoriasPadraoSel.includes(cat.id);
                 return (
@@ -605,7 +626,42 @@ export default function EmbalagemFormScreen({ route, navigation }) {
                     activeOpacity={0.7}
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: selected }}
-                    accessibilityLabel={`${selected ? 'Remover' : 'Marcar'} embalagem padrão para ${cat.nome}`}
+                    accessibilityLabel={`${selected ? 'Remover' : 'Marcar'} embalagem padrão no balcão para ${cat.nome}`}
+                  >
+                    {selected && <Feather name="check" size={11} color={colors.primary} />}
+                    <Text style={{
+                      fontSize: fonts.tiny,
+                      color: selected ? colors.primary : colors.textSecondary,
+                      fontFamily: selected ? fontFamily.semiBold : fontFamily.regular,
+                    }}>{cat.nome}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={{ fontSize: fonts.tiny, fontFamily: fontFamily.semiBold, color: colors.textSecondary, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.3 }}>
+              No delivery
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {categoriasProduto.map(cat => {
+                const selected = categoriasPadraoSelDelivery.includes(cat.id);
+                return (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={{
+                      paddingHorizontal: 10, paddingVertical: 6,
+                      borderRadius: 16, borderWidth: 1,
+                      borderColor: selected ? colors.primary : colors.border,
+                      backgroundColor: selected ? colors.primary + '14' : 'transparent',
+                      flexDirection: 'row', alignItems: 'center', gap: 4,
+                    }}
+                    onPress={() => {
+                      setCategoriasPadraoSelDelivery(prev => selected ? prev.filter(x => x !== cat.id) : [...prev, cat.id]);
+                    }}
+                    activeOpacity={0.7}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: selected }}
+                    accessibilityLabel={`${selected ? 'Remover' : 'Marcar'} embalagem padrão no delivery para ${cat.nome}`}
                   >
                     {selected && <Feather name="check" size={11} color={colors.primary} />}
                     <Text style={{

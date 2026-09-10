@@ -6,10 +6,20 @@ export const colors = {
   primarySoft: '#56b7b0',
   primaryPale: '#72dbd3',
   primaryDark: '#003833',
+  // Refinamento visual 09/09 — @deprecated (decorativas). Azul/roxo/teal só
+  // existiam pra "colorir" KPI e contadores; cor agora tem significado (verde =
+  // ação/positivo, vermelho = prejuízo/erro, âmbar = atenção). As chaves ficam
+  // porque outras telas ainda importam; NÃO usar em código novo. A paleta de
+  // categoria (ponto de 8 px) é a única exceção legítima.
+  /** @deprecated decorativa — use colors.primary / colors.text */
   accent: '#265bb0',
+  /** @deprecated decorativa */
   accentLight: '#4173c3',
+  /** @deprecated decorativa */
   accentMid: '#5b8bd6',
+  /** @deprecated decorativa */
   accentSoft: '#76a2e9',
+  /** @deprecated decorativa */
   accentPale: '#90bafc',
   yellow: '#e3b842',
   yellowLight: '#eac35a',
@@ -18,23 +28,32 @@ export const colors = {
   yellowPale: '#ffe6a1',
   coral: '#e3704d',
   coralLight: '#ea8262',
+  /** @deprecated decorativa — use colors.textSecondary */
   purple: '#6a4fb0',
+  /** @deprecated decorativa */
   purpleLight: '#7f65c4',
   red: '#c74040',
   redLight: '#d35959',
   // UI colors
   secondary: '#e3b842',
   secondaryLight: '#eac35a',
-  background: '#F4F6F5',
+  // Refinamento visual 09/09 — fundo quente (era #F4F6F5, cinza frio) e borda
+  // quente. textSecondary #5F706E sobre #F6F5F1 = 4.78:1 (AA ok, ver themeContrast.test).
+  background: '#F6F5F1',
   surface: '#FFFFFF',
   card: '#FFFFFF',
-  text: '#1A2B2A',
+  text: '#1B2A27',
   textSecondary: '#5F706E', // Audit a11y: 4.8:1 sobre background / 5.2:1 sobre surface (era #6B7D7B = 3.99:1, fail AA)
   textLight: '#FFFFFF',
-  border: '#D8E0DE',
+  border: '#E6E4DE',
+  // Tinta neutra-esverdeada para círculos de ícone (EmptyState) e fundos de tile.
+  surfaceTint: '#EEF3F1',
   error: '#c74040',
   success: '#2E7D32',
   warning: '#e3704d',
+  // Texto sobre tinta âmbar (yellow + '26'): 5.3:1 — AA pra legenda 11-12 px.
+  warningDark: '#8A5A00',
+  /** @deprecated decorativa — use colors.primary para ícones informativos */
   info: '#265bb0',
   disabled: '#B0BEC5',
   // Sprint 3 S10 — placeholder usava `disabled` (#B0BEC5) que é WCAG AA fail
@@ -83,12 +102,41 @@ export const fonts = {
 
 // UX audit 2026-09-09 (Fase B) — escala tipográfica única. Mínimo legível é
 // 10 (badges/contadores) e 11 para qualquer texto corrido/legenda; nada abaixo.
+// Refinamento visual 09/09 — escala fixa: título de tela 22/600; título de
+// seção 13/600 uppercase (tracking 0.6); corpo 14/400; valor destaque 22/600
+// tabular; legenda 12/400; micro 11.
 export const typography = {
-  title: 24,
-  section: 16,
+  title: 22,
+  section: 13,
   body: 14,
   caption: 12,
+  value: 22,
   micro: 11,
+};
+
+// Estilo pronto do título de seção (13/600 uppercase, tracking 0.6, 8 px abaixo).
+// Uso: `<Text style={sectionTitle}>` ou `[sectionTitle, { ... }]`.
+export const sectionTitle = {
+  fontSize: 13,
+  fontWeight: '600',
+  fontFamily: 'DMSans-SemiBold',
+  color: '#5F706E',
+  textTransform: 'uppercase',
+  letterSpacing: 0.6,
+  marginBottom: 8,
+};
+
+// Números são o conteúdo: dígitos tabulares alinham colunas de R$ e %.
+// Web (react-native-web 0.21) mapeia fontVariant → font-variant-numeric.
+export const numeric = {
+  fontVariant: ['tabular-nums'],
+};
+
+// Raios do refinamento visual (borderRadius abaixo continua para código legado).
+export const radius = {
+  sm: 8,
+  md: 10,
+  lg: 14,
 };
 
 export const fontFamily = {

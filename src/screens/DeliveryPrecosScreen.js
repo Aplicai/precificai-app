@@ -18,7 +18,8 @@ import { calcResultadoDelivery, calcSugestaoDeliveryCompleta, calcPrecoMesmoLucr
 // combo / produto delivery — mesma função do modal de combos.
 import { resolveCustoUnitarioItemCombo } from '../utils/comboPricing';
 // APP-25: extrair imposto separado das demais variáveis (maquininha não entra no delivery)
-import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
+// Design embalagem-delivery-no-produto (2026-09-09): custoDelivery = cmv + embalagem de delivery.
+import { buildContextoFinanceiro, custoDelivery, embalagemDeliveryDoProduto } from '../utils/deliveryAdapter';
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
 import usePersistedState from '../hooks/usePersistedState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -210,11 +211,23 @@ export default function DeliveryPrecosScreen() {
       const custoTotal = custoIng + custoPr + custoEmb;
       const custoUnitario = custoTotal / getDivisorRendimento(p);
 
+      // Design embalagem-delivery-no-produto (2026-09-09) — Custo no delivery =
+      // ingredientes + embalagem de delivery do produto (embalagensList já
+      // carregado acima; produtos.embalagem_delivery_id/_quantidade vêm do SELECT *).
+      const embDelivery = embalagemDeliveryDoProduto(p, embalagensList);
+      const custoDeliveryUnitario = custoDelivery({
+        cmv: custoUnitario,
+        embalagemDeliveryPreco: embDelivery.preco,
+        embalagemDeliveryQtd: embDelivery.qtd,
+      });
+
       result.push({
         id: p.id,
         nome: p.nome,
         precoVenda: p.preco_venda || 0,
         custoUnitario,
+        custoDelivery: custoDeliveryUnitario,
+        embDeliveryCusto: embDelivery.custo,
         categoria_id: p.categoria_id || null,
         tipo: 'produto',
       });
@@ -310,7 +323,10 @@ export default function DeliveryPrecosScreen() {
   // Também usado no resumo ("Lucro médio"), que antes somava lucros do break-even
   // (calcPrecoBreakEven) — números que não eram os exibidos nas linhas [B8].
   function calcSugestaoLinha(item, plat) {
-    const cmv = safeNum(item?.custoUnitario);
+    // Design embalagem-delivery-no-produto (2026-09-09): produtos usam o custo
+    // NO DELIVERY (ingredientes + embalagem de delivery); combos não têm
+    // embalagem de delivery própria e caem no custoUnitario normal.
+    const cmv = safeNum(item?.custoDelivery ?? item?.custoUnitario);
     const precoBalcao = safeNum(item?.precoVenda);
     if (cmv <= 0) return { preco: null, modo: 'nenhum', lucroAlvo: 0, resultado: null };
     const lucroAlvo = calcLucroLiquidoBalcao(precoBalcao, cmv, contextoFinanceiro);
@@ -427,7 +443,7 @@ export default function DeliveryPrecosScreen() {
     for (const item of allItems) {
       const precoVenda = safeNum(item.precoVenda);
       if (precoVenda <= 0) continue;
-      const custoUn = safeNum(item.custoUnitario);
+      const custoUn = safeNum(item.custoDelivery ?? item.custoUnitario);
       for (const plat of plataformas) {
         const suggested = calcSugestaoLinha(item, plat).preco;
         const price = getEffectivePrice(item.id, plat.id, suggested);
@@ -466,7 +482,9 @@ export default function DeliveryPrecosScreen() {
   }, [categorias]);
 
   function renderPlatformRow(item, plat) {
-    const custoUn = safeNum(item.custoUnitario);
+    // Design embalagem-delivery-no-produto (2026-09-09): custo usado no cálculo
+    // do delivery = custoDelivery (cmv + embalagem de delivery) quando existir.
+    const custoUn = safeNum(item.custoDelivery ?? item.custoUnitario);
     const precoVenda = safeNum(item.precoVenda);
     // [B5] "mesmo lucro do balcão" (igual à Visão Geral) — fallback por margem %.
     const sug = calcSugestaoLinha(item, plat);
@@ -676,7 +694,9 @@ export default function DeliveryPrecosScreen() {
         <View style={styles.breakdownRow}>
           <View style={styles.breakdownChip}>
             <Feather name="dollar-sign" size={8} color={colors.textSecondary} style={{ marginRight: 2 }} />
-            <Text style={styles.breakdownChipText}>Custo {formatCurrency(item.custoUnitario)}</Text>
+            <Text style={styles.breakdownChipText}>
+              {item.embDeliveryCusto > 0 ? 'Custo no delivery' : 'Custo'} {formatCurrency(custoUn)}
+            </Text>
           </View>
           <View style={styles.breakdownChip}>
             <Feather name="percent" size={8} color={colors.textSecondary} style={{ marginRight: 2 }} />
@@ -874,6 +894,15 @@ export default function DeliveryPrecosScreen() {
                                 <Text style={styles.itemSubtext}>
                                   CMV: {formatCurrency(item.custoUnitario)}
                                 </Text>
+                                {/* Design embalagem-delivery-no-produto (2026-09-09) */}
+                                {item.embDeliveryCusto > 0 && (
+                                  <>
+                                    <Text style={styles.itemSubSep}>|</Text>
+                                    <Text style={styles.itemSubtext}>
+                                      Custo no delivery: {formatCurrency(item.custoDelivery)}
+                                    </Text>
+                                  </>
+                                )}
                               </View>
                             </View>
 
@@ -956,7 +985,8 @@ export default function DeliveryPrecosScreen() {
           </View>
           <Text style={styles.legendFormula}>
             Sugerido = (Lucro líquido do balcão + CMV + cupom + frete) ÷ (1 − fixos% − imposto% − comissão% − outros%){'\n'}
-            Lucro = Delivery - Custo - Taxa - Comissão - Desconto
+            Lucro = Delivery - Custo - Taxa - Comissão - Desconto{'\n'}
+            Custo no delivery = ingredientes + embalagem de delivery do produto.
           </Text>
         </Card>
       )}

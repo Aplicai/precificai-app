@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Pressable, Alert, Modal, TextInput, Platform, KeyboardAvoidingView } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Pressable, Alert, Modal, TextInput, Platform, KeyboardAvoidingView, Switch } from 'react-native';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import InputField from '../components/InputField';
@@ -20,10 +20,12 @@ import useListDensity from '../hooks/useListDensity';
 import { t } from '../i18n/pt-BR';
 // Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
-import { UNIDADES_MEDIDA, formatCurrency, formatPercent, calcMarkup, calcDespesasFixasPercentual, converterParaBase, getTipoUnidade, calcCustoIngrediente, calcCustoPreparo, getLabelPrecoBase, normalizeSearch, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, parseDecimalBR } from '../utils/calculations';
+import { UNIDADES_MEDIDA, formatCurrency, formatPercent, calcMarkup, calcDespesasFixasPercentual, converterParaBase, getTipoUnidade, calcCustoIngrediente, calcCustoPreparo, getLabelPrecoBase, normalizeSearch, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, parseDecimalBR, safeNum } from '../utils/calculations';
 // APP-19/24b: engine unificada + modal de transparência do cálculo
 import { calcularPrecoBalcao } from '../utils/precificacao';
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
+// Design embalagem-delivery-no-produto (2026-09-09)
+import { custoDelivery } from '../utils/deliveryAdapter';
 
 const UNIDADES_TEMPO = [
   { label: 'Minutos', value: 'Minutos' },
@@ -67,6 +69,15 @@ export default function ProdutoFormScreen({ route, navigation }) {
   const [preparosList, setPreparosList] = useState([]);
   const [embalagensList, setEmbalagensList] = useState([]);
   const [config, setConfig] = useState({ despFixasPerc: 0, despVarPerc: 0, lucroDesejado: 0.15, markup: 1 });
+  // Design embalagem-delivery-no-produto (2026-09-09) — seção "Delivery" do produto.
+  // deliveryOn=false grava embalagem_delivery_id=NULL. embalagemDeliveryOrigem
+  // controla o chip "Padrão da categoria" vs "Personalizada".
+  const [deliveryOn, setDeliveryOn] = useState(true);
+  const [embalagemDeliveryId, setEmbalagemDeliveryId] = useState(null);
+  const [embalagemDeliveryQtd, setEmbalagemDeliveryQtd] = useState('1');
+  const [embalagemDeliveryOrigem, setEmbalagemDeliveryOrigem] = useState('padrao'); // 'padrao' | 'manual'
+  const [contaTemDeliveryAtivo, setContaTemDeliveryAtivo] = useState(false);
+  const [buscaEmbDelivery, setBuscaEmbDelivery] = useState('');
   // APP-36 — quando categoria muda em produto NOVO sem embalagens, pré-seleciona embalagem padrão da categoria.
   // Não acontece em produto sendo editado (não sobrescreve escolha do usuário).
   useEffect(() => {
@@ -107,6 +118,33 @@ export default function ProdutoFormScreen({ route, navigation }) {
     })();
     return () => { cancel = true; };
   }, [form.categoria_id, editId, embalagensList]);
+
+  // Design embalagem-delivery-no-produto (2026-09-09) — mesmo padrão acima,
+  // mas pro canal delivery. Só pré-preenche se o usuário ainda não escolheu
+  // manualmente (embalagemDeliveryOrigem !== 'manual') — não sobrescreve.
+  useEffect(() => {
+    if (editId) return; // edição: não sobrescreve
+    if (!form.categoria_id) return;
+    if (!deliveryOn) return;
+    if (embalagemDeliveryOrigem === 'manual') return;
+    let cancel = false;
+    (async () => {
+      try {
+        const db = await getDatabase();
+        const { getEmbalagemPadrao } = await import('../services/embalagemPadrao');
+        const embId = await getEmbalagemPadrao(db, form.categoria_id, 'delivery');
+        if (cancel) return;
+        if (!embId) { setEmbalagemDeliveryId(null); return; }
+        const em = embalagensList.find(e => e.id === embId);
+        if (!em) return;
+        setEmbalagemDeliveryId(em.id);
+        setEmbalagemDeliveryQtd(prev => (prev && parseNum(prev) > 0) ? prev : '1');
+      } catch (e) {
+        if (typeof console !== 'undefined' && console.warn) console.warn('[ProdutoForm.embalagemPadraoDelivery] erro:', e?.message);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [form.categoria_id, editId, embalagensList, deliveryOn, embalagemDeliveryOrigem]);
 
   // APP-19/24b: modal de transparência do cálculo
   const [comoCalculadoVisible, setComoCalculadoVisible] = useState(false);
@@ -346,7 +384,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [form, loaded]);
+  }, [form, loaded, deliveryOn, embalagemDeliveryId, embalagemDeliveryQtd]);
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -394,6 +432,16 @@ export default function ProdutoFormScreen({ route, navigation }) {
     setPreparosList(prepList);
     setEmbalagensList(embList);
 
+    // Design embalagem-delivery-no-produto (2026-09-09) — default do toggle
+    // "Vende no delivery?" pra produto NOVO: ligado se a conta já tem alguma
+    // plataforma ativa em delivery_config.
+    try {
+      const dcRows = await db.getAllAsync('SELECT id FROM delivery_config WHERE ativo = 1');
+      const temAtivo = (dcRows || []).length > 0;
+      setContaTemDeliveryAtivo(temAtivo);
+      if (!editId) setDeliveryOn(temAtivo);
+    } catch (_) {}
+
     const cfg = cfgs?.[0];
     const totalFixas = fixas.reduce((a, d) => a + (d.valor || 0), 0);
     const totalVar = variaveis.reduce((a, d) => a + (d.percentual || 0), 0);
@@ -436,6 +484,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
         conserv_ambiente: !!(p.temp_ambiente || p.tempo_ambiente),
         temp_ambiente: p.temp_ambiente || '', tempo_ambiente: p.tempo_ambiente || '',
       });
+      // Design embalagem-delivery-no-produto (2026-09-09)
+      setDeliveryOn(!!p.embalagem_delivery_id);
+      setEmbalagemDeliveryId(p.embalagem_delivery_id || null);
+      setEmbalagemDeliveryQtd(p.embalagem_delivery_quantidade != null ? String(p.embalagem_delivery_quantidade).replace('.', ',') : '1');
+      setEmbalagemDeliveryOrigem(p.embalagem_delivery_id ? 'manual' : 'padrao');
 
       // Cada bloco de relacionamento isolado para que falha em um não derrube o resto
       try {
@@ -766,6 +819,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
     const margemSalvar = f.margem_lucro_produto.trim() !== '' && Number.isFinite(margemRaw) ? margemRaw / 100 : null;
     const pvRaw = parseDecimalBR(f.preco_venda);
     const pv = Number.isFinite(pvRaw) ? pvRaw : 0;
+    // Design embalagem-delivery-no-produto (2026-09-09)
+    const embDeliveryIdToSave = (deliveryOn && embalagemDeliveryId) ? embalagemDeliveryId : null;
+    const embDeliveryQtdToSave = embDeliveryIdToSave
+      ? (parseNum(embalagemDeliveryQtd) > 0 ? parseNum(embalagemDeliveryQtd) : 1)
+      : null;
 
     setSaveStatus('saving');
     try {
@@ -774,7 +832,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
         `UPDATE produtos SET nome=?, categoria_id=?, rendimento_total=?, unidade_rendimento=?, rendimento_unidades=?,
          tempo_preparo=?, preco_venda=?, margem_lucro_produto=?, validade_dias=?,
          temp_congelado=?, tempo_congelado=?, temp_refrigerado=?, tempo_refrigerado=?,
-         temp_ambiente=?, tempo_ambiente=?, modo_preparo=?, observacoes=? WHERE id=?`,
+         temp_ambiente=?, tempo_ambiente=?, modo_preparo=?, observacoes=?,
+         embalagem_delivery_id=?, embalagem_delivery_quantidade=? WHERE id=?`,
         [
           // F2-J2-02: parseNum agora pode retornar null — usar `?? 0` p/ campos numéricos do DB
           f.nome, f.categoria_id, parseNum(f.rendimento_total) ?? 0, f.unidade_rendimento,
@@ -783,7 +842,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
           f.conserv_congelado ? f.temp_congelado : '', f.conserv_congelado ? f.tempo_congelado : '',
           f.conserv_refrigerado ? f.temp_refrigerado : '', f.conserv_refrigerado ? f.tempo_refrigerado : '',
           f.conserv_ambiente ? f.temp_ambiente : '', f.conserv_ambiente ? f.tempo_ambiente : '',
-          f.modo_preparo, f.observacoes, editId,
+          f.modo_preparo, f.observacoes,
+          embDeliveryIdToSave, embDeliveryQtdToSave, editId,
         ]
       );
       setSaveStatus('saved');
@@ -829,6 +889,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
       const margemSalvar = form.margem_lucro_produto.trim() !== '' && Number.isFinite(margemRaw) ? margemRaw / 100 : null;
       const pvRaw = parseDecimalBR(form.preco_venda);
       const pv = Number.isFinite(pvRaw) ? pvRaw : 0;
+      // Design embalagem-delivery-no-produto (2026-09-09)
+      const embDeliveryIdToSave = (deliveryOn && embalagemDeliveryId) ? embalagemDeliveryId : null;
+      const embDeliveryQtdToSave = embDeliveryIdToSave
+        ? (parseNum(embalagemDeliveryQtd) > 0 ? parseNum(embalagemDeliveryQtd) : 1)
+        : null;
       const params = [
         form.nome, form.categoria_id, parseNum(form.rendimento_total) ?? 0, form.unidade_rendimento,
         rendUn, parseNum(form.tempo_preparo) ?? 0, pv, margemSalvar,
@@ -837,6 +902,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
         form.conserv_refrigerado ? form.temp_refrigerado : '', form.conserv_refrigerado ? form.tempo_refrigerado : '',
         form.conserv_ambiente ? form.temp_ambiente : '', form.conserv_ambiente ? form.tempo_ambiente : '',
         form.modo_preparo, form.observacoes,
+        embDeliveryIdToSave, embDeliveryQtdToSave,
       ];
 
       let produtoId = editId;
@@ -845,7 +911,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
           `UPDATE produtos SET nome=?, categoria_id=?, rendimento_total=?, unidade_rendimento=?, rendimento_unidades=?,
            tempo_preparo=?, preco_venda=?, margem_lucro_produto=?, validade_dias=?, temp_congelado=?, tempo_congelado=?,
            temp_refrigerado=?, tempo_refrigerado=?, temp_ambiente=?, tempo_ambiente=?,
-           modo_preparo=?, observacoes=? WHERE id=?`, [...params, editId]);
+           modo_preparo=?, observacoes=?, embalagem_delivery_id=?, embalagem_delivery_quantidade=? WHERE id=?`, [...params, editId]);
 
         // P1 — perda de dados no WEB: NÃO há transação (supabaseDb.execAsync é no-op,
         // então BEGIN/COMMIT/ROLLBACK não fazem nada). O padrão antigo era
@@ -900,7 +966,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
           `INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades,
            tempo_preparo, preco_venda, margem_lucro_produto, validade_dias, temp_congelado, tempo_congelado,
            temp_refrigerado, tempo_refrigerado, temp_ambiente, tempo_ambiente,
-           modo_preparo, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, params);
+           modo_preparo, observacoes, embalagem_delivery_id, embalagem_delivery_quantidade) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, params);
         produtoId = result.lastInsertRowId;
 
         // CRIAÇÃO: não há delete — mantém o caminho original paralelo (Promise.all).
@@ -1471,6 +1537,114 @@ export default function ProdutoFormScreen({ route, navigation }) {
             </View>
           )}
           {embAdicionado && <Text style={styles.feedbackText}>Embalagem adicionada!</Text>}
+        </Card>
+
+        {/* Design embalagem-delivery-no-produto (2026-09-09) — seção "Delivery".
+            Reaproveita o mesmo padrão de busca/dropdown da seção Embalagens acima,
+            mas pra um campo único (não uma lista). */}
+        <Card title="Delivery" style={{ marginTop: spacing.md }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 }}>
+            <Text style={{ fontSize: fonts.regular, color: colors.text, fontFamily: fontFamily.medium }}>Vende no delivery?</Text>
+            <Switch
+              value={deliveryOn}
+              onValueChange={setDeliveryOn}
+              trackColor={{ false: colors.border, true: colors.success + '50' }}
+              thumbColor={deliveryOn ? colors.success : colors.disabled}
+              accessibilityRole="switch"
+              accessibilityLabel="Vende no delivery?"
+            />
+          </View>
+          {deliveryOn && (() => {
+            const embSel = embalagemDeliveryId ? embalagensList.find(e => e.id === embalagemDeliveryId) : null;
+            const embPreco = embSel ? safeNum(embSel.preco_unitario) : 0;
+            const qtdNum = parseNum(embalagemDeliveryQtd) || 0;
+            const custoDeliveryTotal = custoDelivery({
+              cmv: custoUnitario,
+              embalagemDeliveryPreco: embPreco,
+              embalagemDeliveryQtd: qtdNum,
+            });
+            return (
+              <>
+                <Text style={{ fontSize: fonts.small, color: colors.textSecondary, marginTop: spacing.xs, marginBottom: 4 }}>
+                  Embalagem do delivery
+                </Text>
+                <View style={styles.searchAddInput}>
+                  <Feather name="search" size={16} color={colors.disabled} style={{ marginRight: spacing.xs }} />
+                  <TextInput
+                    style={[styles.searchInput, { flex: 1 }]}
+                    placeholder={embSel ? embSel.nome : 'Selecionar embalagem...'}
+                    placeholderTextColor={embSel ? colors.text : colors.placeholder}
+                    value={buscaEmbDelivery}
+                    onChangeText={(v) => { setBuscaEmbDelivery(v); setActiveSearch('embalagem_delivery'); }}
+                    onFocus={() => setActiveSearch('embalagem_delivery')}
+                    onBlur={() => setTimeout(() => { if (activeSearch === 'embalagem_delivery') setActiveSearch(null); }, 200)}
+                  />
+                </View>
+                {activeSearch === 'embalagem_delivery' && (
+                  <View style={styles.dropdownContainer}>
+                    <ScrollView style={{ maxHeight: 180 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                      {embalagensList
+                        .filter(e => !buscaEmbDelivery || normalizeSearch(e.nome).includes(normalizeSearch(buscaEmbDelivery)))
+                        .map(e => (
+                          <TouchableOpacity
+                            key={e.id}
+                            style={styles.dropdownItem}
+                            onPress={() => {
+                              setEmbalagemDeliveryId(e.id);
+                              setEmbalagemDeliveryOrigem('manual');
+                              setEmbalagemDeliveryQtd(prev => (prev && parseNum(prev) > 0) ? prev : '1');
+                              setBuscaEmbDelivery('');
+                              setActiveSearch(null);
+                            }}
+                          >
+                            <Text style={styles.dropdownItemName}>{e.nome}</Text>
+                            <Text style={styles.dropdownItemDetail}>{formatCurrency(e.preco_unitario)}/un</Text>
+                          </TouchableOpacity>
+                        ))}
+                      {embalagensList.filter(e => !buscaEmbDelivery || normalizeSearch(e.nome).includes(normalizeSearch(buscaEmbDelivery))).length === 0 && (
+                        <Text style={styles.listEmpty}>Nenhuma embalagem encontrada</Text>
+                      )}
+                    </ScrollView>
+                  </View>
+                )}
+                {embalagemDeliveryId && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: fonts.tiny, color: colors.textSecondary, marginBottom: 2 }}>Quantidade</Text>
+                      <TextInput
+                        value={String(embalagemDeliveryQtd)}
+                        onChangeText={setEmbalagemDeliveryQtd}
+                        keyboardType="decimal-pad"
+                        style={[styles.inlineQtyInput, { alignSelf: 'flex-start', minWidth: 60 }]}
+                      />
+                    </View>
+                    <View style={{
+                      paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16,
+                      backgroundColor: embalagemDeliveryOrigem === 'manual' ? colors.accent + '18' : colors.primary + '14',
+                    }}>
+                      <Text style={{
+                        fontSize: fonts.tiny, fontFamily: fontFamily.semiBold,
+                        color: embalagemDeliveryOrigem === 'manual' ? colors.accent : colors.primary,
+                      }}>
+                        {embalagemDeliveryOrigem === 'manual' ? 'Personalizada' : 'Padrão da categoria'}
+                      </Text>
+                    </View>
+                    <TouchableOpacity onPress={() => { setEmbalagemDeliveryId(null); setEmbalagemDeliveryOrigem('padrao'); }}>
+                      <Text style={styles.removeBtn}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {embalagemDeliveryId && embPreco > 0 && (
+                  <Text style={{ fontSize: fonts.small, color: colors.text, marginTop: spacing.sm }}>
+                    Custo no delivery: {formatCurrency(custoUnitario)} + {formatCurrency(embPreco * qtdNum)} embalagem = <Text style={{ fontFamily: fontFamily.semiBold }}>{formatCurrency(custoDeliveryTotal)}</Text>
+                  </Text>
+                )}
+                <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 16, marginTop: spacing.sm }}>
+                  Leva mais de uma embalagem? Cadastre uma embalagem composta (ex.: Kit marmita = marmita + sacola + talher) com o preço somado.
+                </Text>
+              </>
+            );
+          })()}
         </Card>
 
         {/* Bloco 5: Custos e Precificação (hidden on desktop - sidebar has it) */}

@@ -19,6 +19,8 @@ import usePersistedState from '../hooks/usePersistedState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 // Sprint 2 S3 — fórmula canônica única em src/utils/deliveryPricing.
 import { calcPrecoBreakEven, calcResultadoDelivery } from '../utils/deliveryPricing';
+// Design embalagem-delivery-no-produto (2026-09-09): custoDelivery = cmv + embalagem de delivery.
+import { custoDelivery, embalagemDeliveryDoProduto } from '../utils/deliveryAdapter';
 
 // Defesa contra NaN/Infinity em precificação. Retorna 0 quando não-finito.
 function parseNum(v) {
@@ -92,11 +94,23 @@ export default function ComparativoCanaisScreen() {
         const custoTotal = custoIng + custoPr + custoEmb;
         const custoUnitario = custoTotal / getDivisorRendimento(p);
 
+        // Design embalagem-delivery-no-produto (2026-09-09) — Custo no delivery =
+        // ingredientes + embalagem de delivery do produto (embalagensList já
+        // carregada; produtos.embalagem_delivery_id/_quantidade vêm do SELECT *).
+        const embDelivery = embalagemDeliveryDoProduto(p, embalagensList);
+        const custoDeliveryUnitario = custoDelivery({
+          cmv: custoUnitario,
+          embalagemDeliveryPreco: embDelivery.preco,
+          embalagemDeliveryQtd: embDelivery.qtd,
+        });
+
         produtosComCusto.push({
           id: `prod-${p.id}`,
           nome: p.nome,
           precoVenda: parseNum(p.preco_venda),
           custoUnitario: parseNum(custoUnitario),
+          custoDelivery: parseNum(custoDeliveryUnitario),
+          embDeliveryCusto: parseNum(embDelivery.custo),
           tipo: 'produto',
         });
       }
@@ -185,11 +199,15 @@ export default function ComparativoCanaisScreen() {
   // Retorna { canais, melhorIdx, piorIdx, temPrejuizo }.
   function buildCanais(item) {
     const custo = parseNum(item.custoUnitario);
+    // Design embalagem-delivery-no-produto (2026-09-09): plataformas de delivery
+    // usam o custo NO DELIVERY (ingredientes + embalagem de delivery); combos não
+    // têm embalagem de delivery própria e caem no custoUnitario normal.
+    const custoDeliveryCanal = parseNum(item.custoDelivery ?? item.custoUnitario);
     const precoBalcao = parseNum(item.precoVenda);
 
     const canais = [];
 
-    // Balcão
+    // Balcão — sempre custoUnitario (sem embalagem de delivery)
     const lucroBalcao = precoBalcao > 0 ? precoBalcao - custo : 0;
     const margemBalcao = precoBalcao > 0 ? (lucroBalcao / precoBalcao) * 100 : 0;
     canais.push({
@@ -208,7 +226,7 @@ export default function ComparativoCanaisScreen() {
       const precoSugerido = calcPrecoBreakEven(precoBalcao, plat);
       const inviavelPreco = precoSugerido === null || precoSugerido <= 0;
       const preco = inviavelPreco ? 0 : precoSugerido;
-      const r = calcResultadoDelivery({ precoVenda: preco, custoUnit: custo, plat });
+      const r = calcResultadoDelivery({ precoVenda: preco, custoUnit: custoDeliveryCanal, plat });
       const inviavel = inviavelPreco || r.inviavel;
       const taxaValor = r.valorComissao;
       const desc = r.valorDesconto;
@@ -282,6 +300,7 @@ export default function ComparativoCanaisScreen() {
             examples={[
               'Balcão: Lucro = Preço - Custo',
               'Delivery: Lucro = Preço - Custo - Taxa - Comissão - Desconto',
+              'Custo no delivery = ingredientes + embalagem de delivery do produto.',
             ]}
           />
         }
@@ -331,6 +350,7 @@ export default function ComparativoCanaisScreen() {
                         <Text style={styles.itemName} numberOfLines={1}>{item.nome}</Text>
                         <Text style={styles.itemSub}>
                           {item.tipo === 'combo' ? 'Combo' : 'Produto'} • CMV {formatCurrency(item.custoUnitario)}
+                          {item.embDeliveryCusto > 0 ? ` • Custo no delivery ${formatCurrency(item.custoDelivery)}` : ''}
                         </Text>
                       </View>
                       {temPrejuizo && (

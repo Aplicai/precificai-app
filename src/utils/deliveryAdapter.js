@@ -160,3 +160,50 @@ export function buildContextoFinanceiro({ cfgRows, fixasRows, varsRows, fatRows,
     margemSegurancaPerc: Number.isFinite(cfg.margem_seguranca) ? cfg.margem_seguranca : 0,
   };
 }
+
+/**
+ * Embalagem de delivery no produto (design 2026-09-09).
+ *
+ * `produtos.embalagem_delivery_id` + `embalagem_delivery_quantidade` apontam
+ * pra UMA embalagem extra usada só no delivery (caixa, marmita, kit composto).
+ * O custo no delivery é sempre `cmv (balcão) + preço_unitário × quantidade`
+ * — a embalagem de balcão (guardanapo, saquinho) costuma ir junto, então NÃO
+ * é subtraída. Sem embalagem de delivery → custoDelivery === cmv.
+ *
+ * @param {object} input
+ * @param {number} input.cmv - CMV unitário do balcão (ingredientes + receitas + embalagem balcão)
+ * @param {number} [input.embalagemDeliveryPreco] - preco_unitario da embalagem de delivery (0/null = sem)
+ * @param {number} [input.embalagemDeliveryQtd] - quantidade (default 1 quando há embalagem)
+ * @returns {number} custo unitário no delivery
+ */
+export function custoDelivery({ cmv, embalagemDeliveryPreco, embalagemDeliveryQtd } = {}) {
+  const safe = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const preco = Math.max(0, safe(embalagemDeliveryPreco));
+  if (preco <= 0) return safe(cmv);
+  const qtd = (embalagemDeliveryQtd === null || embalagemDeliveryQtd === undefined || embalagemDeliveryQtd === '')
+    ? 1
+    : Math.max(0, safe(embalagemDeliveryQtd));
+  return safe(cmv) + preco * qtd;
+}
+
+/**
+ * Resolve a embalagem de delivery de uma row de `produtos` contra um mapa
+ * `{ [embalagemId]: { preco_unitario, nome } }` (ou array de rows de embalagens).
+ *
+ * @returns {{ id: number|null, nome: string|null, preco: number, qtd: number, custo: number }}
+ *   `custo` = preco × qtd (0 quando o produto não tem embalagem de delivery
+ *   ou a embalagem não existe mais).
+ */
+export function embalagemDeliveryDoProduto(produto, embalagens) {
+  const safe = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const id = produto?.embalagem_delivery_id ?? null;
+  if (!id) return { id: null, nome: null, preco: 0, qtd: 0, custo: 0 };
+  let emb = null;
+  if (Array.isArray(embalagens)) emb = embalagens.find((e) => e && e.id === id) || null;
+  else if (embalagens && typeof embalagens === 'object') emb = embalagens[id] || null;
+  if (!emb) return { id, nome: null, preco: 0, qtd: 0, custo: 0 };
+  const preco = Math.max(0, safe(emb.preco_unitario));
+  const rawQtd = produto.embalagem_delivery_quantidade;
+  const qtd = (rawQtd === null || rawQtd === undefined || rawQtd === '') ? 1 : Math.max(0, safe(rawQtd));
+  return { id, nome: emb.nome || null, preco, qtd, custo: preco * qtd };
+}

@@ -22,7 +22,7 @@
  */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Platform, Switch } from 'react-native';
 import usePushPermissions from '../hooks/usePushPermissions';
 // Sessão 28.29: styles extraídos pra arquivo dedicado (eram 611 linhas inline)
 import { entityCreateModalStyles as styles } from './styles/entityCreateModal.styles';
@@ -50,6 +50,8 @@ import { showToast } from '../utils/toastBus';
 import ScreenInModal from './ScreenInModal';
 import MateriaPrimaFormScreen from '../screens/MateriaPrimaFormScreen';
 import EmbalagemFormScreen from '../screens/EmbalagemFormScreen';
+// Design embalagem-delivery-no-produto (2026-09-09)
+import { custoDelivery } from '../utils/deliveryAdapter';
 
 function parseInputValue(raw) {
   // Sessão 28.x: usa parseDecimalBROrZero (de calculations) que entende
@@ -152,6 +154,18 @@ export default function EntityCreateModal({
   const [unidadeMedidaPrep, setUnidadeMedidaPrep] = useState('g');
   // Itens
   const [itens, setItens] = useState([]);
+  // Design embalagem-delivery-no-produto (2026-09-09) — seção "Delivery" do produto.
+  // deliveryOn=false grava embalagem_delivery_id=NULL. embalagemDeliveryOrigem
+  // controla o chip "Padrão da categoria" vs "Personalizada" (some quando o
+  // usuário troca manualmente — não sobrescreve mais a escolha dele).
+  const [deliveryOn, setDeliveryOn] = useState(true);
+  const [embalagemDeliveryId, setEmbalagemDeliveryId] = useState(null);
+  const [embalagemDeliveryNome, setEmbalagemDeliveryNome] = useState(null);
+  const [embalagemDeliveryQtd, setEmbalagemDeliveryQtd] = useState('1');
+  const [embalagemDeliveryOrigem, setEmbalagemDeliveryOrigem] = useState('padrao'); // 'padrao' | 'manual'
+  const [contaTemDeliveryAtivo, setContaTemDeliveryAtivo] = useState(false);
+  const [embDeliveryPickerVisible, setEmbDeliveryPickerVisible] = useState(false);
+  const [embDeliveryPickerBusca, setEmbDeliveryPickerBusca] = useState('');
   // Fix walkthrough #1 — foco automático no input de quantidade do item recém
   // adicionado (com texto selecionado via selectTextOnFocus). Mapa de refs
   // por chave `${tipo}-${id}` + a chave do último item adicionado (dispara o
@@ -247,6 +261,35 @@ export default function EntityCreateModal({
     return () => { cancelled = true; };
   }, [visible, isProduto, isEditing, categoriaId]);
 
+  // Design embalagem-delivery-no-produto (2026-09-09) — mesmo padrão do efeito
+  // acima, mas pro canal delivery: ao trocar categoria em produto NOVO com
+  // "Vende no delivery?" ligado, pré-preenche a embalagem padrão de delivery
+  // da categoria — SÓ se o usuário ainda não escolheu manualmente (chip
+  // "Personalizada"). Espelha getEmbalagemPadrao(db, categoriaId, 'delivery').
+  useEffect(() => {
+    if (!visible || !isProduto || isEditing || !categoriaId || !deliveryOn) return;
+    if (embalagemDeliveryOrigem === 'manual') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { getEmbalagemPadrao } = await import('../services/embalagemPadrao');
+        const db = await getDatabase();
+        const embalagemId = await getEmbalagemPadrao(db, categoriaId, 'delivery');
+        if (cancelled) return;
+        if (!embalagemId) { setEmbalagemDeliveryId(null); setEmbalagemDeliveryNome(null); return; }
+        const embRow = await db.getFirstAsync(
+          'SELECT id, nome, preco_unitario FROM embalagens WHERE id = ?',
+          [embalagemId]
+        );
+        if (cancelled || !embRow) return;
+        setEmbalagemDeliveryId(embRow.id);
+        setEmbalagemDeliveryNome(embRow.nome);
+        setEmbalagemDeliveryQtd(prev => (prev && parseDecimalBROrZero(prev) > 0) ? prev : '1');
+      } catch (e) { /* silencioso — feature opcional */ }
+    })();
+    return () => { cancelled = true; };
+  }, [visible, isProduto, isEditing, categoriaId, deliveryOn, embalagemDeliveryOrigem]);
+
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -289,6 +332,9 @@ export default function EntityCreateModal({
         id: it.id,
         quantidade: normStr(it.quantidade).trim(),
       })),
+      deliveryOn: isProduto ? !!deliveryOn : null,
+      embalagemDeliveryId: isProduto && deliveryOn ? embalagemDeliveryId : null,
+      embalagemDeliveryQtd: isProduto && deliveryOn ? normStr(embalagemDeliveryQtd).trim() : '',
     });
   }
 
@@ -338,6 +384,13 @@ export default function EntityCreateModal({
       setRendimentoTotalPrep('');
       setUnidadeMedidaPrep('g');
       setItens([]);
+      // Default de "Vende no delivery?" é corrigido em loadPickerAndCategorias
+      // assim que soubermos se a conta tem alguma plataforma ativa.
+      setDeliveryOn(true);
+      setEmbalagemDeliveryId(null);
+      setEmbalagemDeliveryNome(null);
+      setEmbalagemDeliveryQtd('1');
+      setEmbalagemDeliveryOrigem('padrao');
 
       // Sessão 28.19: restaura draft do AsyncStorage (se voltou de editar item)
       // — antes os itens digitados eram perdidos quando user clicava em editar
@@ -363,6 +416,13 @@ export default function EntityCreateModal({
               setRendimentoTotalPrep(d.rendimentoTotalPrep || '');
               setUnidadeMedidaPrep(d.unidadeMedidaPrep || 'g');
               setItens(d.itens || []);
+              if (isProduto) {
+                setDeliveryOn(d.deliveryOn != null ? d.deliveryOn : contaTemDeliveryAtivo);
+                setEmbalagemDeliveryId(d.embalagemDeliveryId || null);
+                setEmbalagemDeliveryNome(d.embalagemDeliveryNome || null);
+                setEmbalagemDeliveryQtd(d.embalagemDeliveryQtd || '1');
+                setEmbalagemDeliveryOrigem(d.embalagemDeliveryOrigem || 'padrao');
+              }
             }
           }
           // Sessão 28.52: cascata 3 níveis — se houver flag de reabrir nested
@@ -489,6 +549,17 @@ export default function EntityCreateModal({
       // D-20 (sessão 28.13): embalagens carregadas em ambos os modos (preparo precisa pra armazenamento)
       const embalagens = await db.getAllAsync('SELECT * FROM embalagens ORDER BY nome');
       setAllEmbalagens(embalagens || []);
+      // Design embalagem-delivery-no-produto (2026-09-09) — default do toggle
+      // "Vende no delivery?" pra produto NOVO: ligado se a conta já tem
+      // alguma plataforma ativa em delivery_config.
+      if (isProduto) {
+        try {
+          const dcRows = await db.getAllAsync('SELECT id FROM delivery_config WHERE ativo = 1');
+          const temAtivo = (dcRows || []).length > 0;
+          setContaTemDeliveryAtivo(temAtivo);
+          if (!isEditing) setDeliveryOn(temAtivo);
+        } catch (_) {}
+      }
       if (isProduto) {
         const cats = await db.getAllAsync('SELECT * FROM categorias_produtos ORDER BY nome');
         setCategorias(cats || []);
@@ -589,6 +660,13 @@ export default function EntityCreateModal({
             setRendimentoTotalPrep(d.rendimentoTotalPrep || '');
             setUnidadeMedidaPrep(d.unidadeMedidaPrep || 'g');
             setItens(refreshedItens);
+            if (isProduto) {
+              setDeliveryOn(d.deliveryOn != null ? d.deliveryOn : false);
+              setEmbalagemDeliveryId(d.embalagemDeliveryId || null);
+              setEmbalagemDeliveryNome(d.embalagemDeliveryNome || null);
+              setEmbalagemDeliveryQtd(d.embalagemDeliveryQtd || '1');
+              setEmbalagemDeliveryOrigem(d.embalagemDeliveryOrigem || 'padrao');
+            }
             setLoading(false);
             return;
           }
@@ -611,6 +689,12 @@ export default function EntityCreateModal({
         setTipoVenda(TIPO_VENDA_MAP_FROM_DB(p.unidade_rendimento));
         setRendimentoUnidades(p.rendimento_unidades != null ? String(p.rendimento_unidades) : '1');
         setRendimentoTotalProd(p.rendimento_total != null ? String(p.rendimento_total) : '');
+        // Design embalagem-delivery-no-produto (2026-09-09)
+        setDeliveryOn(!!p.embalagem_delivery_id);
+        setEmbalagemDeliveryId(p.embalagem_delivery_id || null);
+        setEmbalagemDeliveryQtd(p.embalagem_delivery_quantidade != null ? String(p.embalagem_delivery_quantidade).replace('.', ',') : '1');
+        // Produto já salvo com embalagem de delivery = escolha do usuário (não sobrescreve com padrão da categoria).
+        setEmbalagemDeliveryOrigem(p.embalagem_delivery_id ? 'manual' : 'padrao');
         // Carregar itens — uso pi.* + aliases nas joins (compat com supabaseDb wrapper)
         const ings = await db.getAllAsync(
           `SELECT pi.*, mp.nome as mp_nome, mp.preco_por_kg, mp.unidade_medida as mp_unidade
@@ -976,6 +1060,8 @@ export default function EntityCreateModal({
                           nome, categoriaId, precoVenda,
                           tipoVenda, rendimentoUnidades, rendimentoTotalProd,
                           rendimentoTotalPrep, unidadeMedidaPrep, itens,
+                          deliveryOn, embalagemDeliveryId, embalagemDeliveryNome,
+                          embalagemDeliveryQtd, embalagemDeliveryOrigem,
                         },
                       };
                       AsyncStorage.setItem('reopenEntityModalAfterEdit', JSON.stringify(reopenInfo));
@@ -1234,6 +1320,95 @@ export default function EntityCreateModal({
             )}
           </View>
         )}
+        {isProduto && (() => {
+          const embSel = embalagemDeliveryId ? allEmbalagens.find(e => e.id === embalagemDeliveryId) : null;
+          const embPreco = embSel ? safeNum(embSel.preco_unitario) : 0;
+          const embNomeExibido = embSel?.nome || embalagemDeliveryNome;
+          const qtdNum = parseInputValue(embalagemDeliveryQtd) || 0;
+          const custoDeliveryTotal = custoDelivery({
+            cmv: cmvUnitario,
+            embalagemDeliveryPreco: embPreco,
+            embalagemDeliveryQtd: qtdNum,
+          });
+          return (
+            <View style={styles.resumo}>
+              <View style={styles.resumoHeader}>
+                <Feather name="truck" size={14} color={colors.primary} />
+                <Text style={styles.resumoTitle}>Delivery</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 }}>
+                <Text style={{ fontSize: fonts.regular, color: colors.text, fontFamily: fontFamily.medium }}>Vende no delivery?</Text>
+                <Switch
+                  value={deliveryOn}
+                  onValueChange={setDeliveryOn}
+                  trackColor={{ false: colors.border, true: colors.success + '50' }}
+                  thumbColor={deliveryOn ? colors.success : colors.disabled}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Vende no delivery?"
+                />
+              </View>
+              {deliveryOn && (
+                <>
+                  <Text style={{ fontSize: fonts.small, color: colors.textSecondary, marginTop: spacing.xs, marginBottom: 4 }}>
+                    Embalagem do delivery
+                  </Text>
+                  <TouchableOpacity
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                      backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border,
+                      borderRadius: borderRadius.sm, padding: spacing.sm + 2, marginBottom: spacing.xs,
+                    }}
+                    onPress={() => { setEmbDeliveryPickerBusca(''); setEmbDeliveryPickerVisible(true); }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Selecionar embalagem do delivery"
+                  >
+                    <Text style={{ fontSize: fonts.regular, color: embNomeExibido ? colors.text : colors.disabled, flex: 1 }} numberOfLines={1}>
+                      {embNomeExibido || 'Selecione uma embalagem'}
+                    </Text>
+                    <Feather name="chevron-down" size={14} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  {embalagemDeliveryId && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: fonts.tiny, color: colors.textSecondary, marginBottom: 2 }}>Quantidade</Text>
+                        <TextInput
+                          value={String(embalagemDeliveryQtd)}
+                          onChangeText={setEmbalagemDeliveryQtd}
+                          keyboardType="decimal-pad"
+                          style={{
+                            backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border,
+                            borderRadius: borderRadius.sm, padding: spacing.sm, fontSize: fonts.regular, color: colors.text,
+                          }}
+                          placeholder="1"
+                        />
+                      </View>
+                      <View style={{
+                        paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16,
+                        backgroundColor: embalagemDeliveryOrigem === 'manual' ? colors.accent + '18' : colors.primary + '14',
+                        alignSelf: 'flex-end',
+                      }}>
+                        <Text style={{
+                          fontSize: fonts.tiny, fontFamily: fontFamily.semiBold,
+                          color: embalagemDeliveryOrigem === 'manual' ? colors.accent : colors.primary,
+                        }}>
+                          {embalagemDeliveryOrigem === 'manual' ? 'Personalizada' : 'Padrão da categoria'}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                  {embalagemDeliveryId && embPreco > 0 && (
+                    <Text style={{ fontSize: fonts.small, color: colors.text, marginBottom: spacing.xs }}>
+                      Custo no delivery: {formatCurrency(cmvUnitario)} + {formatCurrency(embPreco * qtdNum)} embalagem = <Text style={{ fontFamily: fontFamily.semiBold }}>{formatCurrency(custoDeliveryTotal)}</Text>
+                    </Text>
+                  )}
+                  <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 16 }}>
+                    Leva mais de uma embalagem? Cadastre uma embalagem composta (ex.: Kit marmita = marmita + sacola + talher) com o preço somado.
+                  </Text>
+                </>
+              )}
+            </View>
+          );
+        })()}
       </View>
     );
   }
@@ -1332,6 +1507,12 @@ export default function EntityCreateModal({
         const unidadeRendimentoDb = TIPO_VENDA_MAP_TO_DB[tipoVenda];
         const rendTotal = tipoVenda === 'unidade' ? 1 : parseInputValue(rendimentoTotalProd) || 0;
         const rendUn = tipoVenda === 'unidade' ? (parseInputValue(rendimentoUnidades) || 1) : 1;
+        // Design embalagem-delivery-no-produto (2026-09-09): "Vende no delivery?"
+        // desligado, ou ligado sem embalagem escolhida, grava embalagem_delivery_id NULL.
+        const embDeliveryIdToSave = (deliveryOn && embalagemDeliveryId) ? embalagemDeliveryId : null;
+        const embDeliveryQtdToSave = embDeliveryIdToSave
+          ? (parseInputValue(embalagemDeliveryQtd) > 0 ? parseInputValue(embalagemDeliveryQtd) : 1)
+          : null;
 
         // Sessão 28.x — P1 perda de dados: sem transação no web, o padrão antigo
         // (DELETE pai → INSERT novos) destruía a receita se um INSERT falhasse.
@@ -1342,8 +1523,8 @@ export default function EntityCreateModal({
         if (isEditing) {
           await db.runAsync(
             `UPDATE produtos SET nome=?, categoria_id=?, rendimento_total=?, unidade_rendimento=?, rendimento_unidades=?,
-             preco_venda=? WHERE id=?`,
-            [nome.trim(), categoriaId, rendTotal, unidadeRendimentoDb, rendUn, precoVendaNum, editId]
+             preco_venda=?, embalagem_delivery_id=?, embalagem_delivery_quantidade=? WHERE id=?`,
+            [nome.trim(), categoriaId, rendTotal, unidadeRendimentoDb, rendUn, precoVendaNum, embDeliveryIdToSave, embDeliveryQtdToSave, editId]
           );
           savedId = editId;
           // Captura ids das linhas ANTIGAS (NÃO deleta ainda). getAllAsync retorna [] em erro.
@@ -1355,12 +1536,13 @@ export default function EntityCreateModal({
             `INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades,
              tempo_preparo, preco_venda, margem_lucro_produto, validade_dias, temp_congelado, tempo_congelado,
              temp_refrigerado, tempo_refrigerado, temp_ambiente, tempo_ambiente,
-             modo_preparo, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+             modo_preparo, observacoes, embalagem_delivery_id, embalagem_delivery_quantidade) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             [
               nome.trim(), categoriaId, rendTotal, unidadeRendimentoDb, rendUn,
               0, precoVendaNum, 0, 0, 0, 0,
               0, 0, 0, 0,
               '', '',
+              embDeliveryIdToSave, embDeliveryQtdToSave,
             ]
           );
           savedId = result.lastInsertRowId;
@@ -2275,6 +2457,80 @@ export default function EntityCreateModal({
         </TouchableOpacity>
       </Modal>
 
+      {/* Design embalagem-delivery-no-produto (2026-09-09) — picker de
+          "Embalagem do delivery": busca simples sobre allEmbalagens (já
+          carregado pra a lista de itens), reaproveitando o modal de categoria
+          como base visual. Selecionar marca origem 'manual' (some o chip
+          "Padrão da categoria"). */}
+      <Modal visible={embDeliveryPickerVisible} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.catModalOverlay}
+          activeOpacity={1}
+          onPress={() => setEmbDeliveryPickerVisible(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.catModalContent} onPress={() => {}}>
+            <Text style={styles.catModalTitle}>Embalagem do delivery</Text>
+            <TextInput
+              value={embDeliveryPickerBusca}
+              onChangeText={setEmbDeliveryPickerBusca}
+              placeholder="Buscar embalagem..."
+              placeholderTextColor={colors.placeholder}
+              style={{
+                backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border,
+                borderRadius: borderRadius.sm, padding: spacing.sm + 2, fontSize: fonts.regular,
+                color: colors.text, marginTop: spacing.sm, marginBottom: spacing.sm,
+              }}
+            />
+            <ScrollView style={{ maxHeight: 320 }}>
+              {allEmbalagens
+                .filter(e => !embDeliveryPickerBusca.trim() || e.nome.toLowerCase().includes(embDeliveryPickerBusca.trim().toLowerCase()))
+                .map(e => {
+                  const selected = e.id === embalagemDeliveryId;
+                  return (
+                    <TouchableOpacity
+                      key={e.id}
+                      style={[styles.catRow, selected && styles.catRowActive, { justifyContent: 'space-between' }]}
+                      onPress={() => {
+                        setEmbalagemDeliveryId(e.id);
+                        setEmbalagemDeliveryNome(e.nome);
+                        setEmbalagemDeliveryOrigem('manual');
+                        setEmbalagemDeliveryQtd(prev => (prev && parseInputValue(prev) > 0) ? prev : '1');
+                        setEmbDeliveryPickerVisible(false);
+                      }}
+                    >
+                      <Text style={[styles.catRowText, { flex: 1 }]} numberOfLines={1}>
+                        {e.nome}
+                      </Text>
+                      <Text style={{ fontSize: fonts.small, color: colors.textSecondary, marginRight: 6 }}>
+                        {formatCurrency(safeNum(e.preco_unitario))}
+                      </Text>
+                      {selected && <Feather name="check" size={16} color={colors.primary} />}
+                    </TouchableOpacity>
+                  );
+                })}
+              {allEmbalagens.length === 0 && (
+                <Text style={{ color: colors.textSecondary, fontSize: fonts.small, textAlign: 'center', padding: spacing.md }}>
+                  Nenhuma embalagem cadastrada ainda.
+                </Text>
+              )}
+            </ScrollView>
+            {embalagemDeliveryId && (
+              <TouchableOpacity
+                style={{ alignItems: 'center', paddingVertical: spacing.sm, marginTop: spacing.xs }}
+                onPress={() => {
+                  setEmbalagemDeliveryId(null);
+                  setEmbalagemDeliveryNome(null);
+                  setEmbalagemDeliveryOrigem('padrao');
+                  setEmbDeliveryPickerVisible(false);
+                }}
+              >
+                <Text style={{ fontSize: fonts.small, color: colors.error, fontFamily: fontFamily.semiBold }}>Remover embalagem de delivery</Text>
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Sessão 28.38: cascata — modal de preparo empilhado em cima do pai
           (que pode ser produto OU preparo). Quando o user salva, o preparo
           recém-criado é adicionado aos itens do pai E o modal nested fecha.
@@ -2294,6 +2550,8 @@ export default function EntityCreateModal({
               nome, categoriaId, precoVenda,
               tipoVenda, rendimentoUnidades, rendimentoTotalProd,
               rendimentoTotalPrep, unidadeMedidaPrep, itens,
+              deliveryOn, embalagemDeliveryId, embalagemDeliveryNome,
+              embalagemDeliveryQtd, embalagemDeliveryOrigem,
             },
           }}
           onSaved={async (novoPreparoId) => {

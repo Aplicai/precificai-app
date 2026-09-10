@@ -24,7 +24,7 @@ import {
 } from '../utils/calculations';
 import { calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
 import { calcularPrecoBalcao } from '../utils/precificacao';
-import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
+import { buildContextoFinanceiro, custoDelivery, embalagemDeliveryDoProduto } from '../utils/deliveryAdapter';
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
 import usePersistedState from '../hooks/usePersistedState';
 
@@ -82,7 +82,7 @@ export default function SimuladorLoteScreen() {
     setLoading(true);
     try {
       const db = await getDatabase();
-      const [prods, allIngs, allPreps, allEmbs, plats, cfgRows, fixasRows, varsRows, fatRows, ppdRows] = await Promise.all([
+      const [prods, allIngs, allPreps, allEmbs, plats, cfgRows, fixasRows, varsRows, fatRows, ppdRows, embsCatalogo] = await Promise.all([
         db.getAllAsync('SELECT * FROM produtos ORDER BY nome'),
         db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
         db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
@@ -94,7 +94,12 @@ export default function SimuladorLoteScreen() {
         db.getAllAsync('SELECT valor FROM faturamento_mensal WHERE valor > 0'),
         // Sessão 28.23: carrega preços DELIVERY que o user cadastrou (produto_preco_delivery)
         db.getAllAsync('SELECT produto_id, plataforma_id, preco_venda FROM produto_preco_delivery').catch(() => []),
+        // Embalagem de delivery do produto (produtos.embalagem_delivery_id) — o wrapper
+        // SQL só aceita UM join por query, então resolvemos o preço em JS.
+        db.getAllAsync('SELECT id, nome, preco_unitario FROM embalagens').catch(() => []),
       ]);
+      const embsById = {};
+      (embsCatalogo || []).forEach(e => { embsById[e.id] = e; });
       // Mapa { `produtoId-platformaId`: preco }
       const ppdMap = {};
       (ppdRows || []).forEach(r => { ppdMap[`${r.produto_id}-${r.plataforma_id}`] = safeNum(r.preco_venda); });
@@ -120,10 +125,16 @@ export default function SimuladorLoteScreen() {
         const embs = embsByProd[p.id] || [];
         const custoEmb = embs.reduce((a, e) => a + safeNum(e.preco_unitario) * safeNum(e.quantidade_utilizada), 0);
         const cmv = (custoIng + custoPr + custoEmb) / getDivisorRendimento(p);
+        // Custo no delivery = ingredientes + embalagem de delivery do produto
+        // (design embalagem-delivery-no-produto). Sem embalagem → igual ao cmv.
+        const embDelivery = embalagemDeliveryDoProduto(p, embsById);
+        const cmvDelivery = custoDelivery({ cmv, embalagemDeliveryPreco: embDelivery.preco, embalagemDeliveryQtd: embDelivery.qtd });
         return {
           id: p.id,
           nome: p.nome,
           cmv,
+          cmvDelivery,
+          embDeliveryCusto: embDelivery.custo,
           precoVendaBalcao: safeNum(p.preco_venda),
         };
       });
@@ -175,11 +186,13 @@ export default function SimuladorLoteScreen() {
         : 0;
       const plataformaCells = plataformas.map(plat => {
         // V1: usando o lucroPerc do FINANCEIRO (configuração)
-        const sugFinanceiro = calcSugestaoDeliveryCompleta({ cmv: prod.cmv, plat, contexto });
+        // Delivery usa o CUSTO NO DELIVERY (cmv + embalagem de delivery); o lucro
+        // alvo (lucroLiqBalcaoReais) continua calculado com o cmv do balcão.
+        const sugFinanceiro = calcSugestaoDeliveryCompleta({ cmv: prod.cmvDelivery, plat, contexto });
         // V2: preço delivery que rende o MESMO R$ de lucro líquido por venda que o balcão
         const sugMantemMargem = (prod.precoVendaBalcao > 0 && lucroLiqBalcaoReais > 0)
           ? calcPrecoMesmoLucroReais({
-              cmv: prod.cmv,
+              cmv: prod.cmvDelivery,
               lucroAlvoReais: lucroLiqBalcaoReais,
               plat,
               contexto,
@@ -297,6 +310,12 @@ export default function SimuladorLoteScreen() {
                 </Text>
               </View>
               <View style={styles.legendRow}>
+                <Feather name="package" size={11} color={colors.textSecondary} />
+                <Text style={styles.legendText}>
+                  Custo no delivery = ingredientes + embalagem de delivery do produto. É esse custo que entra em MESMO LUCRO e MÍNIMO.
+                </Text>
+              </View>
+              <View style={styles.legendRow}>
                 <Feather name="info" size={11} color={colors.textSecondary} />
                 <Text style={styles.legendText}>
                   Toque em qualquer célula pra abrir simulação completa e cadastrar seu preço.
@@ -318,6 +337,10 @@ export default function SimuladorLoteScreen() {
                   <View>
                     <Text style={{ fontSize: 11, color: colors.textSecondary }}>Custo dos ingredientes <Text style={{ fontSize: 10 }}>(CMV)</Text></Text>
                     <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>{formatCurrency(linha.prod.cmv)}</Text>
+                  </View>
+                  <View>
+                    <Text style={{ fontSize: 11, color: colors.textSecondary }}>Custo no delivery</Text>
+                    <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>{formatCurrency(linha.prod.cmvDelivery)}</Text>
                   </View>
                   <View>
                     <Text style={{ fontSize: 11, color: colors.textSecondary }}>% do preço em ingredientes</Text>
@@ -390,11 +413,15 @@ export default function SimuladorLoteScreen() {
               <View style={[styles.cellNumeric, styles.headerCell, styles.stickyColHeader, { left: 170, borderRightWidth: 1, borderRightColor: colors.border }]}>
                 <Text style={[styles.headerText, { fontSize: 11 }]}>Custo dos{'\n'}ingredientes</Text>
               </View>
-              {/* Sessão 28.47 — CMV em % por produto (relativo ao preço atual do balcão). */}
+              {/* Custo no delivery = ingredientes + embalagem de delivery do produto */}
               <View style={[styles.cellNumeric, styles.headerCell, styles.stickyColHeader, { left: 262, borderRightWidth: 1, borderRightColor: colors.border }]}>
+                <Text style={[styles.headerText, { fontSize: 11 }]}>Custo no{'\n'}delivery</Text>
+              </View>
+              {/* Sessão 28.47 — CMV em % por produto (relativo ao preço atual do balcão). */}
+              <View style={[styles.cellNumeric, styles.headerCell, styles.stickyColHeader, { left: 354, borderRightWidth: 1, borderRightColor: colors.border }]}>
                 <Text style={[styles.headerText, { fontSize: 11 }]}>Ingredientes{'\n'}% do preço</Text>
               </View>
-              <View style={[styles.cellNumeric, styles.headerCell, styles.stickyColHeader, { left: 354, borderRightWidth: 1, borderRightColor: colors.border }]}>
+              <View style={[styles.cellNumeric, styles.headerCell, styles.stickyColHeader, { left: 446, borderRightWidth: 1, borderRightColor: colors.border }]}>
                 <Text style={styles.headerText}>Preço{'\n'}Atual</Text>
               </View>
               {plataformas.map(plat => (
@@ -432,8 +459,11 @@ export default function SimuladorLoteScreen() {
                 <View style={[styles.cellNumeric, styles.stickyCol, { left: 170, borderRightWidth: 1, borderRightColor: colors.border }]}>
                   <Text style={styles.cellValueDim}>{formatCurrency(linha.prod.cmv)}</Text>
                 </View>
-                {/* Sessão 28.47 — coluna CMV % (CMV / preço de venda do balcão) */}
                 <View style={[styles.cellNumeric, styles.stickyCol, { left: 262, borderRightWidth: 1, borderRightColor: colors.border }]}>
+                  <Text style={[styles.cellValueDim, linha.prod.embDeliveryCusto > 0 && { color: colors.text }]}>{formatCurrency(linha.prod.cmvDelivery)}</Text>
+                </View>
+                {/* Sessão 28.47 — coluna CMV % (CMV / preço de venda do balcão) */}
+                <View style={[styles.cellNumeric, styles.stickyCol, { left: 354, borderRightWidth: 1, borderRightColor: colors.border }]}>
                   <Text style={styles.cellValueDim}>
                     {linha.prod.precoVendaBalcao > 0
                       ? ((linha.prod.cmv / linha.prod.precoVendaBalcao) * 100).toFixed(1) + '%'
@@ -441,7 +471,7 @@ export default function SimuladorLoteScreen() {
                   </Text>
                 </View>
                 {/* Coluna "Preço Atual" — preço de venda DO PRODUTO no balcão (sessão 28.16) */}
-                <View style={[styles.cellNumeric, styles.stickyCol, { left: 354, borderRightWidth: 1, borderRightColor: colors.border }]}>
+                <View style={[styles.cellNumeric, styles.stickyCol, { left: 446, borderRightWidth: 1, borderRightColor: colors.border }]}>
                   <Text style={[styles.cellValuePrimary, { color: colors.text }]}>
                     {linha.prod.precoVendaBalcao > 0 ? formatCurrency(linha.prod.precoVendaBalcao) : '—'}
                   </Text>
@@ -606,7 +636,7 @@ const styles = StyleSheet.create({
   cellProduto: { width: 170, padding: spacing.sm, justifyContent: 'center' },
   cellNumeric: { width: 92, padding: spacing.xs, paddingHorizontal: spacing.sm, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 4 },
   // Sessão 28.47 — congela 3 primeiras colunas no scroll horizontal (web).
-  // Posições: Produto(0–170), CMV(170–262), CMV%(262–354), Preço Atual(354–446).
+  // Posições: Produto(0–170), CMV(170–262), Custo delivery(262–354), CMV%(354–446), Preço Atual(446–538).
   // Usa position:sticky — RN-Web traduz pra CSS nativo; mobile não congela
   // mas a tabela cabe na largura sem scroll horizontal pesado.
   stickyCol: Platform.OS === 'web' ? { position: 'sticky', zIndex: 2, backgroundColor: colors.surface } : {},

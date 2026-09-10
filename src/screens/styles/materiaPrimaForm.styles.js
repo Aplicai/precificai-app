@@ -7,7 +7,7 @@
  * Sem mudança de comportamento — apenas reorganização.
  */
 import { StyleSheet } from 'react-native';
-import { colors, spacing, fonts, fontFamily, borderRadius } from '../../utils/theme';
+import { colors, spacing, fonts, fontFamily, borderRadius, radius } from '../../utils/theme';
 
 export const materiaPrimaFormStyles = StyleSheet.create({
   wrapper: { flex: 1, backgroundColor: colors.background },
@@ -140,7 +140,7 @@ export const materiaPrimaFormStyles = StyleSheet.create({
   historicoSection: {
     marginTop: spacing.sm,
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
+    borderRadius: radius.md,
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -235,7 +235,8 @@ export const materiaPrimaFormStyles = StyleSheet.create({
     color: colors.textSecondary,
   },
 
-  // Botão salvar fixo (só para novo)
+  // Botão salvar fixo (só para novo) — refinamento visual 09/09: botão primário
+  // full-width, altura 44, raio 10, texto 15/600.
   stickyFooter: {
     backgroundColor: '#fff',
     borderTopWidth: 1, borderTopColor: colors.border,
@@ -243,10 +244,11 @@ export const materiaPrimaFormStyles = StyleSheet.create({
     paddingBottom: spacing.md,
   },
   btnSave: {
-    backgroundColor: colors.primary, padding: spacing.md,
-    borderRadius: borderRadius.sm, alignItems: 'center',
+    backgroundColor: colors.primary, minHeight: 44,
+    justifyContent: 'center',
+    borderRadius: radius.md, alignItems: 'center',
   },
-  btnSaveText: { color: colors.textLight, fontWeight: '700', fontSize: fonts.regular },
+  btnSaveText: { color: colors.textLight, fontFamily: fontFamily.semiBold, fontWeight: '600', fontSize: 15 },
 
   // Salvar e voltar (edição - sutil)
   btnSaveEdit: {
@@ -270,16 +272,15 @@ export const materiaPrimaFormStyles = StyleSheet.create({
   },
   btnDeleteText: { color: colors.error, fontWeight: '600', fontSize: fonts.small },
 
-  // Picker customizado
-  pickerContainer: { marginBottom: spacing.sm },
-  pickerLabel: { fontSize: fonts.small, color: colors.textSecondary, marginBottom: spacing.xs, fontWeight: '600' },
+  // Picker customizado — refinamento visual 09/09: label 13/500 sentence case,
+  // input 44px, raio 10, borda 1px.
+  pickerContainer: { marginBottom: spacing.md },
+  pickerLabel: { fontSize: 13, fontFamily: fontFamily.medium, color: colors.textSecondary, marginBottom: spacing.xs, fontWeight: '500' },
   pickerSelector: {
-    // Sessão 28.9 — APP-05: aumenta visibilidade do picker (era difícil
-    // perceber que era clicável). Touch target 48pt + chevron mais forte.
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border,
-    borderRadius: borderRadius.sm, padding: spacing.sm + 2,
-    minHeight: 48,
+    borderRadius: radius.md, paddingHorizontal: spacing.sm + 2,
+    minHeight: 44,
   },
   pickerText: { fontSize: fonts.regular, color: colors.text },
   pickerPlaceholder: { color: colors.disabled },
@@ -290,14 +291,14 @@ export const materiaPrimaFormStyles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', padding: spacing.sm,
   },
   modalContent: {
-    backgroundColor: '#fff', borderRadius: borderRadius.md,
+    backgroundColor: '#fff', borderRadius: radius.lg,
     padding: spacing.lg, width: '100%', maxWidth: 600, maxHeight: '90%',
   },
   modalTitle: { fontSize: fonts.large, fontWeight: '700', color: colors.text, marginBottom: spacing.md, textAlign: 'center' },
-  modalLabel: { fontSize: fonts.small, fontWeight: '600', color: colors.textSecondary, marginBottom: spacing.xs, marginTop: spacing.sm },
+  modalLabel: { fontSize: 13, fontFamily: fontFamily.medium, fontWeight: '500', color: colors.textSecondary, marginBottom: spacing.xs, marginTop: spacing.sm },
   modalInput: {
     backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border,
-    borderRadius: borderRadius.sm, padding: spacing.sm + 2, fontSize: fonts.regular, color: colors.text,
+    borderRadius: radius.md, minHeight: 44, paddingHorizontal: spacing.sm + 2, fontSize: fonts.regular, color: colors.text,
   },
 
   // Opções de categoria
@@ -338,7 +339,7 @@ export const materiaPrimaFormStyles = StyleSheet.create({
 
   // Modal campos incompletos
   incompleteModal: {
-    backgroundColor: '#fff', borderRadius: borderRadius.md,
+    backgroundColor: '#fff', borderRadius: radius.lg,
     padding: spacing.lg, width: '100%', maxWidth: 340,
     alignItems: 'center',
   },

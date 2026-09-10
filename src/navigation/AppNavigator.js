@@ -162,25 +162,20 @@ const TAB_ICONS = {
 
 function TabIcon({ label, focused, badge, baseSize }) {
   const iconDef = TAB_ICONS[label] || { set: 'feather', name: 'file' };
-  // Sessão 28.6 — usa token iconSize do useListDensity (compact=18, comfortable=22).
-  // baseSize default 22 mantém retrocompatibilidade.
-  const fallbackBase = baseSize ?? 22;
-  const size = focused ? fallbackBase : fallbackBase - 2;
+  // Refinamento visual 09/09: ícone fixo em 22px (regra "icon 22 + label 10/600"),
+  // independente de densidade — antes variava 18/22 pelo useListDensity.
+  const size = 22;
   const color = focused ? colors.primary : colors.textSecondary;
 
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-      {/* Polish — indicador ativo reforçado: barra superior colorida + halo circular */}
+      {/* Refinamento visual 09/09: ativo = verde da marca, sem pílula de fundo.
+          O halo circular atrás do ícone foi removido; a barra fina acima
+          continua como único indicador de estado ativo. */}
       {focused && (
         <View style={{
           position: 'absolute', top: -10, width: 24, height: 3,
           borderRadius: 2, backgroundColor: colors.primary,
-        }} />
-      )}
-      {focused && (
-        <View style={{
-          position: 'absolute', top: -3, width: 30, height: 30, borderRadius: 15,
-          backgroundColor: colors.primary + '1A',
         }} />
       )}
       {iconDef.set === 'material' ? (
@@ -496,8 +491,8 @@ function MainTabs({ route }) {
   // No desktop o tabBar é hidden (display:none), preservamos comportamento atual.
   const { isCompact: densityCompact, iconSize: tabIconSize } = useListDensity();
   const tabBarHeightMobile = densityCompact ? 60 : 70;
-  const tabBarFontSize = isNarrow ? 10 : (densityCompact ? 10 : 11);
-  const tabFontSize = tabBarFontSize;
+  // Refinamento visual 09/09: label fixa em 10/600 (regra "icon 22 + label 10/600").
+  const tabFontSize = 10;
 
   // Audit A7-perf: `screenListeners.state` dispara a CADA mudança de navegação e
   // getFinanceiroStatus faz 4 queries sequenciais — throttle de 5s (o wrapper já

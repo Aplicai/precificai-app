@@ -1,11 +1,11 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { View, Text, SectionList, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, Platform, RefreshControl } from 'react-native';
+import { View, Text, SectionList, ScrollView, StyleSheet, TouchableOpacity, Pressable, Alert, TextInput, Modal, Platform, RefreshControl } from 'react-native';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import FAB from '../components/FAB';
 import { Feather } from '@expo/vector-icons';
-import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import { colors, spacing, fonts, fontFamily, borderRadius, radius, numeric } from '../utils/theme';
 import { formatCurrency, normalizeSearch } from '../utils/calculations';
 import { subscribeDataChanged } from '../utils/dataSync';
 import SearchBar from '../components/SearchBar';
@@ -609,14 +609,14 @@ export default function EmbalagensScreen({ navigation }) {
             return (
               <TouchableOpacity
                 key={String(item.id)}
-                style={[styles.filtroChip, isActive && { backgroundColor: chipColor, borderColor: chipColor }]}
+                style={[styles.filtroChip, isActive && styles.filtroChipAtivo]}
                 onPress={() => setFiltroCategoria(item.id === filtroCategoria ? null : item.id)}
                 onLongPress={() => item.id !== null ? removerCategoria(item.id) : null}
               >
                 {item.id === null ? (
                   <Feather name="list" size={11} color={isActive ? '#fff' : colors.textSecondary} style={{ marginRight: 3 }} />
                 ) : (
-                  <View style={[styles.chipDot, { backgroundColor: isActive ? '#fff' : chipColor }]} />
+                  <View style={[styles.chipDot, { backgroundColor: chipColor }]} />
                 )}
                 <Text style={[styles.filtroTexto, isActive && styles.filtroTextoAtivo]} numberOfLines={1}>
                   {item.nome}
@@ -680,13 +680,17 @@ export default function EmbalagensScreen({ navigation }) {
                         {section.data.map((item) => {
                           const selected = bulk.isSelected(item.id);
                           return (
-                          <TouchableOpacity
+                          <Pressable
                             key={item.id}
                             style={[styles.gridCard, isWeb && { cursor: 'pointer' }, selected && styles.rowSelected]}
-                            activeOpacity={0.7}
                             onPress={() => handleRowPress(item)}
                             onLongPress={() => handleRowLongPress(item)}
                           >
+                            {({ hovered }) => {
+                              // Refinamento visual 09/09: duplicar/excluir só no hover (desktop web).
+                              const showActions = !isWeb || hovered;
+                              return (
+                              <>
                             <View style={styles.gridCardTop}>
                               {bulk.active && (
                                 <View style={[styles.checkbox, selected && styles.checkboxChecked, { marginRight: 8, marginLeft: 0 }]}>
@@ -707,7 +711,7 @@ export default function EmbalagensScreen({ navigation }) {
                             <View style={styles.gridCardBottom}>
                               <Text style={styles.gridCardPrice}>{formatCurrency(item.preco_unitario)}</Text>
                               {!bulk.active && (
-                                <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 6, gap: 2 }}>
+                                <View style={[{ flexDirection: 'row', alignItems: 'center', marginLeft: 6, gap: 2 }, !showActions && { opacity: 0 }]}>
                                   <TouchableOpacity
                                     onPress={(e) => { e.stopPropagation && e.stopPropagation(); duplicarEmbalagem(item); }}
                                     style={{ padding: 4 }}
@@ -731,7 +735,10 @@ export default function EmbalagensScreen({ navigation }) {
                                 </View>
                               )}
                             </View>
-                          </TouchableOpacity>
+                              </>
+                              );
+                            }}
+                          </Pressable>
                           );
                         })}
                       </View>)}
@@ -1041,18 +1048,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
   },
+  // Refinamento visual 09/09: chips 30px de altura, raio 15, sem preenchimento
+  // quando não selecionados; selecionado = verde-escuro da marca + texto branco.
   filtroChip: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: colors.inputBg,
-    paddingHorizontal: spacing.sm + 2, paddingVertical: 5,
-    borderRadius: 16, borderWidth: 1, borderColor: colors.border, marginRight: 2,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    height: 30,
+    backgroundColor: 'transparent',
+    paddingHorizontal: spacing.sm + 2,
+    borderRadius: 15, borderWidth: 1, borderColor: colors.border, marginRight: 2,
   },
+  filtroChipAtivo: { backgroundColor: colors.primaryDark, borderColor: colors.primaryDark },
   chipDot: {
-    width: 6, height: 6, borderRadius: 3, marginRight: 4,
+    width: 8, height: 8, borderRadius: 4, marginRight: 4,
   },
   filtroTexto: {
-    fontSize: 11, fontWeight: '600', color: colors.text, maxWidth: 90,
-    fontFamily: fontFamily.semiBold,
+    fontSize: 12, fontWeight: '500', color: colors.text, maxWidth: 90,
+    fontFamily: fontFamily.medium,
   },
   filtroTextoAtivo: { color: '#fff' },
   addCatBtn: {
@@ -1076,9 +1087,9 @@ const styles = StyleSheet.create({
     width: 8, height: 8, borderRadius: 4, marginRight: 6,
   },
   sectionTitle: {
-    fontSize: 12, fontFamily: fontFamily.bold, fontWeight: '700',
+    fontSize: 13, fontFamily: fontFamily.semiBold, fontWeight: '600',
     color: colors.textSecondary, flex: 1, textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   sectionCount: {
     fontSize: 11, fontFamily: fontFamily.semiBold, fontWeight: '600',
@@ -1178,12 +1189,12 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   gridCatTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: fontFamily.semiBold,
     fontWeight: '600',
     color: colors.textSecondary,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   gridContainer: {
     flexDirection: 'row',
@@ -1194,7 +1205,7 @@ const styles = StyleSheet.create({
   gridCard: {
     position: 'relative',
     backgroundColor: colors.surface,
-    borderRadius: borderRadius.sm,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.sm,
@@ -1219,16 +1230,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   gridCardName: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: fontFamily.medium,
     fontWeight: '500',
     color: colors.text,
     flexShrink: 1,
   },
   gridCardPrice: {
-    fontSize: 13,
-    fontFamily: fontFamily.bold,
-    fontWeight: '700',
+    fontSize: 15,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    textAlign: 'right',
+    ...numeric,
     color: colors.primary,
     flexShrink: 0,
   },

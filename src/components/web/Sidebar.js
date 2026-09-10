@@ -15,8 +15,11 @@ import { FEATURE_MIN_PLAN, PLAN_LABELS } from '../../config/plans';
 
 // Ordem segue o fluxo de composição (audit P1-08):
 // Insumos → Preparos (combina insumos) → Embalagens (wrapper) → Produtos (final).
+// Refinamento visual 09/09 — grupos rotulados (CADASTRO / ANÁLISES / CONTA),
+// 11/600 tracking 0.8 a 60% de branco sobre o verde-escuro da marca.
 const NAV_SECTIONS = [
   {
+    label: 'Cadastro',
     items: [
       // AUDITORIA QA: 'screen: HomeMain' faz o Painel usar o MESMO caminho de
       // navegação dos demais itens (navigate com _t) — confiável em 1 clique.
@@ -33,6 +36,7 @@ const NAV_SECTIONS = [
     ],
   },
   {
+    label: 'Análises',
     items: [
       { key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign', iconSet: 'feather', tab: 'Mais', screen: 'FinanceiroMain' },
       { key: 'delivery', label: 'Delivery', icon: 'truck', iconSet: 'feather', tab: 'Mais', screen: 'DeliveryHub', feature: 'delivery' },
@@ -47,12 +51,9 @@ const NAV_SECTIONS = [
     ],
   },
   {
+    label: 'Conta',
     items: [
       { key: 'config', label: 'Configurações', icon: 'settings', iconSet: 'feather', tab: 'Mais', screen: 'Configuracoes' },
-    ],
-  },
-  {
-    items: [
       { key: 'suporte', label: 'Suporte', icon: 'help-circle', iconSet: 'feather', tab: 'Mais', screen: 'Suporte' },
     ],
   },
@@ -165,9 +166,19 @@ function getActiveKey(navState) {
 // Audit a11y (WCAG 2.1.1): era um `<div onClick>` puro — invisível pro teclado
 // e pro leitor de tela. Agora leva role/tabIndex/handler de Enter+Espaço e um
 // anel de foco visível.
+// Refinamento visual 09/09: hover = 6% de branco (só quando não está ativo);
+// ativo = 10% de branco + barra de 3 px. Estado local porque o <div> cru não
+// tem `hovered` do Pressable.
+const HOVER_BG = 'rgba(255,255,255,0.06)';
+// Ícones/cadeado dos itens inativos (sidebar clara): cinza secundário.
+const NAV_ICON_INACTIVE = colors.textSecondary;
 function SidebarButton({ onPress, style, children, tooltip, label, selected }) {
+  const [hovered, setHovered] = useState(false);
   if (Platform.OS === 'web') {
     const flat = StyleSheet.flatten(style) || {};
+    const bg = flat.backgroundColor && flat.backgroundColor !== 'transparent'
+      ? flat.backgroundColor
+      : (hovered && !selected ? HOVER_BG : 'transparent');
     // Convert React Native style to CSS-compatible style
     const cssStyle = {
       display: 'flex',
@@ -185,7 +196,7 @@ function SidebarButton({ onPress, style, children, tooltip, label, selected }) {
       marginLeft: flat.marginHorizontal ?? flat.marginLeft ?? 0,
       marginRight: flat.marginHorizontal ?? flat.marginRight ?? 0,
       borderRadius: flat.borderRadius ?? 0,
-      backgroundColor: flat.backgroundColor || 'transparent',
+      backgroundColor: bg,
       borderWidth: flat.borderWidth ? `${flat.borderWidth}px` : undefined,
       borderStyle: flat.borderWidth ? 'solid' : undefined,
       borderColor: flat.borderColor || undefined,
@@ -199,6 +210,8 @@ function SidebarButton({ onPress, style, children, tooltip, label, selected }) {
     return (
       <div
         onClick={activate}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
             e.preventDefault();
@@ -334,8 +347,11 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse, initi
       {/* Nav items - use div on web for visible scrollbar */}
       <ScrollView style={[styles.nav, Platform.OS === 'web' && { overflowY: 'auto' }]} showsVerticalScrollIndicator={true}>
         {filteredSections.map((section, sIdx) => (
-          <View key={sIdx}>
-            {sIdx > 0 && <View style={styles.divider} />}
+          <View key={sIdx} style={sIdx > 0 && styles.sectionGap}>
+            {section.label && !collapsed && (
+              <Text style={styles.groupLabel} numberOfLines={1}>{section.label}</Text>
+            )}
+            {section.label && collapsed && sIdx > 0 && <View style={styles.divider} />}
             {section.items.map((item) => {
               const isActive = activeKey === item.key;
               const IconComp = item.iconSet === 'material' ? MaterialCommunityIcons : Feather;
@@ -374,7 +390,7 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse, initi
                   <IconComp
                     name={item.icon}
                     size={20}
-                    color={isActive ? colors.primary : colors.textSecondary}
+                    color={isActive ? colors.textLight : NAV_ICON_INACTIVE}
                   />
                   {!collapsed && (
                     <Text
@@ -388,7 +404,7 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse, initi
                     </Text>
                   )}
                   {!collapsed && locked && (
-                    <Feather name="lock" size={14} color={colors.primary} style={{ marginLeft: 'auto' }} />
+                    <Feather name="lock" size={14} color={NAV_ICON_INACTIVE} style={{ marginLeft: 'auto' }} />
                   )}
                 </SidebarButton>
               );
@@ -408,7 +424,7 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse, initi
           <Feather
             name={collapsed ? 'chevrons-right' : 'chevrons-left'}
             size={18}
-            color={colors.textSecondary}
+            color={NAV_ICON_INACTIVE}
           />
           {!collapsed && (
             <Text style={styles.collapseLabel}>Recolher</Text>
@@ -482,6 +498,19 @@ const styles = StyleSheet.create({
   },
   activeBar: {
     display: 'none',
+  },
+  // Refinamento 09/09: rótulo de grupo ("Cadastro", "Análises", "Conta") —
+  // 11/600 maiúsculo com tracking, alinhado ao texto dos itens.
+  groupLabel: {
+    fontSize: 11,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: colors.textSecondary,
+    paddingHorizontal: 29,
+    marginTop: 14,
+    marginBottom: 4,
   },
   navLabel: {
     marginLeft: 12,

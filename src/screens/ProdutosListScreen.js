@@ -346,7 +346,14 @@ export default function ProdutosListScreen({ navigation }) {
       const cmv = calcCMVPercentual(custoUn, precoVenda);
       // -1 = sentinel "sem preço" (calcMargemLiquida retornaria 0, mas a UI distingue)
       const margem = precoVenda > 0 ? calcMargemLiquida(precoVenda, custoUn, despFixasVal, despVarVal) : -1;
-      result.push({ ...p, custoTotal: custoUn, precoVenda, lucro, cmv, despFixasVal, despVarVal, margem });
+      // Design embalagem-delivery-no-produto (2026-09-09) — ícone de delivery no
+      // card quando o produto tem embalagem de delivery própria. embMap já
+      // carrega TODAS as embalagens (usado acima pra custo de balcão).
+      const embDelivery = p.embalagem_delivery_id ? embMap[p.embalagem_delivery_id] : null;
+      const embDeliveryPreco = embDelivery ? (embDelivery.preco_unitario || 0) : 0;
+      const embDeliveryQtd = p.embalagem_delivery_quantidade != null ? p.embalagem_delivery_quantidade : 1;
+      const embDeliveryCusto = embDelivery ? embDeliveryPreco * embDeliveryQtd : 0;
+      result.push({ ...p, custoTotal: custoUn, precoVenda, lucro, cmv, despFixasVal, despVarVal, margem, embDeliveryCusto });
     }
 
     setTotalProdutos(result.length);
@@ -772,6 +779,16 @@ export default function ProdutosListScreen({ navigation }) {
                       <Text style={styles.gridCardPrice}>
                         {formatCurrency(item.precoVenda)}
                       </Text>
+                      {/* Design embalagem-delivery-no-produto (2026-09-09) — indica que
+                          o produto tem embalagem de delivery própria cadastrada. */}
+                      {item.embalagem_delivery_id != null && (
+                        <Feather
+                          name="truck"
+                          size={12}
+                          color={colors.textSecondary}
+                          {...(isWeb ? { title: `Delivery: + ${formatCurrency(item.embDeliveryCusto)} de embalagem` } : {})}
+                        />
+                      )}
                       {/* Fix walkthrough #3 — card do grid só mostrava nome+preço, sem
                           nenhum indício de saúde de margem (só dava pra ver a cor de
                           fundo/borda, sutil). Pill "sobra X%" reusa os mesmos helpers/
@@ -1117,6 +1134,16 @@ export default function ProdutosListScreen({ navigation }) {
                     <Text numberOfLines={1} style={styles.itemMetaText}>CMV {formatCurrency(item.custoTotal)}</Text>
                     <Text style={styles.itemMetaSep}>•</Text>
                     <Text numberOfLines={1} style={styles.itemMetaText}>Venda {formatCurrency(item.precoVenda)}</Text>
+                    {/* Design embalagem-delivery-no-produto (2026-09-09) */}
+                    {item.embalagem_delivery_id != null && (
+                      <Feather
+                        name="truck"
+                        size={12}
+                        color={colors.textSecondary}
+                        style={{ marginLeft: 4 }}
+                        {...(isWeb ? { title: `Delivery: + ${formatCurrency(item.embDeliveryCusto)} de embalagem` } : {})}
+                      />
+                    )}
                   </View>
                 </View>
 

@@ -79,3 +79,30 @@ test('setCategoriasPadraoDaEmbalagem — sem embalagemId não toca no banco; tab
     await assert.doesNotReject(() => setCategoriasPadraoDaEmbalagem(mockDb({ fail: new Error('no table') }), 5, [1]));
   } finally { console.warn = orig; }
 });
+
+// ── Canal 'delivery' (design embalagem-delivery-no-produto, 2026-09-09) ────
+test('getEmbalagemPadrao — canal delivery consulta com canal = delivery (não mistura com balcão)', async () => {
+  const db = mockDb({ first: { embalagem_id: 42 } });
+  assert.equal(await getEmbalagemPadrao(db, 3, 'delivery'), 42);
+  assert.match(db.calls[0].sql, /categoria_id = \? AND canal = \?/);
+  assert.deepEqual(db.calls[0].params, [3, 'delivery']);
+});
+
+test('getEmbalagemPadrao / getCategoriasPadraoDaEmbalagem — balcão e delivery são leituras independentes', async () => {
+  const db = mockDb({ first: null, rows: [{ categoria_id: 5 }] });
+  assert.equal(await getEmbalagemPadrao(db, 3, 'balcao'), null);
+  assert.deepEqual(await getCategoriasPadraoDaEmbalagem(db, 9, 'delivery'), [5]);
+  assert.deepEqual(db.calls.map((c) => c.params), [[3, 'balcao'], [9, 'delivery']]);
+});
+
+test('setCategoriasPadraoDaEmbalagem — salvar no delivery só apaga/insere linhas do canal delivery', async () => {
+  const db = mockDb();
+  await setCategoriasPadraoDaEmbalagem(db, 9, [1, 2], 'delivery');
+  assert.ok(db.calls.every((c) => c.params[c.params.length - 1] === 'delivery'));
+  assert.equal(db.calls.filter((c) => c.sql.startsWith('INSERT')).length, 2);
+  // lista vazia → só o DELETE do canal (limpa padrões do delivery sem tocar no balcão)
+  const db2 = mockDb();
+  await setCategoriasPadraoDaEmbalagem(db2, 9, [], 'delivery');
+  assert.equal(db2.calls.length, 1);
+  assert.deepEqual(db2.calls[0].params, [9, 'delivery']);
+});
