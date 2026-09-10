@@ -67,22 +67,26 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
   const loadingRef = useRef(false);
   const MIN_RELOAD_MS = 3000;
 
-  const carregarSafe = useCallback(() => {
+  // Walkthrough 09/09: "atualizei o preço do Milho verde e o relatório continuou
+  // 'sem preço'". O dedupe de 3 s engolia o reload ao VOLTAR do formulário
+  // (foco chega logo depois do último carregar). Foco = sempre recarrega;
+  // o dedupe fica só pro visibilitychange.
+  const carregarSafe = useCallback((force = false) => {
     const now = Date.now();
     if (loadingRef.current) return; // já tem um em andamento
-    if (now - lastLoadRef.current < MIN_RELOAD_MS) return; // muito recente
+    if (!force && now - lastLoadRef.current < MIN_RELOAD_MS) return; // muito recente
     lastLoadRef.current = now;
     carregar();
   }, []);
 
-  useFocusEffect(useCallback(() => { carregarSafe(); }, [carregarSafe]));
+  useFocusEffect(useCallback(() => { carregarSafe(true); }, [carregarSafe]));
 
   // Sessão 28.27: SEGURANÇA EXTRA — useFocusEffect às vezes não dispara em tab
   // navigators no web. Adiciona listener explícito + recarrega quando aba
   // do navegador volta a ficar visível. Sessão 28.42: usa carregarSafe pra
   // dedup de chamadas concorrentes.
   useEffect(() => {
-    const unsub = navigation.addListener('focus', () => { carregarSafe(); });
+    const unsub = navigation.addListener('focus', () => { carregarSafe(true); });
     let onVis;
     if (typeof document !== 'undefined' && document.addEventListener) {
       onVis = () => { if (!document.hidden) carregarSafe(); };
@@ -400,7 +404,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                         onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
                       >
                         <Text style={styles.listRowNome} numberOfLines={1}>{i.nome}</Text>
-                        <Text style={styles.listRowValor}>R$ {Number(i.preco_por_kg).toFixed(2)}/kg</Text>
+                        <Text style={styles.listRowValor}>{formatCurrency(i.preco_por_kg)}/kg</Text>
                         <Feather name="chevron-right" size={14} color={colors.textSecondary} />
                       </TouchableOpacity>
                     ))}
@@ -495,7 +499,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                       <View style={[styles.deltaBadge, { backgroundColor: tintColor + '15' }]}>
                         <Feather name={subiu ? 'trending-up' : 'trending-down'} size={12} color={tintColor} />
                         <Text style={[styles.deltaBadgeText, { color: tintColor }]}>
-                          {subiu ? '+' : ''}{(v.delta * 100).toFixed(1)}%
+                          {subiu ? '+' : ''}{(v.delta * 100).toFixed(1).replace('.', ',')}%
                         </Text>
                       </View>
                     </TouchableOpacity>

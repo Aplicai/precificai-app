@@ -17,7 +17,7 @@ import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import {
   WIZARD_STEPS, SUGESTOES_LUCRO, wizardProgressLabel, deveMostrarWizard,
   passoConcluido, primeiroPassoPendente, validarLucroInput, validarFaturamentoInput,
-  fracaoParaInputPercentual,
+  fracaoParaInputPercentual, formatMarkup,
 } from '../components/financeiro/wizardSteps';
 // APP-30/33/34 — config centralizada de constantes financeiras
 import {
@@ -421,11 +421,11 @@ export default function FinanceiroConfigScreen() {
   }
 
   function editarDespesaFixa(d) {
-    setEditModal({ tipo: 'fixa', id: d.id, descricao: d.descricao, valor: String(d.valor || 0) });
+    setEditModal({ tipo: 'fixa', id: d.id, descricao: d.descricao, valor: d.valor > 0 ? String(d.valor).replace('.', ',') : '' });
   }
 
   function editarDespesaVariavel(d) {
-    setEditModal({ tipo: 'variavel', id: d.id, descricao: d.descricao, valor: String(((d.percentual || 0) * 100).toFixed(2)).replace('.', ',') });
+    setEditModal({ tipo: 'variavel', id: d.id, descricao: d.descricao, valor: d.percentual > 0 ? String((d.percentual * 100).toFixed(2)).replace('.', ',') : '' });
   }
 
   async function salvarEdicao() {
@@ -510,7 +510,8 @@ export default function FinanceiroConfigScreen() {
         : descricao;
       setTimeout(() => {
         setCurrencyModal({
-          title: tituloModal, value: '0', prefix: 'R$', placeholder: placeholderInicial,
+          // Abre VAZIO: com value '0' o cursor caía depois do zero e "89,90" virava "089,90".
+          title: tituloModal, value: '', prefix: 'R$', placeholder: placeholderInicial,
           onConfirm: async (val) => {
             const parsed = parseNum(val);
             const v = Number.isFinite(parsed) ? parsed : 0;
@@ -575,7 +576,7 @@ export default function FinanceiroConfigScreen() {
     if (newId) {
       setTimeout(() => {
         setCurrencyModal({
-          title: descricao, value: '0', suffix: '%', placeholder: '0,0',
+          title: descricao, value: '', suffix: '%', placeholder: '0,00',
           onConfirm: async (val) => {
             const p = parseNum(val);
             const v = Number.isFinite(p) ? p / 100 : 0;
@@ -605,7 +606,7 @@ export default function FinanceiroConfigScreen() {
   const custoMaxPerc = Math.max(0, custoBruto);
   const modeloInviavel = Number.isFinite(custoBruto) && custoBruto <= 0 && (despFixasPerc > 0 || totalVariaveis > 0 || lucroPerc > 0);
   const markupValido = Number.isFinite(markup) && markup > 0;
-  const markupDisplay = markupValido ? `${markup.toFixed(2)}x` : '∞';
+  const markupDisplay = markupValido ? formatMarkup(markup) : '∞';
 
   const faturamentoOrdenado = [...faturamento].sort((a, b) => mesesCurtos.indexOf(a.mes) - mesesCurtos.indexOf(b.mes));
 
@@ -991,7 +992,13 @@ export default function FinanceiroConfigScreen() {
                 {disponiveis.map(sug => (
                   // D-13: tooltip de pró-labore movido pro modal que abre ao clicar
                   // (estava esquisito ao lado do chip). Aqui só o chip clean.
-                  <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoFixa(sug)}>
+                  <TouchableOpacity
+                    key={sug}
+                    style={s.suggestionChip}
+                    onPress={() => adicionarSugestaoFixa(sug)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Adicionar custo mensal: ${sug}`}
+                  >
                     <Feather name="plus" size={12} color={colors.primary} />
                     <Text style={s.suggestionChipText}>{sug}</Text>
                   </TouchableOpacity>
@@ -1013,11 +1020,18 @@ export default function FinanceiroConfigScreen() {
             {/* Rows */}
             {despesasFixas.map((d, index) => (
               <View key={d.id} style={[s.despTableRow, index % 2 === 0 && s.despTableRowAlt]}>
-                <TouchableOpacity style={{ flex: 1 }} onPress={() => editarDespesaFixa(d)}>
+                <TouchableOpacity
+                  style={{ flex: 1 }}
+                  onPress={() => editarDespesaFixa(d)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Editar ${d.descricao}`}
+                >
                   <Text style={s.despTableName} numberOfLines={1}>{d.descricao}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={s.despTableValueBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Editar valor de ${d.descricao}`}
                   onPress={() => setCurrencyModal({
                     title: d.descricao,
                     value: d.valor > 0 ? String(d.valor).replace('.', ',') : '',
@@ -1043,6 +1057,8 @@ export default function FinanceiroConfigScreen() {
                   style={s.despDeleteBtn}
                   onPress={() => removerDespesaFixa(d.id, d.descricao)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Excluir ${d.descricao}`}
                 >
                   <Feather name="trash-2" size={14} color={colors.disabled} />
                 </TouchableOpacity>
@@ -1062,6 +1078,8 @@ export default function FinanceiroConfigScreen() {
           />
           <TouchableOpacity
             style={s.addValueBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Informar valor do novo custo mensal"
             onPress={() => setCurrencyModal({
               title: 'Valor do custo mensal',
               value: novaFixa.valor,
@@ -1077,7 +1095,7 @@ export default function FinanceiroConfigScreen() {
               {novaFixa.valor ? `R$ ${novaFixa.valor}` : 'R$ 0,00'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.addCircleBtn} onPress={adicionarDespesaFixa}>
+          <TouchableOpacity style={s.addCircleBtn} onPress={adicionarDespesaFixa} accessibilityRole="button" accessibilityLabel="Adicionar custo mensal">
             <Feather name="plus" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -1107,7 +1125,13 @@ export default function FinanceiroConfigScreen() {
               <Text style={s.suggestionsLabel}>Selecione para adicionar:</Text>
               <View style={s.suggestionsRow}>
                 {disponiveis.map(sug => (
-                  <TouchableOpacity key={sug} style={s.suggestionChip} onPress={() => adicionarSugestaoVariavel(sug)}>
+                  <TouchableOpacity
+                    key={sug}
+                    style={s.suggestionChip}
+                    onPress={() => adicionarSugestaoVariavel(sug)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Adicionar custo por venda: ${sug}`}
+                  >
                     <Feather name="plus" size={12} color={colors.primary} />
                     <Text style={s.suggestionChipText}>{sug}</Text>
                   </TouchableOpacity>
@@ -1127,11 +1151,18 @@ export default function FinanceiroConfigScreen() {
             </View>
             {despesasVariaveis.map((d, index) => (
               <View key={d.id} style={[s.despTableRow, index % 2 === 0 && s.despTableRowAlt]}>
-                <TouchableOpacity style={{ flex: 1 }} onPress={() => editarDespesaVariavel(d)}>
+                <TouchableOpacity
+                  style={{ flex: 1 }}
+                  onPress={() => editarDespesaVariavel(d)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Editar ${d.descricao}`}
+                >
                   <Text style={s.despTableName} numberOfLines={1}>{d.descricao}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={s.despTableValueBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Editar percentual de ${d.descricao}`}
                   onPress={() => setCurrencyModal({
                     title: d.descricao,
                     value: String(((d.percentual || 0) * 100).toFixed(2)).replace('.', ','),
@@ -1157,6 +1188,8 @@ export default function FinanceiroConfigScreen() {
                   style={s.despDeleteBtn}
                   onPress={() => removerDespesaVariavel(d.id, d.descricao)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Excluir ${d.descricao}`}
                 >
                   <Feather name="trash-2" size={14} color={colors.disabled} />
                 </TouchableOpacity>
@@ -1176,6 +1209,8 @@ export default function FinanceiroConfigScreen() {
           />
           <TouchableOpacity
             style={s.addValueBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Informar percentual do novo custo por venda"
             onPress={() => setCurrencyModal({
               title: 'Percentual da Despesa',
               value: novaVariavel.percentual,
@@ -1191,7 +1226,7 @@ export default function FinanceiroConfigScreen() {
               {novaVariavel.percentual ? `${novaVariavel.percentual}%` : '0%'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.addCircleBtn} onPress={adicionarDespesaVariavel}>
+          <TouchableOpacity style={s.addCircleBtn} onPress={adicionarDespesaVariavel} accessibilityRole="button" accessibilityLabel="Adicionar custo por venda">
             <Feather name="plus" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -1252,6 +1287,8 @@ export default function FinanceiroConfigScreen() {
             <TouchableOpacity
               style={{ marginTop: spacing.sm, backgroundColor: colors.success, borderRadius: borderRadius.md, paddingVertical: spacing.sm, alignItems: 'center' }}
               onPress={() => navigation.navigate('Início')}
+              accessibilityRole="button"
+              accessibilityLabel="Voltar ao Início"
             >
               <Text style={{ color: '#fff', fontFamily: fontFamily.semiBold, fontSize: fonts.small }}>Voltar ao Início</Text>
             </TouchableOpacity>
@@ -1279,6 +1316,8 @@ export default function FinanceiroConfigScreen() {
             <TouchableOpacity
               style={s.bigValueBtn}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={lucroDesejado ? `Editar margem de lucro, atual ${lucroDesejado}%` : 'Definir margem de lucro'}
               onPress={() => setCurrencyModal({
                 title: 'Margem de Lucro',
                 value: lucroDesejado,
@@ -1332,6 +1371,8 @@ export default function FinanceiroConfigScreen() {
                   <TouchableOpacity
                     style={s.inlineValueBtn}
                     activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Editar margem de segurança, atual ${margemSeguranca}%`}
                     onPress={() => setCurrencyModal({
                       title: 'Margem de Segurança',
                       value: margemSeguranca,
@@ -1406,6 +1447,9 @@ export default function FinanceiroConfigScreen() {
               <TouchableOpacity
                 style={[s.modeBtnCard, faturamentoMode === 'media' && s.modeBtnCardActive]}
                 onPress={() => setFaturamentoMode('media')}
+                accessibilityRole="button"
+                accessibilityLabel="Informar faturamento médio mensal"
+                accessibilityState={{ selected: faturamentoMode === 'media' }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                   <Feather name="dollar-sign" size={14} color={faturamentoMode === 'media' ? colors.primary : colors.textSecondary} />
@@ -1420,6 +1464,9 @@ export default function FinanceiroConfigScreen() {
               <TouchableOpacity
                 style={[s.modeBtnCard, faturamentoMode === 'mensal' && s.modeBtnCardActive]}
                 onPress={() => setFaturamentoMode('mensal')}
+                accessibilityRole="button"
+                accessibilityLabel="Informar faturamento mês a mês"
+                accessibilityState={{ selected: faturamentoMode === 'mensal' }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                   <Feather name="calendar" size={14} color={faturamentoMode === 'mensal' ? colors.primary : colors.textSecondary} />
@@ -1439,6 +1486,8 @@ export default function FinanceiroConfigScreen() {
                 <TouchableOpacity
                   style={s.bigValueBtn}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={faturamentoMedio > 0 ? `Editar faturamento médio mensal, atual ${formatCurrency(faturamentoMedio)}` : 'Definir faturamento médio mensal'}
                   onPress={() => setCurrencyModal({
                     title: 'Faturamento Médio Mensal',
                     value: faturamentoMedioInput,
@@ -1473,6 +1522,8 @@ export default function FinanceiroConfigScreen() {
                       key={f.id}
                       style={[s.fatItem, isDesktop && s.fatItemDesktop]}
                       activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Editar faturamento de ${f.mes}${f.valor > 0 ? `, atual ${formatCurrency(f.valor)}` : ''}`}
                       onPress={() => setCurrencyModal({
                         title: `Faturamento - ${f.mes}`,
                         value: f.valor > 0 ? String(f.valor).replace('.', ',') : '',
@@ -1725,9 +1776,10 @@ export default function FinanceiroConfigScreen() {
                 style={s.modalInput}
                 value={editModal?.valor || ''}
                 onChangeText={(v) => setEditModal(prev => prev ? { ...prev, valor: v } : null)}
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
                 placeholder="0,00"
                 placeholderTextColor={colors.placeholder}
+                selectTextOnFocus
               />
             </View>
             <View style={s.modalActions}>

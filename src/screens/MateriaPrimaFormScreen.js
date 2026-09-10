@@ -24,7 +24,10 @@ import { UNIDADES_MEDIDA, calcPrecoBase, calcFatorCorrecao, getLabelPrecoBase, f
 // Sprint 2 S5 — checagem de dependências antes de DELETE (evita órfãos em preparo_ingredientes / produto_ingredientes).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 // Sessão 28.8 — sugestão automática via dicionário pré-cadastrado (zero IA, zero custo)
-import { matchInsumo, normalize as normalizeStr } from '../data/dicionario';
+import { normalize as normalizeStr, getAllInsumos } from '../data/dicionario';
+// Walkthrough 2026-09: helpers puros (format PT-BR, líquida=bruta se vazio,
+// aproveitamento %, filtro de histórico no aviso de exclusão, matcher de sugestão).
+import { formatDecimalBR, formatMoneyBR, liquidaEfetiva, aproveitamentoPercent, semHistoricoPrecos, escolherSugestao } from '../utils/insumoFormHelpers';
 
 const CATEGORY_COLORS = [
   colors.primary, colors.accent, colors.coral, colors.purple,
@@ -148,7 +151,9 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     const errs = {};
     if (!f.nome.trim()) errs.nome = true;
     if (!f.quantidade_bruta || parseDecimalBR(f.quantidade_bruta) <= 0) errs.quantidade_bruta = true;
-    if (!f.quantidade_liquida || parseDecimalBR(f.quantidade_liquida) <= 0) errs.quantidade_liquida = true;
+    // Walkthrough 2026-09: Qtd. Líquida é OPCIONAL — se vazia, líquida = bruta
+    // (liquidaEfetiva) tanto na prévia de custo quanto ao salvar. Não bloqueia
+    // mais o save/preview igual a antes.
     if (!f.valor_pago || parseDecimalBR(f.valor_pago) <= 0) errs.valor_pago = true;
     return errs;
   }
@@ -313,10 +318,12 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         nome: item.nome,
         marca: eEstimado ? '' : marcaValor,
         categoria_id: item.categoria_id || null,
-        quantidade_bruta: String(item.quantidade_bruta || ''),
-        quantidade_liquida: String(item.quantidade_liquida || ''),
+        // Walkthrough 2026-09: formata em PT-BR ao carregar — antes usava
+        // String(number) cru e "5.9" aparecia no lugar de "5,90".
+        quantidade_bruta: formatDecimalBR(item.quantidade_bruta),
+        quantidade_liquida: formatDecimalBR(item.quantidade_liquida),
         unidade_medida: unidadeFinal,
-        valor_pago: String(item.valor_pago || ''),
+        valor_pago: formatMoneyBR(item.valor_pago),
       });
       // Carregar histórico de preços
       try {
@@ -345,7 +352,9 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   }
 
   const qtBruta = parseNum(form.quantidade_bruta);
-  const qtLiquida = parseNum(form.quantidade_liquida);
+  // Walkthrough 2026-09: Qtd. Líquida vazia → considera igual à bruta, tanto
+  // na prévia de custo (abaixo) quanto ao persistir (salvarNovoImpl/autoSave).
+  const qtLiquida = liquidaEfetiva(form.quantidade_bruta, form.quantidade_liquida);
   const valorPago = parseNum(form.valor_pago);
   const fatorCorrecao = calcFatorCorrecao(qtBruta, qtLiquida);
   const precoBase = calcPrecoBase(valorPago, qtLiquida, form.unidade_medida);
@@ -354,6 +363,8 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   const temDadosCalculo = qtBruta > 0 && qtLiquida > 0 && valorPago > 0;
   const formTitle = editId ? 'Editar Ingrediente' : 'Novo Ingrediente';
   const perdaPercent = qtBruta > 0 ? ((1 - qtLiquida / qtBruta) * 100) : 0;
+  // Aproveitamento (líquida/bruta × 100) — substitui o chip "FC" (pouco claro)
+  const aproveitamento = aproveitamentoPercent(qtBruta, qtLiquida);
 
   function sufixoUnidade() {
     const un = UNIDADES_MEDIDA.find(u => u.value === form.unidade_medida);
@@ -386,7 +397,8 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
 
     // F2-J2-03 / CR-1: usa helper parseNum (Number.isFinite-aware) com `?? 0` p/ DB
     const qb = parseNum(f.quantidade_bruta) ?? 0;
-    const ql = parseNum(f.quantidade_liquida) ?? 0;
+    // Walkthrough 2026-09: Qtd. Líquida vazia → persiste igual à bruta.
+    const ql = liquidaEfetiva(f.quantidade_bruta, f.quantidade_liquida) ?? 0;
     const vp = parseNum(f.valor_pago) ?? 0;
     const fc = calcFatorCorrecao(qb, ql);
     const pb = calcPrecoBase(vp, ql, f.unidade_medida);
@@ -654,6 +666,9 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         const { notifyDataChanged } = await import('../utils/dataSync');
         notifyDataChanged('materias_primas');
       } catch (_) {}
+      // Walkthrough 2026-09: feedback visual após salvar (antes o modal só
+      // fechava em silêncio — mesmo padrão de PreparoFormScreen/EmbalagemFormScreen).
+      try { showToast('Ingrediente salvo', 'check-circle'); } catch (_) {}
       // Sessão 28.71: modo modal empilhado (cascata) — devolve o id criado pro
       // EntityCreateModal pai via callback e encerra. NÃO toca no fluxo de
       // reopenEntityModalAfterEdit nem navega (esse caminho continua intacto
@@ -806,7 +821,12 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     let mensagemDeps = null;
     try {
       const db = await getDatabase();
-      const deps = await contarDependencias(db, 'materia_prima', editId);
+      const depsRaw = await contarDependencias(db, 'materia_prima', editId);
+      // Walkthrough 2026-09: "histórico de preços" não é uso real do ingrediente
+      // (todo item recém-criado já tem 1 registro) — não deve aparecer no aviso
+      // de exclusão. Fix no lado da tela: dependenciesService.js mantém os
+      // labels originais (testado em __tests__/dependenciesService.test.mjs).
+      const deps = semHistoricoPrecos(depsRaw);
       if (deps.total > 0) {
         mensagemDeps = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'ingrediente' });
       }
@@ -856,7 +876,11 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             }
             if (trimmed.length < 4) { setSugestao(null); return; }
             try {
-              const m = matchInsumo(v);
+              // Walkthrough 2026-09: escolherSugestao prioriza exato > prefixo
+              // e nunca sugere um item diferente quando o nome digitado já
+              // nomeia por completo outro ingrediente (bug: "Farinha de trigo"
+              // sugeria "Farinha de Trigo Integral").
+              const m = escolherSugestao(v, getAllInsumos());
               if (!m) { setSugestao(null); return; }
               const canonicalNorm = normalizeStr(m.nome_canonico);
               if (sugestaoDispensadaPara && sugestaoDispensadaPara === canonicalNorm) {
@@ -1041,7 +1065,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                   setErrors(p => ({ ...p, quantidade_bruta: undefined, quantidade_liquida: undefined }));
                 }}
                 keyboardType="decimal-pad"
-                placeholder="Ex: 12 (quantas unidades você comprou)"
+                placeholder="Ex.: 12"
                 error={errors.quantidade_bruta}
                 style={styles.fieldCompact}
                 rightLabel={
@@ -1061,7 +1085,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                   value={form.quantidade_bruta}
                   onChangeText={(v) => { setForm(p => ({ ...p, quantidade_bruta: v })); setErrors(p => ({ ...p, quantidade_bruta: undefined })); }}
                   keyboardType="decimal-pad"
-                  placeholder="Ex: 1000 (use vírgula para decimais)"
+                  placeholder="Ex.: 1000"
                   error={errors.quantidade_bruta}
                   style={styles.fieldCompact}
                   rightLabel={
@@ -1083,7 +1107,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                   value={form.quantidade_liquida}
                   onChangeText={(v) => { setForm(p => ({ ...p, quantidade_liquida: v })); setErrors(p => ({ ...p, quantidade_liquida: undefined })); }}
                   keyboardType="decimal-pad"
-                  placeholder="Ex: 800 (use vírgula para decimais)"
+                  placeholder="Igual à bruta se vazio"
                   error={errors.quantidade_liquida}
                   style={styles.fieldCompact}
                   rightLabel={
@@ -1110,7 +1134,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
           value={form.valor_pago}
           onChangeText={(v) => { setForm(p => ({ ...p, valor_pago: v })); setErrors(p => ({ ...p, valor_pago: undefined })); }}
           keyboardType="decimal-pad"
-          placeholder="Ex: 5,00 (total da nota por essa quantidade)"
+          placeholder="Ex.: 5,90"
           error={errors.valor_pago}
           style={styles.fieldCompact}
           rightLabel={
@@ -1151,14 +1175,14 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             <View style={styles.resultBar}>
               <View style={styles.resultChip}>
                 <View style={styles.resultChipLabelRow}>
-                  <Text style={styles.resultChipLabel}>FC</Text>
+                  <Text style={styles.resultChipLabel}>Aproveitamento</Text>
                   <InfoTooltip
-                    title="Fator de Correção (FC)"
-                    text="Indica quanto você precisa comprar para obter a quantidade aproveitável. Quanto maior o FC, maior a perda do ingrediente."
-                    examples={['FC 1.00 = sem perda', 'FC 1.25 = 20% de perda', 'FC 2.00 = 50% de perda']}
+                    title="Aproveitamento"
+                    text="Percentual do que sobra pronto pra uso depois das perdas na limpeza (casca, osso, semente, talo etc). Quanto menor o aproveitamento, maior a perda do ingrediente."
+                    examples={['100% = sem perda', '80% = 20% de perda na limpeza', '50% = metade descartada']}
                   />
                 </View>
-                <Text style={styles.resultChipValue}>{fatorCorrecao.toFixed(2)}</Text>
+                <Text style={styles.resultChipValue}>{aproveitamento}%</Text>
               </View>
               <View style={[styles.resultChip, styles.resultChipHighlight]}>
                 <Text style={styles.resultChipLabel}>{labelPreco}</Text>
@@ -1251,6 +1275,8 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                                 },
                               })}
                               hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                              accessibilityRole="button"
+                              accessibilityLabel="Excluir este registro de preço"
                               {...(Platform.OS === 'web' ? { title: 'Excluir este registro de preço' } : {})}
                             >
                               <Feather name="x" size={9} color={colors.error + '80'} />
@@ -1347,7 +1373,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
               const db = await getDatabase();
               // F2-J2-03 / CR-1: parseNum (Number.isFinite) com fallbacks `?? 0` / `|| 1`
               const result = await db.runAsync('INSERT INTO materias_primas (nome, marca, categoria_id, quantidade_bruta, quantidade_liquida, fator_correcao, unidade_medida, valor_pago, preco_por_kg) VALUES (?,?,?,?,?,?,?,?,?)',
-                [f.nome.trim() + ' (cópia)', f.marca, f.categoria_id, parseNum(f.quantidade_bruta) ?? 0, parseNum(f.quantidade_liquida) ?? 0, parseNum(f.fator_correcao) ?? 1, f.unidade_medida, parseNum(f.valor_pago) ?? 0, parseNum(f.preco_por_kg) ?? 0]);
+                [f.nome.trim() + ' (cópia)', f.marca, f.categoria_id, parseNum(f.quantidade_bruta) ?? 0, liquidaEfetiva(f.quantidade_bruta, f.quantidade_liquida) ?? 0, parseNum(f.fator_correcao) ?? 1, f.unidade_medida, parseNum(f.valor_pago) ?? 0, parseNum(f.preco_por_kg) ?? 0]);
               if (result?.lastInsertRowId) { allowExit.current = true; navigation.replace('MateriaPrimaForm', { id: result.lastInsertRowId }); }
             }}>
               <Feather name="copy" size={13} color={colors.primary} style={{ marginRight: 5 }} />
@@ -1378,6 +1404,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             onPress={salvarNovo}
             disabled={saving}
             accessibilityRole="button"
+            accessibilityLabel="Salvar Ingrediente"
             accessibilityState={{ disabled: saving, busy: saving }}
           >
             <Text style={styles.btnSaveText}>{saving ? 'Salvando…' : 'Salvar Ingrediente'}</Text>
@@ -1394,7 +1421,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
 
             {!novaCatMode ? (
               <>
-                <Text style={styles.modalTitle}>Subcategoria</Text>
+                <Text style={styles.modalTitle}>Categoria</Text>
 
                 <ScrollView style={{ maxHeight: 300 }}>
                   {categorias.map((c, idx) => (
@@ -1415,7 +1442,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
 
                 <TouchableOpacity style={styles.novaCatBtn} onPress={() => setNovaCatMode(true)}>
                   <Feather name="plus" size={16} color={colors.primary} style={{ marginRight: 6 }} />
-                  <Text style={styles.novaCatBtnText}>Criar nova subcategoria</Text>
+                  <Text style={styles.novaCatBtnText}>Criar nova categoria</Text>
                 </TouchableOpacity>
 
                 {form.categoria_id && (
@@ -1423,13 +1450,13 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                     style={styles.limparBtn}
                     onPress={() => { setForm(p => ({ ...p, categoria_id: null })); setCatPickerVisible(false); }}
                   >
-                    <Text style={styles.limparBtnText}>Remover subcategoria</Text>
+                    <Text style={styles.limparBtnText}>Remover categoria</Text>
                   </TouchableOpacity>
                 )}
               </>
             ) : (
               <>
-                <Text style={styles.modalTitle}>Nova Subcategoria</Text>
+                <Text style={styles.modalTitle}>Nova Categoria</Text>
 
                 <Text style={styles.modalLabel}>Nome</Text>
                 <TextInput

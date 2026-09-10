@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking, TextInput, Platform, ActivityIndicator } from 'react-native';
 import Constants from 'expo-constants';
 import { Feather } from '@expo/vector-icons';
@@ -8,6 +8,23 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../config/supabase';
 import { getDatabase } from '../database/database';
 import BackToSettings from '../components/BackToSettings';
+
+// Auditoria 09/09 — "Voltar para Configurações" só faz sentido quando o
+// usuário realmente veio de Configurações (senão é um link "voltar" pra
+// lugar nenhum). Sem `route.params.from` explícito (nenhuma tela navega
+// passando isso hoje), inferimos olhando a rota anterior na pilha.
+function veioDeConfiguracoes(navigation, route) {
+  if (route?.params?.from === 'config') return true;
+  try {
+    const state = navigation?.getState ? navigation.getState() : null;
+    if (!state || !Array.isArray(state.routes)) return false;
+    const idx = typeof state.index === 'number' ? state.index : state.routes.length - 1;
+    const prev = state.routes[idx - 1];
+    return prev?.name === 'Configuracoes';
+  } catch (_) {
+    return false;
+  }
+}
 
 async function openExternal(url, onError) {
   try {
@@ -103,11 +120,28 @@ const GUIDE_STEPS = [
   'Configure o Delivery para precificar corretamente nas plataformas.',
 ];
 
-export default function SuporteScreen({ navigation }) {
+export default function SuporteScreen({ navigation, route }) {
   const { user } = useAuth();
   const [expandedFaq, setExpandedFaq] = useState(null);
   const [searchText, setSearchText] = usePersistedState('suporte.busca', '');
   const [linkError, setLinkError] = useState(null);
+  const cameFromConfig = veioDeConfiguracoes(navigation, route);
+  // Auditoria 09/09 — "Enviar e-mail" no topo não dava feedback nenhum no
+  // desktop (mailto: sem cliente configurado = nada visível acontece).
+  // Agora ele rola até a caixa de sugestão (ação com feedback real dentro
+  // do app) e foca o textarea; o mailto vira link secundário de texto.
+  const scrollRef = useRef(null);
+  const suggestionInputRef = useRef(null);
+  const suggestionBoxY = useRef(0);
+
+  function irParaSugestao() {
+    try {
+      scrollRef.current?.scrollTo({ y: Math.max(0, suggestionBoxY.current - 12), animated: true });
+    } catch (_) {}
+    setTimeout(() => {
+      try { suggestionInputRef.current?.focus(); } catch (_) {}
+    }, Platform.OS === 'web' ? 250 : 400);
+  }
   // Sessão 28.7 — Caixa de sugestões: salva no Supabase + dispara email
   // via Edge Function (Resend). NÃO abre cliente de email do usuário.
   // user_id, email, nome_negocio e segmento vêm de auth + perfil local.
@@ -227,9 +261,10 @@ export default function SuporteScreen({ navigation }) {
   }, [searchText]);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* APP-12: voltar pra Configurações sempre visível */}
-      <BackToSettings navigation={navigation} />
+    <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content}>
+      {/* APP-12/Auditoria 09/09: só mostra "Voltar para Configurações" quando a
+          tela foi mesmo aberta a partir de Configurações. */}
+      {cameFromConfig && <BackToSettings navigation={navigation} />}
       <Text style={styles.header} accessibilityRole="header">Central de Suporte</Text>
 
       {/* APP-54 — placeholder pra vídeo tutorial (até gravarmos com o Eric) */}
@@ -257,17 +292,33 @@ export default function SuporteScreen({ navigation }) {
         </View>
       </View>
 
-      {/* APP-54 — atalho de e-mail (WhatsApp removido a pedido do user) */}
+      {/* APP-54 — atalho de contato (WhatsApp removido a pedido do user).
+          Auditoria 09/09: o botão principal chamava mailto: direto, que no
+          desktop sem cliente de e-mail configurado não dava feedback nenhum
+          (parecia que não tinha feito nada). Agora ele leva pra caixa de
+          sugestão (dentro do próprio app, com feedback visível); o mailto:
+          fica como link secundário de texto abaixo. */}
       <View style={{ marginBottom: 12 }}>
         <TouchableOpacity
           style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primary + '15', borderRadius: 10, paddingVertical: 12, borderWidth: 1, borderColor: colors.primary + '40' }}
-          onPress={() => handleLink('mailto:contato@precificaiapp.com?subject=Suporte%20Precifica%C3%AD')}
+          onPress={irParaSugestao}
           activeOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel="Enviar email para contato@precificaiapp.com"
+          accessibilityLabel="Ir para a caixa de sugestão e mensagem"
         >
           <Feather name="mail" size={16} color={colors.primary} />
           <Text style={{ fontSize: 13, color: colors.primary, fontFamily: fontFamily.semiBold }}>Enviar e-mail · resposta em até 1 dia útil</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => handleLink('mailto:contato@precificaiapp.com?subject=Suporte%20Precifica%C3%AD')}
+          activeOpacity={0.7}
+          style={{ alignSelf: 'center', marginTop: 6, paddingVertical: 4 }}
+          accessibilityRole="link"
+          accessibilityLabel="Ou escreva para contato@precificaiapp.com pelo seu cliente de e-mail"
+        >
+          <Text style={{ fontSize: 12, color: colors.textSecondary, textDecorationLine: 'underline' }}>
+            ou escreva para contato@precificaiapp.com
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -364,7 +415,10 @@ export default function SuporteScreen({ navigation }) {
       </View>
 
       {/* Section 3: Contact - highlighted card */}
-      <View style={styles.contactCard}>
+      <View
+        style={styles.contactCard}
+        onLayout={(e) => { suggestionBoxY.current = e.nativeEvent.layout.y; }}
+      >
         <View style={styles.contactCardHeader}>
           <Feather name="help-circle" size={20} color={colors.primary} />
           <Text style={styles.contactCardTitle}>Não encontrou sua resposta?</Text>
@@ -402,6 +456,7 @@ export default function SuporteScreen({ navigation }) {
             Escreva abaixo e enviaremos direto para nossa equipe.
           </Text>
           <TextInput
+            ref={suggestionInputRef}
             style={[styles.suggestionInput, Platform.OS === 'web' && { outlineStyle: 'none' }]}
             placeholder="O que podemos melhorar?"
             placeholderTextColor={colors.placeholder}

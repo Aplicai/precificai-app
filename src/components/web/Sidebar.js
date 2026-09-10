@@ -58,50 +58,107 @@ const NAV_SECTIONS = [
   },
 ];
 
+// Tela focada → item da sidebar. Um único mapa reusado por TODAS as tabs:
+// telas como Perfil/Configuracoes/Suporte/Relatorios podem ser empilhadas
+// dentro do stack de Início (menu da conta, ações rápidas da Home) e antes
+// o highlight ficava preso em "Painel Geral" nesses casos.
+const SCREEN_TO_KEY = {
+  HomeMain: 'home',
+  // Insumos (Entrada/Ajuste de estoque vivem no contexto de Insumos — modo avançado)
+  MateriasPrimas: 'insumos',
+  MateriasPrimasMain: 'insumos',
+  EntradaEstoque: 'insumos',
+  AjusteEstoque: 'insumos',
+  Preparos: 'preparos',
+  PreparosMain: 'preparos',
+  Embalagens: 'embalagens',
+  EmbalagensMain: 'embalagens',
+  ProdutosList: 'produtos',
+  ProdutosMain: 'produtos',
+  ProdutoForm: 'produtos',
+  CombosScreen: 'combos',
+  DeliveryCombosScreen: 'combos',
+  // Ferramentas
+  FinanceiroMain: 'financeiro',
+  DeliveryHub: 'delivery',
+  DeliveryPlataformas: 'delivery',
+  DeliveryPrecos: 'delivery',
+  DeliveryProdutosScreen: 'delivery',
+  SimuladorLote: 'delivery',
+  PrecosPlataforma: 'delivery',
+  SimulacaoProduto: 'delivery',
+  ComparativoCanais: 'delivery',
+  MatrizBCG: 'bcg',
+  BCGProdutoForm: 'bcg',
+  FluxoCaixaDRE: 'fluxocaixadre',
+  AtualizarPrecos: 'precos',
+  Simulador: 'simulador',
+  Relatorios: 'relatorio',
+  RelatorioSimples: 'relatorio',
+  RelatorioInsumos: 'relatorio',
+  Fornecedores: 'fornecedores',
+  ListaCompras: 'listacompras',
+  KitInicio: 'kitinicio',
+  ExportPDF: 'exportpdf',
+  Configuracoes: 'config',
+  Perfil: 'config',
+  ContaSeguranca: 'config',
+  Sobre: 'config',
+  Termos: 'config',
+  Privacidade: 'config',
+  Suporte: 'suporte',
+};
+
+// Item padrão da tab quando a tela focada não está em SCREEN_TO_KEY
+// (ex.: MaisMain, ProdutoFormHome, MargemBaixa).
+const TAB_DEFAULT_KEY = {
+  'Início': 'home',
+  Insumos: 'insumos',
+  Preparos: 'preparos',
+  Embalagens: 'embalagens',
+  Produtos: 'produtos',
+  Mais: 'home',
+};
+
+// Popups transparentModal (mesma lista do WebHeader) — não mudam o contexto
+// da sidebar; ao encontrar um, recua no stack até a rota "de verdade".
+const MODAL_FORM_ROUTES = new Set(['MateriaPrimaForm', 'EmbalagemForm', 'PreparoForm']);
+
+// Caminha até a rota focada mais profunda (Tab → Stack → ...), pulando modais.
+function getFocusedScreenName(tabRoute) {
+  let route = tabRoute;
+  let name = null;
+  while (route?.state?.routes?.length) {
+    const st = route.state;
+    let idx = typeof st.index === 'number' ? st.index : st.routes.length - 1;
+    let child = st.routes[idx];
+    while (child?.name && MODAL_FORM_ROUTES.has(child.name) && idx > 0) {
+      idx--;
+      child = st.routes[idx];
+    }
+    if (!child) break;
+    name = child.name;
+    route = child;
+  }
+  // Estado aninhado ainda não materializado (1º frame após navigate com
+  // { screen }) — usa o params.screen como WebHeader.getPageTitle faz.
+  if (!name) name = tabRoute?.params?.screen || null;
+  else if (route?.params?.screen && !route.state) name = route.params.screen;
+  return name;
+}
+
 function getActiveKey(navState) {
   if (!navState) return 'home';
   const tabRoute = navState.routes?.[navState.index];
   if (!tabRoute) return 'home';
 
-  const tabName = tabRoute.name;
-
-  // Top-level tabs
-  if (tabName === 'Início') return 'home';
-  if (tabName === 'Insumos') return 'insumos';
-  if (tabName === 'Preparos') return 'preparos';
-  if (tabName === 'Embalagens') return 'embalagens';
-  if (tabName === 'Produtos') {
-    const stackState = tabRoute.state;
-    const stackRoute = stackState?.routes?.[stackState.index];
-    const screenName = stackRoute?.name;
-    if (screenName === 'CombosScreen') return 'combos';
-    return 'produtos';
+  const screenName = getFocusedScreenName(tabRoute);
+  if (screenName) {
+    if (SCREEN_TO_KEY[screenName]) return SCREEN_TO_KEY[screenName];
+    // Telas novas de Delivery* sem entrada explícita continuam caindo em Delivery.
+    if (screenName.startsWith('Delivery')) return 'delivery';
   }
-
-  // Ferramentas sub-screens
-  if (tabName === 'Mais') {
-    const stackState = tabRoute.state;
-    const stackRoute = stackState?.routes?.[stackState.index];
-    const screenName = stackRoute?.name;
-    // Entrada/Ajuste de estoque vivem agora dentro do contexto de Insumos (modo avançado).
-    if (screenName === 'EntradaEstoque' || screenName === 'AjusteEstoque') return 'insumos';
-    if (screenName === 'FinanceiroMain') return 'financeiro';
-    if (screenName === 'DeliveryHub' || screenName?.startsWith('Delivery')) return 'delivery';
-    if (screenName === 'MatrizBCG' || screenName === 'BCGProdutoForm') return 'bcg';
-    if (screenName === 'FluxoCaixaDRE') return 'fluxocaixadre';
-    if (screenName === 'AtualizarPrecos') return 'precos';
-    if (screenName === 'Simulador') return 'simulador';
-    if (screenName === 'RelatorioSimples' || screenName === 'RelatorioInsumos' || screenName === 'Relatorios') return 'relatorio';
-    if (screenName === 'Fornecedores') return 'fornecedores';
-    if (screenName === 'ListaCompras') return 'listacompras';
-    if (screenName === 'KitInicio') return 'kitinicio';
-    if (screenName === 'ExportPDF') return 'exportpdf';
-    if (screenName === 'Configuracoes' || screenName === 'Perfil') return 'config';
-    if (screenName === 'Suporte') return 'suporte';
-    return 'home'; // default for MaisMain or unknown
-  }
-
-  return 'home';
+  return TAB_DEFAULT_KEY[tabRoute.name] || 'home';
 }
 
 // Web-native clickable button that works reliably with mouse clicks.

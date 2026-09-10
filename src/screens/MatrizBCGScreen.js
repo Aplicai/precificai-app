@@ -68,6 +68,14 @@ function getMarginColor(margin) {
   return colors.error;
 }
 
+// "agosto de 2026" → "Agosto de 2026" — só a 1ª letra maiúscula. Usar
+// textTransform:'capitalize' no CSS maiuscula TODA palavra, incluindo "de"
+// ("Agosto De 2026", errado em PT-BR).
+function capitalizeFirst(str) {
+  if (!str) return str;
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
 export default function MatrizBCGScreen({ navigation }) {
   const [produtos, setProdutos] = useState([]);
   const [categorias, setCategorias] = useState([]);
@@ -84,7 +92,11 @@ export default function MatrizBCGScreen({ navigation }) {
   const [searchText, setSearchText] = useState('');
   const [quadranteModal, setQuadranteModal] = useState(null); // chave do BCGQuadranteModal ou null
   const { isDesktop, isMobile } = useResponsiveLayout();
-  const saveTimer = useRef(null);
+  // Sessão auditoria 09/09 — bug fix: era 1 timer COMPARTILHADO por todos os produtos.
+  // Editar produto A e depois produto B antes de 800ms cancelava o save de A → ao
+  // clicar "Atualizar análise" o valor de A nunca chegava no banco. Agora é 1 timer
+  // por produto (dict prodId → timeoutId) e handleSairVendas faz flush de todos.
+  const saveTimers = useRef({});
 
   // Date strings memoizados.
   // Sessão 28.49: BCG é SEMPRE sobre o mês ANTERIOR (mais estável; mês corrente
@@ -159,19 +171,25 @@ export default function MatrizBCGScreen({ navigation }) {
     const cleaned = String(value).replace(',', '.').replace(/[^0-9.]/g, '');
     const qty = parseFloat(cleaned) || 0;
     setVendasMap(prev => ({ ...prev, [prodId]: qty }));
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => saveVenda(prodId, qty), 800);
+    if (saveTimers.current[prodId]) clearTimeout(saveTimers.current[prodId]);
+    saveTimers.current[prodId] = setTimeout(() => {
+      delete saveTimers.current[prodId];
+      saveVenda(prodId, qty);
+    }, 800);
   }
 
   // Sessão 28.27: chamado quando user sai do modo Vendas → faz a reclassificação
   // pendente UMA vez (em vez de a cada venda).
   async function handleSairVendas() {
     setShowVendas(false);
-    // Garante que último timer pendente seja flushado
-    if (saveTimer.current) {
-      clearTimeout(saveTimer.current);
-      saveTimer.current = null;
-    }
+    // Flush de TODOS os saves pendentes (1 por produto) antes de recarregar —
+    // sem isso, loadData() sobrescreve vendasMap com o valor antigo do banco.
+    const pendingIds = Object.keys(saveTimers.current);
+    pendingIds.forEach((id) => clearTimeout(saveTimers.current[id]));
+    saveTimers.current = {};
+    try {
+      await Promise.all(pendingIds.map((id) => saveVenda(Number(id), vendasMap[id] || 0)));
+    } catch {}
     try { await loadData(); } catch {}
   }
 
@@ -414,7 +432,7 @@ export default function MatrizBCGScreen({ navigation }) {
             <Feather name="chevron-left" size={22} color={colors.primary} />
           </TouchableOpacity>
           <View style={{ alignItems: 'center', minWidth: 150 }}>
-            <Text style={{ fontSize: 15, fontFamily: fontFamily.bold, color: colors.text, textTransform: 'capitalize' }}>{monthName}</Text>
+            <Text style={{ fontSize: 15, fontFamily: fontFamily.bold, color: colors.text }}>{capitalizeFirst(monthName)}</Text>
             {currentMonth === maxMonth && (
               <Text style={{ fontSize: 11, fontFamily: fontFamily.regular, color: colors.textSecondary }}>mês da análise</Text>
             )}

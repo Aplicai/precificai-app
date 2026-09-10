@@ -179,6 +179,32 @@ export const entityCreateModalStyles = StyleSheet.create({
     color: colors.text,
     textTransform: 'uppercase',
   },
+  // Fix walkthrough #2 — destaque da "Sobra líquida" (lucro real, após
+  // despesas fixas/variáveis), pra não competir/confundir com o lucro bruto
+  // do grid abaixo.
+  resumoDestaque: {
+    marginBottom: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  resumoDestaqueLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontFamily: fontFamily.medium,
+    textTransform: 'uppercase',
+  },
+  resumoDestaqueValue: {
+    fontSize: fonts.large,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  resumoDestaquePerc: {
+    fontSize: fonts.regular,
+    color: colors.textSecondary,
+    fontFamily: fontFamily.regular,
+  },
   resumoGrid: {
     flexDirection: 'row',
     gap: spacing.sm,

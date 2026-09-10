@@ -81,6 +81,19 @@ function shortUnidade(rawUnidade, tipo) {
   return raw || 'un';
 }
 
+// Fix walkthrough #1 — "item adicionado com quantidade 1 g" (custo R$ 0,01
+// ilegível) + stepper andando de 1 em 1 g. g/ml usam passo/padrão maior (100
+// pra quantidade inicial, 10 pro stepper); un/kg/L continuam em 1 (fazem
+// sentido em unidades inteiras ou já são a unidade "grande").
+function defaultQtyForUnidade(unidade) {
+  const u = String(unidade || '').trim().toLowerCase();
+  return (u === 'g' || u === 'ml') ? 100 : 1;
+}
+function stepForUnidade(unidade) {
+  const u = String(unidade || '').trim().toLowerCase();
+  return (u === 'g' || u === 'ml') ? 10 : 1;
+}
+
 const TIPO_BADGE = {
   preparo:       { label: 'Receita base',    color: '#7c3aed' },
   materia_prima: { label: 'Ingrediente',     color: '#0891b2' },
@@ -139,6 +152,21 @@ export default function EntityCreateModal({
   const [unidadeMedidaPrep, setUnidadeMedidaPrep] = useState('g');
   // Itens
   const [itens, setItens] = useState([]);
+  // Fix walkthrough #1 — foco automático no input de quantidade do item recém
+  // adicionado (com texto selecionado via selectTextOnFocus). Mapa de refs
+  // por chave `${tipo}-${id}` + a chave do último item adicionado (dispara o
+  // foco num useEffect após o novo row montar).
+  const itemQtyRefs = useRef({});
+  const [lastAddedItemKey, setLastAddedItemKey] = useState(null);
+  useEffect(() => {
+    if (!lastAddedItemKey) return;
+    const el = itemQtyRefs.current[lastAddedItemKey];
+    if (el && typeof el.focus === 'function') {
+      try { el.focus(); } catch (_) {}
+    }
+    setLastAddedItemKey(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastAddedItemKey, itens]);
 
   // Snapshot dos valores no momento em que o form foi montado/carregado.
   // Usado pra dirty check inteligente — só pergunta "descartar mudanças?" se
@@ -577,7 +605,9 @@ export default function EntityCreateModal({
         }
         setNome(p.nome || '');
         setCategoriaId(p.categoria_id || null);
-        setPrecoVenda(p.preco_venda != null ? String(p.preco_venda) : '');
+        // Fix walkthrough #4 — carregava "25" em vez de "25,00" (String() cru
+        // do número). Formata com 2 decimais PT-BR igual ao restante do app.
+        setPrecoVenda(p.preco_venda != null ? Number(p.preco_venda).toFixed(2).replace('.', ',') : '');
         setTipoVenda(TIPO_VENDA_MAP_FROM_DB(p.unidade_rendimento));
         setRendimentoUnidades(p.rendimento_unidades != null ? String(p.rendimento_unidades) : '1');
         setRendimentoTotalProd(p.rendimento_total != null ? String(p.rendimento_total) : '');
@@ -721,28 +751,34 @@ export default function EntityCreateModal({
     return 0;
   }
 
-  function buildItem(tipo, item, quantidade = 1) {
+  function buildItem(tipo, item, quantidade = null) {
+    const unidade = shortUnidade(item.unidade_medida || item.unidade_padrao, tipo);
     return {
       tipo,
       id: item.id,
       nome: item.nome,
-      quantidade,
+      // Fix walkthrough #1: sem quantidade explícita, usa o default por
+      // unidade (100 g/ml, 1 un/kg/L) em vez de sempre 1.
+      quantidade: quantidade != null ? quantidade : defaultQtyForUnidade(unidade),
       custoUnit: calcCustoUnit(tipo, item),
-      unidade: shortUnidade(item.unidade_medida || item.unidade_padrao, tipo),
+      unidade,
       original: item,
     };
   }
 
   function adicionarItem(tipo, item) {
+    const key = `${tipo}-${item.id}`;
     setItens(prev => {
       const idx = prev.findIndex(i => i.tipo === tipo && i.id === item.id);
       if (idx >= 0) {
         const next = [...prev];
-        next[idx] = { ...next[idx], quantidade: safeNum(next[idx].quantidade) + 1 };
+        const passo = stepForUnidade(next[idx].unidade);
+        next[idx] = { ...next[idx], quantidade: safeNum(next[idx].quantidade) + passo };
         return next;
       }
-      return [...prev, buildItem(tipo, item, 1)];
+      return [...prev, buildItem(tipo, item)];
     });
+    setLastAddedItemKey(key);
   }
 
   function alterarQuantidade(idx, val) {
@@ -785,18 +821,20 @@ export default function EntityCreateModal({
         );
       }
       if (!mp) return;
+      const unidadeNovoItem = shortUnidade(mp.unidade_medida, 'materia_prima');
       const novoItem = {
         tipo: 'materia_prima',
         id: mp.id,
         nome: mp.nome,
-        quantidade: 1,
+        quantidade: defaultQtyForUnidade(unidadeNovoItem),
         custoUnit: calcCustoUnit('materia_prima', { preco_por_kg: mp.preco_por_kg, unidade_medida: mp.unidade_medida }),
-        unidade: shortUnidade(mp.unidade_medida, 'materia_prima'),
+        unidade: unidadeNovoItem,
       };
       setItens(prev => {
         if (prev.some(i => i.tipo === 'materia_prima' && i.id === mp.id)) return prev;
         return [...prev, novoItem];
       });
+      setLastAddedItemKey(`materia_prima-${mp.id}`);
       // Atualiza a lista do picker pra incluir o novo insumo.
       try { setAllMaterias(prev => (prev.some(m => m.id === mp.id) ? prev : [...prev, mp])); } catch (_) {}
     } catch (e) {
@@ -822,18 +860,20 @@ export default function EntityCreateModal({
         );
       }
       if (!em) return;
+      const unidadeNovoItem = shortUnidade(em.unidade_medida, 'embalagem') || 'un';
       const novoItem = {
         tipo: 'embalagem',
         id: em.id,
         nome: em.nome,
-        quantidade: 1,
+        quantidade: defaultQtyForUnidade(unidadeNovoItem),
         custoUnit: calcCustoUnit('embalagem', { preco_unitario: em.preco_unitario }),
-        unidade: shortUnidade(em.unidade_medida, 'embalagem') || 'un',
+        unidade: unidadeNovoItem,
       };
       setItens(prev => {
         if (prev.some(i => i.tipo === 'embalagem' && i.id === em.id)) return prev;
         return [...prev, novoItem];
       });
+      setLastAddedItemKey(`embalagem-${em.id}`);
       try { setAllEmbalagens(prev => (prev.some(e => e.id === em.id) ? prev : [...prev, em])); } catch (_) {}
     } catch (e) {
       if (typeof console !== 'undefined') console.warn('[EntityCreateModal.addCreatedEmbalagemToItens]', e);
@@ -982,29 +1022,38 @@ export default function EntityCreateModal({
                 </TouchableOpacity>
               </View>
               <View style={styles.itemRowFooter}>
-                <View style={styles.stepper}>
-                  <TouchableOpacity
-                    style={styles.stepperBtn}
-                    onPress={() => alterarQuantidade(index, String(Math.max(0, qtd - 1)).replace('.', ','))}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Feather name="minus" size={14} color={colors.text} />
-                  </TouchableOpacity>
-                  <TextInput
-                    value={String(it.quantidade)}
-                    onChangeText={(v) => alterarQuantidade(index, v)}
-                    keyboardType="decimal-pad"
-                    style={styles.stepperInput}
-                    placeholder="0"
-                  />
-                  <TouchableOpacity
-                    style={styles.stepperBtn}
-                    onPress={() => alterarQuantidade(index, String(qtd + 1).replace('.', ','))}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Feather name="plus" size={14} color={colors.text} />
-                  </TouchableOpacity>
-                </View>
+                {(() => {
+                  // Fix walkthrough #1 — stepper anda 10 em 10 pra g/ml (senão
+                  // 1 g nunca sai do lugar visualmente) e 1 em 1 pra un/kg/L.
+                  const passo = stepForUnidade(it.unidade);
+                  return (
+                    <View style={styles.stepper}>
+                      <TouchableOpacity
+                        style={styles.stepperBtn}
+                        onPress={() => alterarQuantidade(index, String(Math.max(0, qtd - passo)).replace('.', ','))}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <Feather name="minus" size={14} color={colors.text} />
+                      </TouchableOpacity>
+                      <TextInput
+                        ref={(el) => { itemQtyRefs.current[`${it.tipo}-${it.id}`] = el; }}
+                        value={String(it.quantidade)}
+                        onChangeText={(v) => alterarQuantidade(index, v)}
+                        keyboardType="decimal-pad"
+                        style={styles.stepperInput}
+                        placeholder="0"
+                        selectTextOnFocus
+                      />
+                      <TouchableOpacity
+                        style={styles.stepperBtn}
+                        onPress={() => alterarQuantidade(index, String(qtd + passo).replace('.', ','))}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      >
+                        <Feather name="plus" size={14} color={colors.text} />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })()}
                 <View style={styles.unidadeBadge}>
                   <Text style={styles.unidadeBadgeText}>{(() => {
                     if (it.tipo === 'materia_prima') {
@@ -1038,6 +1087,21 @@ export default function EntityCreateModal({
             </View>
             {isProduto ? (
               <>
+                {/* Fix walkthrough #2 — antes "Lucro/Margem" aqui (bruto, só
+                    preço − CMV) e "Lucro Líquido" na Composição (após despesas
+                    fixas/variáveis) mostravam DOIS números de "lucro"
+                    diferentes pro mesmo produto, sem deixar claro qual é qual.
+                    Agora "Sobra líquida" (o real, líquido) é o destaque
+                    grande colorido por saúde; Lucro/Margem brutos ficam
+                    secundários dentro do grid. */}
+                <View style={styles.resumoDestaque}>
+                  <Text style={styles.resumoDestaqueLabel}>Sobra líquida</Text>
+                  <Text style={[styles.resumoDestaqueValue, {
+                    color: (lucroLiquidoPerc * 100) >= 25 ? colors.success : (lucroLiquidoPerc * 100) >= 15 ? colors.accent : colors.error,
+                  }]}>
+                    {formatCurrency(lucroLiquido)} <Text style={styles.resumoDestaquePerc}>({formatPercent(lucroLiquidoPerc)})</Text>
+                  </Text>
+                </View>
                 <View style={styles.resumoGrid}>
                   <View style={styles.resumoCell}>
                     <Text style={styles.resumoLabel}>Custo {tipoVenda === 'unidade' ? 'unit.' : `/${tipoVenda === 'kg' ? 'kg' : 'L'}`} (CMV)</Text>
@@ -1056,14 +1120,12 @@ export default function EntityCreateModal({
                     )}
                   </View>
                   <View style={styles.resumoCell}>
-                    <Text style={styles.resumoLabel}>Lucro</Text>
-                    <Text style={[styles.resumoValue, { color: lucroUnit >= 0 ? colors.primary : colors.error }]}>{formatCurrency(lucroUnit)}</Text>
+                    <Text style={styles.resumoLabel}>Lucro bruto</Text>
+                    <Text style={[styles.resumoValue, { color: colors.textSecondary }]}>{formatCurrency(lucroUnit)}</Text>
                   </View>
                   <View style={styles.resumoCell}>
-                    <Text style={styles.resumoLabel}>Margem</Text>
-                    <Text style={[styles.resumoValue, {
-                      color: margem >= 25 ? colors.success : margem >= 15 ? colors.accent : colors.error,
-                    }]}>
+                    <Text style={styles.resumoLabel}>Margem bruta</Text>
+                    <Text style={[styles.resumoValue, { color: colors.textSecondary }]}>
                       {precoVendaNum > 0 ? `${margem.toFixed(1)}%` : '—'}
                     </Text>
                   </View>
@@ -1846,12 +1908,13 @@ export default function EntityCreateModal({
                   <View style={{ flex: 1 }}>
                     <Text style={styles.fieldLabel}>Unidade</Text>
                     <View style={styles.unidadeChipsRow}>
-                      {[{ k: 'g', l: 'g' }, { k: 'ml', l: 'ml' }, { k: 'un', l: 'un' }].map(u => (
+                      {[{ k: 'g', l: 'g', label: 'Unidade gramas' }, { k: 'ml', l: 'ml', label: 'Unidade mililitros' }, { k: 'un', l: 'un', label: 'Unidade unidades' }].map(u => (
                         <TouchableOpacity
                           key={u.k}
                           style={[styles.unidadeChip, unidadeMedidaPrep === u.k && styles.unidadeChipActive]}
                           onPress={() => setUnidadeMedidaPrep(u.k)}
                           accessibilityRole="button"
+                          accessibilityLabel={u.label}
                           accessibilityState={{ selected: unidadeMedidaPrep === u.k }}
                         >
                           <Text style={[styles.unidadeChipText, unidadeMedidaPrep === u.k && styles.unidadeChipTextActive]}>{u.l}</Text>

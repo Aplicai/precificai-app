@@ -13,10 +13,21 @@ import InputField from '../components/InputField';
 import SaveStatus from '../components/SaveStatus';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum, parseDecimalBR } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, safeNum, parseDecimalBR } from '../utils/calculations';
 import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
 // APP-22: usar engine unificada também para combos (antes era markup fixo 35% sem contar fixos/variáveis)
 import { calcularPrecoCombo } from '../utils/precificacao';
+// Auditoria de Combos (2026-09-09) — fórmulas puras extraídas e testadas em
+// __tests__/comboPricing.test.mjs. Corrige bug de unidade (g fixo em vez da
+// unidade nativa do item) e centraliza lucro/margem líquida + economia do cliente.
+import {
+  resolveCustoUnitarioItemCombo,
+  calcCustoTotalCombo,
+  calcLucroLiquidoCombo,
+  calcMargemLiquidaCombo,
+  calcSomaPrecoAvulsoProdutos,
+  calcEconomiaCombo,
+} from '../utils/comboPricing';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import usePlan from '../hooks/usePlan';
@@ -118,6 +129,10 @@ export default function DeliveryCombosScreen() {
   novoComboRef.current = novoCombo;
   const editingComboRef = useRef(editingCombo);
   editingComboRef.current = editingCombo;
+  // Auditoria 2026-09-09 — true assim que a usuária digita o preço de venda
+  // manualmente, pra nunca mais sobrescrever com o preço sugerido (prefill
+  // só deve acontecer uma vez, antes de qualquer edição do campo).
+  const manualPrecoRef = useRef(false);
 
   // Available items for picker
   const [allProdutos, setAllProdutos] = useState([]);
@@ -171,7 +186,10 @@ export default function DeliveryCombosScreen() {
       db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
       db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
       db.getAllAsync('SELECT id, nome, preco_unitario FROM embalagens ORDER BY nome'),
-      db.getAllAsync('SELECT id, nome, custo_por_kg FROM preparos ORDER BY nome'),
+      // Auditoria 2026-09-09: faltava unidade_medida — sem ela, receita base
+      // media SEMPRE em grama por padrão (resolveCustoUnitarioItemCombo cai em 'g'),
+      // mesmo quando a receita rende/é usada em kg ou litro.
+      db.getAllAsync('SELECT id, nome, custo_por_kg, unidade_medida FROM preparos ORDER BY nome'),
       db.getAllAsync('SELECT id, nome, preco_por_kg, unidade_medida FROM materias_primas ORDER BY nome'),
       db.getAllAsync('SELECT * FROM delivery_combos ORDER BY nome'),
       db.getAllAsync('SELECT * FROM delivery_combo_itens'),
@@ -220,7 +238,9 @@ export default function DeliveryCombosScreen() {
       const custoEmb = embs.reduce((a, e) => a + e.preco_unitario * e.quantidade_utilizada, 0);
       const custoTotal = custoIng + custoPr + custoEmb;
       const custoUnitario = custoTotal / getDivisorRendimento(p);
-      prodResults.push({ id: p.id, nome: p.nome, precoVenda: p.preco_venda || 0, custoUnitario });
+      // unidade_rendimento/rendimento_total: pra getTipoVenda() detectar corretamente
+      // se o produto é vendido por kg/litro/unidade (badge de unidade no combo).
+      prodResults.push({ id: p.id, nome: p.nome, precoVenda: p.preco_venda || 0, custoUnitario, unidade_rendimento: p.unidade_rendimento, rendimento_total: p.rendimento_total });
     }
     setAllProdutos(prodResults);
     setAllMaterias(materiasList);
@@ -236,18 +256,21 @@ export default function DeliveryCombosScreen() {
       const itens = dProdItensByDProd[dp.id] || [];
       let custo = 0;
       for (const item of itens) {
+        // Auditoria 2026-09-09: usa resolveCustoUnitarioItemCombo em vez de fixar
+        // 'g' no argumento de unidade — antes ingrediente/preparo medido em kg/L/un
+        // saía até 1000× errado (ver comboPricing.js e comboPricing.test.mjs).
         if (item.tipo === 'produto') {
           const prod = prodResults.find(p => p.id === item.item_id);
-          if (prod) custo += prod.custoUnitario * item.quantidade;
+          if (prod) custo += resolveCustoUnitarioItemCombo('produto', prod).custo * item.quantidade;
         } else if (item.tipo === 'embalagem') {
           const emb = embalagensList.find(e => e.id === item.item_id);
-          if (emb) custo += emb.preco_unitario * item.quantidade;
+          if (emb) custo += resolveCustoUnitarioItemCombo('embalagem', emb).custo * item.quantidade;
         } else if (item.tipo === 'preparo') {
           const prep = preparosList.find(p => p.id === item.item_id);
-          if (prep) custo += calcCustoPreparo(prep.custo_por_kg, item.quantidade, 'g');
+          if (prep) custo += resolveCustoUnitarioItemCombo('preparo', prep).custo * item.quantidade;
         } else if (item.tipo === 'materia_prima') {
           const mp = materiasList.find(m => m.id === item.item_id);
-          if (mp) custo += calcCustoIngrediente(mp.preco_por_kg, item.quantidade, mp.unidade_medida, 'g');
+          if (mp) custo += resolveCustoUnitarioItemCombo('materia_prima', mp).custo * item.quantidade;
         }
       }
       deliveryProdResults.push({ id: dp.id, nome: dp.nome, precoVenda: dp.preco_venda || 0, custoUnitario: custo });
@@ -262,25 +285,36 @@ export default function DeliveryCombosScreen() {
     for (const combo of combosList) {
       const itens = comboItensByCombo[combo.id] || [];
       let custo = 0;
+      // Auditoria 2026-09-09: usa resolveCustoUnitarioItemCombo (unidade nativa do
+      // item nos dois lados da conversão) em vez de fixar 'g' — mesmo fix do bloco
+      // de delivery_produtos acima. Também soma o preço de venda avulso dos
+      // produtos do combo, pra calcular "quanto o cliente economiza" no modal.
+      let somaAvulso = 0;
       for (const item of itens) {
         if (item.tipo === 'produto') {
           const prod = prodResults.find(p => p.id === item.item_id);
-          if (prod) custo += prod.custoUnitario * item.quantidade;
+          if (prod) {
+            custo += resolveCustoUnitarioItemCombo('produto', prod).custo * item.quantidade;
+            if (safeNum(prod.precoVenda) > 0) somaAvulso += safeNum(prod.precoVenda) * item.quantidade;
+          }
         } else if (item.tipo === 'delivery_produto') {
           const dp = deliveryProdResults.find(p => p.id === item.item_id);
-          if (dp) custo += dp.custoUnitario * item.quantidade;
+          if (dp) {
+            custo += resolveCustoUnitarioItemCombo('delivery_produto', dp).custo * item.quantidade;
+            if (safeNum(dp.precoVenda) > 0) somaAvulso += safeNum(dp.precoVenda) * item.quantidade;
+          }
         } else if (item.tipo === 'materia_prima') {
           const mp = materiasList.find(m => m.id === item.item_id);
-          if (mp) custo += calcCustoIngrediente(mp.preco_por_kg, item.quantidade, mp.unidade_medida, 'g');
+          if (mp) custo += resolveCustoUnitarioItemCombo('materia_prima', mp).custo * item.quantidade;
         } else if (item.tipo === 'embalagem') {
           const emb = embalagensList.find(e => e.id === item.item_id);
-          if (emb) custo += emb.preco_unitario * item.quantidade;
+          if (emb) custo += resolveCustoUnitarioItemCombo('embalagem', emb).custo * item.quantidade;
         } else if (item.tipo === 'preparo') {
           const prep = preparosList.find(p => p.id === item.item_id);
-          if (prep) custo += calcCustoPreparo(prep.custo_por_kg, item.quantidade, 'g');
+          if (prep) custo += resolveCustoUnitarioItemCombo('preparo', prep).custo * item.quantidade;
         }
       }
-      combosWithCost.push({ ...combo, itens, custo });
+      combosWithCost.push({ ...combo, itens, custo, somaAvulso });
     }
     setCombos(combosWithCost);
     } catch (e) {
@@ -337,37 +371,54 @@ export default function DeliveryCombosScreen() {
       }
     } catch (_) {}
     setNovoCombo(restored || { nome: '', preco_venda: '', itens: [] });
+    // Se o draft restaurado já tinha preço, não prefilar por cima dele.
+    manualPrecoRef.current = !!(restored && restored.preco_venda);
     setShowComboModal(true);
   }
 
   // Open modal for editing
   function abrirEditarCombo(combo) {
     setEditingCombo(combo);
+    // Combo já tem preço salvo (ou explicitamente em branco por escolha da
+    // usuária) — não prefilar por cima ao abrir pra editar.
+    manualPrecoRef.current = !!combo.preco_venda;
+    // Auditoria 2026-09-09: usa resolveCustoUnitarioItemCombo (mesma função usada
+    // ao adicionar item e ao carregar a lista) — antes esta função recalculava o
+    // custo com 'g' fixo, deixando o custo de um item recém-adicionado (correto)
+    // diferente do custo do MESMO item após fechar e reabrir o combo (errado).
+    // Também preenche `unidade` (faltava aqui — o badge de unidade só aparecia
+    // em itens adicionados na sessão atual, nunca nos já salvos) e
+    // `precoVendaAvulso` (preço de venda solo do produto, usado no cálculo de
+    // "quanto o cliente economiza" comprando o combo).
     const itensComNome = combo.itens.map(item => {
       let nome = '';
-      let custoUnit = 0;
+      let dados = null;
+      let precoVendaAvulso = 0;
       if (item.tipo === 'produto') {
         const p = allProdutos.find(x => x.id === item.item_id);
         nome = p ? p.nome : 'Produto';
-        custoUnit = p ? p.custoUnitario : 0;
+        dados = p;
+        precoVendaAvulso = p ? safeNum(p.precoVenda) : 0;
       } else if (item.tipo === 'delivery_produto') {
         const dp = allDeliveryProdutos.find(x => x.id === item.item_id);
         nome = dp ? dp.nome : 'Produto Delivery';
-        custoUnit = dp ? dp.custoUnitario : 0;
+        dados = dp;
+        precoVendaAvulso = dp ? safeNum(dp.precoVenda) : 0;
       } else if (item.tipo === 'materia_prima') {
         const mp = allMaterias.find(x => x.id === item.item_id);
         nome = mp ? mp.nome : 'Ingrediente';
-        custoUnit = mp ? calcCustoIngrediente(mp.preco_por_kg, 1, mp.unidade_medida, 'g') : 0;
+        dados = mp;
       } else if (item.tipo === 'embalagem') {
         const e = allEmbalagens.find(x => x.id === item.item_id);
         nome = e ? e.nome : 'Embalagem';
-        custoUnit = e ? e.preco_unitario : 0;
+        dados = e;
       } else if (item.tipo === 'preparo') {
         const p = allPreparos.find(x => x.id === item.item_id);
         nome = p ? p.nome : 'Receita base';
-        custoUnit = p ? calcCustoPreparo(p.custo_por_kg, 1, 'g') : 0;
+        dados = p;
       }
-      return { tipo: item.tipo, item_id: item.item_id, quantidade: item.quantidade, nome, custoUnit };
+      const { custo: custoUnit, unidade } = resolveCustoUnitarioItemCombo(item.tipo, dados || {});
+      return { tipo: item.tipo, item_id: item.item_id, quantidade: item.quantidade, nome, custoUnit, unidade, precoVendaAvulso };
     });
     setNovoCombo({
       nome: combo.nome,
@@ -647,25 +698,12 @@ export default function DeliveryCombosScreen() {
   // "1 kg de farinha" virava custo de "1 grama" → 1000x errado em alguns casos.
   // Fix: usar unidade NATIVA do item em ambos os argumentos de calcCustoIngrediente.
   // Também devolvemos a unidade pra exibir na UI ("1 kg", "1 un", etc).
+  // Auditoria 2026-09-09: lógica movida para src/utils/comboPricing.js
+  // (resolveCustoUnitarioItemCombo), testada em __tests__/comboPricing.test.mjs,
+  // e reaproveitada em loadData()/abrirEditarCombo() — antes cada um desses 3
+  // lugares tinha sua própria cópia com pequenas diferenças (bug de unidade).
   function getItemCustoEUnidade(tipo, item) {
-    if (tipo === 'produto' || tipo === 'delivery_produto') {
-      // Produto tem tipo_venda (por_unidade / por_kg / por_litro)
-      let unidade = 'un';
-      const tv = (item.tipo_venda || '').toLowerCase();
-      if (tv.includes('kg') || tv.includes('por_kg')) unidade = 'kg';
-      else if (tv.includes('litro') || tv.includes('por_litro') || tv.includes('por_l')) unidade = 'L';
-      return { custo: item.custoUnitario || 0, unidade };
-    }
-    if (tipo === 'materia_prima') {
-      const u = item.unidade_medida || 'g';
-      return { custo: calcCustoIngrediente(item.preco_por_kg || 0, 1, u, u), unidade: u };
-    }
-    if (tipo === 'embalagem') return { custo: item.preco_unitario || 0, unidade: 'un' };
-    if (tipo === 'preparo') {
-      const u = item.unidade_medida || 'g';
-      return { custo: calcCustoPreparo(item.custo_por_kg || 0, 1, u), unidade: u };
-    }
-    return { custo: 0, unidade: 'un' };
+    return resolveCustoUnitarioItemCombo(tipo, item);
   }
 
   // Mantido pra retrocompatibilidade (chamadores antigos)
@@ -675,7 +713,10 @@ export default function DeliveryCombosScreen() {
 
   function adicionarItemAoCombo(tipo, item) {
     const { custo: custoUnit, unidade } = getItemCustoEUnidade(tipo, item);
-    const newItem = { tipo, item_id: item.id, quantidade: 1, nome: item.nome, custoUnit, unidade };
+    // Preço de venda avulso (só produto/delivery_produto) — usado no cálculo
+    // de "quanto o cliente economiza" comprando o combo em vez dos itens separados.
+    const precoVendaAvulso = (tipo === 'produto' || tipo === 'delivery_produto') ? safeNum(item.precoVenda) : 0;
+    const newItem = { tipo, item_id: item.id, quantidade: 1, nome: item.nome, custoUnit, unidade, precoVendaAvulso };
     setNovoCombo(prev => {
       const updated = { ...prev, itens: [...prev.itens, newItem] };
       // Auto-save imediato com dados atualizados (modo edição)
@@ -735,13 +776,22 @@ export default function DeliveryCombosScreen() {
     });
   }
 
+  // Auditoria 2026-09-09: usa calcCustoTotalCombo (comboPricing.js) — mesma
+  // fórmula testada em __tests__/comboPricing.test.mjs.
   function calcSomaItens() {
-    return novoCombo.itens.reduce((acc, item) => acc + safeNum(item.custoUnit) * safeNum(item.quantidade), 0);
+    return calcCustoTotalCombo(novoCombo.itens);
   }
 
   const custoTotal = calcSomaItens();
   const precoVendaModal = parseInputValue(novoCombo.preco_venda);
-  const margemModal = precoVendaModal > 0 ? ((precoVendaModal - custoTotal) / precoVendaModal) * 100 : 0;
+  // Auditoria 2026-09-09 — bug de "margem bruta exibida como líquida": o card
+  // da lista (renderComboCard/renderDesktopGridCard) rotula "Lucro Líquido" e
+  // "Margem Líq." mas calculava só preço−custo, sem descontar despesas fixas e
+  // variáveis (contextoFin.fixoPerc/variavelPerc, já carregadas em loadData).
+  // Agora o resumo do modal e os cards usam a mesma fórmula líquida
+  // (preço − custo − preço×(fixo%+variável%)) que o preço sugerido já usa.
+  const lucroCombo = calcLucroLiquidoCombo(precoVendaModal, custoTotal, contextoFin.fixoPerc, contextoFin.variavelPerc);
+  const margemModal = calcMargemLiquidaCombo(precoVendaModal, custoTotal, contextoFin.fixoPerc, contextoFin.variavelPerc) * 100;
   const isEditing = editingCombo !== null;
 
   // Breakdown by type
@@ -749,7 +799,6 @@ export default function DeliveryCombosScreen() {
   const custoInsumos = novoCombo.itens.filter(i => i.tipo === 'materia_prima').reduce((a, i) => a + safeNum(i.custoUnit) * safeNum(i.quantidade), 0);
   const custoPreparosCombo = novoCombo.itens.filter(i => i.tipo === 'preparo').reduce((a, i) => a + safeNum(i.custoUnit) * safeNum(i.quantidade), 0);
   const custoEmbalagensCombo = novoCombo.itens.filter(i => i.tipo === 'embalagem').reduce((a, i) => a + safeNum(i.custoUnit) * safeNum(i.quantidade), 0);
-  const lucroCombo = precoVendaModal - custoTotal;
   // APP-22: preço sugerido do combo agora usa fórmula completa (markup divisor) com
   // lucro + custos fixos + variáveis, não mais markup fixo de 35%.
   // Antes: combo de R$ 9,88 sugeria R$ 11; agora ~R$ 22+ porque inclui fixos+variáveis+lucro real.
@@ -762,14 +811,39 @@ export default function DeliveryCombosScreen() {
   });
   const precoSugerido = sugCombo?.preco || 0;
 
+  // Auditoria 2026-09-09 — "Cliente economiza": soma do preço de venda avulso
+  // dos produtos do combo (precoVendaAvulso, preenchido em adicionarItemAoCombo/
+  // abrirEditarCombo) menos o preço do combo. Só faz sentido quando há pelo
+  // menos um produto com preço avulso > 0 — combo só de ingredientes/embalagens
+  // não tem "preço separado" pra comparar.
+  const somaPrecoAvulso = calcSomaPrecoAvulsoProdutos(novoCombo.itens);
+  const economiaCombo = calcEconomiaCombo(somaPrecoAvulso, precoVendaModal);
+  const mostrarEconomia = somaPrecoAvulso > 0 && precoVendaModal > 0 && economiaCombo.valor > 0;
+
+  // Auditoria 2026-09-09 — pré-preenche o preço de venda com o sugerido na
+  // primeira vez que o resumo aparece (itens adicionados + preço ainda vazio),
+  // sem nunca sobrescrever o que a usuária já digitou (manualPrecoRef).
+  useEffect(() => {
+    if (!showComboModal) return;
+    if (manualPrecoRef.current) return;
+    if (novoCombo.preco_venda) return;
+    if (novoCombo.itens.length === 0) return;
+    if (!(precoSugerido > 0)) return;
+    setNovoCombo(prev => (prev.preco_venda ? prev : { ...prev, preco_venda: String(precoSugerido.toFixed(2)).replace('.', ',') }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showComboModal, precoSugerido, novoCombo.itens.length]);
+
   // ─── RENDER ───────────────────────────────────────────────
 
   function renderComboCard({ item: combo, index }) {
     const precoV = safeNum(combo.preco_venda);
     const custoC = safeNum(combo.custo);
-    // Sessão 28.9 — Auditoria P0-02: usar calcMargem (combo é venda direta, sem despesas op.)
-    const lucro = precoV - custoC;
-    const margem = calcMargem(precoV, custoC) * 100;
+    // Auditoria 2026-09-09: o card rotula "Lucro Líquido"/"Margem Líq." — antes
+    // calculava só preço−custo (margem BRUTA, calcMargem), sem descontar despesas
+    // fixas/variáveis (contextoFin), inflando o lucro exibido. Agora usa a mesma
+    // fórmula líquida do resumo do modal e do preço sugerido.
+    const lucro = calcLucroLiquidoCombo(precoV, custoC, contextoFin.fixoPerc, contextoFin.variavelPerc);
+    const margem = calcMargemLiquidaCombo(precoV, custoC, contextoFin.fixoPerc, contextoFin.variavelPerc) * 100;
     const margemColor = margem >= 25 ? colors.success : margem >= 15 ? colors.accent : colors.error;
     const comboColor = getComboColor(index);
     const itens = combo.itens || [];
@@ -782,7 +856,11 @@ export default function DeliveryCombosScreen() {
     if (counts.preparo) subtitleParts.push(`${counts.preparo} ${counts.preparo === 1 ? 'receita base' : 'receitas base'}`);
     if (counts.materia_prima) subtitleParts.push(`${counts.materia_prima} ${counts.materia_prima === 1 ? 'ingrediente' : 'ingredientes'}`);
     if (counts.embalagem) subtitleParts.push(`${counts.embalagem} ${counts.embalagem === 1 ? 'embalagem' : 'embalagens'}`);
-    const subtitle = subtitleParts.length > 0 ? subtitleParts.join(' · ') : 'Combo vazio';
+    // Auditoria 2026-09-09 (item f): a tela precisa mostrar "o número de itens"
+    // no card — antes `itemCount` era calculado e nunca usado (dead code).
+    const subtitle = itemCount === 0
+      ? 'Combo vazio'
+      : `${itemCount} ${itemCount === 1 ? 'item' : 'itens'} · ${subtitleParts.join(' · ')}`;
 
     return (
       <TouchableOpacity
@@ -842,9 +920,10 @@ export default function DeliveryCombosScreen() {
   function renderDesktopGridCard({ item: combo, index }) {
     const precoV = safeNum(combo.preco_venda);
     const custoC = safeNum(combo.custo);
-    // Sessão 28.9 — Auditoria P0-02: usar calcMargem (combo é venda direta, sem despesas op.)
-    const lucro = precoV - custoC;
-    const margem = calcMargem(precoV, custoC) * 100;
+    // Auditoria 2026-09-09: mesmo fix de renderComboCard — margem LÍQUIDA (com
+    // despesas fixas/variáveis), não bruta.
+    const lucro = calcLucroLiquidoCombo(precoV, custoC, contextoFin.fixoPerc, contextoFin.variavelPerc);
+    const margem = calcMargemLiquidaCombo(precoV, custoC, contextoFin.fixoPerc, contextoFin.variavelPerc) * 100;
     const margemColor = margem >= 25 ? colors.success : margem >= 15 ? colors.accent : colors.error;
     const comboColor = getComboColor(index);
     const itens = combo.itens || [];
@@ -856,7 +935,11 @@ export default function DeliveryCombosScreen() {
     if (counts.preparo) subtitleParts.push(`${counts.preparo} ${counts.preparo > 1 ? 'receitas base' : 'receita base'}`);
     if (counts.materia_prima) subtitleParts.push(`${counts.materia_prima} ingrediente${counts.materia_prima > 1 ? 's' : ''}`);
     if (counts.embalagem) subtitleParts.push(`${counts.embalagem} ${counts.embalagem > 1 ? 'embalagens' : 'embalagem'}`);
-    const subtitle = subtitleParts.length > 0 ? subtitleParts.join(' · ') : 'Combo vazio';
+    // Auditoria 2026-09-09 (item f): mostra o número de itens no card (antes
+    // itemCount era calculado e nunca usado).
+    const subtitle = itemCount === 0
+      ? 'Combo vazio'
+      : `${itemCount} ${itemCount === 1 ? 'item' : 'itens'} · ${subtitleParts.join(' · ')}`;
 
     return (
       <TouchableOpacity
@@ -912,8 +995,11 @@ export default function DeliveryCombosScreen() {
 
   // Sessão 28.8 — totais para o header (KPIs rápidos)
   const totalCombos = combos.length;
+  // Auditoria 2026-09-09: lucro LÍQUIDO (desconta fixo/variável), igual ao card
+  // e ao resumo do modal — antes somava preço−custo (bruto), inflando o "lucro
+  // potencial" mostrado no cabeçalho da tela.
   const totalLucroPotencial = combos.reduce((acc, c) => {
-    const lp = safeNum(c.preco_venda) - safeNum(c.custo);
+    const lp = calcLucroLiquidoCombo(safeNum(c.preco_venda), safeNum(c.custo), contextoFin.fixoPerc, contextoFin.variavelPerc);
     return acc + (lp > 0 ? lp : 0);
   }, 0);
 
@@ -1105,10 +1191,36 @@ export default function DeliveryCombosScreen() {
                 placeholder="Ex: Combo Festa"
               />
 
+              {/* Auditoria 2026-09-09 — ordem revista pra bater com o raciocínio da
+                  dona de padaria: primeiro custo + sugestão, DEPOIS o preço de
+                  venda (que já vem pré-preenchido com a sugestão), DEPOIS a sobra
+                  líquida e a economia do cliente. */}
+              {novoCombo.itens.length > 0 && (
+                <View style={styles.comboResumo}>
+                  <View style={styles.comboResumoHeader}>
+                    <Feather name="dollar-sign" size={14} color={colors.primary} />
+                    <Text style={styles.comboResumoTitle}>Custo e preço sugerido</Text>
+                  </View>
+                  <View style={styles.comboResumoGrid}>
+                    <View style={styles.comboResumoCell}>
+                      <Text style={styles.comboResumoCellLabel}>Custo do combo</Text>
+                      <Text style={styles.comboResumoCellValue}>{formatCurrency(custoTotal)}</Text>
+                    </View>
+                    <View style={styles.comboResumoCell}>
+                      <Text style={styles.comboResumoCellLabel}>Preço sugerido</Text>
+                      <Text style={[styles.comboResumoCellValue, { color: colors.textSecondary }]}>{formatCurrency(precoSugerido)}</Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+
               <InputField
                 label="Preço de venda (R$)"
                 value={novoCombo.preco_venda}
                 onChangeText={(val) => setNovoCombo(prev => {
+                  // Auditoria 2026-09-09: a partir daqui o campo é "da usuária" —
+                  // nunca mais sobrescrever com o preço sugerido automaticamente.
+                  manualPrecoRef.current = true;
                   const updated = { ...prev, preco_venda: val };
                   persistDraftCombo(updated);
                   return updated;
@@ -1117,29 +1229,19 @@ export default function DeliveryCombosScreen() {
                 placeholder="0,00"
               />
 
-              {/* Resumo de Custos — Sessão 24: REORDENADO para vir ANTES da lista de itens
-                  conforme feedback do usuário. Aparece sempre que houver itens. */}
               {novoCombo.itens.length > 0 && (
                 <View style={styles.comboResumo}>
                   <View style={styles.comboResumoHeader}>
-                    <Feather name="dollar-sign" size={14} color={colors.primary} />
-                    <Text style={styles.comboResumoTitle}>Resumo de Custos</Text>
+                    <Feather name="trending-up" size={14} color={colors.primary} />
+                    <Text style={styles.comboResumoTitle}>Sobra por combo</Text>
                   </View>
                   <View style={styles.comboResumoGrid}>
                     <View style={styles.comboResumoCell}>
-                      <Text style={styles.comboResumoCellLabel}>Custo dos ingredientes/un</Text>
-                      <Text style={styles.comboResumoCellValue}>{formatCurrency(custoTotal)}</Text>
-                    </View>
-                    <View style={styles.comboResumoCell}>
-                      <Text style={styles.comboResumoCellLabel}>Sugerido</Text>
-                      <Text style={[styles.comboResumoCellValue, { color: colors.textSecondary }]}>{formatCurrency(precoSugerido)}</Text>
-                    </View>
-                    <View style={styles.comboResumoCell}>
-                      <Text style={styles.comboResumoCellLabel}>Lucro</Text>
+                      <Text style={styles.comboResumoCellLabel}>Sobra líquida</Text>
                       <Text style={[styles.comboResumoCellValue, { color: lucroCombo >= 0 ? colors.primary : colors.error }]}>{formatCurrency(lucroCombo)}</Text>
                     </View>
                     <View style={styles.comboResumoCell}>
-                      <Text style={styles.comboResumoCellLabel}>Margem</Text>
+                      <Text style={styles.comboResumoCellLabel}>Margem líq.</Text>
                       <Text style={[styles.comboResumoCellValue, {
                         color: margemModal >= 25 ? colors.success : margemModal >= 15 ? colors.accent : colors.error
                       }]}>
@@ -1147,6 +1249,11 @@ export default function DeliveryCombosScreen() {
                       </Text>
                     </View>
                   </View>
+                  {mostrarEconomia && (
+                    <Text style={styles.comboEconomiaText}>
+                      Cliente economiza {formatCurrency(economiaCombo.valor)} ({(economiaCombo.percentual * 100).toFixed(0)}%) comprando o combo em vez dos produtos separados
+                    </Text>
+                  )}
                   <View style={styles.comboResumoBreakdown}>
                     {custoProdutos > 0 && <Text style={styles.comboResumoBreakdownItem}>Produtos {formatCurrency(custoProdutos)}</Text>}
                     {custoProdutos > 0 && custoInsumos > 0 && <Text style={styles.comboResumoBreakdownSep}>{'\u00B7'}</Text>}
@@ -1356,8 +1463,13 @@ export default function DeliveryCombosScreen() {
 
                 return (
                   <>
-                    {renderCatBlock('produto', 'Produtos', filteredProdutos, (p) => renderRow(p, `prod-${p.id}`, 'produto', (x) => safeNum(x.preco_venda)))}
-                    {renderCatBlock('preparo', 'Receitas base', filteredPreparos, (pr) => renderRow(pr, `prep-${pr.id}`, 'preparo', (x) => safeNum(x.custo_total)))}
+                    {/* Auditoria 2026-09-09: `preco_venda`/`custo_total` não existem nesses
+                        objetos (allProdutos usa `precoVenda`; preparos não têm `custo_total`
+                        carregado aqui) — a dica de preço/custo ao lado do item nunca aparecia
+                        (sempre 0). Produtos: mostra preço de venda avulso; receitas base: custo
+                        de 1 unidade nativa via resolveCustoUnitarioItemCombo. */}
+                    {renderCatBlock('produto', 'Produtos', filteredProdutos, (p) => renderRow(p, `prod-${p.id}`, 'produto', (x) => safeNum(x.precoVenda)))}
+                    {renderCatBlock('preparo', 'Receitas base', filteredPreparos, (pr) => renderRow(pr, `prep-${pr.id}`, 'preparo', (x) => resolveCustoUnitarioItemCombo('preparo', x).custo))}
                     {renderCatBlock('materia_prima', 'Ingredientes', filteredMaterias, (m) => renderRow(m, `mp-${m.id}`, 'materia_prima', (x) => safeNum(x.preco_por_kg)))}
                     {renderCatBlock('embalagem', 'Embalagens', filteredEmbalagens, (e) => renderRow(e, `emb-${e.id}`, 'embalagem', (x) => safeNum(x.preco_unitario)))}
                   </>
@@ -1446,11 +1558,23 @@ export default function DeliveryCombosScreen() {
             <Text style={styles.incompleteDesc}>
               O nome do combo é obrigatório. Deseja continuar editando ou excluir este combo?
             </Text>
-            <TouchableOpacity style={styles.incompleteBtnEdit} onPress={handleContinueEditing} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.incompleteBtnEdit}
+              onPress={handleContinueEditing}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Continuar editando"
+            >
               <Feather name="edit-2" size={15} color="#fff" style={{ marginRight: 6 }} />
               <Text style={styles.incompleteBtnEditText}>Continuar editando</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.incompleteBtnDelete} onPress={handleDeleteAndExit} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.incompleteBtnDelete}
+              onPress={handleDeleteAndExit}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Excluir combo"
+            >
               <Feather name="trash-2" size={15} color={colors.error} style={{ marginRight: 6 }} />
               <Text style={styles.incompleteBtnDeleteText}>Excluir combo</Text>
             </TouchableOpacity>
@@ -2324,5 +2448,12 @@ const styles = StyleSheet.create({
   comboResumoBreakdownSep: {
     fontSize: 11,
     color: colors.disabled,
+  },
+  // Auditoria 2026-09-09 — linha de "Cliente economiza R$X (Y%)" no resumo do combo.
+  comboEconomiaText: {
+    fontSize: fonts.small,
+    fontFamily: fontFamily.medium,
+    color: colors.success,
+    marginTop: spacing.xs,
   },
 });

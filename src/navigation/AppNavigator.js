@@ -1,5 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { NavigationContainer, CommonActions, StackActions, useFocusEffect } from '@react-navigation/native';
+// Título da aba do browser: mesmo mapa do WebHeader (rota crua "HomeMain" → "Painel Geral").
+import { ROUTE_TITLES } from '../components/web/WebHeader';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Text, View, Image, Platform, TouchableOpacity, ActivityIndicator, Dimensions } from 'react-native';
@@ -742,6 +744,8 @@ function AppContent() {
   );
 }
 
+const APP_NAME = 'Precificaí';
+
 const linking = {
   prefixes: ['https://app.precificaiapp.com', 'precificaiapp://'],
   config: {
@@ -772,7 +776,15 @@ export default function AppNavigator() {
   const isAuthRoutes = !user || passwordRecovery;
 
   return (
-    <NavigationContainer linking={isAuthRoutes ? linking : undefined}>
+    <NavigationContainer
+      linking={isAuthRoutes ? linking : undefined}
+      // UX walkthrough: sem formatter, o React Navigation usa `options.title ?? route.name`
+      // e a aba do browser mostrava "HomeMain" após o voltar do header.
+      documentTitle={{
+        formatter: (options, route) =>
+          (route?.name && ROUTE_TITLES[route.name]) || options?.title || APP_NAME,
+      }}
+    >
       {isAuthRoutes ? <AuthNavigator /> : <AppContent />}
     </NavigationContainer>
   );

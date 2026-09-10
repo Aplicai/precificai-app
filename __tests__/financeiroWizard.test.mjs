@@ -7,7 +7,7 @@ import { strict as assert } from 'node:assert';
 import {
   WIZARD_STEPS, SUGESTOES_LUCRO,
   wizardProgressLabel, deveMostrarWizard, passoConcluido, primeiroPassoPendente,
-  validarLucroInput, validarFaturamentoInput, fracaoParaInputPercentual,
+  validarLucroInput, validarFaturamentoInput, fracaoParaInputPercentual, formatMarkup,
 } from '../src/components/financeiro/wizardSteps.js';
 
 function status(done) {
@@ -90,4 +90,18 @@ test('fracaoParaInputPercentual: fração → texto com vírgula', () => {
   assert.equal(fracaoParaInputPercentual(0), '');
   assert.equal(fracaoParaInputPercentual(NaN), '');
   assert.equal(fracaoParaInputPercentual(undefined), '');
+});
+
+// Auditoria 09/09 — walkthrough real reportou "1.95x" (ponto) no mark-up
+// exibido na tela Financeiro, quando o resto do app usa vírgula PT-BR.
+test('formatMarkup: usa vírgula PT-BR (nunca ponto), sufixo "x"', () => {
+  assert.equal(formatMarkup(1.95), '1,95x');
+  assert.equal(formatMarkup(2), '2,00x');
+  assert.equal(formatMarkup(1.666666), '1,67x');
+  assert.equal(formatMarkup(0), '∞');
+  assert.equal(formatMarkup(-1), '∞');
+  assert.equal(formatMarkup(NaN), '∞');
+  assert.equal(formatMarkup(undefined), '∞');
+  // nunca deve conter ponto decimal
+  assert.ok(!formatMarkup(3.14159).includes('.'));
 });

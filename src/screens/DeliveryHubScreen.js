@@ -1133,6 +1133,10 @@ export default function DeliveryHubScreen({ navigation }) {
                 <View style={{ flexDirection: 'row', paddingHorizontal: 4, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 6 }}>
                   <Text style={{ flex: 2, fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.bold, letterSpacing: 0.5 }}>PRODUTO</Text>
                   <Text style={{ width: 80, fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.bold, letterSpacing: 0.5, textAlign: 'right' }}>BALCÃO</Text>
+                  {/* Fix walkthrough #7 — coluna "Mesmo lucro" (só leitura), mesmo
+                      helper (calcPrecoMesmoLucroReais) e mesma lógica da Visão Geral:
+                      preço nesta plataforma que rende o MESMO lucro líquido R$ do balcão. */}
+                  <Text style={{ width: 90, fontSize: 11, color: colors.textSecondary, fontFamily: fontFamily.bold, letterSpacing: 0.5, textAlign: 'right' }}>MESMO LUCRO</Text>
                   <Text style={{ width: 110, fontSize: 11, color: colors.primary, fontFamily: fontFamily.bold, letterSpacing: 0.5, textAlign: 'right' }}>QUANTO COBRO</Text>
                 </View>
                 {precosProdutos.map((p, idx) => {
@@ -1140,11 +1144,36 @@ export default function DeliveryHubScreen({ navigation }) {
                   const valorAtual = precosMap[p.id] || '';
                   const num = parseDecimalBR(valorAtual);
                   const tem = Number.isFinite(num) && num > 0;
+                  // Fix walkthrough #7 — "Mesmo lucro": busca o custoUnit (cmv) já
+                  // calculado em `produtos` (loadData) e a plataforma completa (row
+                  // delivery_config) em `plataformas`, e reaplica a MESMA fórmula da
+                  // Visão Geral (calcPrecoMesmoLucroReais) — sem alterar o cálculo.
+                  const prodComCusto = produtos.find(pr => pr.id === p.id);
+                  const platRow = plataformas.find(pl => pl.id === precosPopupPlat?.id);
+                  let mesmoLucro = null;
+                  if (prodComCusto && platRow && balcao > 0) {
+                    const lucroLiqBalcaoReais = Math.max(
+                      0,
+                      balcao - prodComCusto.custoUnit - balcao * (contextoFin.fixoPerc + (contextoFin.variavelPerc || 0))
+                    );
+                    if (lucroLiqBalcaoReais > 0) {
+                      const r = calcPrecoMesmoLucroReais({
+                        cmv: prodComCusto.custoUnit,
+                        lucroAlvoReais: lucroLiqBalcaoReais,
+                        plat: platRow,
+                        contexto: contextoFin,
+                      });
+                      if (r && !r.inviavel && r.preco > 0) mesmoLucro = r.preco;
+                    }
+                  }
                   return (
                     <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 4, borderRadius: 6, backgroundColor: idx % 2 === 0 ? 'transparent' : colors.background }}>
                       <Text style={{ flex: 2, fontSize: fonts.small, color: colors.text }} numberOfLines={2}>{p.nome}</Text>
                       <Text style={{ width: 80, fontSize: fonts.small, color: colors.textSecondary, textAlign: 'right' }}>
                         R$ {balcao.toFixed(2).replace('.', ',')}
+                      </Text>
+                      <Text style={{ width: 90, fontSize: fonts.small, color: colors.textSecondary, textAlign: 'right' }}>
+                        {mesmoLucro != null ? formatCurrency(mesmoLucro) : '—'}
                       </Text>
                       <View style={{ width: 110, flexDirection: 'row', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
                         <Text style={{ fontSize: fonts.small, color: colors.text }}>R$</Text>

@@ -12,6 +12,9 @@ import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useListDensity from '../hooks/useListDensity';
 import { calcPrecoUnitarioEmbalagem, formatCurrency, parseDecimalBR } from '../utils/calculations';
+// Walkthrough 2026-09: mesmo bug do MateriaPrimaForm ("5.9" em vez de "5,90"
+// ao editar) — helper compartilhado (ver docstring de insumoFormHelpers.js).
+import { formatDecimalBR, formatMoneyBR } from '../utils/insumoFormHelpers';
 import { t } from '../i18n/pt-BR';
 import { showToast } from '../utils/toastBus';
 // Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
@@ -195,9 +198,10 @@ export default function EmbalagemFormScreen({ route, navigation }) {
       setForm({
         nome: item.nome, marca: item.marca || '',
         categoria_id: item.categoria_id || null,
-        quantidade: String(item.quantidade || ''),
+        // Walkthrough 2026-09: formata em PT-BR ao carregar (antes "5.9" em vez de "5,90").
+        quantidade: formatDecimalBR(item.quantidade),
         unidade_medida: item.unidade_medida || 'Unidades',
-        preco_embalagem: String(item.preco_embalagem || ''),
+        preco_embalagem: formatMoneyBR(item.preco_embalagem),
       });
       // APP-36 — carrega categorias para as quais esta embalagem é padrão (canal balcão)
       try {

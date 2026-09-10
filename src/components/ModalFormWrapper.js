@@ -69,7 +69,7 @@ export default function ModalFormWrapper({ children, title, onClose }) {
       <View style={[styles.card, { zIndex: 2 }]}>
         <View style={styles.desktopHeader}>
           <Text style={styles.desktopTitle} numberOfLines={1}>{title}</Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
+          <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Fechar">
             <Feather name="x" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>

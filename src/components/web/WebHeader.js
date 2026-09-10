@@ -6,7 +6,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { colors, spacing, fontFamily, webLayout } from '../../utils/theme';
 import useListDensity from '../../hooks/useListDensity';
 
-const ROUTE_TITLES = {
+// Exportado: AppNavigator usa o mesmo mapa no `documentTitle` do NavigationContainer
+// (senão a aba do browser mostrava o nome cru da rota, ex.: "HomeMain").
+export const ROUTE_TITLES = {
   'Início': 'Painel Geral',
   'HomeMain': 'Painel Geral',
   'Insumos': 'Ingredientes',
@@ -67,6 +69,10 @@ const ROUTE_TITLES = {
   // Feature beta — gated por email whitelist + toggle ativo
   'FluxoCaixaDRE': 'Fluxo de Caixa + DRE',
 };
+
+// Elementos web crus (<div>/<span>) não herdam a fonte do RN — sem isso o menu
+// da conta caía na serifa padrão do browser.
+const WEB_FONT = 'DM Sans, system-ui, sans-serif';
 
 // Routes rendered as transparentModal popups — header should ignore them
 const MODAL_FORM_ROUTES = new Set([
@@ -269,7 +275,7 @@ export default function WebHeader({ navigation, notifCount, onNotifPress, initia
               userSelect: 'none', position: 'relative', zIndex: 10000,
             }}
           >
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', pointerEvents: 'none', fontFamily: 'DM Sans, system-ui, sans-serif' }}>{initials}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', pointerEvents: 'none', fontFamily: WEB_FONT }}>{initials}</span>
           </div>
         ) : (
           <TouchableOpacity style={styles.avatar} onPress={() => setShowMenu(!showMenu)} activeOpacity={0.7}>
@@ -285,7 +291,7 @@ export default function WebHeader({ navigation, notifCount, onNotifPress, initia
             padding: '8px 0', width: 220, userSelect: 'none',
             boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
           }}>
-            <div style={{ padding: '8px 16px', fontSize: 12, color: colors.textSecondary, borderBottom: `1px solid ${colors.border}`, marginBottom: 4 }}>
+            <div style={{ padding: '8px 16px', fontSize: 12, color: colors.textSecondary, fontFamily: WEB_FONT, borderBottom: `1px solid ${colors.border}`, marginBottom: 4 }}>
               {user?.email}
             </div>
             <div onClick={() => { setShowMenu(false); navigation.navigate('Início', { screen: 'Perfil' }); }}
@@ -293,14 +299,14 @@ export default function WebHeader({ navigation, notifCount, onNotifPress, initia
               role="menuitem" tabIndex={0} aria-label="Meu Perfil"
               style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', padding: '10px 16px', cursor: 'pointer', gap: 10 }}>
               <Feather name="user" size={16} color={colors.text} />
-              <span style={{ fontSize: 14, color: colors.text, fontFamily: 'DM Sans' }}>Meu Perfil</span>
+              <span style={{ fontSize: 14, color: colors.text, fontFamily: WEB_FONT }}>Meu Perfil</span>
             </div>
             <div onClick={() => { setShowMenu(false); navigation.navigate('Mais', { screen: 'Configuracoes' }); }}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowMenu(false); navigation.navigate('Mais', { screen: 'Configuracoes' }); } }}
               role="menuitem" tabIndex={0} aria-label="Configurações"
               style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', padding: '10px 16px', cursor: 'pointer', gap: 10 }}>
               <Feather name="settings" size={16} color={colors.text} />
-              <span style={{ fontSize: 14, color: colors.text, fontFamily: 'DM Sans' }}>Configurações</span>
+              <span style={{ fontSize: 14, color: colors.text, fontFamily: WEB_FONT }}>Configurações</span>
             </div>
             <div style={{ height: 1, backgroundColor: colors.border, margin: '4px 0' }} />
             <div onClick={() => { setShowMenu(false); signOut(); }}
@@ -308,7 +314,7 @@ export default function WebHeader({ navigation, notifCount, onNotifPress, initia
               role="menuitem" tabIndex={0} aria-label="Sair"
               style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', padding: '10px 16px', cursor: 'pointer', gap: 10 }}>
               <Feather name="log-out" size={16} color={colors.error} />
-              <span style={{ fontSize: 14, color: colors.error, fontFamily: 'DM Sans' }}>Sair</span>
+              <span style={{ fontSize: 14, color: colors.error, fontFamily: WEB_FONT }}>Sair</span>
             </div>
           </div>
         )}

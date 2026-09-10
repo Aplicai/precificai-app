@@ -413,6 +413,12 @@ export default function HomeScreen({ navigation }) {
   // bloco "Como começar a precificar" (com contagens) está visível, o
   // OnboardingChecklist não renderiza — eram dois checklists quase iguais empilhados.
   const mostrarComoComecar = (d.totalProdutos === 0 || d.totalInsumos === 0) && !loading;
+  // UX walkthrough: o insight em destaque (banner) NÃO repete em "Análises Rápidas"
+  // ("Produto campeão" aparecia duas vezes na mesma tela).
+  const featuredShown = !!(d.featuredInsight && !pendente && !baseIncompleta);
+  const insightsLista = featuredShown
+    ? (d.insights || []).filter(i => i !== d.featuredInsight)
+    : (d.insights || []);
 
   // Status
   let StatusIcon, statusColor, statusText, statusBg, statusOnPress;
@@ -423,7 +429,8 @@ export default function HomeScreen({ navigation }) {
   } else if (baseIncompleta) {
     StatusIcon = () => <Feather name="clipboard" size={20} color="#fff" />;
     statusColor = colors.yellow; statusText = 'Base incompleta'; statusBg = colors.yellow;
-    statusOnPress = () => nav('Insumos');
+    // Leva pro que realmente falta: só produtos faltando → Produtos.
+    statusOnPress = () => nav(d.totalInsumos === 0 ? 'Insumos' : 'Produtos');
   } else if (d.produtosMargBaixa.length > 0) {
     StatusIcon = () => <Feather name="alert-triangle" size={20} color="#fff" />;
     statusColor = colors.coral;
@@ -549,18 +556,12 @@ export default function HomeScreen({ navigation }) {
       ) : undefined}
     >
 
-      {/* Banner PROEMINENTE de instalação PWA — topo absoluto da Home.
-          Foco em conversão: aparece imediatamente em web mobile (não
-          espera 2ª visita como o InstallPWABanner antigo) e tem CTA grande.
-          TODO: avaliar remover o InstallPWABanner abaixo agora que este
-          ocupa o slot principal. Mantido por enquanto pra não quebrar
-          fluxo caso usuário já tenha dispensado este e ainda queira o
-          discreto. */}
       {/* UX audit 09/09: aviso de preços estimados vive aqui (abaixo do header),
           só em Início e Insumos — antes era global e ficava acima do header. */}
       <PrecosZeradosBanner />
 
-      <HomeInstallBanner />
+      {/* HomeInstallBanner: movido pra depois de "Ações Rápidas" (UX walkthrough —
+          no desktop ocupava o slot mais nobre, acima da saudação). */}
 
       {/* Mobile-only onboarding overlay — explica a ordem correta de uso
           (Financeiro → Insumos → Preparos → Embalagens → Produtos → Análise).
@@ -655,6 +656,8 @@ export default function HomeScreen({ navigation }) {
                 style={[styles.stepItem, isNext && styles.stepItemActive]}
                 activeOpacity={0.7}
                 onPress={() => navigation.getParent()?.navigate(s.tab)}
+                accessibilityRole="button"
+                accessibilityLabel={`Passo ${s.step}: ${s.label}${s.done ? ` — ${s.count} cadastrado${s.count !== 1 ? 's' : ''}` : ''}`}
               >
                 <View style={[styles.stepNumber, s.done && styles.stepNumberDone, isNext && styles.stepNumberActive]}>
                   {s.done ? <Feather name="check" size={14} color="#fff" /> : <Text style={[styles.stepNumberText, isNext && { color: '#fff' }]}>{s.step}</Text>}
@@ -722,8 +725,16 @@ export default function HomeScreen({ navigation }) {
             {pendente && finStatus && (
               <Text style={styles.statusDetail}>{finStatus.concluidas} de {finStatus.total} etapas do Financeiro</Text>
             )}
+            {/* UX walkthrough: copy reflete SÓ o que falta (antes dizia "ingredientes
+                e produtos" mesmo com 94 ingredientes cadastrados). */}
             {!pendente && baseIncompleta && (
-              <Text style={styles.statusDetail}>Cadastre ingredientes e produtos para começar</Text>
+              <Text style={styles.statusDetail}>
+                {d.totalInsumos === 0 && d.totalProdutos === 0
+                  ? 'Cadastre ingredientes e produtos para começar'
+                  : d.totalInsumos === 0
+                    ? 'Cadastre ingredientes para começar'
+                    : 'Monte seu primeiro produto'}
+              </Text>
             )}
             {!pendente && !baseIncompleta && d.produtosMargBaixa.length > 0 && (
               <Text style={styles.statusDetail}>Ver produtos afetados</Text>
@@ -748,10 +759,12 @@ export default function HomeScreen({ navigation }) {
           do momento (margem negativa, produtos sem preço, CMV alto, etc.).
           Aparece logo após o status para que o usuário veja o problema/destaque
           antes de explorar os KPIs e a base de cadastro. */}
-      {d.featuredInsight && !pendente && !baseIncompleta && (
+      {featuredShown && (
         <TouchableOpacity
           style={[styles.featuredInsight, { borderLeftColor: d.featuredInsight.color, backgroundColor: d.featuredInsight.color + '0C' }, isMobile && styles.featuredInsightMobile]}
           activeOpacity={d.featuredInsight.action ? 0.7 : 1}
+          accessibilityRole={d.featuredInsight.action ? 'button' : undefined}
+          accessibilityLabel={`${d.featuredInsight.title}. ${d.featuredInsight.text}`}
           onPress={() => {
             const a = d.featuredInsight.action;
             if (!a) return;
@@ -801,12 +814,16 @@ export default function HomeScreen({ navigation }) {
           const margTarget = Number.isFinite(margParsed) ? margParsed / 100 : 0.15;
           const margBench = d.margemMedia >= margTarget ? 'green' : d.margemMedia >= (margTarget - 0.10) ? 'yellow' : 'red';
           const benchColors = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
+          // UX walkthrough: sem produto cadastrado, CMV e "sobra por venda" não
+          // existem — "0,00%" com barra verde/vermelha enganava. Mostra "—" sem barra.
+          const semProdutos = d.totalProdutos === 0;
+          const SEM_PRODUTOS_META = 'Cadastre um produto pra ver';
           return [
           // UX audit 09/09 (Fase B, item 10): rótulos em português de balcão;
           // tooltip fica só onde há fórmula. `caption` = termo técnico pequeno.
-          { label: 'Custo dos ingredientes', caption: '(CMV)', value: formatPercent(d.cmvPercent), icon: 'tag', color: colors.primary,
+          { label: 'Custo dos ingredientes', caption: '(CMV)', value: semProdutos ? '—' : formatPercent(d.cmvPercent), icon: 'tag', color: semProdutos ? colors.disabled : colors.primary,
             tip: { title: 'Custo dos ingredientes (CMV)', text: 'Quanto do preço de venda vai pra ingredientes e embalagem. Toque no card pra mudar a meta.', examples: ['Regra 30-30-30-10: ingredientes 30%, mão de obra 30%, despesas 30%, lucro 10%', 'Restaurantes: 28-35%', 'Pizzarias: 25-32%', 'Confeitarias: 20-30%', 'Fast food: 25-35%', `Sua meta: < ${cmvMetaValue}%`] },
-            meta: `Atual: ${formatPercent(d.cmvPercent)} · Meta: < ${cmvMetaValue}%`, bench: pendente ? null : cmvBench, onPress: () => setShowCmvMeta(true) },
+            meta: semProdutos ? SEM_PRODUTOS_META : `Atual: ${formatPercent(d.cmvPercent)} · Meta: < ${cmvMetaValue}%`, bench: (pendente || semProdutos) ? null : cmvBench, onPress: () => setShowCmvMeta(true) },
           { label: 'Sobra do mês', value: pendente ? '--' : formatCurrency(d.resultadoFinanceiro), icon: 'dollar-sign', color: pendente ? colors.disabled : (d.resultadoFinanceiro >= 0 ? colors.success : colors.error),
             tip: { title: 'Sobra do mês', text: 'Faturamento médio do mês menos os custos do mês. Pra mudar, ajuste faturamento ou custos no Financeiro.', examples: ['Conta: faturamento menos custos do mês', 'Positivo: as vendas pagam as contas', 'Negativo: as contas são maiores que as vendas'] },
             meta: d.resultadoFinanceiro >= 0 ? 'Receita cobre custos' : 'Receita abaixo dos custos', bench: pendente ? null : resBench },
@@ -816,12 +833,16 @@ export default function HomeScreen({ navigation }) {
               ? (d.fatMedio >= d.pontoEquilibrio ? `Faturamento ${formatPercent(d.fatMedio / d.pontoEquilibrio - 1)} acima` : `Falta ${formatCurrency(d.pontoEquilibrio - d.fatMedio)}`)
               : 'Configure o financeiro', bench: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0
               ? (d.fatMedio >= d.pontoEquilibrio * 1.2 ? 'green' : d.fatMedio >= d.pontoEquilibrio ? 'yellow' : 'red') : null },
-          { label: 'Quanto sobra por venda', value: pendente ? '--' : formatPercent(d.margemMedia), icon: 'trending-up', color: pendente ? colors.disabled : (d.margemMedia >= parseFloat(margemMetaValue)/100 ? colors.success : colors.coral),
+          { label: 'Quanto sobra por venda', value: pendente ? '--' : semProdutos ? '—' : formatPercent(d.margemMedia), icon: 'trending-up', color: (pendente || semProdutos) ? colors.disabled : (d.margemMedia >= parseFloat(margemMetaValue)/100 ? colors.success : colors.coral),
             tip: { title: 'Quanto sobra por venda', text: 'Média do que sobra de cada venda depois de pagar ingredientes, custos do mês e taxas por venda. Toque no card pra mudar a meta.', examples: ['Conta: preço menos ingredientes, custos do mês e taxas, dividido pelo preço', 'Acima de 15%: saudável', '5-15%: atenção', `Meta atual: > ${margemMetaValue}%`] },
-            meta: d.margemMedia >= parseFloat(margemMetaValue)/100 ? `Meta: > ${margemMetaValue}%  ✓` : `Meta: > ${margemMetaValue}%`, bench: pendente ? null : margBench, onPress: () => setShowMargemMeta(true) },
+            meta: semProdutos ? SEM_PRODUTOS_META : d.margemMedia >= parseFloat(margemMetaValue)/100 ? `Meta: > ${margemMetaValue}%  ✓` : `Meta: > ${margemMetaValue}%`, bench: (pendente || semProdutos) ? null : margBench, onPress: () => setShowMargemMeta(true) },
         ].map(k => {
           const Wrapper = k.onPress ? TouchableOpacity : View;
-          const wrapperProps = k.onPress ? { activeOpacity: 0.7, onPress: k.onPress } : {};
+          // a11y: cards tocáveis viram "button" com rótulo completo (label + valor + meta).
+          const a11yLabel = `${k.label}: ${k.value}${k.meta ? `. ${k.meta}` : ''}`;
+          const wrapperProps = k.onPress
+            ? { activeOpacity: 0.7, onPress: k.onPress, accessibilityRole: 'button', accessibilityLabel: a11yLabel }
+            : { accessibilityLabel: a11yLabel };
           return (
             <Wrapper key={k.label} style={[styles.kpiCard, { padding: cardPadding, minHeight: isCompact ? 80 : 96 }, !isDesktop && { width: kpiCardWidth, minWidth: undefined }, isDesktop && styles.kpiCardDesktop, isMobile && styles.kpiCardMobile]} {...wrapperProps}>
               <View style={styles.kpiHeader}>
@@ -893,10 +914,14 @@ export default function HomeScreen({ navigation }) {
           já mostra o mais urgente acima; aqui o usuário vê todos os outros).
           Audit P1 (Fase 2 - Fix #5): cards agora são clicáveis e levam ao
           contexto correto (produto específico, financeiro, insumos, etc.). */}
-      {d.insights?.length > 0 && (
+      {/* Banner de instalação PWA — abaixo do conteúdo principal (não compete
+          com saudação/status). Mobile e desktop compartilham este JSX. */}
+      <HomeInstallBanner />
+
+      {insightsLista.length > 0 && (
         <>
           <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }, isMobile && styles.sectionTitleMobile]}>Análises Rápidas</Text>
-          {d.insights.map((insight, i) => {
+          {insightsLista.map((insight, i) => {
             const a = insight.action;
             const Wrapper = a ? TouchableOpacity : View;
             const wrapperProps = a

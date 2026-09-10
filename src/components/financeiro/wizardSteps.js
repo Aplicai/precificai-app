@@ -89,6 +89,15 @@ export function validarFaturamentoInput(str) {
   return { ok: true, valor: v, erro: '' };
 }
 
+/**
+ * Mark-up numérico → texto PT-BR com vírgula ("1,95x"). Todo o resto da tela
+ * usa vírgula decimal; o mark-up saía "1.95x" (toFixed puro). NaN/≤0 → '∞'.
+ */
+export function formatMarkup(markup) {
+  if (!Number.isFinite(markup) || markup <= 0) return '∞';
+  return `${markup.toFixed(2).replace('.', ',')}x`;
+}
+
 /** Fração → texto PT-BR pro input (0.2 → "20", 0.125 → "12,5"). */
 export function fracaoParaInputPercentual(fracao) {
   if (!Number.isFinite(fracao) || fracao <= 0) return '';

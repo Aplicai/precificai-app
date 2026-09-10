@@ -260,6 +260,11 @@ export default function ProdutoFormScreen({ route, navigation }) {
   formRef.current = form;
   const allowExit = useRef(false);
   const pendingNavAction = useRef(null);
+  // Fix walkthrough #1 — foco automático (com texto selecionado via
+  // selectTextOnFocus) no input de quantidade do item recém-adicionado.
+  // Mapa de refs por chave `tipo-id` + chave do último item adicionado.
+  const qtyInputRefs = useRef({});
+  const [lastAddedQtyKey, setLastAddedQtyKey] = useState(null);
 
   // Validação dos campos obrigatórios
   function validateForm(f) {
@@ -418,7 +423,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
         rendimento_total: String(p.rendimento_total || ''),
         unidade_rendimento: p.unidade_rendimento || 'g', rendimento_unidades: String(p.rendimento_unidades || '1'),
         tempo_preparo: String(p.tempo_preparo || ''), unidade_tempo: p.unidade_tempo || 'Minutos',
-        preco_venda: String(p.preco_venda || ''),
+        // Fix walkthrough #4 — carregava "25" em vez de "25,00" (String() cru
+        // do número). Formata com 2 decimais PT-BR igual ao restante do app.
+        preco_venda: p.preco_venda != null && p.preco_venda !== '' ? Number(p.preco_venda).toFixed(2).replace('.', ',') : '',
         margem_lucro_produto: p.margem_lucro_produto != null ? String((p.margem_lucro_produto * 100).toFixed(1)) : '',
         validade_dias: String(p.validade_dias || ''), modo_preparo: p.modo_preparo || '',
         observacoes: p.observacoes || '',
@@ -613,9 +620,29 @@ export default function ProdutoFormScreen({ route, navigation }) {
   }
   // ========================================================================
 
+  // Fix walkthrough #1 — mesmo bug do EntityCreateModal: item adicionado
+  // sempre com quantidade 1 (mesmo pra g/ml, onde 1 g/mL é quase sempre
+  // errado — o custo unitário exibido virava algo ilegível como R$ 0,01).
+  // Default agora é 100 pra g/ml, 1 pra un/kg/L.
+  function defaultQtyForUnidade(unidade) {
+    const u = String(unidade || '').trim().toLowerCase();
+    return (u === 'g' || u === 'ml') ? 100 : 1;
+  }
+
+  // Foca (com texto selecionado, via selectTextOnFocus na TextInput) o campo
+  // de quantidade do item que acabou de ser adicionado.
+  useEffect(() => {
+    if (!lastAddedQtyKey) return;
+    const el = qtyInputRefs.current[lastAddedQtyKey];
+    if (el && typeof el.focus === 'function') {
+      try { el.focus(); } catch (_) {}
+    }
+    setLastAddedQtyKey(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastAddedQtyKey, ingredientes, produtoPreparos, produtoEmbalagens]);
+
   async function addIngrediente(itemId, qty) {
     const id = itemId;
-    const qtd = parseNum(qty || '1');
     if (!id) return;
     // D-06: SEMPRE busca do DB pra pegar a unidade ATUAL (o array `materiasPrimas` em
     // memória pode estar stale se o usuário mudou o insumo recentemente). Bug reportado:
@@ -637,6 +664,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
       ? mp.unidade_medida.trim().replace(/^"+|"+$/g, '')
       : mp.unidade_medida;
     const unidade = VALID_UNITS.includes(unidadeRaw) ? unidadeRaw : 'g';
+    // Fix walkthrough #1 — sem qty explícita, usa o default por unidade
+    // (100 g/ml, 1 un/kg/L) em vez de sempre 1.
+    const qtd = qty != null ? parseNum(qty) : defaultQtyForUnidade(unidade);
 
     const existingIdx = ingredientes.findIndex(i => i.materia_prima_id === id);
     if (existingIdx >= 0) {
@@ -644,15 +674,17 @@ export default function ProdutoFormScreen({ route, navigation }) {
     } else {
       setIngredientes(prev => [...prev, { materia_prima_id: id, mp_nome: mp.nome, mp_marca: mp.marca || '', preco_por_kg: mp.preco_por_kg, quantidade_utilizada: qtd, unidade }]);
     }
+    setLastAddedQtyKey(`ingrediente-${id}`);
     showFeedback(setIngAdicionado);
   }
 
   function addPreparo(itemId, qty) {
     const id = itemId;
-    const qtd = parseNum(qty || '1');
     if (!id) return;
     const pr = preparosList.find(p => p.id === id);
     if (!pr) return;
+    // Fix walkthrough #1 — mesmo default por unidade do insumo/embalagem.
+    const qtd = qty != null ? parseNum(qty) : defaultQtyForUnidade(pr.unidade_medida || 'g');
     // If already exists, increment quantity
     const existingIdx = produtoPreparos.findIndex(p => p.preparo_id === id);
     if (existingIdx >= 0) {
@@ -660,12 +692,12 @@ export default function ProdutoFormScreen({ route, navigation }) {
     } else {
       setProdutoPreparos(prev => [...prev, { preparo_id: id, pr_nome: pr.nome, custo_por_kg: pr.custo_por_kg, quantidade_utilizada: qtd, unidade: pr.unidade_medida || 'g' }]);
     }
+    setLastAddedQtyKey(`preparo-${id}`);
     showFeedback(setPrepAdicionado);
   }
 
   async function addEmbalagem(itemId, qty) {
     const id = itemId;
-    const qtd = parseNum(qty || '1');
     if (!id) return;
     // Sessão 28.13: SEMPRE busca do DB pra pegar unidade ATUAL (mesma fix do D-06 pra insumos)
     let em;
@@ -680,12 +712,15 @@ export default function ProdutoFormScreen({ route, navigation }) {
     const VALID_UNITS = ['g','kg','mL','L','un'];
     const unidadeRaw = typeof em.unidade_medida === 'string' ? em.unidade_medida.trim().replace(/^"+|"+$/g, '') : em.unidade_medida;
     const unidade = VALID_UNITS.includes(unidadeRaw) ? unidadeRaw : 'un';
+    // Fix walkthrough #1 — mesmo default por unidade.
+    const qtd = qty != null ? parseNum(qty) : defaultQtyForUnidade(unidade);
     const existingIdx = produtoEmbalagens.findIndex(e => e.embalagem_id === id);
     if (existingIdx >= 0) {
       setProdutoEmbalagens(prev => prev.map((item, i) => i === existingIdx ? { ...item, quantidade_utilizada: item.quantidade_utilizada + qtd, unidade } : item));
     } else {
       setProdutoEmbalagens(prev => [...prev, { embalagem_id: id, em_nome: em.nome, preco_unitario: em.preco_unitario, quantidade_utilizada: qtd, unidade }]);
     }
+    setLastAddedQtyKey(`embalagem-${id}`);
     showFeedback(setEmbAdicionado);
   }
 
@@ -1166,6 +1201,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                   <View key={idx} style={[styles.tableRow, idx % 2 === 0 && styles.tableRowEven]}>
                     <Text style={[styles.tableCell, { flex: 2 }]} numberOfLines={1}>{pp.pr_nome || pr?.nome}</Text>
                     <TextInput
+                      ref={(el) => { qtyInputRefs.current[`preparo-${pp.preparo_id}`] = el; }}
                       style={[styles.inlineQtyInput, { flex: 1 }]}
                       value={String(pp.quantidade_utilizada)}
                       onChangeText={(v) => updateQuantidade('preparo', idx, v)}
@@ -1221,7 +1257,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     <TouchableOpacity
                       key={p.id}
                       style={styles.dropdownItem}
-                      onPress={() => { addPreparo(p.id, '1'); setBuscaPreparo(''); setActiveSearch(null); }}
+                      onPress={() => { addPreparo(p.id); setBuscaPreparo(''); setActiveSearch(null); }}
                     >
                       <Text style={styles.dropdownItemName}>{p.nome}</Text>
                       <Text style={styles.dropdownItemDetail}>
@@ -1275,6 +1311,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     ) : null}
                   </View>
                   <TextInput
+                    ref={(el) => { qtyInputRefs.current[`ingrediente-${ing.materia_prima_id}`] = el; }}
                     style={[styles.inlineQtyInput, { flex: 1 }]}
                     value={String(ing.quantidade_utilizada)}
                     onChangeText={(v) => updateQuantidade('ingrediente', idx, v)}
@@ -1330,7 +1367,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     <TouchableOpacity
                       key={m.id}
                       style={styles.dropdownItem}
-                      onPress={() => { addIngrediente(m.id, '1'); setBuscaIng(''); setActiveSearch(null); }}
+                      onPress={() => { addIngrediente(m.id); setBuscaIng(''); setActiveSearch(null); }}
                     >
                       <Text style={styles.dropdownItemName}>{formatInsumoLabel(m)}</Text>
                       <Text style={styles.dropdownItemDetail}>
@@ -1370,6 +1407,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                   <View key={idx} style={[styles.tableRow, idx % 2 === 0 && styles.tableRowEven]}>
                     <Text style={[styles.tableCell, { flex: 2.5 }]} numberOfLines={1}>{pe.em_nome || em?.nome}</Text>
                     <TextInput
+                      ref={(el) => { qtyInputRefs.current[`embalagem-${pe.embalagem_id}`] = el; }}
                       style={[styles.inlineQtyInput, { flex: 1 }]}
                       value={String(pe.quantidade_utilizada)}
                       onChangeText={(v) => updateQuantidade('embalagem', idx, v)}
@@ -1414,7 +1452,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     <TouchableOpacity
                       key={e.id}
                       style={styles.dropdownItem}
-                      onPress={() => { addEmbalagem(e.id, '1'); setBuscaEmb(''); setActiveSearch(null); }}
+                      onPress={() => { addEmbalagem(e.id); setBuscaEmb(''); setActiveSearch(null); }}
                     >
                       <Text style={styles.dropdownItemName}>{e.nome}</Text>
                       <Text style={styles.dropdownItemDetail}>

@@ -768,9 +768,25 @@ export default function ProdutosListScreen({ navigation }) {
                       ganha a largura toda; preço + ações ficam na linha de baixo.
                       Antes, em ~210px de card, sobravam ~50px pro nome ("E2E-…"). */}
                   <View style={styles.gridCardBottom}>
-                    <Text style={styles.gridCardPrice}>
-                      {formatCurrency(item.precoVenda)}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
+                      <Text style={styles.gridCardPrice}>
+                        {formatCurrency(item.precoVenda)}
+                      </Text>
+                      {/* Fix walkthrough #3 — card do grid só mostrava nome+preço, sem
+                          nenhum indício de saúde de margem (só dava pra ver a cor de
+                          fundo/borda, sutil). Pill "sobra X%" reusa os mesmos helpers/
+                          thresholds já usados no fundo/borda do card. */}
+                      {typeof item.margem === 'number' && item.margem !== -1 && (
+                        <View style={[styles.gridCardMargemPill, {
+                          backgroundColor: getHealthBgColor(item.margem, config.margemMeta),
+                          borderColor: getHealthBorderColor(item.margem, config.margemMeta),
+                        }]}>
+                          <Text style={[styles.gridCardMargemPillText, { color: getHealthColor(item.margem, config.margemMeta) }]}>
+                            sobra {Math.round(item.margem * 100)}%
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                     {!bulk.active && (
                       <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 6, gap: 2 }}>
                         <TouchableOpacity
@@ -1574,6 +1590,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
     flexShrink: 0,
+  },
+  // Fix walkthrough #3 — pill "sobra X%" no rodapé do card do grid desktop.
+  gridCardMargemPill: {
+    borderWidth: 1,
+    borderRadius: borderRadius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    flexShrink: 0,
+  },
+  gridCardMargemPillText: {
+    fontSize: 10,
+    fontFamily: fontFamily.semiBold,
+    fontWeight: '600',
   },
   gridCatHeader: {
     flexDirection: 'row',

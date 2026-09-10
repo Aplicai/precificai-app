@@ -698,7 +698,7 @@ export default function EmbalagensScreen({ navigation }) {
                                   <Feather name="star" size={11} color={colors.yellow || '#FFC83A'} style={{ marginRight: 4 }} />
                                 )}
                                 <HighlightedText text={item.nome} query={busca} style={styles.gridCardName} numberOfLines={1} />
-                                {item.marca ? <Text style={[styles.gridCardName, { color: colors.textSecondary, fontWeight: '400' }]} numberOfLines={1}> ({item.marca})</Text> : null}
+                                {item.marca ? <Text style={[styles.gridCardName, { color: colors.textSecondary, fontWeight: '400', flexShrink: 1, marginLeft: 4 }]} numberOfLines={1}>({item.marca})</Text> : null}
                               </View>
                             </View>
                             {/* UX audit 09/09: 2 linhas (nome inteiro em cima) + duplicar/excluir no

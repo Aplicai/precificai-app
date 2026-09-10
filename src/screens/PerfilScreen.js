@@ -20,8 +20,26 @@ const buildAvatarKey = (userId) => `${AVATAR_KEY_PREFIX}${userId}`;
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 const ALLOWED_MIME_PREFIX = 'image/';
 
+// Auditoria 09/09 — "Voltar para Configurações" só faz sentido quando a
+// tela foi mesmo aberta a partir de Configurações (mesma lógica do
+// SuporteScreen). Sem `route.params.from` explícito, inferimos olhando a
+// rota anterior na pilha de navegação.
+function veioDeConfiguracoes(navigation, route) {
+  if (route?.params?.from === 'config') return true;
+  try {
+    const state = navigation?.getState ? navigation.getState() : null;
+    if (!state || !Array.isArray(state.routes)) return false;
+    const idx = typeof state.index === 'number' ? state.index : state.routes.length - 1;
+    const prev = state.routes[idx - 1];
+    return prev?.name === 'Configuracoes';
+  } catch (_) {
+    return false;
+  }
+}
+
 export default function PerfilScreen({ navigation, route }) {
   const isSetup = route?.params?.setup || route?.name === 'ProfileSetup';
+  const cameFromConfig = veioDeConfiguracoes(navigation, route);
   const { user } = useAuth();
   // Sessão 29 — "Minhas Lojas" oculto no mobile (feature multi-loja parked).
   // Não removemos a seção nem useLojas; só não renderizamos no mobile.
@@ -210,8 +228,22 @@ export default function PerfilScreen({ navigation, route }) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      {/* APP-12: voltar pra Configurações sempre visível (exceto no fluxo de setup) */}
-      {!isSetup && <BackToSettings navigation={navigation} />}
+      {/* APP-12/Auditoria 09/09: só mostra "Voltar para Configurações" quando a
+          tela foi mesmo aberta a partir de Configurações (exceto no fluxo de setup). */}
+      {!isSetup && cameFromConfig && <BackToSettings navigation={navigation} />}
+
+      {/* Auditoria 09/09 — Perfil salva automaticamente (autoSave, debounce de
+          600ms) mas não tinha nem botão "Salvar" nem indicação disso pro
+          usuário; ele achava que precisava de um botão. Legenda no mesmo
+          estilo usado no Financeiro. */}
+      {!isSetup && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: spacing.sm, paddingHorizontal: 4 }}>
+          <Feather name="check-circle" size={13} color={colors.success} />
+          <Text style={{ fontSize: fonts.tiny, fontFamily: fontFamily.regular, color: colors.textSecondary }}>
+            Salvo automaticamente.
+          </Text>
+        </View>
+      )}
 
       {/* Audit P0: banner de erro de carregamento (antes era silent) */}
       {loadError ? (
