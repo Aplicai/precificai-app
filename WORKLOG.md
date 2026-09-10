@@ -26,6 +26,18 @@ Status possíveis: `não iniciado` · `em análise` · `validado` · `com risco`
 - Bug real (prod): ao abrir o app com última aba = Ingredientes, header e sidebar mostravam "Painel Geral". Causa: estado aninhado ausente no pai no 1º frame. Fix em `AppNavigator`/`WebLayout`/`WebHeader`/`Sidebar` (`initialTab`). Verificado ao vivo (reload em Receitas base → header/sidebar corretos).
 - Também: `useUndoableDelete` commit no `pagehide`; labels a11y nas linhas mobile; tab bar mobile "Ingred."/"Receitas".
 
+### 10/09 — Walkthrough como usuário + auditoria de fórmulas + embalagem de delivery + refinamento visual
+- **Walkthrough** (prod, conta TE, desktop + mobile via Playwright): 43 achados em `scratchpad/walk/findings.md` (resumo em `docs/UX-AUDIT-2026-09-09.md` §Walkthrough). 2 falsos positivos descartados (modal "semitransparente" e congelamento eram artefato de aba oculta do Chrome — `document.hidden`).
+- **Bug relatado pelo dono** (Relatórios › Ingredientes continuava "sem preço" após atualizar Milho verde): causa dupla — (1) itens do Kit com `quantidade_liquida = 0` faziam o form gravar `preco_por_kg = 0`; (2) dedupe de 3 s do relatório engolia o reload ao voltar. Fix: líquida vazia = bruta (preview + save + duplicar), foco força reload. **Backfill SQL pendente** (`supabase/migrations/20260909120000_backfill_preco_por_kg_liquida_zero.sql`, 4 linhas em 4 contas) — classificador bloqueia UPDATE em prod pela sessão; dono roda no SQL Editor.
+- **Auditoria de fórmulas** (`docs/AUDIT-FORMULAS-2026-09-09.md`, 45 casos à mão): P0 unidade fixa em gramas (DeliveryPrecos/DeliveryProdutos/cascade/combos) e ponto de equilíbrio do Relatório Simples; P1 embalagem da receita base fora do custo, custo de combo no Ranking por id sem tipo, rótulo "líquido" com valor bruto em combos, legenda vs número em Preços delivery. Todos corrigidos com testes (`audit-fixes`, `breakeven`, `comboPricing`).
+- **Combos**: 6 bugs (ver relatório do agente no chat) + economia do cliente + ordem do resumo.
+- **Embalagem de delivery no produto** (`.specs/plans/embalagem-delivery-no-produto.design.md`): seção "Delivery" na ficha do produto, padrão por categoria/canal, `custoDelivery` em todas as telas de delivery. Sem migration (colunas já existiam).
+- **Refinamento visual** (`.specs/plans/refinamento-visual-2026-09-09.md`): tokens (fundo quente, bordas, raios, tipografia, tabular-nums), sidebar com grupos, cards/chips/forms/FAB/empty state/tab bar. Regressão pega na verificação: `NAV_ICON_INACTIVE` indefinido + `groupLabel` sem estilo — corrigido antes do deploy.
+- Gates: 355 unit, Playwright 58/58, golden path 4/4.
+- **P0 achado na limpeza**: busca das 4 listas só filtrava quando o `loadData` assíncrono voltava → entre digitar e o retorno do banco a lista mostrava tudo e o 1º "Excluir" podia ser de outro item (foi assim que o e2e apagou o QA-Bolo; quase apagou "Teste 1" do dono — cancelado). Fix: filtro também na renderização (`visibleSections`). Commit `1242b93`, bundle `index-207071c2`.
+- Verificado em prod: seção "Delivery" no produto, "Custo no delivery" + "MÍNIMO ≥" + legenda recolhida na Visão Geral. Conta TE limpa (QA-* = 0, Telefone removido, iFood 0/0).
+- A confirmar: `QA-Massa` apareceu com rendimento 900 g (digitei 700) — nenhum código grava `rendimento_total` fora dos formulários; suspeita de scroll do mouse sobre input numérico. Não reproduzido.
+
 ## Sessão atual (2026-04-22) — Auditoria de produto + fix do modal de Estoque
 
 ### Diagnóstico inicial
