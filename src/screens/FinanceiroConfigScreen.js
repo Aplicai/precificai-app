@@ -51,7 +51,8 @@ const SUGESTOES_FIXAS = [
 // com 65% de perda de polpa) ou via Margem de Segurança — não como % por venda.
 // Quem realmente quer pode adicionar manualmente, mas não vai mais sugerido.
 const SUGESTOES_VARIAVEIS = [
-  'Impostos (Simples)', 'Taxa maquininha', 'Taxa PIX',
+  // Dono (10/09): PIX é coberto pela regra da maquininha (uma taxa só, a maior) — sai das sugestões.
+  'Impostos (Simples)', 'Taxa maquininha',
   'Comissão vendedores', 'Comissão garçom', 'Taxa marketplace',
   'Gorjeta', 'Devoluções', 'Bonificações', 'Royalties', 'Taxa antecipação cartão',
   'Imposto sobre serviço', 'ICMS', 'Contribuição sindical',
@@ -1614,7 +1615,6 @@ export default function FinanceiroConfigScreen() {
                 examples={[
                   'Imposto (Simples Nacional): 4-6%',
                   'Taxa maquininha (a MAIOR que você cobra): 3-5%',
-                  'Taxa PIX (se cobra): 0,5-1%',
                   'Comissão de vendedor: 5-10%',
                 ]}
               />
