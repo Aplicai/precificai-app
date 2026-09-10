@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useRef } from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import { Feather } from '@expo/vector-icons';
@@ -13,7 +13,10 @@ import InviabilidadeModal from '../components/InviabilidadeModal';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum, parseDecimalBR } from '../utils/calculations';
 // Sprint 2 S3 — fórmula canônica única em src/utils/deliveryPricing.js
-import { calcPrecoBreakEven, calcResultadoDelivery, calcSugestaoDeliveryCompleta, compararDeliveryVsBalcao } from '../utils/deliveryPricing';
+import { calcResultadoDelivery, calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
+// Auditoria 2026-09-09 [B2]: custo de 1 unidade NATIVA (kg/L/un/g) de item de
+// combo / produto delivery — mesma função do modal de combos.
+import { resolveCustoUnitarioItemCombo } from '../utils/comboPricing';
 // APP-25: extrair imposto separado das demais variáveis (maquininha não entra no delivery)
 import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
@@ -38,6 +41,56 @@ function getCategoryColor(index) {
   return CATEGORY_COLORS[index % CATEGORY_COLORS.length];
 }
 
+// Auditoria 2026-09-09 [B5] — lucro líquido em R$ que o produto rende HOJE no
+// balcão: preço − CMV − preço × (fixos% + variáveis%). Mesma conta da Visão
+// Geral / popup "Mesmo lucro" do DeliveryHubScreen (loadSim, sessão 28.34).
+// Negativo (balcão no prejuízo) → 0, e a tela cai no fallback por margem %.
+function calcLucroLiquidoBalcao(precoBalcao, cmv, contexto) {
+  const preco = safeNum(precoBalcao);
+  if (preco <= 0) return 0;
+  const perc = safeNum(contexto?.fixoPerc) + safeNum(contexto?.variavelPerc);
+  return Math.max(0, preco - safeNum(cmv) - preco * perc);
+}
+
+// Auditoria 2026-09-09 [B5] — monta o `resultado` no formato que o
+// ComoCalculadoModal espera (composicao + percentuais) a partir do preço
+// "mesmo lucro" (calcPrecoMesmoLucroReais não devolve composição).
+// Identidade: cmv + absolutos + lucroR + fixoR + variavelR = preco.
+function buildResultadoMesmoLucro(r, { cmv, lucroAlvo, plat, contexto }) {
+  const preco = safeNum(r?.preco);
+  const fixoPerc = safeNum(contexto?.fixoPerc);
+  const impostoPerc = safeNum(contexto?.impostoPerc);
+  // Mesma partição de calcPrecoMesmoLucroReais: comissão = taxa_plataforma + comissao_app; outros separado.
+  const comissaoPerc = (safeNum(plat?.taxa_plataforma) + safeNum(plat?.comissao_app)) / 100;
+  const outrosPerc = safeNum(plat?.outros_perc) / 100;
+  const variavelPerc = impostoPerc + comissaoPerc + outrosPerc;
+  const custosAbsolutos = safeNum(plat?.desconto_promocao) + safeNum(plat?.embalagem_extra) + safeNum(plat?.taxa_entrega);
+  return {
+    ...r,
+    lucroPerc: preco > 0 ? lucroAlvo / preco : 0,
+    fixoPerc,
+    variavelPerc,
+    composicao: {
+      cmv: safeNum(cmv),
+      cmvPercDoPreco: preco > 0 ? safeNum(cmv) / preco : 0,
+      custosAbsolutos,
+      lucroR: lucroAlvo,
+      fixoR: preco * fixoPerc,
+      variavelR: preco * variavelPerc,
+      delivery: {
+        impostoR: preco * impostoPerc,
+        comissaoR: preco * comissaoPerc,
+        taxaPagamentoOnlineR: preco * outrosPerc,
+      },
+    },
+    validacao: r?.validacao?.ok === false ? r.validacao : {
+      ok: true,
+      nivel: 'ok',
+      mensagem: `Com esse preço sobra ${formatCurrency(lucroAlvo)} líquido por venda — o mesmo que você ganha hoje no balcão.`,
+    },
+  };
+}
+
 function roundUpTo50(value) {
   return Math.ceil(value * 2) / 2;
 }
@@ -58,7 +111,7 @@ export default function DeliveryPrecosScreen() {
   const [inviabilidadeInfo, setInviabilidadeInfo] = useState(null);
   // APP-25: contexto financeiro pra entrar na fórmula completa do delivery
   // (lucro delivery, custos fixos %, imposto %).
-  const [contextoFinanceiro, setContextoFinanceiro] = useState({ lucroPerc: 0.15, fixoPerc: 0, impostoPerc: 0 });
+  const [contextoFinanceiro, setContextoFinanceiro] = useState({ lucroPerc: 0.15, fixoPerc: 0, impostoPerc: 0, variavelPerc: 0, margemSegurancaPerc: 0 });
   // APP-19/24b: modal de transparência
   const [comoCalculado, setComoCalculado] = useState(null); // { resultado, titulo } | null
   const isLoadingRef = useRef(false);
@@ -88,7 +141,7 @@ export default function DeliveryPrecosScreen() {
       db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
       db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
       db.getAllAsync('SELECT id, nome, preco_unitario FROM embalagens ORDER BY nome'),
-      db.getAllAsync('SELECT id, nome, custo_por_kg FROM preparos ORDER BY nome'),
+      db.getAllAsync('SELECT id, nome, custo_por_kg, unidade_medida FROM preparos ORDER BY nome'),
       db.getAllAsync('SELECT id, nome, preco_por_kg, unidade_medida FROM materias_primas ORDER BY nome'),
       db.getAllAsync('SELECT * FROM delivery_adicionais ORDER BY nome'),
       db.getAllAsync('SELECT * FROM delivery_produtos ORDER BY nome'),
@@ -123,6 +176,9 @@ export default function DeliveryPrecosScreen() {
         lucroPerc: ctx.lucroPerc,
         fixoPerc: ctx.fixoPerc,
         impostoPerc: ctx.impostoPerc,
+        // [B5] variáveis do balcão — entram no lucro líquido que o "mesmo lucro" iguala.
+        variavelPerc: ctx.variavelPerc,
+        margemSegurancaPerc: ctx.margemSegurancaPerc,
       });
     } catch (e) {
       console.warn('[DeliveryPrecos.contextoFinanceiro] falha ao montar:', e);
@@ -181,11 +237,13 @@ export default function DeliveryPrecosScreen() {
           const emb = embalagensList.find(e => e.id === item.item_id);
           if (emb) custo += emb.preco_unitario * item.quantidade;
         } else if (item.tipo === 'preparo') {
+          // Auditoria 2026-09-09 [B2]: `quantidade` está na unidade NATIVA (kg/L/un/g)
+          // — antes fixava 'g' e "1 kg" custava 1000× menos que no modal de combos.
           const prep = preparosList.find(p => p.id === item.item_id);
-          if (prep) custo += calcCustoPreparo(prep.custo_por_kg, item.quantidade, 'g');
+          if (prep) custo += resolveCustoUnitarioItemCombo('preparo', prep).custo * item.quantidade;
         } else if (item.tipo === 'materia_prima') {
           const mp = materiasList.find(m => m.id === item.item_id);
-          if (mp) custo += calcCustoIngrediente(mp.preco_por_kg, item.quantidade, mp.unidade_medida, 'g');
+          if (mp) custo += resolveCustoUnitarioItemCombo('materia_prima', mp).custo * item.quantidade;
         } else if (item.tipo === 'adicional') {
           const add = adicionaisList.find(a => a.id === item.item_id);
           if (add) custo += add.custo * item.quantidade;
@@ -210,14 +268,15 @@ export default function DeliveryPrecosScreen() {
           const dp = dProdsWithCost.find(d => d.id === item.item_id);
           if (dp) custo += dp.custo * item.quantidade;
         } else if (item.tipo === 'materia_prima') {
+          // Auditoria 2026-09-09 [B2]: unidade NATIVA do item (ver bloco acima).
           const mp = materiasList.find(m => m.id === item.item_id);
-          if (mp) custo += calcCustoIngrediente(mp.preco_por_kg, item.quantidade, mp.unidade_medida, 'g');
+          if (mp) custo += resolveCustoUnitarioItemCombo('materia_prima', mp).custo * item.quantidade;
         } else if (item.tipo === 'embalagem') {
           const emb = embalagensList.find(e => e.id === item.item_id);
           if (emb) custo += emb.preco_unitario * item.quantidade;
         } else if (item.tipo === 'preparo') {
           const prep = preparosList.find(p => p.id === item.item_id);
-          if (prep) custo += calcCustoPreparo(prep.custo_por_kg, item.quantidade, 'g');
+          if (prep) custo += resolveCustoUnitarioItemCombo('preparo', prep).custo * item.quantidade;
         } else if (item.tipo === 'adicional') {
           const add = adicionaisList.find(a => a.id === item.item_id);
           if (add) custo += add.custo * item.quantidade;
@@ -240,20 +299,33 @@ export default function DeliveryPrecosScreen() {
     }
   }
 
-  // APP-25: NOVO — preço sugerido delivery via fórmula completa (markup divisor)
-  // que inclui Lucro%, Fixos%, Imposto%, Comissão%, Taxa pgto online%, Cupom R$, Frete subsidiado R$.
-  // Substitui a antiga calcPrecoBreakEven que só calculava break-even (sem lucro nem custos fixos).
-  // O segundo parâmetro agora é o CMV unitário, não o preço balcão.
-  function calcDeliveryPriceFromCmv(cmv, plat) {
-    if (safeNum(cmv) <= 0) return { preco: 0, validacao: { ok: false, nivel: 'ok', mensagem: '' } };
-    return calcSugestaoDeliveryCompleta({ cmv, plat, contexto: contextoFinanceiro });
-  }
-
-  // Compat shim: telas que ainda passam (precoBalcao, plat) recebem a fórmula nova
-  // usando o preço balcão como aproximação de CMV (legado para break-even).
-  function calcDeliveryPrice(precoVenda, plat) {
-    if (safeNum(precoVenda) <= 0) return 0;
-    return calcPrecoBreakEven(precoVenda, plat);
+  // Auditoria 2026-09-09 [B5] — "Sugerido" desta tela = MESMO número da Visão
+  // Geral / popup "Mesmo lucro" do Hub: preço nesta plataforma que rende o mesmo
+  // lucro líquido em R$ do balcão (calcPrecoMesmoLucroReais). Antes usava
+  // calcSugestaoDeliveryCompleta (lucro % sobre o preço) enquanto a legenda
+  // prometia "mesmo lucro do balcão" — a R$ 9,22 sobrava ~R$ 1,4 contra R$ 12,30
+  // no balcão, e o próprio app marcava "erro de cálculo" por ficar abaixo do balcão.
+  // Fallback (sem preço balcão, ou balcão sem lucro líquido): fórmula por
+  // margem % (calcSugestaoDeliveryCompleta), rotulada como tal na linha.
+  // Também usado no resumo ("Lucro médio"), que antes somava lucros do break-even
+  // (calcPrecoBreakEven) — números que não eram os exibidos nas linhas [B8].
+  function calcSugestaoLinha(item, plat) {
+    const cmv = safeNum(item?.custoUnitario);
+    const precoBalcao = safeNum(item?.precoVenda);
+    if (cmv <= 0) return { preco: null, modo: 'nenhum', lucroAlvo: 0, resultado: null };
+    const lucroAlvo = calcLucroLiquidoBalcao(precoBalcao, cmv, contextoFinanceiro);
+    if (precoBalcao > 0 && lucroAlvo > 0) {
+      const r = calcPrecoMesmoLucroReais({ cmv, lucroAlvoReais: lucroAlvo, plat, contexto: contextoFinanceiro });
+      const ok = r && !r.inviavel && Number.isFinite(r.preco) && r.preco > 0;
+      return {
+        preco: ok ? r.preco : null,
+        modo: 'mesmo_lucro',
+        lucroAlvo,
+        resultado: buildResultadoMesmoLucro(r, { cmv, lucroAlvo, plat, contexto: contextoFinanceiro }),
+      };
+    }
+    const r = calcSugestaoDeliveryCompleta({ cmv, plat, contexto: contextoFinanceiro });
+    return { preco: r?.preco > 0 ? r.preco : null, modo: 'margem', lucroAlvo: 0, resultado: r };
   }
 
   function toggleCategory(catId) {
@@ -357,7 +429,7 @@ export default function DeliveryPrecosScreen() {
       if (precoVenda <= 0) continue;
       const custoUn = safeNum(item.custoUnitario);
       for (const plat of plataformas) {
-        const suggested = calcDeliveryPrice(precoVenda, plat);
+        const suggested = calcSugestaoLinha(item, plat).preco;
         const price = getEffectivePrice(item.id, plat.id, suggested);
         // price pode ser null (inviável). Conta como inviável e pula soma.
         if (price === null || !Number.isFinite(price) || price <= 0) {
@@ -382,7 +454,7 @@ export default function DeliveryPrecosScreen() {
       inviaveis,
       totalCombinacoes: countItems,
     };
-  }, [allItems, plataformas, customPrices]);
+  }, [allItems, plataformas, customPrices, precosSalvos, contextoFinanceiro]);
 
   // Build a color map for categories (stable by index)
   const catColorMap = useMemo(() => {
@@ -396,12 +468,18 @@ export default function DeliveryPrecosScreen() {
   function renderPlatformRow(item, plat) {
     const custoUn = safeNum(item.custoUnitario);
     const precoVenda = safeNum(item.precoVenda);
-    // APP-25: usar fórmula completa (CMV + lucro + fixos + imposto + comissão + taxa pgto online + cupom + frete)
-    const sugDelivery = calcDeliveryPriceFromCmv(custoUn, plat);
-    const precoSugerido = sugDelivery?.preco > 0 ? sugDelivery.preco : null;
-    // APP-27: validação automática delivery vs balcão
-    const validacaoVsBalcao = precoSugerido && precoVenda > 0
-      ? compararDeliveryVsBalcao(precoSugerido, precoVenda) : null;
+    // [B5] "mesmo lucro do balcão" (igual à Visão Geral) — fallback por margem %.
+    const sug = calcSugestaoLinha(item, plat);
+    const sugDelivery = sug.resultado;
+    const precoSugerido = sug.preco;
+    const sugSubLabel = sug.modo === 'mesmo_lucro'
+      ? `mesmo lucro do balcão (${formatCurrency(sug.lucroAlvo)})`
+      : sug.modo === 'margem'
+        ? `margem de ${(safeNum(contextoFinanceiro.lucroPerc) * 100).toFixed(0)}% (sem preço balcão)`
+        : '';
+    // Auditoria 2026-09-09 [B5]: removida a auto-validação "Erro de cálculo detectado"
+    // (compararDeliveryVsBalcao) — o sugerido agora deriva do próprio lucro do balcão,
+    // então ficar abaixo do balcão não é erro de cálculo (ex.: plataforma sem comissão).
     const precoDeliveryRaw = getEffectivePrice(item.id, plat.id, precoSugerido);
     const inviavelInicial = precoDeliveryRaw === null || !Number.isFinite(precoDeliveryRaw) || precoDeliveryRaw <= 0;
     const precoDelivery = inviavelInicial ? 0 : precoDeliveryRaw;
@@ -471,21 +549,6 @@ export default function DeliveryPrecosScreen() {
             <Text style={styles.inviavelBannerText}>{sugDelivery.validacao.mensagem}</Text>
           </View>
         )}
-        {validacaoVsBalcao && !validacaoVsBalcao.ok && (
-          <View style={[styles.inviavelBanner, {
-            backgroundColor: (validacaoVsBalcao.nivel === 'critico' ? colors.error : colors.warning) + '14',
-          }]}>
-            <Feather
-              name={validacaoVsBalcao.nivel === 'critico' ? 'alert-octagon' : 'alert-triangle'}
-              size={12}
-              color={validacaoVsBalcao.nivel === 'critico' ? colors.error : colors.warning}
-              style={{ marginRight: 4 }}
-            />
-            <Text style={[styles.inviavelBannerText, {
-              color: validacaoVsBalcao.nivel === 'critico' ? colors.error : colors.warning,
-            }]}>{validacaoVsBalcao.mensagem}</Text>
-          </View>
-        )}
 
         {isMobile ? (
           /* Sessão 28+ — mobile-web: layout empilhado para Sugerido / Input / Lucro+Margem */
@@ -498,9 +561,14 @@ export default function DeliveryPrecosScreen() {
               accessibilityLabel="Ver como o preço sugerido foi calculado"
             >
               <Text style={styles.priceStackLabel}>Sugerido <Feather name="info" size={11} color={colors.primary} />:</Text>
-              <Text style={styles.priceStackValue}>
-                {precoSugerido === null ? '—' : formatCurrency(precoSugerido)}
-              </Text>
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text style={styles.priceStackValue}>
+                  {precoSugerido === null ? '—' : formatCurrency(precoSugerido)}
+                </Text>
+                {!!sugSubLabel && precoSugerido !== null && (
+                  <Text style={styles.priceLabel}>{sugSubLabel}</Text>
+                )}
+              </View>
             </TouchableOpacity>
             <View style={styles.priceStackRow}>
               <Text style={styles.priceStackLabel}>Preço Delivery:</Text>
@@ -558,12 +626,21 @@ export default function DeliveryPrecosScreen() {
           </View>
         ) : (
           <View style={styles.priceRow}>
-            <View style={styles.priceCol}>
-              <Text style={styles.priceLabel}>Sugerido</Text>
+            <TouchableOpacity
+              style={styles.priceCol}
+              activeOpacity={0.7}
+              onPress={() => sugDelivery && setComoCalculado({ resultado: sugDelivery, titulo: `${item.nome} — ${plat.plataforma}` })}
+              accessibilityRole="button"
+              accessibilityLabel="Ver como o preço sugerido foi calculado"
+            >
+              <Text style={styles.priceLabel}>Sugerido <Feather name="info" size={11} color={colors.primary} /></Text>
               <Text style={styles.priceValue}>
                 {precoSugerido === null ? '—' : formatCurrency(precoSugerido)}
               </Text>
-            </View>
+              {!!sugSubLabel && precoSugerido !== null && (
+                <Text style={styles.priceLabel}>{sugSubLabel}</Text>
+              )}
+            </TouchableOpacity>
             <View style={[styles.priceCol, { flex: 1.2 }]}>
               <Text style={styles.priceLabel}>Preço Delivery</Text>
               <InputField
@@ -633,7 +710,7 @@ export default function DeliveryPrecosScreen() {
           <Text style={styles.eduTitle}>Como o preço delivery é calculado</Text>
         </View>
         <Text style={styles.eduText}>
-          O preço sugerido considera <Text style={{ fontWeight: '700' }}>tudo</Text> do seu negócio: CMV do produto + custos fixos + impostos + comissão da plataforma + taxa de pagamento online + cupons + frete subsidiado. Tudo somado pra você ter <Text style={{ fontWeight: '700' }}>o mesmo lucro líquido</Text> do balcão, mesmo vendendo no iFood.
+          O preço sugerido é o mesmo da Visão Geral: parte do <Text style={{ fontWeight: '700' }}>lucro líquido em R$</Text> que o produto rende hoje no balcão (preço − CMV − custos fixos e variáveis) e soma o que muda no delivery: comissão da plataforma + taxa de pagamento online + impostos + cupons + frete subsidiado. Resultado: <Text style={{ fontWeight: '700' }}>o mesmo lucro líquido em R$</Text> do balcão, mesmo vendendo no iFood. Produto sem preço de balcão usa a margem % do Financeiro.
         </Text>
         <Text style={[styles.eduText, { marginTop: 6 }]}>
           Você pode ajustar o preço manualmente na caixa de cada plataforma e clicar em <Text style={{ fontWeight: '700' }}>Salvar</Text> pra usar como preço oficial. Se deixar em branco, o sistema usa o sugerido.
@@ -697,7 +774,7 @@ export default function DeliveryPrecosScreen() {
             title="Preços de Delivery"
             text="Para cada produto ou combo, veja o preço sugerido em cada plataforma ativa. Clique na categoria para expandir, depois no item para ver os detalhes por plataforma."
             examples={[
-              'Sugerido = Arredondar(Balcão / (1 - Taxa%))',
+              'Sugerido = (Lucro líquido do balcão + CMV + cupom + frete) ÷ (1 − fixos% − imposto% − comissão% − outros%)',
               'Lucro = Delivery - Custo - Taxa - Comissão - Desconto',
               'Verde = lucro positivo / Vermelho = prejuízo',
             ]}
@@ -878,7 +955,7 @@ export default function DeliveryPrecosScreen() {
             <Text style={styles.legendText}>Prejuízo -- revise o preço ou os custos</Text>
           </View>
           <Text style={styles.legendFormula}>
-            Sugerido = Arredondar(Balcão / (1 - Taxa%)){'\n'}
+            Sugerido = (Lucro líquido do balcão + CMV + cupom + frete) ÷ (1 − fixos% − imposto% − comissão% − outros%){'\n'}
             Lucro = Delivery - Custo - Taxa - Comissão - Desconto
           </Text>
         </Card>

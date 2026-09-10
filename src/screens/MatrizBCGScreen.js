@@ -11,6 +11,9 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, safeNum } from '../utils/calculations';
 import { classificarMatrizBCG } from '../utils/bcgClassify';
+// Auditoria 2026-09-09 [B3]: custo unitário de item de combo por TIPO (unidade
+// nativa) — mesma função das telas de Delivery/Combos.
+import { resolveCustoUnitarioItemCombo } from '../utils/comboPricing';
 
 // Classification config (audit P1-07): nomes afetivos em vez de jargão BCG.
 // Chaves mantidas em português gastronômico para compatibilidade com dados
@@ -213,6 +216,18 @@ export default function MatrizBCGScreen({ navigation }) {
         db.getAllAsync('SELECT * FROM vendas_combos WHERE data = ?', [currentMonth]).catch(() => []),
         db.getAllAsync('SELECT * FROM vendas_combos WHERE data = ?', [prevMonthStr]).catch(() => []),
       ]);
+      // Auditoria 2026-09-09 [B3]: catálogos pra custear itens de combo que NÃO
+      // são produto (embalagem / insumo / receita base / produto delivery / adicional).
+      // Antes qualquer item caía em prodCostMap[item_id] → embalagem id 3 herdava
+      // o custo do produto id 3. Tabelas opcionais (schema legado) → [].
+      const [embRows, mpRows, prepRows, dpRows, dpItensRows, addRows] = await Promise.all([
+        db.getAllAsync('SELECT id, preco_unitario FROM embalagens').catch(() => []),
+        db.getAllAsync('SELECT id, preco_por_kg, unidade_medida FROM materias_primas').catch(() => []),
+        db.getAllAsync('SELECT id, custo_por_kg, unidade_medida FROM preparos').catch(() => []),
+        db.getAllAsync('SELECT * FROM delivery_produtos').catch(() => []),
+        db.getAllAsync('SELECT * FROM delivery_produto_itens').catch(() => []),
+        db.getAllAsync('SELECT id, custo FROM delivery_adicionais').catch(() => []),
+      ]);
       setCategorias(cats || []);
 
       const ingsByProd = {}, prepsByProd = {}, embsByProd = {};
@@ -282,8 +297,40 @@ export default function MatrizBCGScreen({ navigation }) {
       }
 
       // Add combos
-      const prodCostMap = {};
-      result.forEach(p => { prodCostMap[p.id] = p.custoUnitario; });
+      const byId = (rows) => { const m = {}; (rows || []).forEach(r => { m[r.id] = r; }); return m; };
+      const prodMap = byId(result); // { custoUnitario, unidade_rendimento, rendimento_total, ... }
+      const embMap = byId(embRows);
+      const mpMap = byId(mpRows);
+      const prepMap = byId(prepRows);
+      const addMap = byId(addRows);
+
+      // Auditoria 2026-09-09 [B3]: custo de UM item de combo, resolvido pelo TIPO
+      // (mesma regra de DeliveryPrecosScreen/DeliveryCombosScreen). `quantidade`
+      // vazia conta como 1 (comportamento anterior desta tela).
+      const custoItemCombo = (item, dpCostMap) => {
+        const qt = safeNum(item.quantidade || 1);
+        let dados = null;
+        if (item.tipo === 'produto') dados = prodMap[item.item_id];
+        else if (item.tipo === 'delivery_produto') dados = dpCostMap[item.item_id];
+        else if (item.tipo === 'materia_prima') dados = mpMap[item.item_id];
+        else if (item.tipo === 'embalagem') dados = embMap[item.item_id];
+        else if (item.tipo === 'preparo') dados = prepMap[item.item_id];
+        else if (item.tipo === 'adicional') {
+          const add = addMap[item.item_id];
+          return add ? safeNum(add.custo) * qt : 0;
+        }
+        return dados ? safeNum(resolveCustoUnitarioItemCombo(item.tipo, dados).custo) * qt : 0;
+      };
+
+      // Produtos delivery: custo = Σ itens (produto base + extras), como em DeliveryPrecosScreen.
+      const dpItensByDp = {};
+      (dpItensRows || []).forEach(i => { (dpItensByDp[i.delivery_produto_id] = dpItensByDp[i.delivery_produto_id] || []).push(i); });
+      const dpCostMap = {};
+      for (const dp of (dpRows || [])) {
+        const custo = (dpItensByDp[dp.id] || []).reduce((a, it) => a + custoItemCombo(it, {}), 0);
+        dpCostMap[dp.id] = { custoUnitario: custo };
+      }
+
       const itensByCombo = {};
       (comboItensRows || []).forEach(ci => { (itensByCombo[ci.combo_id] = itensByCombo[ci.combo_id] || []).push(ci); });
 
@@ -291,7 +338,7 @@ export default function MatrizBCGScreen({ navigation }) {
         const precoVenda = safeNum(c.preco_venda);
         if (precoVenda <= 0) continue;
         const itens = itensByCombo[c.id] || [];
-        const custoUnitario = itens.reduce((a, item) => a + safeNum(prodCostMap[item.item_id]) * safeNum(item.quantidade || 1), 0);
+        const custoUnitario = itens.reduce((a, item) => a + custoItemCombo(item, dpCostMap), 0);
         const margemPerc = precoVenda > 0 ? safeNum(((precoVenda - custoUnitario) / precoVenda) * 100) : 0;
         // Use negative ID for combo vendas to avoid collision with product IDs
         const comboVendaKey = -c.id;

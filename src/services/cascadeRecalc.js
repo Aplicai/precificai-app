@@ -22,6 +22,7 @@
  */
 
 import { calcCustoIngrediente, calcCustoPreparo, getDivisorRendimento, calcCustoPorKgPreparo } from '../utils/calculations';
+import { resolveCustoUnitarioItemCombo } from '../utils/comboPricing';
 
 const safe = (v) => {
   const n = Number(v);
@@ -61,7 +62,20 @@ export async function recalcularPreparo(db, preparoId) {
     );
   } catch (_) { /* DB legado sem preparo_subpreparos */ }
 
-  const custoTotal = custoInsumos + custoSubs;
+  // Auditoria 2026-09-09 [B1]: embalagens da receita base (preparo_embalagens)
+  // ENTRAM no custo — o form (PreparoFormScreen) promete isso na UI e agora
+  // soma a mesma coisa: Σ preco_unitario × quantidade_utilizada.
+  // Silencioso se a tabela não existir (DB legado).
+  let custoEmbs = 0;
+  try {
+    const embs = await db.getAllAsync(
+      'SELECT pe.quantidade_utilizada, em.preco_unitario FROM preparo_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id WHERE pe.preparo_id = ?',
+      [preparoId]
+    );
+    custoEmbs = (embs || []).reduce((a, e) => a + safe(e.preco_unitario) * safe(e.quantidade_utilizada), 0);
+  } catch (_) { /* DB legado sem preparo_embalagens */ }
+
+  const custoTotal = custoInsumos + custoSubs + custoEmbs;
   const rendimento = safe(p.rendimento_total);
   // Sessão 28.72 — fórmula canônica do form (sempre * 1000)
   const custoPorKg = rendimento > 0
@@ -118,15 +132,18 @@ export async function recalcularCombo(db, comboId) {
       const r = await recalcularProduto(db, item.item_id);
       custo += (r?.custoUnitario || 0) * qt;
     } else if (item.tipo === 'materia_prima') {
-      // Audit: telas tratam quantidade de insumo/preparo em combo como GRAMAS.
+      // Auditoria 2026-09-09 [B2]: `quantidade` do item está na unidade NATIVA do
+      // insumo (kg, L, un, g — a mesma que o modal de combo mostra no badge).
+      // Antes fixava 'g' → "1 kg de farinha a R$ 5/kg" virava R$ 0,005.
+      // Mesma função do modal/lista de combos (comboPricing.resolveCustoUnitarioItemCombo).
       const m = await db.getFirstAsync('SELECT preco_por_kg, unidade_medida FROM materias_primas WHERE id = ?', [item.item_id]);
-      custo += calcCustoIngrediente(safe(m?.preco_por_kg), qt, m?.unidade_medida || 'g', 'g');
+      if (m) custo += resolveCustoUnitarioItemCombo('materia_prima', m).custo * qt;
     } else if (item.tipo === 'preparo') {
-      const p = await db.getFirstAsync('SELECT custo_por_kg FROM preparos WHERE id = ?', [item.item_id]);
-      custo += calcCustoPreparo(safe(p?.custo_por_kg), qt, 'g');
+      const p = await db.getFirstAsync('SELECT custo_por_kg, unidade_medida FROM preparos WHERE id = ?', [item.item_id]);
+      if (p) custo += resolveCustoUnitarioItemCombo('preparo', p).custo * qt;
     } else if (item.tipo === 'embalagem') {
       const e = await db.getFirstAsync('SELECT preco_unitario FROM embalagens WHERE id = ?', [item.item_id]);
-      custo += safe(e?.preco_unitario) * qt;
+      if (e) custo += resolveCustoUnitarioItemCombo('embalagem', e).custo * qt;
     }
   }
   // Sessão 28.44 — bug #4: schema delivery_combos não tem coluna `custo`.

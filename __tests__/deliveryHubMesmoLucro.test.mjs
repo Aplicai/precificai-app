@@ -69,6 +69,17 @@ test('coluna "Mesmo lucro": entrega EXATAMENTE o lucroAlvoReais pedido — calcP
   const custosAbsolutos = plat.desconto_promocao + plat.embalagem_extra + plat.taxa_entrega;
   close(r.preco, (lucroLiqBalcaoReais + custoUnit + custosAbsolutos) / divisor);
 
+  // Valor calculado à MÃO, num único modelo (o do Hub "Meus preços" / Visão Geral):
+  //   lucro alvo = 25 − 5 − 25 × (0,10 + 0,05) = 16,25
+  //   divisor    = 1 − 0,10 − (0,04 + 0,20)    = 0,66
+  //   preço      = (16,25 + 5 + 3) / 0,66      = 24,25 / 0,66 = 36,74
+  close(r.preco, 24.25 / 0.66);
+  assert.equal(r.preco.toFixed(2), '36.74');
+  // Round-trip no MESMO modelo (fixos + imposto + comissão sobre o preço; cupom/frete
+  // como custo absoluto) — NÃO pelo calcResultadoDelivery (legado, sem fixos/imposto).
+  const lucroRoundTrip = r.preco - custoUnit - custosAbsolutos - r.preco * (contexto.fixoPerc + variavelPercMotor);
+  close(lucroRoundTrip, lucroLiqBalcaoReais);
+
   const precoMesmoLucro = mesmoLucroComoNoModal({ balcao, custoUnit, plat, contexto });
   close(precoMesmoLucro, r.preco);
   assert.ok(precoMesmoLucro > balcao, 'preço no delivery deve ser maior que o do balcão (cobre comissão/frete extra)');

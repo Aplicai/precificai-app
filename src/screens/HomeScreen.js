@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual } from '../utils/calculations';
+import { calcSobraMes } from '../utils/breakeven';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { getSetupStatus, soFaltamEtapasOpcionais } from '../utils/setupStatus';
 import InfoTooltip from '../components/InfoTooltip';
@@ -60,7 +61,7 @@ export default function HomeScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [d, setD] = useState({
     totalInsumos: 0, totalEmbalagens: 0, totalPreparos: 0, totalProdutos: 0,
-    margemMedia: 0, custoTotal: 0, impactoDelivery: 0, resultadoFinanceiro: 0,
+    margemMedia: 0, custoTotal: 0, impactoDelivery: 0, resultadoFinanceiro: 0, sobraSoFixas: true,
     produtosMargBaixa: [], produtosSemPreco: [],
     cmvPercent: 0, pontoEquilibrio: 0, fatMedio: 0,
     insights: [], featuredInsight: null,
@@ -232,7 +233,13 @@ export default function HomeScreen({ navigation }) {
       const cmvPercent = calcCMVPercentual(somaCustos, somaPrecos);
       const denominador = 1 - cmvPercent - totalVar;
       const pontoEquilibrio = denominador > 0 ? totalFixas / denominador : 0;
-      const resultadoFinanceiro = fatMedio - totalFixas;
+      // Audit 09/09 [B10]: "Sobra do mês" descontava só as fixas e podia dizer
+      // "Receita cobre custos" ao lado de "Falta R$ …" no card do PE. Agora
+      // desconta também CMV médio e variáveis (mesma base do pontoEquilibrio);
+      // sem produto com preço cai pra faturamento − fixas e o card avisa.
+      const { sobra: resultadoFinanceiro, soFixas: sobraSoFixas } = calcSobraMes({
+        faturamento: fatMedio, fixas: totalFixas, variaveisPerc: totalVar, cmvPerc: cmvPercent, temProdutos: prodsComPreco > 0,
+      });
 
       // Deduplicate products by name, keep worst margin
       const uniqueProds = [];
@@ -362,7 +369,7 @@ export default function HomeScreen({ navigation }) {
         vendasMesBalcao = Number(cfgRow?.vendas_mes_balcao) || 0;
         vendasMesDelivery = Number(cfgRow?.vendas_mes_delivery) || 0;
       } catch (_) { /* coluna pode não existir em build antigo */ }
-      setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, produtosMargBaixa: uniqueProds, produtosSemPreco, cmvPercent, pontoEquilibrio, fatMedio, insights, featuredInsight, vendasMesBalcao, vendasMesDelivery });
+      setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, sobraSoFixas, produtosMargBaixa: uniqueProds, produtosSemPreco, cmvPercent, pontoEquilibrio, fatMedio, insights, featuredInsight, vendasMesBalcao, vendasMesDelivery });
       setAlertas(pendencias);
     } catch (e) {
       // Antes: catch silencioso → usuário via tudo zerado sem entender por quê.
@@ -825,8 +832,9 @@ export default function HomeScreen({ navigation }) {
             tip: { title: 'Custo dos ingredientes (CMV)', text: 'Quanto do preço de venda vai pra ingredientes e embalagem. Toque no card pra mudar a meta.', examples: ['Regra 30-30-30-10: ingredientes 30%, mão de obra 30%, despesas 30%, lucro 10%', 'Restaurantes: 28-35%', 'Pizzarias: 25-32%', 'Confeitarias: 20-30%', 'Fast food: 25-35%', `Sua meta: < ${cmvMetaValue}%`] },
             meta: semProdutos ? SEM_PRODUTOS_META : `Atual: ${formatPercent(d.cmvPercent)} · Meta: < ${cmvMetaValue}%`, bench: (pendente || semProdutos) ? null : cmvBench, onPress: () => setShowCmvMeta(true) },
           { label: 'Sobra do mês', value: pendente ? '--' : formatCurrency(d.resultadoFinanceiro), icon: 'dollar-sign', color: pendente ? colors.disabled : (d.resultadoFinanceiro >= 0 ? colors.success : colors.error),
-            tip: { title: 'Sobra do mês', text: 'Faturamento médio do mês menos os custos do mês. Pra mudar, ajuste faturamento ou custos no Financeiro.', examples: ['Conta: faturamento menos custos do mês', 'Positivo: as vendas pagam as contas', 'Negativo: as contas são maiores que as vendas'] },
-            meta: d.resultadoFinanceiro >= 0 ? 'Receita cobre custos' : 'Receita abaixo dos custos', bench: pendente ? null : resBench },
+            // Audit 09/09 [B10]: conta agora desconta CMV e taxas por venda — coerente com "Mínimo pra pagar as contas".
+            tip: { title: 'Sobra do mês', text: 'Faturamento médio do mês menos os custos do mês, os ingredientes e as taxas por venda. Pra mudar, ajuste faturamento ou custos no Financeiro.', examples: ['Conta: faturamento − custos do mês − faturamento × (taxas por venda % + ingredientes %)', 'Sem produtos com preço: só desconta os custos do mês', 'Positivo: as vendas pagam todas as contas', 'Negativo: falta dinheiro depois de pagar tudo'] },
+            meta: d.sobraSoFixas ? 'Sem produtos: só custos fixos' : (d.resultadoFinanceiro >= 0 ? 'Receita cobre custos' : 'Receita abaixo dos custos'), bench: pendente ? null : resBench },
           { label: 'Mínimo pra pagar as contas', value: pendente ? '--' : formatCurrency(d.pontoEquilibrio), icon: 'target', color: pendente ? colors.disabled : colors.primary,
             tip: { title: 'Mínimo pra pagar as contas', text: 'Quanto você precisa faturar no mês só pra cobrir os custos. Pra mudar, ajuste custos e meta de ingredientes no Financeiro.', examples: ['Conta: custos do mês divididos pelo que sobra de cada venda depois dos ingredientes e taxas', 'Compare com seu faturamento médio'] },
             meta: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0

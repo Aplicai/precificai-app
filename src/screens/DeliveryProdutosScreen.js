@@ -15,6 +15,9 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum, parseDecimalBR } from '../utils/calculations';
+// Auditoria 2026-09-09 [B2]: custo de 1 unidade NATIVA do item (kg/L/un/g) —
+// mesma função do modal de combos, em vez de fixar 'g' na quantidade.
+import { resolveCustoUnitarioItemCombo } from '../utils/comboPricing';
 
 function parseInputNumber(raw) {
   if (raw === null || raw === undefined || raw === '') return null;
@@ -103,7 +106,7 @@ export default function DeliveryProdutosScreen() {
       db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
       db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
       db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
-      db.getAllAsync('SELECT id, nome, custo_por_kg FROM preparos ORDER BY nome'),
+      db.getAllAsync('SELECT id, nome, custo_por_kg, unidade_medida FROM preparos ORDER BY nome'),
       db.getAllAsync('SELECT id, nome, preco_unitario FROM embalagens ORDER BY nome'),
       db.getAllAsync('SELECT id, nome, preco_por_kg, unidade_medida FROM materias_primas ORDER BY nome'),
       db.getAllAsync('SELECT * FROM delivery_adicionais ORDER BY nome'),
@@ -159,11 +162,13 @@ export default function DeliveryProdutosScreen() {
           const emb = embalagensList.find(e => e.id === item.item_id);
           if (emb) { custo += emb.preco_unitario * item.quantidade; nome = emb.nome; }
         } else if (item.tipo === 'preparo') {
+          // Auditoria 2026-09-09 [B2]: `quantidade` está na unidade NATIVA da receita
+          // (kg/L/un/g) — antes fixava 'g' e "1 kg" custava 1000× menos que no modal.
           const prep = preparosList.find(p => p.id === item.item_id);
-          if (prep) { custo += calcCustoPreparo(prep.custo_por_kg, item.quantidade, 'g'); nome = prep.nome; }
+          if (prep) { custo += resolveCustoUnitarioItemCombo('preparo', prep).custo * item.quantidade; nome = prep.nome; }
         } else if (item.tipo === 'materia_prima') {
           const mp = materiasList.find(m => m.id === item.item_id);
-          if (mp) { custo += calcCustoIngrediente(mp.preco_por_kg, item.quantidade, mp.unidade_medida, 'g'); nome = mp.nome; }
+          if (mp) { custo += resolveCustoUnitarioItemCombo('materia_prima', mp).custo * item.quantidade; nome = mp.nome; }
         } else if (item.tipo === 'adicional') {
           const add = adicionaisList.find(a => a.id === item.item_id);
           if (add) { custo += add.custo * item.quantidade; nome = add.nome; }

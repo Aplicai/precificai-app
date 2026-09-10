@@ -415,8 +415,11 @@ test('cascadeRecalc.recalcularTodosPreparos — converge em 2 níveis (preparo �
   assert.equal(state.preparos[0].custo_por_kg, 5);   // 500 g × 10 R$/kg = 5 → /1000 g × 1000
 });
 
-test('cascadeRecalc.recalcularCombo — insumo/preparo: quantidade tratada como kg (preco_por_kg × qt) vs telas (g)',
+test('cascadeRecalc.recalcularCombo — insumo/preparo em GRAMAS (unidade nativa g): quantidade × preço/kg ÷ 1000, igual às telas',
   async () => {
+    // Auditoria 2026-09-09 [B2]: a semântica é a unidade NATIVA do item. Aqui insumo e
+    // preparo são cadastrados em 'g', então 200 → 200 g e 100 → 100 g (valor inalterado).
+    // Caso kg/L/un: __tests__/audit-fixes-2026-09-09.test.mjs.
     const state = {
       materias: [{ id: 1, preco_por_kg: 10, unidade_medida: 'g' }],
       preparos: [{ id: 20, rendimento_total: 1000, unidade_medida: 'g', custo_por_kg: 20 }],

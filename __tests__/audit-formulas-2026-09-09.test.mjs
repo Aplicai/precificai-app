@@ -27,7 +27,9 @@ const precif = await import('../src/utils/precificacao.js');
 const dp = await import('../src/utils/deliveryPricing.js');
 const da = await import('../src/utils/deliveryAdapter.js');
 const bcg = await import('../src/utils/bcgClassify.js');
+const { calcPontoEquilibrio, calcSobraMes } = await import('../src/utils/breakeven.js');
 const cascade = await import('../src/services/cascadeRecalc.js');
+const comboPricing = await import('../src/utils/comboPricing.js');
 
 const {
   calcPrecoBase, calcFatorCorrecao, converterParaBase, normalizarUnidade, getTipoUnidade,
@@ -256,7 +258,7 @@ test('2.4 cascata: insumo sobe de R$ 20 → R$ 30/kg; recalcularPreparosDoInsumo
 });
 
 test('2.5 embalagem dentro da receita base — PreparoFormScreen:883 diz "O custo entra no total do preparo", mas custoTotal (PreparoFormScreen:317) e cascadeRecalc.recalcularPreparo IGNORAM preparo_embalagens', async () => {
-  // BUG: esperado = insumos + embalagem (R$ 5 + R$ 1,50 = R$ 6,50). Hoje sai R$ 5,00.
+  // Corrigido (auditoria 2026-09-09 [B1]): esperado = insumos + embalagem (R$ 5 + R$ 1,50 = R$ 6,50).
   const state = {
     materias: [{ id: 1, preco_por_kg: 10, unidade_medida: 'g' }],
     embalagens: [{ id: 7, preco_unitario: 1.5 }],
@@ -515,9 +517,9 @@ test('5.3 sem dupla contagem de embalagem: produto já traz sua embalagem; item 
 });
 
 test('5.4 insumo em kg dentro do combo — modal (DeliveryCombosScreen:661 getItemCustoEUnidade, "1 kg") vs lista/cascade/DeliveryPrecos (quantidade tratada como GRAMAS) divergem 1000×', async () => {
-  // BUG: o modal mostra "1 kg de farinha = R$ 5,00" (unidade nativa, sessão 28.51), mas ao
-  // salvar, DeliveryCombosScreen:274, DeliveryPrecosScreen:210, DeliveryProdutosScreen:166 e
-  // cascadeRecalc.recalcularCombo recalculam com `unidadeUso = 'g'` → R$ 0,005.
+  // Corrigido (auditoria 2026-09-09 [B2]): o modal mostra "1 kg de farinha = R$ 5,00" (unidade
+  // nativa, sessão 28.51) e agora DeliveryCombosScreen, DeliveryPrecosScreen, DeliveryProdutosScreen
+  // e cascadeRecalc.recalcularCombo usam a mesma unidade nativa (resolveCustoUnitarioItemCombo).
   // Esperado (o que o usuário viu no modal): R$ 5,00.
   const state = {
     materias: [{ id: 1, preco_por_kg: 5, unidade_medida: 'kg' }],
@@ -536,14 +538,18 @@ test('5.4 insumo em kg dentro do combo — modal (DeliveryCombosScreen:661 getIt
 });
 
 test('5.5 MatrizBCGScreen:294 — custo do combo faz prodCostMap[item.item_id] para QUALQUER tipo: embalagem id 3 vira o custo do PRODUTO id 3', () => {
-  // BUG: réplica de MatrizBCGScreen.js:294. Esperado: só itens tipo "produto" usam prodCostMap;
-  // embalagem/insumo/preparo usam o próprio custo (ou pelo menos NÃO o de um produto homônimo em id).
+  // Corrigido (auditoria 2026-09-09 [B3]): réplica de MatrizBCGScreen.js `custoItemCombo` — só itens
+  // tipo "produto" usam o mapa de produtos; embalagem/insumo/preparo usam o próprio custo via
+  // resolveCustoUnitarioItemCombo (comboPricing.js).
   const prodCostMap = { 3: 12.0, 7: 4.13 };
   const itens = [
     { tipo: 'produto', item_id: 7, quantidade: 1 },
     { tipo: 'embalagem', item_id: 3, quantidade: 1, preco_unitario: 0.5 },
   ];
-  const bcgCusto = itens.reduce((a, item) => a + calc.safeNum(prodCostMap[item.item_id]) * calc.safeNum(item.quantidade || 1), 0);
+  const bcgCusto = itens.reduce((a, item) => {
+    const dados = item.tipo === 'produto' ? { custoUnitario: prodCostMap[item.item_id] } : item;
+    return a + calc.safeNum(comboPricing.resolveCustoUnitarioItemCombo(item.tipo, dados).custo) * calc.safeNum(item.quantidade || 1);
+  }, 0);
   const esperado = 4.13 + 0.5;
   assert.ok(close(bcgCusto, esperado), `BCG custo ${bcgCusto} (embalagem contada como produto R$ 12) ≠ ${esperado}`);
 });
@@ -602,8 +608,11 @@ function homeKpis({ produtos, totalFixas, totalVar, fatMedio }) {
   const cmvPercent = calcCMVPercentual(somaCustos, somaPrecos);
   const denominador = 1 - cmvPercent - totalVar;
   const pontoEquilibrio = denominador > 0 ? totalFixas / denominador : 0;
-  const resultadoFinanceiro = fatMedio - totalFixas;
-  return { dfPerc, margemMedia, cmvPercent, pontoEquilibrio, resultadoFinanceiro };
+  // Audit fix [B10] — HomeScreen agora usa calcSobraMes (fixas + CMV + variáveis)
+  const { sobra: resultadoFinanceiro, soFixas: sobraSoFixas } = calcSobraMes({
+    faturamento: fatMedio, fixas: totalFixas, variaveisPerc: totalVar, cmvPerc: cmvPercent, temProdutos: n > 0,
+  });
+  return { dfPerc, margemMedia, cmvPercent, pontoEquilibrio, resultadoFinanceiro, sobraSoFixas };
 }
 
 test('7.1 Home — CMV médio = Σcusto/Σpreço (não ponderado por vendas); PE = fixas/(1 − CMV% − var%); "por dia" = PE/30', () => {
@@ -620,15 +629,22 @@ test('7.1 Home — CMV médio = Σcusto/Σpreço (não ponderado por vendas); PE
   assert.equal(formatCurrency(3765.88 / 30), 'R$ 125,53');
 });
 
-test('7.2 Home — "Sobra do mês" = faturamento − fixas IGNORA CMV e variáveis: pode dizer "Receita cobre custos" enquanto o card ao lado diz "Falta R$ …"', () => {
+test('7.2 Home — "Sobra do mês" desconta fixas + CMV médio + variáveis (calcSobraMes) e não contradiz mais o card "Mínimo pra pagar as contas"', () => {
+  // Corrigido (audit B10): antes era faturamento − fixas = +767 ("Receita cobre custos")
+  // enquanto o PE 3.796 > 3.500 dizia "Falta R$ 296".
   const k = homeKpis({
     produtos: [{ preco_venda: 25, custoUnit: 4.13 }, { preco_venda: 10, custoUnit: 1.65 }],
     totalFixas: 2733, totalVar: 0.115, fatMedio: 3500,
   });
-  assert.ok(k.resultadoFinanceiro > 0);              // card "Sobra do mês": +767 → "Receita cobre custos"
   assert.ok(k.pontoEquilibrio > 3500);              // card "Mínimo": PE 3.796 > 3.500 → "Falta R$ 296"
+  assert.ok(k.resultadoFinanceiro < 0, 'sobra negativa — coerente com "Falta"');
   const resultadoReal = 3500 * (1 - k.cmvPercent - 0.115) - 2733;
-  assert.ok(resultadoReal < 0, 'resultado operacional real é prejuízo');
+  assert.ok(close(k.resultadoFinanceiro, resultadoReal, 1e-9));
+  assert.equal(k.sobraSoFixas, false);
+  // sem produto com preço: só custos fixos (faturamento − fixas) e o card avisa
+  const semProd = homeKpis({ produtos: [], totalFixas: 2733, totalVar: 0.115, fatMedio: 3500 });
+  assert.equal(semProd.resultadoFinanceiro, 767);
+  assert.equal(semProd.sobraSoFixas, true);
 });
 
 test('7.3 Home "Quanto sobra por venda" = média simples das margens LÍQUIDAS (preço − CMV − fixos% − var%)/preço', () => {
@@ -661,16 +677,19 @@ test('8.1 "R$ 1,65 ingredientes, R$ 2,28 custos do mês, R$ 1,15 por venda, sobr
   assert.equal(resumoR10({ produtos: [{ precoVenda: 25, custoUn: 4.13 }], dfPerc: PROD.fixoPerc22, totalVar: PROD.variavelPerc }).fixas, '2,22');
 });
 
-test('8.2 Relatório "Ponto de Equilíbrio Traduzido" (RelatorioSimplesScreen:190-193) usa fixas / margem LÍQUIDA média — diverge da Home/Simulador/FAQ', () => {
-  // BUG: PE correto = fixas / (1 − CMV% − var%) (Home:234, Simulador:441, FAQ "faturamento mínimo pra cobrir os custos").
-  // O Relatório divide por uma margem que JÁ desconta os fixos% → número inflado (aqui 1,46×; até 2,5× em outros dados).
+test('8.2 Relatório "Ponto de Equilíbrio Traduzido" (RelatorioSimplesScreen → calcPontoEquilibrio) = fixas / (1 − CMV% − var%) / 30 — mesma conta da Home/Simulador/FAQ', () => {
+  // Corrigido (audit B11): antes dividia por uma margem que JÁ descontava os fixos% → número inflado (aqui 1,46×; até 2,5× em outros dados).
   const totalFixas = 2733.6, totalVar = 0.115, dfPerc = 0.2278;
   const produtos = [{ precoVenda: 25, custoUn: 4.13 }];
   const cmvPerc = 4.13 / 25;
   const peHome = totalFixas / (1 - cmvPerc - totalVar);
-  const margemLiqMedia = produtos.reduce((a, p) => a + calcMargemLiquida(p.precoVenda, p.custoUn, p.precoVenda * dfPerc, p.precoVenda * totalVar), 0) / produtos.length;
-  const peRelatorioDiario = (totalFixas / margemLiqMedia) / 30;
+  // réplica de RelatorioSimplesScreen (bloco "Ponto de equilíbrio")
+  const cmvRelatorio = calcCMVPercentual(produtos.reduce((a, p) => a + p.custoUn, 0), produtos.reduce((a, p) => a + p.precoVenda, 0));
+  const peRelatorioDiario = calcPontoEquilibrio({ fixas: totalFixas, variaveisPerc: totalVar, cmvPerc: cmvRelatorio }) / 30;
   assert.ok(close(peRelatorioDiario, peHome / 30, 0.01), `Relatório ${peRelatorioDiario.toFixed(2)}/dia ≠ Home ${(peHome / 30).toFixed(2)}/dia`);
+  // o número antigo (fixas / margem líquida média / 30) era ~1,46× maior
+  const margemLiqMedia = produtos.reduce((a, p) => a + calcMargemLiquida(p.precoVenda, p.custoUn, p.precoVenda * dfPerc, p.precoVenda * totalVar), 0) / produtos.length;
+  assert.ok((totalFixas / margemLiqMedia) / 30 > peRelatorioDiario * 1.4);
 });
 
 // ═══════════════════════════════════════════════════════════════════════

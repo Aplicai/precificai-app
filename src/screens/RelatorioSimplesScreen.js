@@ -4,7 +4,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, safeNum } from '../utils/calculations';
+import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, safeNum } from '../utils/calculations';
+import { calcPontoEquilibrio } from '../utils/breakeven';
 import EmptyState from '../components/EmptyState';
 import Loader from '../components/Loader';
 import usePersistedState from '../hooks/usePersistedState';
@@ -185,11 +186,19 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
       const atencao = produtosComPreco.filter(p => p.margem < 0.10 && p.margem >= 0);
 
       // --- Ponto de equilíbrio ---
+      // Audit 09/09 [B11]: antes dividia as fixas pela margem LÍQUIDA média
+      // (que já desconta os fixos %) → número 1,5–2,5× maior que Home/Simulador/
+      // FAQ. Agora usa a MESMA conta da Home: fixas / (1 − variáveis% − CMV%),
+      // com CMV médio = Σ custo / Σ preço dos produtos com preço (calcCMVPercentual).
       let pontoEquilibrio = null;
       if (totalFixas > 0 && produtosComPreco.length > 0) {
-        const margemMediaDecimal = produtosComPreco.reduce((a, p) => a + p.margem, 0) / produtosComPreco.length;
-        if (margemMediaDecimal > 0) {
-          const peDiario = (totalFixas / margemMediaDecimal) / 30;
+        const cmvPercPE = calcCMVPercentual(
+          produtosComPreco.reduce((a, p) => a + p.custoUn, 0),
+          produtosComPreco.reduce((a, p) => a + p.precoVenda, 0),
+        );
+        const peMensal = calcPontoEquilibrio({ fixas: totalFixas, variaveisPerc: totalVar, cmvPerc: cmvPercPE });
+        if (peMensal > 0) {
+          const peDiario = peMensal / 30;
           // Produto mais vendido = o de menor preço (mais acessível, proxy)
           const produtoRef = [...produtosComPreco].sort((a, b) => a.precoVenda - b.precoVenda)[0];
           const qtdEquiv = produtoRef && produtoRef.precoVenda > 0

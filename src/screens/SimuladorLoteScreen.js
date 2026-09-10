@@ -26,6 +26,16 @@ import { calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils
 import { calcularPrecoBalcao } from '../utils/precificacao';
 import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
+import usePersistedState from '../hooks/usePersistedState';
+
+// Audit 09/09: a coluna "MÍNIMO" (antes "SUGERIDO (financeiro)") é o menor
+// preço que ainda entrega a margem do Financeiro. Quando fica ABAIXO do
+// balcão não é "bom" (verde) — é só o piso; some a cor de destaque.
+function corMinimo(okFin, sugFinanceiro, precoBalcao) {
+  if (!okFin) return colors.error;
+  if (precoBalcao > 0 && sugFinanceiro.preco < precoBalcao) return colors.textSecondary;
+  return colors.success;
+}
 
 export default function SimuladorLoteScreen() {
   const navigation = useNavigation();
@@ -39,6 +49,8 @@ export default function SimuladorLoteScreen() {
   const [popupSimulacao, setPopupSimulacao] = useState(null); // { produtoId, plataformaId }
   // Sessão 28.23: preços cadastrados pelo user em produto_preco_delivery
   const [precosCadastrados, setPrecosCadastrados] = useState({}); // { `prodId-platId`: preco }
+  // Audit 09/09: legenda ("Como ler esta tabela") fechada por padrão, persistida.
+  const [legendaAberta, setLegendaAberta] = usePersistedState('delivery.legendaAberta', false);
 
   useFocusEffect(useCallback(() => { carregar(); }, []));
 
@@ -238,47 +250,61 @@ export default function SimuladorLoteScreen() {
           </View>
         </View>
 
-        {/* Sessão 28.16: tooltip de estratégia + Como ler reformulado */}
-        <View style={{ flexDirection: 'row', backgroundColor: '#FEF3C7', borderRadius: 8, padding: 10, marginBottom: spacing.sm, gap: 8, borderLeftWidth: 3, borderLeftColor: '#F59E0B' }}>
-          <Feather name="info" size={14} color="#92400E" style={{ marginTop: 2 }} />
-          <Text style={{ flex: 1, fontSize: 11, color: '#92400E', lineHeight: 16 }}>
-            <Text style={{ fontFamily: fontFamily.bold }}>Estratégia: </Text>
-            nem todo produto precisa ter lucro alto no delivery. Itens com alta visibilidade (fotos atrativas, posição de destaque) podem ter margem menor pra atrair pedidos. Avalie a precificação como ESTRATÉGIA DO NEGÓCIO COMO UM TODO. Toque numa célula da plataforma pra ver detalhes.
-          </Text>
-        </View>
+        {/* Audit 09/09: os dois blocos explicativos (aviso amarelo "Estratégia"
+            + "O que cada coluna significa") viraram UM toggle "Como ler esta
+            tabela", fechado por padrão e persistido (delivery.legendaAberta). */}
+        <TouchableOpacity
+          onPress={() => setLegendaAberta(!legendaAberta)}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: !!legendaAberta }}
+          accessibilityLabel="Como ler esta tabela"
+          style={styles.legendToggle}
+        >
+          <Feather name={legendaAberta ? 'chevron-up' : 'chevron-down'} size={14} color={colors.primary} />
+          <Text style={styles.legendToggleText}>Como ler esta tabela</Text>
+        </TouchableOpacity>
 
-        <View style={styles.legend}>
-          <Text style={styles.legendTitle}>O que cada coluna significa:</Text>
-          <View style={styles.legendGrid}>
-            <View style={styles.legendRow}>
-              <View style={[styles.legendDot, { backgroundColor: '#F59E0B' }]} />
-              <Text style={styles.legendText}>
-                <Text style={{ fontFamily: fontFamily.bold }}>MEU PREÇO: </Text>
-                quanto VOCÊ está cobrando hoje nesta plataforma. Se está vazio, toque pra cadastrar.
-              </Text>
-            </View>
-            <View style={styles.legendRow}>
-              <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
-              <Text style={styles.legendText}>
-                <Text style={{ fontFamily: fontFamily.bold }}>MESMO LUCRO: </Text>
-                preço delivery onde sobra exatamente o mesmo R$ de lucro líquido por venda que você tira hoje no balcão (depois de descontar custos fixos, impostos e a comissão da plataforma). Use quando o preço de balcão já está bem precificado.
-              </Text>
-            </View>
-            <View style={styles.legendRow}>
-              <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
-              <Text style={styles.legendText}>
-                <Text style={{ fontFamily: fontFamily.bold }}>SUGERIDO (financeiro): </Text>
-                preço pra atingir o lucro que você definiu nas Configurações Financeiras.
-              </Text>
-            </View>
-            <View style={styles.legendRow}>
-              <Feather name="info" size={11} color={colors.textSecondary} />
-              <Text style={styles.legendText}>
-                Toque em qualquer célula pra abrir simulação completa e cadastrar seu preço.
-              </Text>
+        {legendaAberta && (
+          <View style={styles.legend}>
+            <View style={styles.legendGrid}>
+              <View style={styles.legendRow}>
+                <Feather name="info" size={11} color="#92400E" style={{ marginTop: 3 }} />
+                <Text style={styles.legendText}>
+                  <Text style={{ fontFamily: fontFamily.bold }}>Estratégia: </Text>
+                  nem todo produto precisa ter lucro alto no delivery. Itens com alta visibilidade (fotos atrativas, posição de destaque) podem ter margem menor pra atrair pedidos. Avalie a precificação como estratégia do negócio como um todo.
+                </Text>
+              </View>
+              <View style={styles.legendRow}>
+                <View style={[styles.legendDot, { backgroundColor: '#F59E0B' }]} />
+                <Text style={styles.legendText}>
+                  <Text style={{ fontFamily: fontFamily.bold }}>MEU PREÇO: </Text>
+                  quanto VOCÊ está cobrando hoje nesta plataforma. Se está vazio, toque pra cadastrar.
+                </Text>
+              </View>
+              <View style={styles.legendRow}>
+                <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
+                <Text style={styles.legendText}>
+                  <Text style={{ fontFamily: fontFamily.bold }}>MESMO LUCRO: </Text>
+                  preço delivery onde sobra exatamente o mesmo R$ de lucro líquido por venda que você tira hoje no balcão (depois de descontar custos fixos, impostos e a comissão da plataforma). Use quando o preço de balcão já está bem precificado.
+                </Text>
+              </View>
+              <View style={styles.legendRow}>
+                <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+                <Text style={styles.legendText}>
+                  <Text style={{ fontFamily: fontFamily.bold }}>MÍNIMO: </Text>
+                  menor preço que ainda entrega a margem do Financeiro. Se ficar abaixo do balcão, use MESMO LUCRO como referência.
+                </Text>
+              </View>
+              <View style={styles.legendRow}>
+                <Feather name="info" size={11} color={colors.textSecondary} />
+                <Text style={styles.legendText}>
+                  Toque em qualquer célula pra abrir simulação completa e cadastrar seu preço.
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
+        )}
 
         {/* Sessão 28.23: layout MOBILE-FIRST — cards verticais por produto */}
         {isMobile ? (
@@ -338,9 +364,9 @@ export default function SimuladorLoteScreen() {
                         </Text>
                       </View>
                       <View style={{ alignItems: 'center', minWidth: 70 }}>
-                        <Text style={{ fontSize: 10, color: colors.success, fontFamily: fontFamily.bold }}>SUGERIDO</Text>
-                        <Text style={{ fontSize: 12, color: okFin ? colors.success : colors.error, fontFamily: fontFamily.medium }}>
-                          {okFin ? formatCurrency(sugFinanceiro.preco) : '—'}
+                        <Text style={{ fontSize: 10, color: colors.success, fontFamily: fontFamily.bold }}>MÍNIMO</Text>
+                        <Text style={{ fontSize: 12, color: corMinimo(okFin, sugFinanceiro, linha.prod.precoVendaBalcao), fontFamily: fontFamily.medium }}>
+                          {okFin ? `≥ ${formatCurrency(sugFinanceiro.preco)}` : '—'}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -387,7 +413,7 @@ export default function SimuladorLoteScreen() {
                       <Text style={{ fontSize: 11, color: colors.textSecondary }}>R$ líq./un do balcão</Text>
                     </View>
                     <View style={{ width: 90, alignItems: 'center', padding: 4 }}>
-                      <Text style={{ fontSize: 10, color: colors.success, fontFamily: fontFamily.bold }}>SUGERIDO</Text>
+                      <Text style={{ fontSize: 10, color: colors.success, fontFamily: fontFamily.bold }}>MÍNIMO</Text>
                       <Text style={{ fontSize: 11, color: colors.textSecondary }}>margem financ.</Text>
                     </View>
                   </View>
@@ -484,8 +510,8 @@ export default function SimuladorLoteScreen() {
                         disabled={!okFin}
                       >
                         {okFin ? (
-                          <Text style={[styles.cellValuePrimary, { color: colors.success, fontSize: 12 }]}>
-                            {formatCurrency(sugFinanceiro.preco)}
+                          <Text style={[styles.cellValuePrimary, { color: corMinimo(okFin, sugFinanceiro, linha.prod.precoVendaBalcao), fontSize: 12 }]}>
+                            {`≥ ${formatCurrency(sugFinanceiro.preco)}`}
                           </Text>
                         ) : (
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
@@ -599,6 +625,9 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.primary,
   },
   legendTitle: { fontSize: fonts.small, fontFamily: fontFamily.bold, color: colors.text, marginBottom: 8 },
+  // Audit 09/09: toggle compacto que abre/fecha a legenda.
+  legendToggle: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 4, marginBottom: spacing.sm, minHeight: 32 },
+  legendToggleText: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, color: colors.primary },
   // Sessão 28.47 — legenda com card por linha pra que cada bloco se adapte à
   // largura do user. Antes: minWidth fixo (200) + gap horizontal forçava
   // overflow em telas estreitas, quebrando o texto de "MESMO LUCRO".

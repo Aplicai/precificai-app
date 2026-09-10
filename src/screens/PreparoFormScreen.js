@@ -29,6 +29,17 @@ const CATEGORY_COLORS = [
   colors.primaryLight, colors.accentLight, colors.coralLight, colors.purpleLight,
 ];
 
+// Auditoria 2026-09-09 [B1]: custo das embalagens da receita base.
+// Σ preco_unitario × quantidade_utilizada (qtd vazia/0 conta como 1, igual à linha da UI).
+function calcCustoEmbalagensPreparo(lista) {
+  return (lista || []).reduce((acc, pe) => {
+    const preco = Number(pe?.preco_unitario) || 0;
+    const qtd = Number(pe?.quantidade_utilizada) || 1;
+    const v = preco * qtd;
+    return acc + (Number.isFinite(v) ? v : 0);
+  }, 0);
+}
+
 export default function PreparoFormScreen({ route, navigation }) {
   const editId = route.params?.id;
   const isFocused = useIsFocused();
@@ -314,10 +325,18 @@ export default function PreparoFormScreen({ route, navigation }) {
     return acc + safeCusto(calcCustoPreparo(custoKg, sp.quantidade_utilizada, unidade));
   }, 0);
 
-  const custoTotal = custoInsumos + custoSubpreparos;
+  // Auditoria 2026-09-09 [B1]: embalagens da receita base ENTRAM no custo
+  // (a UI abaixo promete "O custo entra no total do preparo"; antes só exibia a
+  // linha). Σ preco_unitario × quantidade_utilizada — mesma conta de
+  // cascadeRecalc.recalcularPreparo, pra custo_total/custo_por_kg baterem nos dois.
+  const custoEmbalagens = calcCustoEmbalagensPreparo(preparoEmbalagens);
+
+  // Total de ingredientes + sub-receitas (rodapé da lista de ingredientes).
+  const custoIngredientesESub = custoInsumos + custoSubpreparos;
+  const custoTotal = custoIngredientesESub + custoEmbalagens;
   const rendimento = parseNum(form.rendimento_total);
   const custoKg = calcCustoPorKgPreparo(custoTotal, rendimento, form.unidade_medida);
-  const temCustos = ingredientes.length > 0 || subpreparos.length > 0;
+  const temCustos = ingredientes.length > 0 || subpreparos.length > 0 || preparoEmbalagens.length > 0;
 
   function openQuantityPrompt(mpId) {
     const mp = materiasPrimas.find(m => m.id === mpId);
@@ -427,7 +446,9 @@ export default function PreparoFormScreen({ route, navigation }) {
       const unidade = live?.unidade_medida || sp.sub_unidade_medida || 'g';
       return acc + safeCusto(calcCustoPreparo(custoKg, sp.quantidade_utilizada, unidade));
     }, 0);
-    const ct = ctInsumos + ctSub;
+    // Auditoria 2026-09-09 [B1]: embalagens entram no custo (mesma conta do render).
+    const ctEmb = calcCustoEmbalagensPreparo(preparoEmbalagensRef.current || []);
+    const ct = ctInsumos + ctSub + ctEmb;
     const ck = calcCustoPorKgPreparo(ct, rend, f.unidade_medida);
     const validadeDias = parseNum(f.validade_dias);
 
@@ -863,7 +884,7 @@ export default function PreparoFormScreen({ route, navigation }) {
 
               <View style={styles.ingFooter}>
                 <Text style={styles.ingFooterLabel}>Total dos ingredientes</Text>
-                <Text style={styles.ingFooterValue}>{formatCurrency(custoTotal)}</Text>
+                <Text style={styles.ingFooterValue}>{formatCurrency(custoIngredientesESub)}</Text>
               </View>
             </View>
           )}
