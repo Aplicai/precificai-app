@@ -1177,7 +1177,6 @@ export default function DeliveryCombosScreen() {
                   { paddingBottom: spacing.md },
                   isDesktop && styles.modalBodyTwoCol,
                 ]}
-                showsVerticalScrollIndicator={false}
               >
               <View style={isDesktop ? styles.modalColLeft : null}>
               <InputField
