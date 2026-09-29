@@ -29,6 +29,8 @@ import {
   calcEconomiaCombo,
 } from '../utils/comboPricing';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import useKeyboardInset from '../hooks/useKeyboardInset';
+import { calcSheetMaxHeight } from '../utils/keyboardInset';
 import usePersistedState from '../hooks/usePersistedState';
 import usePlan from '../hooks/usePlan';
 import UpgradeModal from '../components/UpgradeModal';
@@ -66,6 +68,15 @@ function getTipoBadgeInfo(tipo) {
 export default function DeliveryCombosScreen() {
   const isFocused = useIsFocused();
   const { isDesktop } = useResponsiveLayout();
+  // KeyboardAvoidingView é no-op no react-native-web, e o Modal vira um overlay
+  // position:fixed — no navegador do celular ele fica DESENHADO ATRÁS do teclado.
+  // Medimos o visual viewport e levantamos a folha. Sem teclado isto é 0/null e
+  // nada muda. Ver src/utils/keyboardInset.js.
+  const keyboardInset = useKeyboardInset();
+  const sheetMaxHeight = calcSheetMaxHeight(
+    typeof window !== 'undefined' ? window.innerHeight : 0,
+    keyboardInset,
+  );
   const [combos, setCombos] = useState([]);
   // Planos (Fase 0) — gate de limite de combos por plano.
   const { canAdd, limitFor, plano, upgradeTo } = usePlan();
@@ -1139,13 +1150,21 @@ export default function DeliveryCombosScreen() {
         animationType={isDesktop ? 'fade' : 'slide'}
       >
         <TouchableOpacity
-          style={[styles.modalOverlay, !isDesktop && styles.modalOverlayMobile]}
+          style={[
+            styles.modalOverlay,
+            !isDesktop && styles.modalOverlayMobile,
+            !isDesktop && keyboardInset > 0 && { paddingBottom: keyboardInset },
+          ]}
           activeOpacity={1}
           onPress={handleCloseModal}
         >
           <TouchableOpacity
             activeOpacity={1}
-            style={[styles.modalContent, isDesktop ? styles.modalContentDesktop : styles.modalContentMobile]}
+            style={[
+              styles.modalContent,
+              isDesktop ? styles.modalContentDesktop : styles.modalContentMobile,
+              !isDesktop && sheetMaxHeight != null && { maxHeight: sheetMaxHeight },
+            ]}
             onPress={() => {}}
           >
             {/* Sessão 28.8 — Modal header com ícone, título e X claro */}
