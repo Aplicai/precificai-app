@@ -31,6 +31,35 @@ if (typeof document !== 'undefined') {
     document.head.appendChild(focusCss);
   } catch (_) {}
 
+  // === BARRA DE ROLAGEM SEMPRE VISÍVEL =========================
+  // Cliente (30/09) filmou a tela: no modal de cadastro de receita base o
+  // conteúdo continuava abaixo da dobra e NÃO havia nenhuma pista de que dava
+  // pra rolar. Causa: Chrome usa barra "overlay" (Fluent no Windows, overlay no
+  // macOS), que fica invisível enquanto ninguém rola — e o app é quase todo
+  // feito de ScrollView dentro de modal com altura travada.
+  //
+  // Declarar ::-webkit-scrollbar tira o Chromium do modo overlay e devolve a
+  // barra clássica, que ocupa um sulco e aparece SEMPRE que há o que rolar.
+  // Medido no bundle de produção: sulco vai de 0 px para 10 px.
+  try {
+    const scrollCss = document.createElement('style');
+    scrollCss.setAttribute('data-precificai', 'scrollbar');
+    scrollCss.textContent =
+      // Chrome 121+ dá precedência a `scrollbar-width` sobre ::-webkit-scrollbar,
+      // e aí a barra volta a ser overlay. Medido: com as duas regras soltas o
+      // sulco fica em 0 px. Por isso as propriedades padrão ficam atrás de um
+      // @supports que só casa onde ::-webkit-scrollbar não existe (Firefox).
+      '@supports not selector(::-webkit-scrollbar){' +
+      '*{scrollbar-width:thin;scrollbar-color:#C9C5BB transparent}}' +
+      '::-webkit-scrollbar{width:10px;height:10px}' +
+      '::-webkit-scrollbar-track{background:transparent}' +
+      '::-webkit-scrollbar-thumb{background-color:#C9C5BB;border-radius:5px;' +
+      'border:2px solid transparent;background-clip:content-box}' +
+      '::-webkit-scrollbar-thumb:hover{background-color:#A8A49A}' +
+      '::-webkit-scrollbar-corner{background:transparent}';
+    document.head.appendChild(scrollCss);
+  } catch (_) {}
+
   // === PWA META TAGS ============================================
   function setMeta(name, content, isProperty = false) {
     const attr = isProperty ? 'property' : 'name';
