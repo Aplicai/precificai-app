@@ -19,7 +19,6 @@ import {
   CATEGORIAS_EMBALAGENS_POR_SEGMENTO,
 } from '../data/templates';
 import { calcPrecoBase, calcFatorCorrecao, safeNum, calcCustoPorKgPreparo } from '../utils/calculations';
-import { getPrecoReferencia } from '../data/precosReferencia';
 // D-27/D-28: aplica fatores de correção de referência (TACO) automaticamente
 import { getFatorCorrecaoReferencia, estimarQuantidadeLiquida } from '../data/fatoresCorrecao';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -303,7 +302,7 @@ export default function KitInicioScreen({ navigation, route }) {
     // Antes: kit era aplicado direto se "sobrescrever" estava desmarcado, sem
     // dar pro user uma última chance. Agora pede confirmação explícita.
     const segLabel = segmentoInfo?.label || 'segmento';
-    const msgAdd = `Vamos aplicar o kit "${segLabel}" — vai cadastrar ${insumosCount} ingredientes com PREÇOS DE REFERÊNCIA do mercado. Os dados existentes (ingredientes, receitas base, produtos) serão PRESERVADOS. Você poderá ajustar os preços depois. Continuar?`;
+    const msgAdd = `Vamos aplicar o kit "${segLabel}" — vai cadastrar ${insumosCount} ingredientes COM PREÇO ZERADO, pra você preencher com o valor do seu fornecedor. Os dados existentes (ingredientes, receitas base, produtos) serão PRESERVADOS. Continuar?`;
     if (Platform.OS === 'web') {
       if (!window.confirm(msgAdd)) return;
       await executarKit(false);
@@ -445,33 +444,32 @@ export default function KitInicioScreen({ navigation, route }) {
             }
           }
           const fc = calcFatorCorrecao(qtBruta, qtLiquida);
-          // APP-14 + Sessão 28.36: pré-preenche valor de mercado priorizando:
-          //  1. precosReferencia.js (per-segmento, mais específico)
-          //  2. marketPrices.js (global, fallback)
-          //  3. valor_pago do template (fallback final, geralmente 0)
-          // TODO insumo aplicado via kit é marcado como ESTIMADO — user precisa
-          // ver o badge e atualizar com o preço real dele.
-          let valorFinal = getPrecoReferencia(selected, insumo.nome);
-          if (valorFinal == null || valorFinal <= 0) {
-            try {
-              const { getMarketPrice } = require('../data/marketPrices');
-              const fallback = getMarketPrice(insumo.nome, insumo.quantidade_bruta, insumo.unidade_medida);
-              if (fallback != null) valorFinal = fallback;
-            } catch {}
-          }
-          if (valorFinal == null || valorFinal <= 0) {
-            valorFinal = insumo.valor_pago || 0;
-          }
-          // SEMPRE marca como estimado quando aplicado via kit, mesmo que valorFinal=0
-          // (user precisa ver badge "atualize com seu preço real" pra entender o estado).
-          const isEstimado = true;
-          // D-27: usa qtLiquida ajustada (não a do template)
-          const pb = calcPrecoBase(valorFinal, qtLiquida, insumo.unidade_medida);
+          // 2026-10-13 — O kit NÃO preenche mais preço.
+          //
+          // Medido em produção antes desta mudança: 13 das 25 contas com
+          // ingredientes tinham usado o kit, e 991 dos 2.626 ingredientes do
+          // produto inteiro (38 %) ainda estavam com o preço de tabela que ele
+          // chutou. SETE contas estavam 100 % estimadas — ficha técnica, custo,
+          // margem e preço sugerido inteiros em cima de média de varejo.
+          //
+          // O badge "valor estimado" não estava convencendo ninguém a corrigir,
+          // e o app preenchido parece PRONTO: é pior que vazio, porque não pede
+          // conserto. O que o kit economiza de verdade é a digitação do catálogo
+          // (nomes, unidades, fator de correção, categorias, embalagens) — isso
+          // fica. O preço sai e passa a ser responsabilidade do dono, cobrado
+          // pelo PrecosZeradosBanner, que já conta valor_pago = 0.
+          //
+          // `precosReferencia.js` e `marketPrices.js` continuam no repositório;
+          // quem lê é a tela de sugestão de preço, não mais o cadastro.
+          const valorFinal = 0;
+          const pb = 0;
           return {
             user_id: userId,
             nome: insumo.nome,
-            // APP-14: marcador interno pra UI exibir badge "valor estimado, ajuste".
-            marca: isEstimado ? MARCA_VALOR_ESTIMADO : '',
+            // Sem marcador: a linha nasce com preço 0 de verdade, e o estado
+            // "falta preço" é legível do próprio valor_pago. MARCA_VALOR_ESTIMADO
+            // segue reconhecida na leitura por causa das 991 linhas antigas.
+            marca: '',
             categoria_id: (insumo.categoria && catMap[insumo.categoria]) || firstCatId,
             quantidade_bruta: qtBruta,
             quantidade_liquida: qtLiquida,
