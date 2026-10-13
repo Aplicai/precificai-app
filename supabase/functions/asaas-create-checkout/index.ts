@@ -55,11 +55,22 @@ const PLAN_LABEL: Record<string, string> = { pro: 'Pro', ilimitado: 'Ilimitado' 
 const CYCLE_MAP: Record<string, string> = { mensal: 'MONTHLY', anual: 'YEARLY' };
 const BILLING_MAP: Record<string, string> = { mensal: 'CREDIT_CARD', anual: 'PIX' };
 
+// ASAAS_ENV ('sandbox' | 'production') manda, quando definida.
+//
+// Por que deixou de ser só adivinhação: o sniff abaixo assume os prefixos
+// antigos ($aact_hmlg_ / $aact_prod_). As chaves novas do Asaas têm a forma
+// `$aact_<base64>` SEM nenhum desses marcadores — então uma chave de sandbox no
+// formato novo cai no `else` e é enviada pra api.asaas.com (produção), que
+// responde 401. O sintoma é um 502 genérico no app, sem pista nenhuma.
 function asaasBaseUrl(apiKey: string): string {
-  // Sandbox keys começam com $aact_hmlg_; produção com $aact_prod_.
-  return apiKey.includes('_hmlg_')
-    ? 'https://api-sandbox.asaas.com/v3'
-    : 'https://api.asaas.com/v3';
+  const SANDBOX = 'https://api-sandbox.asaas.com/v3';
+  const PROD = 'https://api.asaas.com/v3';
+
+  const envOverride = (Deno.env.get('ASAAS_ENV') || '').trim().toLowerCase();
+  if (envOverride === 'sandbox') return SANDBOX;
+  if (envOverride === 'production' || envOverride === 'prod') return PROD;
+
+  return apiKey.includes('_hmlg_') ? SANDBOX : PROD;
 }
 
 function json(req: Request, status: number, body: unknown): Response {
@@ -107,7 +118,10 @@ serve(async (req: Request) => {
     }
 
     const value = PRICING[plano][ciclo];
-    const apiKey = Deno.env.get('ASAAS_API_KEY');
+    // .trim(): secret colado no painel costuma levar \n ou espaço no fim, e o
+    // Asaas devolve 401 invalid_access_token sem dizer por quê — foi o 401 de
+    // 13/10. Aspas também sobram quando se cola o valor entre elas.
+    const apiKey = (Deno.env.get('ASAAS_API_KEY') || '').trim().replace(/^["']|["']$/g, '');
     if (!apiKey) {
       console.error('[asaas-create-checkout] ASAAS_API_KEY não configurada.');
       return json(req, 500, { error: 'Pagamento indisponível no momento. Tente mais tarde.' });
@@ -145,7 +159,24 @@ serve(async (req: Request) => {
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.url) {
       console.error('[asaas-create-checkout] Asaas error:', res.status, JSON.stringify(data));
-      return json(req, 502, { error: 'Não foi possível iniciar o checkout. Tente novamente.' });
+
+      // Devolve o bastante pra diagnosticar sem vazar segredo. O status do
+      // Asaas separa as duas famílias de problema que antes ficavam idênticas
+      // na tela: 401 = chave/ambiente errados; 400 = payload recusado.
+      const asaasCode = Array.isArray(data?.errors) && data.errors[0]?.code
+        ? String(data.errors[0].code)
+        : null;
+
+      let msg = 'Não foi possível iniciar o checkout. Tente novamente.';
+      if (res.status === 401 || res.status === 403) {
+        msg = 'Pagamento indisponível: a chave de integração do Asaas foi recusada. Avise o suporte.';
+      } else if (res.status === 429) {
+        msg = 'Muitas tentativas seguidas. Espere um minuto e tente de novo.';
+      } else if (res.status >= 500) {
+        msg = 'O Asaas está instável agora. Tente de novo em alguns minutos.';
+      }
+
+      return json(req, 502, { error: msg, asaas_status: res.status, asaas_code: asaasCode });
     }
 
     return json(req, 200, { ok: true, url: data.url, id: data.id, plano, ciclo, value });
