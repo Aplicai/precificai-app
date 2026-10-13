@@ -164,9 +164,9 @@ export function buildContextoFinanceiro({ cfgRows, fixasRows, varsRows, fatRows,
 /**
  * Embalagem de delivery no produto (design 2026-09-09).
  *
- * `produtos.embalagem_delivery_id` + `embalagem_delivery_quantidade` apontam
- * pra UMA embalagem extra usada só no delivery (caixa, marmita, kit composto).
- * O custo no delivery é sempre `cmv (balcão) + preço_unitário × quantidade`
+ * O produto leva embalagens extras só no delivery (caixa, marmita, sacola,
+ * talher) — ver `embalagensDeliveryDoProduto` pra de onde vem a lista.
+ * O custo no delivery é sempre `cmv (balcão) + Σ preço_unitário × quantidade`
  * — a embalagem de balcão (guardanapo, saquinho) costuma ir junto, então NÃO
  * é subtraída. Sem embalagem de delivery → custoDelivery === cmv.
  *
@@ -187,23 +187,91 @@ export function custoDelivery({ cmv, embalagemDeliveryPreco, embalagemDeliveryQt
 }
 
 /**
- * Resolve a embalagem de delivery de uma row de `produtos` contra um mapa
+ * Lê `produtos.embalagens_delivery` (jsonb): lista `[{ id, qtd }]` das
+ * embalagens que vão junto no delivery (marmita + sacola + talher...).
+ * Aceita array ou string JSON. Devolve `null` quando a coluna nunca foi
+ * gravada ou veio inválida — quem chama cai no par legado.
+ */
+export function parseEmbalagensDelivery(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  let lista = raw;
+  if (typeof raw === 'string') {
+    try { lista = JSON.parse(raw); } catch { return null; }
+  }
+  if (!Array.isArray(lista)) return null;
+  return normalizarEmbalagensDelivery(lista) || [];
+}
+
+/**
+ * Limpa uma lista de embalagens de delivery para gravar/ler: descarta id
+ * inválido, não repete embalagem (vale a primeira) e usa quantidade 1 quando
+ * ela vem vazia. Devolve `null` para lista vazia (é o que vai para a coluna).
+ */
+export function normalizarEmbalagensDelivery(itens) {
+  if (!Array.isArray(itens)) return null;
+  const vistos = new Set();
+  const out = [];
+  for (const it of itens) {
+    const id = Number(it?.id ?? it?.embalagem_id);
+    if (!Number.isFinite(id) || id <= 0 || vistos.has(id)) continue;
+    const rawQtd = it?.qtd ?? it?.quantidade;
+    const num = Number(rawQtd);
+    const qtd = (rawQtd === null || rawQtd === undefined || rawQtd === '')
+      ? 1
+      : (Number.isFinite(num) ? Math.max(0, num) : 1);
+    vistos.add(id);
+    out.push({ id, qtd });
+  }
+  return out.length ? out : null;
+}
+
+/**
+ * Quais embalagens de delivery o produto leva — `[{ id, qtd }]`.
+ *
+ * A lista (`embalagens_delivery`) é a fonte desde 2026-10; o par legado
+ * `embalagem_delivery_id` + `_quantidade` continua gravado com o PRIMEIRO item.
+ * O legado vence em dois casos:
+ *  - a lista nunca foi gravada (produto salvo antes da mudança);
+ *  - o legado aponta pra uma embalagem que não é a primeira da lista — sinal de
+ *    que uma aba aberta com a versão antiga do app regravou só o par legado.
+ */
+export function embalagensDeliveryDoProduto(produto) {
+  const legadoId = produto?.embalagem_delivery_id ? Number(produto.embalagem_delivery_id) : null;
+  const lista = parseEmbalagensDelivery(produto?.embalagens_delivery);
+  const legadoVence = lista === null || (legadoId && (!lista.length || lista[0].id !== legadoId));
+  if (!legadoVence) return lista;
+  if (!legadoId) return [];
+  return normalizarEmbalagensDelivery([{ id: legadoId, qtd: produto.embalagem_delivery_quantidade }]) || [];
+}
+
+/**
+ * Resolve as embalagens de delivery de uma row de `produtos` contra um mapa
  * `{ [embalagemId]: { preco_unitario, nome } }` (ou array de rows de embalagens).
  *
- * @returns {{ id: number|null, nome: string|null, preco: number, qtd: number, custo: number }}
- *   `custo` = preco × qtd (0 quando o produto não tem embalagem de delivery
- *   ou a embalagem não existe mais).
+ * @returns {{ id: number|null, nome: string|null, preco: number, qtd: number, custo: number, itens: Array }}
+ *   `custo` = soma de preco × qtd de todas as embalagens (0 quando o produto
+ *   não tem embalagem de delivery). Embalagem que não existe mais conta 0.
+ *   Com UMA embalagem, `preco`/`qtd` são os dela. Com várias, `preco` = custo
+ *   somado e `qtd` = 1, de modo que `preco × qtd` continua sendo o custo total
+ *   pra quem repassa os dois a `custoDelivery`. `itens` traz o detalhe por linha.
  */
 export function embalagemDeliveryDoProduto(produto, embalagens) {
   const safe = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  const id = produto?.embalagem_delivery_id ?? null;
-  if (!id) return { id: null, nome: null, preco: 0, qtd: 0, custo: 0 };
-  let emb = null;
-  if (Array.isArray(embalagens)) emb = embalagens.find((e) => e && e.id === id) || null;
-  else if (embalagens && typeof embalagens === 'object') emb = embalagens[id] || null;
-  if (!emb) return { id, nome: null, preco: 0, qtd: 0, custo: 0 };
-  const preco = Math.max(0, safe(emb.preco_unitario));
-  const rawQtd = produto.embalagem_delivery_quantidade;
-  const qtd = (rawQtd === null || rawQtd === undefined || rawQtd === '') ? 1 : Math.max(0, safe(rawQtd));
-  return { id, nome: emb.nome || null, preco, qtd, custo: preco * qtd };
+  const refs = embalagensDeliveryDoProduto(produto);
+  if (!refs.length) return { id: null, nome: null, preco: 0, qtd: 0, custo: 0, itens: [] };
+  const achar = (id) => {
+    if (Array.isArray(embalagens)) return embalagens.find((e) => e && Number(e.id) === id) || null;
+    if (embalagens && typeof embalagens === 'object') return embalagens[id] || null;
+    return null;
+  };
+  const itens = refs.map(({ id, qtd }) => {
+    const emb = achar(id);
+    if (!emb) return { id, nome: null, preco: 0, qtd: 0, custo: 0 };
+    const preco = Math.max(0, safe(emb.preco_unitario));
+    return { id, nome: emb.nome || null, preco, qtd, custo: preco * qtd };
+  });
+  if (itens.length === 1) return { ...itens[0], itens };
+  const custo = itens.reduce((a, i) => a + i.custo, 0);
+  const nomes = itens.map((i) => i.nome).filter(Boolean);
+  return { id: itens[0].id, nome: nomes.length ? nomes.join(' + ') : null, preco: custo, qtd: 1, custo, itens };
 }

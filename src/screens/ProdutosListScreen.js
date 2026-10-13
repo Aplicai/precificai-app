@@ -23,6 +23,7 @@ import ListStatsStrip from '../components/ListStatsStrip';
 import { exportToCSV, isCsvExportSupported } from '../utils/exportCsv';
 import ItemPreviewModal from '../components/ItemPreviewModal';
 import EntityCreateModal from '../components/EntityCreateModal';
+import { embalagemDeliveryDoProduto } from '../utils/deliveryAdapter';
 import { formatTimeAgo } from '../utils/timeAgo';
 import ViewModeToggle from '../components/ViewModeToggle';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -347,11 +348,12 @@ export default function ProdutosListScreen({ navigation }) {
       // Design embalagem-delivery-no-produto (2026-09-09) — ícone de delivery no
       // card quando o produto tem embalagem de delivery própria. embMap já
       // carrega TODAS as embalagens (usado acima pra custo de balcão).
-      const embDelivery = p.embalagem_delivery_id ? embMap[p.embalagem_delivery_id] : null;
-      const embDeliveryPreco = embDelivery ? (embDelivery.preco_unitario || 0) : 0;
-      const embDeliveryQtd = p.embalagem_delivery_quantidade != null ? p.embalagem_delivery_quantidade : 1;
-      const embDeliveryCusto = embDelivery ? embDeliveryPreco * embDeliveryQtd : 0;
-      result.push({ ...p, custoTotal: custoUn, precoVenda, lucro, cmv, despFixasVal, despVarVal, margem, embDeliveryCusto });
+      // 2026-10: o produto pode levar várias (embalagens_delivery) — o helper
+      // soma todas e cai no par legado em produto salvo antes da lista.
+      const embDelivery = embalagemDeliveryDoProduto(p, embMap);
+      const embDeliveryCusto = embDelivery.custo;
+      const temEmbDelivery = embDelivery.itens.length > 0;
+      result.push({ ...p, custoTotal: custoUn, precoVenda, lucro, cmv, despFixasVal, despVarVal, margem, embDeliveryCusto, temEmbDelivery });
     }
 
     setTotalProdutos(result.length);
@@ -779,7 +781,7 @@ export default function ProdutosListScreen({ navigation }) {
                       </Text>
                       {/* Design embalagem-delivery-no-produto (2026-09-09) — indica que
                           o produto tem embalagem de delivery própria cadastrada. */}
-                      {item.embalagem_delivery_id != null && (
+                      {item.temEmbDelivery && (
                         <Feather
                           name="truck"
                           size={12}
@@ -1138,7 +1140,7 @@ export default function ProdutosListScreen({ navigation }) {
                     <Text style={styles.itemMetaSep}>•</Text>
                     <Text numberOfLines={1} style={styles.itemMetaText}>Venda {formatCurrency(item.precoVenda)}</Text>
                     {/* Design embalagem-delivery-no-produto (2026-09-09) */}
-                    {item.embalagem_delivery_id != null && (
+                    {item.temEmbDelivery && (
                       <Feather
                         name="truck"
                         size={12}

@@ -12,6 +12,9 @@ import {
   buildContextoFinanceiro,
   custoDelivery,
   embalagemDeliveryDoProduto,
+  embalagensDeliveryDoProduto,
+  normalizarEmbalagensDelivery,
+  parseEmbalagensDelivery,
 } from '../src/utils/deliveryAdapter.js';
 
 const close = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `esperado ${b}, obtido ${a}`);
@@ -134,9 +137,73 @@ test('embalagemDeliveryDoProduto — resolve id contra mapa OU array; qtd defaul
   const embsArr = [{ id: 7, nome: 'Caixa para bolo', preco_unitario: 2.5 }];
   const embsMap = { 7: embsArr[0] };
   const prod = { id: 1, embalagem_delivery_id: 7, embalagem_delivery_quantidade: 2 };
-  assert.deepEqual(embalagemDeliveryDoProduto(prod, embsArr), { id: 7, nome: 'Caixa para bolo', preco: 2.5, qtd: 2, custo: 5 });
+  const linha = { id: 7, nome: 'Caixa para bolo', preco: 2.5, qtd: 2, custo: 5 };
+  assert.deepEqual(embalagemDeliveryDoProduto(prod, embsArr), { ...linha, itens: [linha] });
   assert.deepEqual(embalagemDeliveryDoProduto({ ...prod, embalagem_delivery_quantidade: null }, embsMap).custo, 2.5);
-  assert.deepEqual(embalagemDeliveryDoProduto({ id: 1, embalagem_delivery_id: null }, embsMap), { id: null, nome: null, preco: 0, qtd: 0, custo: 0 });
-  assert.deepEqual(embalagemDeliveryDoProduto({ id: 1, embalagem_delivery_id: 99 }, embsMap), { id: 99, nome: null, preco: 0, qtd: 0, custo: 0 });
+  assert.deepEqual(embalagemDeliveryDoProduto({ id: 1, embalagem_delivery_id: null }, embsMap), { id: null, nome: null, preco: 0, qtd: 0, custo: 0, itens: [] });
+  const sumiu = { id: 99, nome: null, preco: 0, qtd: 0, custo: 0 };
+  assert.deepEqual(embalagemDeliveryDoProduto({ id: 1, embalagem_delivery_id: 99 }, embsMap), { ...sumiu, itens: [sumiu] });
   assert.equal(embalagemDeliveryDoProduto(null, embsMap).custo, 0);
+});
+
+const EMBS = [
+  { id: 7, nome: 'Marmita', preco_unitario: 1.2 },
+  { id: 8, nome: 'Sacola', preco_unitario: 0.5 },
+  { id: 9, nome: 'Talher', preco_unitario: 0.25 },
+];
+
+test('várias embalagens de delivery — custo soma todas e preco × qtd continua igual ao custo', () => {
+  const prod = {
+    id: 1, embalagem_delivery_id: 7, embalagem_delivery_quantidade: 1,
+    embalagens_delivery: [{ id: 7, qtd: 1 }, { id: 8, qtd: 1 }, { id: 9, qtd: 2 }],
+  };
+  const r = embalagemDeliveryDoProduto(prod, EMBS);
+  assert.equal(r.custo, 2.2);
+  assert.equal(r.preco * r.qtd, r.custo);
+  assert.equal(r.nome, 'Marmita + Sacola + Talher');
+  assert.equal(r.itens.length, 3);
+  assert.equal(custoDelivery({ cmv: 10, embalagemDeliveryPreco: r.preco, embalagemDeliveryQtd: r.qtd }), 12.2);
+});
+
+test('lista vinda como string JSON (coluna text/jsonb escalar) é lida igual', () => {
+  const prod = { embalagem_delivery_id: 7, embalagens_delivery: '[{"id":7,"qtd":1},{"id":8,"qtd":3}]' };
+  assert.equal(embalagemDeliveryDoProduto(prod, EMBS).custo, 2.7);
+});
+
+test('produto antigo (lista nunca gravada) usa o par legado', () => {
+  const prod = { embalagem_delivery_id: 8, embalagem_delivery_quantidade: 4, embalagens_delivery: null };
+  assert.deepEqual(embalagensDeliveryDoProduto(prod), [{ id: 8, qtd: 4 }]);
+  assert.equal(embalagemDeliveryDoProduto(prod, EMBS).custo, 2);
+});
+
+test('aba com versão antiga regravou só o legado — o legado vence a lista desatualizada', () => {
+  const trocou = { embalagem_delivery_id: 9, embalagem_delivery_quantidade: 1, embalagens_delivery: [{ id: 7, qtd: 1 }, { id: 8, qtd: 1 }] };
+  assert.deepEqual(embalagensDeliveryDoProduto(trocou), [{ id: 9, qtd: 1 }]);
+});
+
+test('primeira embalagem apagada (FK zera o legado) — as outras da lista continuam valendo', () => {
+  const prod = { embalagem_delivery_id: null, embalagens_delivery: [{ id: 7, qtd: 1 }, { id: 8, qtd: 2 }] };
+  const semMarmita = EMBS.filter((e) => e.id !== 7);
+  const r = embalagemDeliveryDoProduto(prod, semMarmita);
+  assert.equal(r.custo, 1);
+  assert.equal(r.nome, 'Sacola');
+});
+
+test('normalizarEmbalagensDelivery — descarta id inválido, não repete, qtd vazia vira 1, lista vazia vira null', () => {
+  assert.deepEqual(
+    normalizarEmbalagensDelivery([{ id: 7, qtd: '' }, { id: 7, qtd: 5 }, { id: 'x' }, { id: 0 }, { id: '8', qtd: 2 }, null]),
+    [{ id: 7, qtd: 1 }, { id: 8, qtd: 2 }],
+  );
+  assert.equal(normalizarEmbalagensDelivery([]), null);
+  assert.equal(normalizarEmbalagensDelivery([{ id: null }]), null);
+  assert.equal(normalizarEmbalagensDelivery('nada'), null);
+});
+
+test('parseEmbalagensDelivery — coluna vazia ou lixo → null (cai no legado); array vazio → []', () => {
+  assert.equal(parseEmbalagensDelivery(null), null);
+  assert.equal(parseEmbalagensDelivery(''), null);
+  assert.equal(parseEmbalagensDelivery('{quebrado'), null);
+  assert.equal(parseEmbalagensDelivery('{"id":7}'), null);
+  assert.deepEqual(parseEmbalagensDelivery([]), []);
+  assert.deepEqual(embalagensDeliveryDoProduto({ embalagem_delivery_id: null, embalagens_delivery: [] }), []);
 });
