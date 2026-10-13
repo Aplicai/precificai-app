@@ -8,6 +8,9 @@ import { Text, View, Image, Platform, TouchableOpacity, ActivityIndicator, Dimen
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fontFamily } from '../utils/theme';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import { parseAssinaturaRetorno, hrefSemParametroAssinatura } from '../utils/assinaturaRetorno';
+import { showToast } from '../utils/toastBus';
+import { syncPlanFromServer } from '../hooks/usePlan';
 import useListDensity from '../hooks/useListDensity';
 import WebLayout from '../components/web/WebLayout';
 import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
@@ -755,6 +758,37 @@ const linking = {
 
 export default function AppNavigator() {
   const { user, loading, passwordRecovery } = useAuth();
+
+  // Volta do checkout do Asaas (callback.successUrl = /?assinatura=ok).
+  //
+  // Antes disto ninguém lia o parâmetro: a pessoa pagava, via o sucesso na
+  // página do Asaas, esperava o redirecionamento e caía numa Home muda. O
+  // plano até atualizava sozinho, mas em silêncio — nenhuma confirmação de que
+  // os R$ 29,90 viraram alguma coisa.
+  //
+  // Forçamos o sync (não esperar o ciclo normal) e confirmamos na tela. Depois
+  // limpamos o parâmetro, senão um F5 repete o aviso de um pagamento antigo.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !user) return undefined;
+    if (parseAssinaturaRetorno(window.location.href) !== 'ok') return undefined;
+
+    let cancelado = false;
+    (async () => {
+      try { await syncPlanFromServer(); } catch {}
+      if (cancelado) return;
+      showToast({
+        message: 'Pagamento confirmado. Seu plano já está ativo.',
+        icon: 'check-circle',
+        durationMs: 6000,
+      });
+    })();
+
+    const limpa = hrefSemParametroAssinatura(window.location.href);
+    if (limpa) {
+      try { window.history.replaceState(null, '', limpa); } catch {}
+    }
+    return () => { cancelado = true; };
+  }, [user]);
 
   if (loading) {
     return (
