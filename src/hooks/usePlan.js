@@ -100,6 +100,34 @@ async function _ensureLoaded() {
   return _loadingPromise;
 }
 
+// Novas tentativas depois de uma falha passageira na leitura do plano.
+//
+// 13/10/2026: uma conta pagante ficou com cadeado em tudo até dar F5. A leitura
+// falhou UMA vez com "Lock broken by another request with the 'steal' option"
+// (trava de sessão do auth-js, comum com duas abas ou logo após trocar de
+// conta) e ninguém tentou de novo. Como o plano em memória volta a 'free' no
+// logout, a falha deixava o cliente no grátis sem prazo pra se recuperar.
+const RETRY_DELAYS_MS = [1500, 4000, 10000];
+let _retryIdx = 0;
+let _retryTimer = null;
+
+/** Agenda outra leitura. Devolve false quando as tentativas acabaram. */
+function _agendarNovaTentativa() {
+  if (_retryTimer) return true; // já tem uma a caminho
+  if (_retryIdx >= RETRY_DELAYS_MS.length) return false;
+  const ms = RETRY_DELAYS_MS[_retryIdx++];
+  _retryTimer = setTimeout(() => {
+    _retryTimer = null;
+    syncPlanFromServer().catch(() => {});
+  }, ms);
+  return true;
+}
+
+function _zerarTentativas() {
+  _retryIdx = 0;
+  if (_retryTimer) { clearTimeout(_retryTimer); _retryTimer = null; }
+}
+
 /**
  * Lê o plano REAL da tabela `subscriptions` (escrita pelo webhook do Asaas) e
  * sobrepõe o cache local. Regras:
@@ -110,8 +138,13 @@ async function _ensureLoaded() {
  */
 export async function syncPlanFromServer() {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return _plan; // anônimo → mantém local
+    // getSession (local) em vez de getUser (ida ao servidor segurando a trava
+    // da sessão): esta função roda em toda carga, no retorno do checkout e a
+    // cada 4 s enquanto se espera um pagamento. Quem garante que só a linha do
+    // próprio usuário volta é o RLS da tabela, não esta chamada.
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user) { _zerarTentativas(); return _plan; } // anônimo → mantém local
     // A tabela usa colunas `plan` e `expires_at` (schema oficial).
     const { data, error } = await supabase
       .from('subscriptions')
@@ -119,6 +152,8 @@ export async function syncPlanFromServer() {
       .eq('user_id', user.id)
       .maybeSingle();
     if (error) {
+      // Falha passageira: tenta de novo antes de concluir qualquer coisa.
+      if (_agendarNovaTentativa()) return _plan;
       // Erro transitório (rede/RLS): mantém o cache local, mas só por 24h —
       // um cache velho (ou forjado no localStorage) não pode ser fonte da
       // verdade indefinidamente (audit A2: paywall fail-open).
@@ -128,6 +163,7 @@ export async function syncPlanFromServer() {
       return _plan;
     }
     if (!data) {
+      _zerarTentativas();
       // Usuário logado SEM linha em `subscriptions` = grátis (fail-closed).
       // Não confia no cache local: ele é só cache, nunca entitlement.
       _sub = { status: null, expiresAt: null, ciclo: null };
@@ -152,12 +188,14 @@ export async function syncPlanFromServer() {
       entitled = false;
     }
     const serverPlan = entitled ? normalizePlan(data.plan) : 'free';
+    _zerarTentativas();
     await _setPlanLocal(serverPlan);
     // Notifica sempre: o plano efetivo pode não mudar, mas os detalhes (_sub)
     // sim (ex.: status virou past_due, ou ciclo mudou) e o card precisa refletir.
     _notify();
   } catch {
-    // rede caiu / erro → mantém o que já tinha
+    // rede caiu / trava de sessão quebrada → mantém o que já tinha e tenta de novo
+    _agendarNovaTentativa();
   }
   return _plan;
 }
