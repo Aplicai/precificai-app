@@ -20,7 +20,7 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 // Sprint 2 S3 — fórmula canônica única em src/utils/deliveryPricing.
 import { calcPrecoBreakEven, calcResultadoDelivery } from '../utils/deliveryPricing';
 // Design embalagem-delivery-no-produto (2026-09-09): custoDelivery = cmv + embalagem de delivery.
-import { custoDelivery, embalagemDeliveryDoProduto } from '../utils/deliveryAdapter';
+import { custoDelivery, embalagemDeliveryDoProduto, embalagemDeliveryDoCombo } from '../utils/deliveryAdapter';
 
 // Defesa contra NaN/Infinity em precificação. Retorna 0 quando não-finito.
 function parseNum(v) {
@@ -173,11 +173,18 @@ export default function ComparativoCanaisScreen() {
             if (add) custo += add.custo * item.quantidade;
           }
         }
+        // Embalagens de delivery do combo (as dele; sem elas, as de cada produto).
+        const embDeliveryCombo = embalagemDeliveryDoCombo({
+          combo, itens, embalagens: embalagensList,
+          custoEmbDeliveryDoProduto: (id) => produtosComCusto.find(p => p.id === `prod-${id}`)?.embDeliveryCusto,
+        });
         combosResult.push({
           id: `combo-${combo.id}`,
           nome: combo.nome,
           precoVenda: parseNum(combo.preco_venda),
           custoUnitario: parseNum(custo),
+          custoDelivery: parseNum(custo) + embDeliveryCombo.custo,
+          embDeliveryCusto: parseNum(embDeliveryCombo.custo),
           tipo: 'combo',
         });
       }
@@ -200,8 +207,8 @@ export default function ComparativoCanaisScreen() {
   function buildCanais(item) {
     const custo = parseNum(item.custoUnitario);
     // Design embalagem-delivery-no-produto (2026-09-09): plataformas de delivery
-    // usam o custo NO DELIVERY (ingredientes + embalagem de delivery); combos não
-    // têm embalagem de delivery própria e caem no custoUnitario normal.
+    // usam o custo NO DELIVERY (ingredientes + embalagens de delivery), tanto em
+    // produto quanto em combo.
     const custoDeliveryCanal = parseNum(item.custoDelivery ?? item.custoUnitario);
     const precoBalcao = parseNum(item.precoVenda);
 

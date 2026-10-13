@@ -14,7 +14,9 @@ import SaveStatus from '../components/SaveStatus';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, safeNum, parseDecimalBR } from '../utils/calculations';
-import { buildContextoFinanceiro } from '../utils/deliveryAdapter';
+import { buildContextoFinanceiro, embalagemDeliveryDoProduto, parseEmbalagensDelivery, normalizarEmbalagensDelivery } from '../utils/deliveryAdapter';
+import ScreenInModal from '../components/ScreenInModal';
+import EmbalagemFormScreen from './EmbalagemFormScreen';
 // APP-22: usar engine unificada também para combos (antes era markup fixo 35% sem contar fixos/variáveis)
 import { calcularPrecoCombo } from '../utils/precificacao';
 // Auditoria de Combos (2026-09-09) — fórmulas puras extraídas e testadas em
@@ -114,6 +116,11 @@ export default function DeliveryCombosScreen() {
   const [novoCombo, setNovoCombo] = useState({ nome: '', preco_venda: '', itens: [] });
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
   const [buscaItem, setBuscaItem] = useState('');
+  // Embalagens de delivery do combo (novoCombo.embalagensDelivery): lista de
+  // marcar aberta/fechada, busca dela e o cadastro de embalagem em cascata.
+  const [embDeliveryAberto, setEmbDeliveryAberto] = useState(false);
+  const [buscaEmbDelivery, setBuscaEmbDelivery] = useState('');
+  const [cadastroEmbDeliveryVisible, setCadastroEmbDeliveryVisible] = useState(false);
   // Sessão 28.8 — filtro por tipo no modal de adicionar item
   const [filtroTipoItem, setFiltroTipoItem] = useState(null);
   // Sessão 28.9 — categorias colapsáveis (start: TODAS recolhidas para "limpar" o modal)
@@ -251,7 +258,9 @@ export default function DeliveryCombosScreen() {
       const custoUnitario = custoTotal / getDivisorRendimento(p);
       // unidade_rendimento/rendimento_total: pra getTipoVenda() detectar corretamente
       // se o produto é vendido por kg/litro/unidade (badge de unidade no combo).
-      prodResults.push({ id: p.id, nome: p.nome, precoVenda: p.preco_venda || 0, custoUnitario, unidade_rendimento: p.unidade_rendimento, rendimento_total: p.rendimento_total });
+      // embDeliveryCusto: embalagens de delivery de UMA unidade do produto — o combo
+      // sem embalagem própria herda essas no delivery (ver embalagemDeliveryDoCombo).
+      prodResults.push({ id: p.id, nome: p.nome, precoVenda: p.preco_venda || 0, custoUnitario, unidade_rendimento: p.unidade_rendimento, rendimento_total: p.rendimento_total, embDeliveryCusto: embalagemDeliveryDoProduto(p, embalagensList).custo });
     }
     setAllProdutos(prodResults);
     setAllMaterias(materiasList);
@@ -362,6 +371,8 @@ export default function DeliveryCombosScreen() {
     }
     setEditingCombo(null);
     setBuscaItem('');
+    setEmbDeliveryAberto(false);
+    setBuscaEmbDelivery('');
     setShowIncompleteModal(false);
     setSaveStatus(null);
     setLoaded(false);
@@ -433,13 +444,42 @@ export default function DeliveryCombosScreen() {
       nome: combo.nome,
       preco_venda: String(combo.preco_venda || '').replace('.', ','),
       itens: itensComNome,
+      embalagensDelivery: (parseEmbalagensDelivery(combo.embalagens_delivery) || [])
+        .map(e => ({ id: e.id, quantidade: String(e.qtd).replace('.', ',') })),
     });
+    setEmbDeliveryAberto(false);
+    setBuscaEmbDelivery('');
     setBuscaItem('');
     setShowIncompleteModal(false);
     setSaveStatus(null);
     setShowComboModal(true);
     // Mark as loaded after a small delay to prevent immediate auto-save
     setTimeout(() => setLoaded(true), 150);
+  }
+
+  // Lista própria de embalagens de delivery do combo pronta pra gravar em
+  // delivery_combos.embalagens_delivery (null = sem lista própria → o combo usa
+  // as dos produtos). Embalagem que não existe mais é descartada; só filtra com
+  // a lista de embalagens carregada (não vazia).
+  function embsDeliveryParaSalvar(data) {
+    const ids = new Set(allEmbalagens.map(e => e.id));
+    return normalizarEmbalagensDelivery(
+      (data?.embalagensDelivery || [])
+        .filter(e => ids.size === 0 || ids.has(e.id))
+        .map(e => ({ id: e.id, qtd: parseInputValue(e.quantidade) > 0 ? parseInputValue(e.quantidade) : 1 }))
+    );
+  }
+
+  // Mesmo padrão dos itens: em edição salva na hora; em criação guarda no rascunho.
+  function atualizarEmbsDelivery(fn) {
+    setNovoCombo(prev => {
+      const updated = { ...prev, embalagensDelivery: fn(prev.embalagensDelivery || []) };
+      if (editingComboRef.current && loaded) {
+        autoSaveImmediate(updated);
+      }
+      persistDraftCombo(updated);
+      return updated;
+    });
   }
 
   // Auto-save for edit mode (name/price changes via debounce)
@@ -453,8 +493,8 @@ export default function DeliveryCombosScreen() {
     try {
       const db = await getDatabase();
       await db.runAsync(
-        'UPDATE delivery_combos SET nome = ?, preco_venda = ? WHERE id = ?',
-        [data.nome.trim(), parseInputValue(data.preco_venda), combo.id]
+        'UPDATE delivery_combos SET nome = ?, preco_venda = ?, embalagens_delivery = ? WHERE id = ?',
+        [data.nome.trim(), parseInputValue(data.preco_venda), embsDeliveryParaSalvar(data), combo.id]
       );
       // P1 — perda de dados no WEB: sem transação, DELETE-then-INSERT podia esvaziar o
       // combo se um INSERT falhasse. Padrão "insere primeiro, apaga depois, com rollback".
@@ -511,8 +551,8 @@ export default function DeliveryCombosScreen() {
     try {
       const db = await getDatabase();
       await db.runAsync(
-        'UPDATE delivery_combos SET nome = ?, preco_venda = ? WHERE id = ?',
-        [data.nome.trim(), parseInputValue(data.preco_venda), combo.id]
+        'UPDATE delivery_combos SET nome = ?, preco_venda = ?, embalagens_delivery = ? WHERE id = ?',
+        [data.nome.trim(), parseInputValue(data.preco_venda), embsDeliveryParaSalvar(data), combo.id]
       );
       // P1 — insere primeiro, apaga depois, com rollback (sem transação no WEB).
       const ok = await reinsertComboItens(db, combo.id, data.itens);
@@ -538,8 +578,8 @@ export default function DeliveryCombosScreen() {
     try {
       const db = await getDatabase();
       const res = await db.runAsync(
-        'INSERT INTO delivery_combos (nome, preco_venda) VALUES (?, ?)',
-        [novoCombo.nome.trim(), parseInputValue(novoCombo.preco_venda)]
+        'INSERT INTO delivery_combos (nome, preco_venda, embalagens_delivery) VALUES (?, ?, ?)',
+        [novoCombo.nome.trim(), parseInputValue(novoCombo.preco_venda), embsDeliveryParaSalvar(novoCombo)]
       );
       const comboId = res.lastInsertRowId;
       for (const item of novoCombo.itens) {
@@ -664,7 +704,7 @@ export default function DeliveryCombosScreen() {
     }
     try {
       const db = await getDatabase();
-      const result = await db.runAsync('INSERT INTO delivery_combos (nome, preco_venda) VALUES (?,?)', [combo.nome + ' (cópia)', combo.preco_venda]);
+      const result = await db.runAsync('INSERT INTO delivery_combos (nome, preco_venda, embalagens_delivery) VALUES (?,?,?)', [combo.nome + ' (cópia)', combo.preco_venda, parseEmbalagensDelivery(combo.embalagens_delivery)]);
       const newId = result?.lastInsertRowId;
       if (newId) {
         const itens = await db.getAllAsync('SELECT * FROM delivery_combo_itens WHERE combo_id = ?', [combo.id]);
@@ -1358,6 +1398,193 @@ export default function DeliveryCombosScreen() {
                 );
               })}
 
+              {/* Embalagens de delivery do combo. Sem lista própria, o combo usa no
+                  delivery as embalagens de delivery de cada produto que leva. */}
+              {(() => {
+                const embsDel = novoCombo.embalagensDelivery || [];
+                const linhas = embsDel.map(e => {
+                  const emb = allEmbalagens.find(x => x.id === e.id) || null;
+                  const preco = emb ? safeNum(emb.preco_unitario) : 0;
+                  const apagada = !emb && allEmbalagens.length > 0;
+                  return {
+                    id: e.id,
+                    quantidade: e.quantidade,
+                    nome: emb?.nome || (apagada ? 'Embalagem apagada' : 'Embalagem'),
+                    apagada,
+                    preco,
+                    custo: preco * parseInputValue(e.quantidade),
+                  };
+                });
+                const custoProprio = linhas.reduce((a, l) => a + l.custo, 0);
+                const custoDosProdutos = novoCombo.itens
+                  .filter(i => i.tipo === 'produto')
+                  .reduce((a, i) => a + safeNum(allProdutos.find(p => p.id === i.item_id)?.embDeliveryCusto) * (safeNum(i.quantidade) || 1), 0);
+                const custoEmbDelivery = linhas.length > 0 ? custoProprio : custoDosProdutos;
+                const opcoes = allEmbalagens.filter(e => !buscaEmbDelivery.trim() || normalizeSearch(e.nome).includes(normalizeSearch(buscaEmbDelivery)));
+                const btnCadastrar = {
+                  flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 10,
+                  borderRadius: 6, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '10',
+                };
+                return (
+                  <View style={styles.comboResumo}>
+                    <View style={styles.comboResumoHeader}>
+                      <Feather name="truck" size={14} color={colors.primary} />
+                      <Text style={styles.comboResumoTitle}>Embalagens do delivery</Text>
+                    </View>
+                    {linhas.length === 0 && (
+                      <Text style={{ fontSize: fonts.small, color: colors.textSecondary, lineHeight: 18, marginBottom: spacing.sm }}>
+                        {custoDosProdutos > 0
+                          ? `Este combo ainda não tem embalagem própria. No delivery ele usa as embalagens de cada produto: ${formatCurrency(custoDosProdutos)}.`
+                          : 'Nenhuma embalagem de delivery neste combo nem nos produtos dele.'}
+                      </Text>
+                    )}
+                    {linhas.map(l => (
+                      <View
+                        key={l.id}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+                          backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+                          borderRadius: borderRadius.sm, paddingVertical: 6, paddingHorizontal: spacing.sm, marginBottom: 6,
+                        }}
+                      >
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={{ fontSize: fonts.regular, color: l.apagada ? colors.error : colors.text }} numberOfLines={1}>{l.nome}</Text>
+                          <Text style={{ fontSize: fonts.tiny, color: colors.textSecondary }} numberOfLines={1}>
+                            {l.apagada ? 'Não existe mais — remova da lista' : `${formatCurrency(l.preco)} cada • ${formatCurrency(l.custo)} no pedido`}
+                          </Text>
+                        </View>
+                        <TextInput
+                          value={String(l.quantidade ?? '')}
+                          onChangeText={(v) => atualizarEmbsDelivery(lista => lista.map(e => (e.id === l.id ? { ...e, quantidade: String(v).replace(/[^0-9.,]/g, '') } : e)))}
+                          keyboardType="decimal-pad"
+                          selectTextOnFocus
+                          accessibilityLabel={`Quantidade de ${l.nome}`}
+                          style={{
+                            width: 56, textAlign: 'center', backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border,
+                            borderRadius: borderRadius.sm, paddingVertical: 6, paddingHorizontal: 4, fontSize: fonts.regular, color: colors.text,
+                          }}
+                          placeholder="1"
+                          placeholderTextColor={colors.placeholder}
+                        />
+                        <TouchableOpacity
+                          onPress={() => atualizarEmbsDelivery(lista => lista.filter(e => e.id !== l.id))}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remover ${l.nome} do delivery`}
+                          style={{ padding: 4 }}
+                        >
+                          <Feather name="x" size={16} color={colors.error} />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                    {!embDeliveryAberto && (
+                      <TouchableOpacity
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+                          borderWidth: 1, borderColor: colors.primary + '60', borderStyle: 'dashed',
+                          borderRadius: borderRadius.sm, padding: spacing.sm + 2, marginBottom: spacing.sm,
+                        }}
+                        onPress={() => { setBuscaEmbDelivery(''); setEmbDeliveryAberto(true); }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Adicionar embalagens do delivery ao combo"
+                      >
+                        <Feather name="plus" size={14} color={colors.primary} />
+                        <Text style={{ fontSize: fonts.regular, color: colors.primary, fontFamily: fontFamily.semiBold }}>
+                          {linhas.length > 0 ? 'Adicionar mais embalagens' : 'Adicionar embalagens'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    {embDeliveryAberto && (
+                      <View style={{ borderWidth: 1, borderColor: colors.border, borderRadius: borderRadius.sm, backgroundColor: colors.surface, marginBottom: spacing.sm, overflow: 'hidden' }}>
+                        <TextInput
+                          value={buscaEmbDelivery}
+                          onChangeText={setBuscaEmbDelivery}
+                          placeholder="Buscar embalagem..."
+                          placeholderTextColor={colors.placeholder}
+                          style={{ padding: spacing.sm + 2, fontSize: fonts.regular, color: colors.text, borderBottomWidth: 1, borderBottomColor: colors.border }}
+                        />
+                        <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                          {opcoes.map(e => {
+                            const marcada = embsDel.some(x => x.id === e.id);
+                            return (
+                              <TouchableOpacity
+                                key={e.id}
+                                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border + '80' }}
+                                onPress={() => atualizarEmbsDelivery(lista => (
+                                  lista.some(x => x.id === e.id)
+                                    ? lista.filter(x => x.id !== e.id)
+                                    : [...lista, { id: e.id, quantidade: '1' }]
+                                ))}
+                                accessibilityRole="checkbox"
+                                accessibilityState={{ checked: marcada }}
+                                accessibilityLabel={e.nome}
+                              >
+                                <Feather
+                                  name={marcada ? 'check-square' : 'square'}
+                                  size={18}
+                                  color={marcada ? colors.primary : colors.textSecondary}
+                                  style={{ marginRight: spacing.sm }}
+                                />
+                                <Text style={{ flex: 1, fontSize: fonts.regular, color: colors.text }} numberOfLines={1}>{e.nome}</Text>
+                                <Text style={{ fontSize: fonts.small, color: colors.textSecondary }}>{formatCurrency(safeNum(e.preco_unitario))}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                          {opcoes.length === 0 && (
+                            <Text style={{ color: colors.textSecondary, fontSize: fonts.small, textAlign: 'center', padding: spacing.md }}>
+                              {allEmbalagens.length === 0 ? 'Nenhuma embalagem cadastrada ainda.' : 'Nenhuma embalagem encontrada.'}
+                            </Text>
+                          )}
+                        </ScrollView>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: spacing.sm, backgroundColor: colors.primary + '06' }}>
+                          <TouchableOpacity
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 }}
+                            onPress={() => setCadastroEmbDeliveryVisible(true)}
+                            accessibilityRole="button"
+                            accessibilityLabel="Cadastrar nova embalagem para o delivery"
+                          >
+                            <Feather name="plus-circle" size={14} color={colors.primary} />
+                            <Text style={{ fontSize: fonts.small, color: colors.primary, fontFamily: fontFamily.semiBold }}>Cadastrar embalagem</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={{ backgroundColor: colors.primary, borderRadius: borderRadius.sm, paddingVertical: 6, paddingHorizontal: spacing.md }}
+                            onPress={() => { setEmbDeliveryAberto(false); setBuscaEmbDelivery(''); }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Concluir seleção de embalagens"
+                          >
+                            <Text style={{ fontSize: fonts.small, color: '#fff', fontFamily: fontFamily.bold }}>
+                              {embsDel.length > 0 ? `Concluir (${embsDel.length})` : 'Concluir'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+                    {custoEmbDelivery > 0 && (
+                      <Text style={{ fontSize: fonts.small, color: colors.text, marginBottom: spacing.xs }}>
+                        Custo no delivery: {formatCurrency(custoTotal)} + {formatCurrency(custoEmbDelivery)} de embalagens = <Text style={{ fontFamily: fontFamily.semiBold }}>{formatCurrency(custoTotal + custoEmbDelivery)}</Text>
+                      </Text>
+                    )}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }}>
+                      <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 16, flex: 1, minWidth: 180 }}>
+                        {linhas.length > 0
+                          ? 'Estas embalagens valem para o combo inteiro e substituem as de cada produto. Não tem a embalagem cadastrada? Cadastre aqui.'
+                          : 'O combo vai numa sacola ou caixa só? Escolha as embalagens dele. Não tem a embalagem cadastrada? Cadastre aqui.'}
+                      </Text>
+                      <TouchableOpacity
+                        style={btnCadastrar}
+                        onPress={() => setCadastroEmbDeliveryVisible(true)}
+                        accessibilityRole="button"
+                        accessibilityLabel="Cadastrar nova embalagem para o delivery"
+                      >
+                        <Feather name="plus" size={11} color={colors.primary} />
+                        <Feather name="package" size={11} color={colors.primary} />
+                        <Text style={{ fontSize: 11, fontFamily: fontFamily.semiBold, color: colors.primary }}>Cadastrar embalagem</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })()}
+
               </View>{/* /modalColLeft */}
 
               <View style={isDesktop ? styles.modalCol : null}>
@@ -1559,6 +1786,24 @@ export default function DeliveryCombosScreen() {
               )}
           </TouchableOpacity>
         </TouchableOpacity>
+        {/* Cadastro de embalagem em cascata: o formulário completo abre empilhado
+            por cima do combo e a embalagem criada já entra nas do delivery. */}
+        <ScreenInModal
+          visible={cadastroEmbDeliveryVisible}
+          screen={EmbalagemFormScreen}
+          params={{
+            __name: 'EmbalagemForm',
+            asModal: true,
+            onSavedModal: (em) => {
+              setCadastroEmbDeliveryVisible(false);
+              if (!em || typeof em !== 'object' || !em.id) return;
+              setAllEmbalagens(prev => (prev.some(e => e.id === em.id) ? prev : [...prev, { id: em.id, nome: em.nome, preco_unitario: em.preco_unitario }]));
+              atualizarEmbsDelivery(lista => (lista.some(e => e.id === em.id) ? lista : [...lista, { id: em.id, quantidade: '1' }]));
+            },
+            onCloseModal: () => setCadastroEmbDeliveryVisible(false),
+          }}
+          onClose={() => setCadastroEmbDeliveryVisible(false)}
+        />
       </Modal>
 
       {/* Modal de campos incompletos */}

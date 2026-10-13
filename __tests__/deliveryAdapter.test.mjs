@@ -15,6 +15,7 @@ import {
   embalagensDeliveryDoProduto,
   normalizarEmbalagensDelivery,
   parseEmbalagensDelivery,
+  embalagemDeliveryDoCombo,
 } from '../src/utils/deliveryAdapter.js';
 
 const close = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) < eps, `esperado ${b}, obtido ${a}`);
@@ -206,4 +207,41 @@ test('parseEmbalagensDelivery — coluna vazia ou lixo → null (cai no legado);
   assert.equal(parseEmbalagensDelivery('{"id":7}'), null);
   assert.deepEqual(parseEmbalagensDelivery([]), []);
   assert.deepEqual(embalagensDeliveryDoProduto({ embalagem_delivery_id: null, embalagens_delivery: [] }), []);
+});
+
+test('combo sem lista própria — usa as embalagens de delivery de cada produto × quantidade', () => {
+  const custoPorProduto = { 1: 1.1, 2: 0.5 };
+  const r = embalagemDeliveryDoCombo({
+    combo: { id: 9, embalagens_delivery: null },
+    itens: [
+      { tipo: 'produto', item_id: 1, quantidade: 2 },
+      { tipo: 'produto', item_id: 2, quantidade: 1 },
+      { tipo: 'embalagem', item_id: 7, quantidade: 3 },
+      { tipo: 'produto', item_id: 99, quantidade: 1 },
+    ],
+    embalagens: EMBS,
+    custoEmbDeliveryDoProduto: (id) => custoPorProduto[id],
+  });
+  close(r.custo, 2.7);
+  assert.equal(r.origem, 'produtos');
+});
+
+test('combo com lista própria — vale a do combo e NÃO soma a dos produtos (sacola não conta duas vezes)', () => {
+  const r = embalagemDeliveryDoCombo({
+    combo: { id: 9, embalagens_delivery: [{ id: 8, qtd: 1 }, { id: 9, qtd: 2 }] },
+    itens: [{ tipo: 'produto', item_id: 1, quantidade: 2 }],
+    embalagens: EMBS,
+    custoEmbDeliveryDoProduto: () => 5,
+  });
+  close(r.custo, 1);
+  assert.equal(r.origem, 'combo');
+  assert.equal(r.itens.length, 2);
+});
+
+test('combo sem nada de delivery — custo 0 e origem null; entradas ruins não quebram', () => {
+  assert.deepEqual(embalagemDeliveryDoCombo({ combo: {}, itens: [{ tipo: 'produto', item_id: 1, quantidade: 1 }], embalagens: EMBS, custoEmbDeliveryDoProduto: () => 0 }), { custo: 0, origem: null, itens: [] });
+  assert.equal(embalagemDeliveryDoCombo().custo, 0);
+  assert.equal(embalagemDeliveryDoCombo({ combo: null, itens: null }).custo, 0);
+  // quantidade inválida conta como 1; item sem tipo é produto (legado)
+  close(embalagemDeliveryDoCombo({ itens: [{ item_id: 1, quantidade: 'x' }], custoEmbDeliveryDoProduto: () => 1.5 }).custo, 1.5);
 });

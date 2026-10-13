@@ -275,3 +275,36 @@ export function embalagemDeliveryDoProduto(produto, embalagens) {
   const nomes = itens.map((i) => i.nome).filter(Boolean);
   return { id: itens[0].id, nome: nomes.length ? nomes.join(' + ') : null, preco: custo, qtd: 1, custo, itens };
 }
+
+/**
+ * Embalagens de delivery de um COMBO.
+ *
+ *  - Combo com lista própria (`delivery_combos.embalagens_delivery`) → vale ela.
+ *    É o caso de quem manda o combo inteiro numa sacola/caixa só.
+ *  - Sem lista própria → soma as embalagens de delivery de cada PRODUTO do combo
+ *    (× quantidade do item). Assim o combo já sai certo sem configurar nada.
+ *
+ * As duas NÃO se somam: se cada produto leva "sacola" e o combo também, somar
+ * contaria a sacola várias vezes.
+ *
+ * @param {object} input
+ * @param {object} input.combo - row de delivery_combos
+ * @param {Array} input.itens - rows de delivery_combo_itens ({ tipo, item_id, quantidade })
+ * @param {Array|object} input.embalagens - rows de embalagens (array ou mapa por id)
+ * @param {(produtoId:number)=>number} input.custoEmbDeliveryDoProduto - custo das
+ *   embalagens de delivery de UMA unidade do produto
+ * @returns {{ custo: number, origem: 'combo'|'produtos'|null, itens: Array }}
+ */
+export function embalagemDeliveryDoCombo({ combo, itens, embalagens, custoEmbDeliveryDoProduto } = {}) {
+  const propria = embalagemDeliveryDoProduto({ embalagens_delivery: combo?.embalagens_delivery }, embalagens);
+  if (propria.itens.length > 0) return { custo: propria.custo, origem: 'combo', itens: propria.itens };
+  let custo = 0;
+  for (const item of itens || []) {
+    if ((item?.tipo || 'produto') !== 'produto') continue;
+    const c = Number(typeof custoEmbDeliveryDoProduto === 'function' ? custoEmbDeliveryDoProduto(item.item_id) : 0);
+    if (!Number.isFinite(c) || c <= 0) continue;
+    const q = Number(item.quantidade);
+    custo += c * (Number.isFinite(q) && q > 0 ? q : 1);
+  }
+  return { custo, origem: custo > 0 ? 'produtos' : null, itens: [] };
+}

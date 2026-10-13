@@ -21,7 +21,7 @@ import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendiment
 // Sprint 2 S3 — fonte única da verdade para precificação delivery (substitui fórmula inline duplicada).
 import { calcResultadoDelivery, sugerirPrecoDelivery, calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
 // Sessão 28.12 (D-22b): adapter pra extrair imposto% das despesas variáveis
-import { buildContextoFinanceiro, normalizePlataforma, custoDelivery, embalagemDeliveryDoProduto } from '../utils/deliveryAdapter';
+import { buildContextoFinanceiro, normalizePlataforma, custoDelivery, embalagemDeliveryDoProduto, embalagemDeliveryDoCombo } from '../utils/deliveryAdapter';
 // Sessão 28.26: service unificado de upsert do "preço delivery cobrado pelo user"
 import { upsertPrecoDelivery } from '../services/precoDeliveryService';
 // D-24: simulador em lote renderiza inline dentro do hub
@@ -233,7 +233,8 @@ export default function DeliveryHubScreen({ navigation }) {
 
     // Build combo cost data using product cost lookup
     const prodCostMap = {};
-    prodData.forEach(p => { prodCostMap[p.id] = p.custoUnit; });
+    const prodEmbDeliveryMap = {};
+    prodData.forEach(p => { prodCostMap[p.id] = p.custoUnit; prodEmbDeliveryMap[p.id] = p.embDeliveryCusto; });
     const itensByCombo = {};
     comboItensRows.forEach(ci => { (itensByCombo[ci.combo_id] = itensByCombo[ci.combo_id] || []).push(ci); });
 
@@ -258,8 +259,13 @@ export default function DeliveryHubScreen({ navigation }) {
         return a; // delivery_produto: custo não disponível nesta tela
       }, 0);
       const margem = calcMargem(c.preco_venda, custoUnit);
-      // Combo: sem embalagem de delivery própria — custo no delivery = custo dos itens.
-      return { ...c, custoUnit, custoDelivery: custoUnit, embDeliveryCusto: 0, margem, isCombo: true };
+      // Custo no delivery do combo = custo dos itens + embalagens de delivery
+      // (as do próprio combo; sem elas, as de cada produto que ele leva).
+      const embDelivery = embalagemDeliveryDoCombo({
+        combo: c, itens, embalagens: embsAll || [],
+        custoEmbDeliveryDoProduto: (id) => prodEmbDeliveryMap[id],
+      });
+      return { ...c, custoUnit, custoDelivery: custoUnit + embDelivery.custo, embDeliveryCusto: embDelivery.custo, margem, isCombo: true };
     });
     setCombos(comboData);
     } catch (e) {

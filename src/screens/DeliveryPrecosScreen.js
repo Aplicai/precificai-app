@@ -19,7 +19,7 @@ import { calcResultadoDelivery, calcSugestaoDeliveryCompleta, calcPrecoMesmoLucr
 import { resolveCustoUnitarioItemCombo } from '../utils/comboPricing';
 // APP-25: extrair imposto separado das demais variáveis (maquininha não entra no delivery)
 // Design embalagem-delivery-no-produto (2026-09-09): custoDelivery = cmv + embalagem de delivery.
-import { buildContextoFinanceiro, custoDelivery, embalagemDeliveryDoProduto } from '../utils/deliveryAdapter';
+import { buildContextoFinanceiro, custoDelivery, embalagemDeliveryDoProduto, embalagemDeliveryDoCombo } from '../utils/deliveryAdapter';
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
 import usePersistedState from '../hooks/usePersistedState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -295,11 +295,18 @@ export default function DeliveryPrecosScreen() {
           if (add) custo += add.custo * item.quantidade;
         }
       }
+      // Embalagens de delivery do combo (as dele; sem elas, as de cada produto).
+      const embDeliveryCombo = embalagemDeliveryDoCombo({
+        combo, itens, embalagens: embalagensList,
+        custoEmbDeliveryDoProduto: (id) => result.find(p => p.id === id)?.embDeliveryCusto,
+      });
       combosResult.push({
         id: `combo-${combo.id}`,
         nome: combo.nome,
         precoVenda: safeNum(combo.preco_venda),
         custoUnitario: safeNum(custo),
+        custoDelivery: safeNum(custo) + embDeliveryCombo.custo,
+        embDeliveryCusto: embDeliveryCombo.custo,
         tipo: 'combo',
       });
     }
