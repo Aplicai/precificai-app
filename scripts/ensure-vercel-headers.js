@@ -25,8 +25,10 @@ const SECURITY_HEADERS = {
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
   'Content-Security-Policy': [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://browser.sentry-cdn.com",
-    "connect-src 'self' https://*.supabase.co https://*.sentry.io wss://*.supabase.co",
+    // connect.facebook.net / www.facebook.com: Meta Pixel (public/pcf-tracking.js),
+    // carregado só depois do aceite de cookies.
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://browser.sentry-cdn.com https://connect.facebook.net",
+    "connect-src 'self' https://*.supabase.co https://*.sentry.io wss://*.supabase.co https://www.facebook.com https://connect.facebook.net",
     "img-src 'self' data: blob: https:",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' data: https://fonts.gstatic.com",
