@@ -22,7 +22,7 @@
  */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Platform, Switch } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Platform, Switch, Alert } from 'react-native';
 import usePushPermissions from '../hooks/usePushPermissions';
 // Sessão 28.29: styles extraídos pra arquivo dedicado (eram 611 linhas inline)
 import { entityCreateModalStyles as styles } from './styles/entityCreateModal.styles';
@@ -1777,6 +1777,10 @@ export default function EntityCreateModal({
               const existingItens = info.draft.itens || [];
               // 28.38 BUG FIX: custoUnit pra preparo = custo_por_kg * 1g = custo por 1 unidade.
               // Usa calcCustoPreparo pra fazer a conversão correta.
+              // Mesmo rendimento usado ao gravar o preparo acima. O `rend` de lá é
+              // local daquele bloco; referenciá-lo aqui lançava ReferenceError e o
+              // preparo recém-criado não entrava no rascunho do produto.
+              const rend = parseInputValue(rendimentoTotalPrep) || 1;
               const custoPorKg = calcCustoPorKgPreparo(custoTotal, rend, unidadeMedidaPrep || 'g');
               const custoUnit = calcCustoPreparo(custoPorKg, 1, unidadeMedidaPrep || 'g');
               const novoItem = {
