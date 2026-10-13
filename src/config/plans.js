@@ -6,6 +6,18 @@
  *
  * NÃO inclui o Fluxo de Caixa + DRE: ele é beta por allowlist de e-mail
  * (mecanismo separado em useFeatureFlags), independente do plano.
+ *
+ * FAIXA ÚNICA (13/10/2026). Antes eram dois planos pagos: Pro (30 produtos)
+ * e Ilimitado (sem teto + Ranking BCG). Os números do banco mostraram que a
+ * faixa do meio não existia — das 23 contas com produto, 12 não passavam de
+ * 5, só 4 ficavam entre 6 e 30, e 7 já estouravam 30. O teto de 30 não
+ * separava cliente pequeno de grande: cobrava a mais justamente dos 7
+ * maiores catálogos (o maior tem 128 produtos). E nenhuma assinatura paga
+ * existia na faixa de cima pra justificar mantê-la.
+ *
+ * Agora: 'free' é a porta de entrada e 'pro' libera tudo. 'ilimitado' vira
+ * LEGADO — continua válido e com acesso total pras contas que já estão
+ * nele, mas não é mais vendido. Por isso nada foi migrado no banco.
  */
 
 export const PLANS = ['free', 'pro', 'ilimitado'];
@@ -34,15 +46,16 @@ export const PLAN_PRICES_ANNUAL = {
 // VANTAGENS sempre que a pessoa tocar num recurso fora do plano dela.
 export const PLAN_BENEFITS = {
   pro: [
-    'Até 30 produtos e 30 combos',
+    'Produtos e combos ilimitados',
     'Módulo Delivery completo (iFood, Rappi, próprio)',
     'Lista de compras automática',
     'Relatório de ingredientes + Exportação de fichas em PDF',
+    'Ranking de Produtos · Engenharia de Cardápio (Matriz BCG)',
   ],
+  // Legado — ver nota no topo. Mantido só pra quem já está nessa linha.
   ilimitado: [
     'Produtos e combos ilimitados',
-    'Tudo do plano Pro incluído',
-    'Ranking de Produtos · Engenharia de Cardápio (Matriz BCG)',
+    'Tudo o que o Precificaí oferece',
   ],
 };
 
@@ -55,7 +68,8 @@ const RANK = { free: 0, pro: 1, ilimitado: 2 };
  */
 export const PLAN_LIMITS = {
   free: { produtos: 5, combos: 5 },
-  pro: { produtos: 30, combos: 30 },
+  pro: { produtos: Infinity, combos: Infinity },
+  // Legado: mesmo acesso que o pro. Ninguém novo entra aqui.
   ilimitado: { produtos: Infinity, combos: Infinity },
 };
 
@@ -75,7 +89,7 @@ export const FEATURE_MIN_PLAN = {
   relatorio_insumos: 'pro',
   lista_compras: 'pro',
   export_pdf: 'pro',
-  ranking_bcg: 'ilimitado',
+  ranking_bcg: 'pro',
 };
 
 /**
@@ -118,6 +132,7 @@ export function planAllowsCount(plano, entity, currentCount) {
 
 /** Próximo plano acima (pra CTA "fazer upgrade"). null se já é o topo. */
 export function nextPlan(plano) {
-  const i = RANK[normalizePlan(plano)];
-  return i >= 2 ? null : PLANS[i + 1];
+  // Só existe um plano pago. De 'free' sobe pra 'pro'; de 'pro' (ou do
+  // legado 'ilimitado') não há upgrade nenhum a oferecer.
+  return normalizePlan(plano) === 'free' ? 'pro' : null;
 }
