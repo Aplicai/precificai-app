@@ -66,10 +66,29 @@ export default function ResetPasswordScreen({ navigation }) {
       if (err) throw err;
       setDone(true);
       setLoading(false);
-      // Faz logout pra limpar a sessão de recovery, limpa flag e leva pra login
+      // Sai da sessão de recovery e volta pro login.
+      //
+      // A ordem antiga travava a tela: `clearPasswordRecovery()` rodava com o
+      // `user` ainda preenchido (signOut lento ou pendurado), o guard
+      // `isAuthRoutes = !user || passwordRecovery` virava falso, o AuthStack
+      // desmontava e o `navigation.replace('Login')` não tinha mais pra onde
+      // ir — o usuário ficava no "Senha redefinida!" para sempre.
+      //
+      // Agora: o signOut tem teto de tempo (não pode travar o fluxo) e, no web,
+      // a saída é navegação dura, que independe do estado do navigator e ainda
+      // garante bundle novo.
       setTimeout(async () => {
-        try { await supabase.auth.signOut(); } catch {}
+        try {
+          await Promise.race([
+            supabase.auth.signOut(),
+            new Promise((r) => setTimeout(r, 2000)),
+          ]);
+        } catch {}
         try { clearPasswordRecovery && clearPasswordRecovery(); } catch {}
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location) {
+          window.location.replace('/login');
+          return;
+        }
         navigation.replace('Login');
       }, 1500);
     } catch (e) {
@@ -126,7 +145,7 @@ export default function ResetPasswordScreen({ navigation }) {
           <Feather name="check" size={32} color="#fff" />
         </View>
         <Text style={styles.successTitle}>Senha redefinida!</Text>
-        <Text style={styles.successDesc}>Você será redirecionado pro login em segundos...</Text>
+        <Text style={styles.successDesc}>Levando você de volta pro login...</Text>
         <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.md }} />
       </View>
     );

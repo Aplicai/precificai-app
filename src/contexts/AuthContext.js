@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext, useRef, useCallback } from 'react';
 import { AppState, Platform } from 'react-native';
 import { supabase } from '../config/supabase';
+import { isRecoveryIntent, clearRecoveryIntent } from '../utils/recoveryFlag';
 import { resetDatabase } from '../database/database';
 import { captureException, addBreadcrumb, setUser as reportSetUser } from '../utils/errorReporter';
 
@@ -39,7 +40,13 @@ export function AuthProvider({ children }) {
   // Sessão 28.9 — APP-01: flag que indica que o user clicou no link de reset
   // de senha. Quando true, AppNavigator força a tela ResetPassword mesmo que
   // a sessão de recovery do Supabase pareça "logada".
-  const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [passwordRecovery, setPasswordRecovery] = useState(
+    // Não espera o evento PASSWORD_RECOVERY: ele sai num setTimeout dentro do
+    // _initialize() do auth-js e se perde quando o React ainda não assinou
+    // (aba nova vinda do e-mail, bundle frio). A URL já foi lida em
+    // src/config/supabase.js, antes do client apagar o fragmento.
+    () => isRecoveryIntent(),
+  );
   const lastActiveRef = useRef(Date.now());
   const timeoutRef = useRef(null);
   // Sessão 28.56 — flag pra distinguir SIGNED_OUT intencional (user clicou em
@@ -374,7 +381,10 @@ export function AuthProvider({ children }) {
 
   // Sessão 28.9 — APP-01: helper pra o ResetPasswordScreen sinalizar que terminou
   // o fluxo de recovery (depois de redefinir senha + signOut).
-  const clearPasswordRecovery = useCallback(() => setPasswordRecovery(false), []);
+  const clearPasswordRecovery = useCallback(() => {
+    clearRecoveryIntent();
+    setPasswordRecovery(false);
+  }, []);
 
   // M-2: persiste a preferência "Lembrar de mim" do LoginScreen.
   // O valor é consultado por getEffectiveTimeout() a cada checagem de inatividade.
