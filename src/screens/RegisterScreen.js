@@ -9,6 +9,7 @@ import useRateLimit from '../hooks/useRateLimit';
 import { mapAuthError } from '../utils/authErrors';
 import { parseRateLimitSeconds } from '../utils/parseRateLimit';
 import { MIN_PASSWORD_LENGTH, validatePassword } from '../utils/passwordPolicy';
+import { askConsent } from '../utils/marketing';
 
 // D-01: alinhar com checklist visual exibido ao usuário (8 chars + maiúscula + minúscula + número).
 // Símbolo é recomendado mas não obrigatório.
@@ -80,6 +81,9 @@ export default function RegisterScreen({ navigation }) {
   // Quando > 0, desabilita o botão e exibe "Aguarde Xs para tentar novamente".
   const [retryIn, setRetryIn] = useState(0);
   const passwordRef = useRef(null);
+
+  // Tela de chegada dos anúncios: pergunta sobre cookies de medição uma vez.
+  useEffect(() => { askConsent(); }, []);
 
   // Decrementa retryIn a cada segundo até zerar; cleanup garante que o timer
   // seja descartado ao desmontar OU assim que o countdown termina.

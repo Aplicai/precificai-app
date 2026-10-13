@@ -17,6 +17,7 @@ import { supabase } from '../config/supabase';
 import { syncPlanFromServer, getSubscriptionInfo } from '../hooks/usePlan';
 import { showToast } from '../utils/toastBus';
 import { aguardarAtivacao } from '../utils/aguardarAtivacao';
+import { trackEvent } from '../utils/marketing';
 
 // Só uma espera por vez: clicar em "Assinar" duas vezes não pode deixar dois
 // laços consultando o servidor em paralelo. O número identifica a espera viva.
@@ -93,6 +94,8 @@ export async function startCheckout(plano, ciclo) {
     } else {
       await Linking.openURL(url);
     }
+
+    trackEvent('InitiateCheckout', { content_name: `${plano}_${ciclo}`, currency: 'BRL' });
 
     // A tela de redirecionamento do Asaas é lenta; esta aba descobre sozinha.
     observarAtivacao().catch(() => {});

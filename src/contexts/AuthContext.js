@@ -4,6 +4,7 @@ import { supabase } from '../config/supabase';
 import { isRecoveryIntent, clearRecoveryIntent } from '../utils/recoveryFlag';
 import { resetDatabase } from '../database/database';
 import { captureException, addBreadcrumb, setUser as reportSetUser } from '../utils/errorReporter';
+import { getAttribution, trackRegistrationOnce, syncMarketingForUser } from '../utils/marketing';
 
 const AuthContext = createContext({});
 
@@ -121,6 +122,13 @@ export function AuthProvider({ children }) {
       clearInterval(heartbeat);
     };
   }, [user, handleInactivityLogout]);
+
+  // Primeira sessão da conta: registra o cadastro e grava a origem (anúncio) no perfil.
+  const userId = user?.id;
+  useEffect(() => {
+    if (userId) syncMarketingForUser(user, supabase);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   useEffect(() => {
     // Get initial session
@@ -249,12 +257,20 @@ export function AuthProvider({ children }) {
         Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin
           ? `${window.location.origin}/`
           : undefined;
+      // Origem do cadastro (campanha/anúncio) vai junto no perfil: com confirmação
+      // de e-mail ligada não há sessão aqui para gravar depois.
+      const attribution = getAttribution();
+      const options = {
+        ...(emailRedirectTo ? { emailRedirectTo } : {}),
+        ...(attribution ? { data: { attribution } } : {}),
+      };
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: emailRedirectTo ? { emailRedirectTo } : undefined,
+        options: Object.keys(options).length ? options : undefined,
       });
       if (error) throw error;
+      if (data?.user) trackRegistrationOnce(data.user);
       return data;
     } catch (err) {
       captureException(err, { screen: 'Register', action: 'signUp' });

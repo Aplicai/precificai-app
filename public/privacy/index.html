@@ -139,7 +139,7 @@
   </header>
 
   <main class="container">
-    <p class="updated">Versão 2.0 &middot; Última atualização: 13 de maio de 2026</p>
+    <p class="updated">Versão 2.1 &middot; Última atualização: 13 de outubro de 2026</p>
 
     <div class="lead">
       Esta Política de Privacidade descreve como a <strong>Aplicaí Consultoria</strong> (&ldquo;Aplicaí&rdquo;, &ldquo;nós&rdquo;)
@@ -247,6 +247,7 @@
       <li><strong>Functional Software, Inc. (Sentry)</strong> &mdash; monitoramento de erros e estabilidade (servidores nos Estados Unidos).</li>
       <li><strong>Google LLC</strong> &mdash; somente quando o Titular opta por &ldquo;Entrar com Google&rdquo; (OAuth).</li>
       <li><strong>Vercel Inc.</strong> &mdash; hospedagem da versão web do aplicativo.</li>
+      <li><strong>Meta Platforms, Inc.</strong> &mdash; medição de resultado dos nossos anúncios no Facebook e no Instagram, <strong>somente se o Titular aceitar os cookies de medição</strong> (ver item 9).</li>
     </ul>
     <p>
       Poderemos divulgar dados quando exigido por lei, ordem judicial ou determinação de autoridade competente
@@ -312,14 +313,31 @@
     </p>
 
     <h2>9. Cookies e armazenamento local</h2>
-    <p>Na versão web, utilizamos exclusivamente armazenamento técnico estritamente necessário:</p>
+    <p>Na versão web, utilizamos armazenamento técnico estritamente necessário:</p>
     <ul>
       <li><strong>Cookies/localStorage de sessão</strong> &mdash; para manter o Titular autenticado;</li>
-      <li><strong>localStorage de preferências</strong> &mdash; densidade de listas, tema e configurações da interface.</li>
+      <li><strong>localStorage de preferências</strong> &mdash; densidade de listas, tema e configurações da interface;</li>
+      <li><strong>Cookie de origem da visita</strong> (<code>pcf_attr</code>) &mdash; guarda de qual campanha ou anúncio a visita veio (parâmetros <code>utm</code> do link), para sabermos quais divulgações funcionam;</li>
+      <li><strong>Cookie de escolha</strong> (<code>pcf_consent</code>) &mdash; lembra se o Titular aceitou ou recusou os cookies de medição.</li>
+    </ul>
+    <h3>9.1 Cookies de medição de anúncios (opcionais)</h3>
+    <p>
+      Com o <strong>consentimento</strong> do Titular (art. 7º, I, da LGPD), dado no aviso de cookies, utilizamos o
+      <strong>Pixel da Meta</strong> e a <strong>API de Conversões da Meta</strong> para medir o resultado dos nossos
+      anúncios no Facebook e no Instagram. Nesse caso:
+    </p>
+    <ul>
+      <li>o Pixel grava cookies próprios (<code>_fbp</code>, <code>_fbc</code>) e informa à Meta as páginas visitadas, a criação de conta e o início de uma assinatura;</li>
+      <li>quando uma assinatura é paga, informamos à Meta a compra (valor e plano), acompanhada do e-mail e do identificador da conta <strong>em formato embaralhado (hash SHA-256)</strong>, que não permite a leitura direta do dado;</li>
+      <li>não enviamos à Meta receitas, insumos, preços, custos ou qualquer dado do negócio cadastrado no aplicativo.</li>
     </ul>
     <p>
-      <strong>Não utilizamos</strong> cookies de rastreamento publicitário, Google Analytics, pixels de redes sociais
-      ou quaisquer trackers de terceiros para fins de marketing.
+      Sem o aceite, o Pixel não é carregado e nenhuma dessas informações é enviada. O Titular pode mudar de ideia a
+      qualquer momento apagando os cookies deste site no navegador (o aviso volta a aparecer) ou escrevendo para o
+      contato do item 14.
+    </p>
+    <p>
+      <strong>Não utilizamos</strong> Google Analytics nem outros trackers de terceiros para fins de marketing além dos descritos acima.
     </p>
 
     <h2>10. Crianças e adolescentes</h2>
