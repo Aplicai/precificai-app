@@ -316,6 +316,15 @@ serve(async (req) => {
     // Sem isto, cada reentrega de PAYMENT_CONFIRMED recalculava expires_at a
     // partir de "agora" e estendia o plano de graça. Chave = payment.id + event.
     const eventKey = payment?.id ? `${payment.id}:${event}` : null;
+    // Chaves gravadas nesta execução. Se a gravação do plano falhar adiante, elas
+    // são desfeitas — senão a retentativa do Asaas cairia em "duplicado" e um
+    // pagamento real nunca seria aplicado.
+    const chavesGravadas: string[] = [];
+    const desfazerChaves = async () => {
+      if (!chavesGravadas.length) return;
+      const { error: undoErr } = await supabase.from('asaas_events').delete().in('payment_id', chavesGravadas);
+      if (undoErr) console.error('[asaas-webhook] não desfez chaves de idempotência:', chavesGravadas, undoErr.code, undoErr.message);
+    };
     if (eventKey) {
       const { data: inserted, error: evErr } = await supabase
         .from('asaas_events')
@@ -331,19 +340,69 @@ serve(async (req) => {
         console.warn('[asaas-webhook] asaas_events indisponível:', evErr.code, evErr.message);
       } else if (!inserted) {
         return new Response(JSON.stringify({ ok: true, skipped: 'duplicate' }), { status: 200 });
+      } else {
+        chavesGravadas.push(eventKey);
       }
     }
 
-    // Nunca REDUZ um expires_at já concedido (ex.: anual ativo recebendo mensal).
-    if (typeof row.expires_at === 'string') {
-      const { data: cur } = await supabase
-        .from('subscriptions')
-        .select('expires_at')
-        .eq('user_id', userId)
+    // Estado atual da assinatura do usuário (uma leitura só).
+    const { data: cur, error: curErr } = await supabase
+      .from('subscriptions')
+      .select('expires_at, asaas_subscription_id')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (curErr) {
+      // Sem o estado atual não dá para somar a validade nem saber qual assinatura
+      // é a vigente. Devolve 500 para o Asaas reenviar em vez de decidir no escuro.
+      console.error('[asaas-webhook] erro lendo assinatura atual:', curErr.code, curErr.message);
+      await desfazerChaves();
+      return new Response(JSON.stringify({ ok: false }), { status: 500 });
+    }
+    const curSubId: string | null = cur?.asaas_subscription_id || null;
+    // Cobrança traz a assinatura em payment.subscription; evento de assinatura traz em subscription.id.
+    const eventSubId: string | null = body?.payment?.subscription || body?.subscription?.id || null;
+    const isGrant = typeof row.expires_at === 'string';
+    let subscriptionToRemove: string | null = null;
+
+    if (isGrant) {
+      // Um pagamento concede UMA vez. No cartão o Asaas manda PAYMENT_CONFIRMED
+      // na cobrança e PAYMENT_RECEIVED ~32 dias depois, quando o dinheiro cai.
+      // A chave por evento (acima) deixava os dois passarem; como agora a
+      // validade soma em cima do período vigente, o segundo daria um ciclo grátis.
+      const { data: granted, error: grantErr } = await supabase
+        .from('asaas_events')
+        .insert({ payment_id: `${payment.id}:GRANT`, event: 'GRANT', user_id: userId })
+        .select('payment_id')
         .maybeSingle();
-      if (cur?.expires_at && new Date(cur.expires_at) > new Date(row.expires_at)) {
-        row.expires_at = cur.expires_at;
+      if ((grantErr && grantErr.code === '23505') || (!grantErr && !granted)) {
+        console.log('[asaas-webhook] pagamento já concedido, ignorado:', payment.id, event);
+        return new Response(JSON.stringify({ ok: true, skipped: 'already_granted' }), { status: 200 });
       }
+      if (grantErr) console.warn('[asaas-webhook] asaas_events indisponível (GRANT):', grantErr.code, grantErr.message);
+      else chavesGravadas.push(`${payment.id}:GRANT`);
+
+      // Renovação antecipada soma ao período já pago em vez de recomeçar de hoje:
+      // quem paga 9 dias antes do vencimento não perde esses 9 dias. Consequência:
+      // a validade nunca é reduzida (substitui a antiga checagem "nunca REDUZ").
+      const dias = ciclo === 'anual' ? 365 : 30;
+      const fimAtual = cur?.expires_at ? new Date(cur.expires_at) : null;
+      const base = fimAtual && fimAtual > now ? fimAtual : now;
+      row.expires_at = addDays(base, dias);
+
+      // Cobrança sem assinatura (avulsa) não apaga o vínculo que já existe.
+      if (!row.asaas_subscription_id && curSubId) row.asaas_subscription_id = curSubId;
+
+      // Um usuário, uma assinatura viva no Asaas. Se este pagamento veio de uma
+      // assinatura NOVA (renovou pelo app, trocou de anual pra mensal), a antiga
+      // é removida depois do upsert — senão ela continua gerando cobrança.
+      if (curSubId && row.asaas_subscription_id && row.asaas_subscription_id !== curSubId) {
+        subscriptionToRemove = curSubId;
+      }
+    } else if (curSubId && eventSubId && eventSubId !== curSubId) {
+      // Atraso/cancelamento de uma assinatura que NÃO é a vigente (a antiga,
+      // recém-substituída). Aplicar marcaria como cancelado quem acabou de pagar.
+      console.log('[asaas-webhook] evento de assinatura antiga ignorado:', event, eventSubId);
+      return new Response(JSON.stringify({ ok: true, skipped: 'stale_subscription' }), { status: 200 });
     }
 
     const { error } = await supabase
@@ -352,7 +411,27 @@ serve(async (req) => {
 
     if (error) {
       console.error('[asaas-webhook] erro upsert:', error);
+      await desfazerChaves();
       return new Response(JSON.stringify({ ok: false }), { status: 500 });
+    }
+
+    // Só depois de gravar o vínculo novo: o Asaas vai responder a esta remoção
+    // com SUBSCRIPTION_DELETED, e o filtro acima precisa já enxergar a nova.
+    if (subscriptionToRemove) {
+      const apiKey = (Deno.env.get('ASAAS_API_KEY') || '').trim().replace(/^["']|["']$/g, '');
+      try {
+        const res = await fetch(`${asaasBaseUrl(apiKey)}/subscriptions/${subscriptionToRemove}`, {
+          method: 'DELETE',
+          headers: { access_token: apiKey, 'User-Agent': 'PrecificaiApp' },
+        });
+        if (!res.ok && res.status !== 404) {
+          console.error('[asaas-webhook] não removeu assinatura antiga:', subscriptionToRemove, res.status, await res.text().catch(() => ''));
+        } else {
+          console.log('[asaas-webhook] assinatura antiga removida:', subscriptionToRemove);
+        }
+      } catch (e) {
+        console.error('[asaas-webhook] erro de rede ao remover assinatura antiga:', subscriptionToRemove, e);
+      }
     }
 
     return new Response(JSON.stringify({ ok: true, event, userId, plano }), { status: 200 });

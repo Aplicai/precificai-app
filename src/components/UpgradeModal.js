@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, Modal, Pressable, StyleSheet, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
@@ -31,13 +31,18 @@ export default function UpgradeModal({
   message,
   highlights,
   onSubscribe,
+  defaultCiclo = 'mensal',
+  ctaLabel,
 }) {
   const planLabel = PLAN_LABELS[requiredPlan] || 'Pro';
   const monthly = PLAN_PRICES[requiredPlan];
   const annual = PLAN_PRICES_ANNUAL[requiredPlan];
   const fmt = (v) => `R$ ${Number(v).toFixed(2).replace('.', ',')}`;
 
-  const [ciclo, setCiclo] = useState('mensal'); // 'mensal' | 'anual'
+  const [ciclo, setCiclo] = useState(defaultCiclo); // 'mensal' | 'anual'
+  // Cada abertura começa no ciclo pedido por quem chamou (a renovação do anual
+  // abre em "anual"; os cadeados abrem em "mensal").
+  useEffect(() => { if (visible) { setCiclo(defaultCiclo); setErro(''); } }, [visible, defaultCiclo]);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState('');
 
@@ -142,14 +147,14 @@ export default function UpgradeModal({
               onPress={handleSubscribe}
               disabled={loading}
               accessibilityRole="button"
-              accessibilityLabel={`Assinar plano ${planLabel}`}
+              accessibilityLabel={ctaLabel || `Assinar plano ${planLabel}`}
             >
               {loading ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <>
                   <Feather name="zap" size={16} color="#fff" />
-                  <Text style={styles.btnPrimaryText}>Assinar {planLabel}</Text>
+                  <Text style={styles.btnPrimaryText}>{ctaLabel || `Assinar ${planLabel}`}</Text>
                 </>
               )}
             </Pressable>

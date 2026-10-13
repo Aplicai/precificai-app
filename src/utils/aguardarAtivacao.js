@@ -26,6 +26,10 @@ export async function aguardarAtivacao({
   intervaloMs = INTERVALO_MS,
   tempoMaximoMs = TEMPO_MAXIMO_MS,
   cancelado = () => false,
+  // Na renovação o plano já é pago antes e depois; o que muda é a validade.
+  // Quem chama pode consultar uma "marca" (plano + validade) e dizer aqui
+  // quando ela representa um plano pago.
+  estaAtivo = (valor) => !!valor && valor !== 'free',
 }) {
   const inicio = agora();
   while (agora() - inicio < tempoMaximoMs) {
@@ -39,7 +43,7 @@ export async function aguardarAtivacao({
       continue; // rede oscilou: tenta de novo no próximo ciclo
     }
     // Ativou = saiu do grátis E mudou em relação ao que era antes do checkout.
-    if (plano && plano !== 'free' && plano !== planoAntes) {
+    if (estaAtivo(plano) && plano !== planoAntes) {
       return { ativou: true, plano, motivo: 'ativado' };
     }
   }

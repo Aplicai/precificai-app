@@ -14,7 +14,7 @@
 
 import { Platform, Linking } from 'react-native';
 import { supabase } from '../config/supabase';
-import { syncPlanFromServer } from '../hooks/usePlan';
+import { syncPlanFromServer, getSubscriptionInfo } from '../hooks/usePlan';
 import { showToast } from '../utils/toastBus';
 import { aguardarAtivacao } from '../utils/aguardarAtivacao';
 
@@ -28,12 +28,19 @@ let _esperaAtual = 0;
  */
 async function observarAtivacao() {
   const minha = ++_esperaAtual;
-  let planoAntes = 'free';
-  try { planoAntes = await syncPlanFromServer(); } catch {}
+  // Marca = plano + validade. Na primeira assinatura muda o plano; na renovação
+  // o plano continua 'pro' e o que muda é a validade.
+  const marca = async () => {
+    const plano = await syncPlanFromServer();
+    return `${plano}|${getSubscriptionInfo().expiresAt || ''}`;
+  };
+  let antes = 'free|';
+  try { antes = await marca(); } catch {}
 
   const r = await aguardarAtivacao({
-    planoAntes,
-    consultar: () => syncPlanFromServer(),
+    planoAntes: antes,
+    consultar: marca,
+    estaAtivo: (m) => typeof m === 'string' && !m.startsWith('free|'),
     cancelado: () => minha !== _esperaAtual,
   });
   if (r.ativou && minha === _esperaAtual) {
@@ -125,42 +132,6 @@ export async function cancelSubscription() {
   } catch (e) {
     if (typeof console !== 'undefined' && console.error) console.error('[cancelSubscription]', e);
     return { ok: false, error: 'Erro ao cancelar. Tente novamente.' };
-  }
-}
-
-/**
- * Abre a fatura de renovação que o Asaas já gerou para a assinatura do usuário
- * (plano anual no Pix). Não cria cobrança nem assinatura nova — só localiza a
- * que está pendente.
- * @returns {Promise<{ok: boolean, url?: string, semFatura?: boolean, error?: string}>}
- */
-export async function openRenewalInvoice() {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return { ok: false, error: 'Você precisa estar logado.' };
-
-    const { data, error } = await supabase.functions.invoke('asaas-renewal-link', { body: {} });
-    if (error) {
-      let msg = 'Não foi possível buscar a cobrança agora.';
-      try {
-        const ctx = error.context && (await error.context.json?.());
-        if (ctx?.error) msg = ctx.error;
-      } catch (_) {}
-      return { ok: false, error: msg };
-    }
-    if (!data?.ok) return { ok: false, error: data?.error || 'Não foi possível buscar a cobrança agora.' };
-    if (!data.url) return { ok: true, semFatura: true };
-
-    if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined') window.open(data.url, '_blank', 'noopener,noreferrer');
-    } else {
-      await Linking.openURL(data.url);
-    }
-    observarAtivacao().catch(() => {});
-    return { ok: true, url: data.url };
-  } catch (e) {
-    if (typeof console !== 'undefined' && console.error) console.error('[openRenewalInvoice]', e);
-    return { ok: false, error: 'Erro ao buscar a cobrança. Tente novamente.' };
   }
 }
 

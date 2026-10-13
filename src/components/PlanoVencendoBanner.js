@@ -3,38 +3,34 @@
  *
  * No mensal o cartão renova sozinho. No anual não há débito automático: o Asaas
  * envia a cobrança por e-mail e SMS e, se o cliente não pagar, o plano cai para
- * o grátis no vencimento. Este aviso aparece nos 15 dias anteriores e leva
- * direto à fatura que o Asaas já gerou.
+ * o grátis no vencimento. Este aviso aparece nos 15 dias anteriores e abre a
+ * escolha de plano: renovar o anual no Pix ou passar para o mensal no cartão.
+ *
+ * A cobrança é criada na hora do clique. A primeira versão procurava a fatura
+ * que o Asaas gera sozinho, e o botão ficava sem ter o que abrir quando ela
+ * ainda não existia. Quando o novo pagamento entra, o webhook remove a
+ * assinatura antiga para não haver cobrança em dobro.
  *
  * Não tem botão de fechar de propósito: perder o plano por esquecimento é pior
  * que ver o aviso por alguns dias, e ele some sozinho quando o pagamento entra.
  */
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import usePlan from '../hooks/usePlan';
 import { calcAvisoVencimento, textoPrazo } from '../utils/avisoVencimento';
-import { openRenewalInvoice } from '../services/checkout';
+import UpgradeModal from './UpgradeModal';
+import { UPGRADE_HIGHLIGHTS } from '../config/plans';
 import { spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 
 export default function PlanoVencendoBanner() {
   const { planCiclo, planStatus, planExpiresAt } = usePlan();
-  const [buscando, setBuscando] = useState(false);
-  const [recado, setRecado] = useState('');
+  const [escolhendo, setEscolhendo] = useState(false);
 
   const aviso = calcAvisoVencimento({ ciclo: planCiclo, status: planStatus, expiresAt: planExpiresAt });
   if (!aviso) return null;
 
   const data = aviso.venceEm.toLocaleDateString('pt-BR');
-
-  const pagar = async () => {
-    setRecado('');
-    setBuscando(true);
-    const r = await openRenewalInvoice();
-    setBuscando(false);
-    if (!r.ok) setRecado(r.error || 'Não foi possível buscar a cobrança agora.');
-    else if (r.semFatura) setRecado('A cobrança de renovação ainda não foi gerada. Ela chega por e-mail e SMS antes do vencimento.');
-  };
 
   return (
     <View style={styles.banner} accessibilityRole="alert">
@@ -42,22 +38,29 @@ export default function PlanoVencendoBanner() {
       <View style={styles.body}>
         <Text style={styles.title}>Seu plano anual {textoPrazo(aviso.dias)} ({data})</Text>
         <Text style={styles.desc}>
-          A renovação é por Pix e não é debitada sozinha. Sem o pagamento, a conta volta para o plano grátis.
+          Ele não renova sozinho. Sem o pagamento, a conta volta para o plano grátis. Os dias que faltam não são perdidos ao renovar agora.
         </Text>
-        {!!recado && <Text style={styles.recado}>{recado}</Text>}
       </View>
       <TouchableOpacity
         style={styles.btn}
-        onPress={pagar}
-        disabled={buscando}
+        onPress={() => setEscolhendo(true)}
         activeOpacity={0.8}
         accessibilityRole="button"
-        accessibilityLabel="Pagar renovação"
+        accessibilityLabel="Renovar plano"
       >
-        {buscando
-          ? <ActivityIndicator size="small" color="#fff" />
-          : <Text style={styles.btnText}>Pagar renovação</Text>}
+        <Text style={styles.btnText}>Renovar plano</Text>
       </TouchableOpacity>
+
+      <UpgradeModal
+        visible={escolhendo}
+        onClose={() => setEscolhendo(false)}
+        requiredPlan="pro"
+        defaultCiclo="anual"
+        ctaLabel="Renovar"
+        title="Renovar seu plano Pro"
+        message="Escolha como quer continuar. O novo período começa quando o atual terminar."
+        highlights={UPGRADE_HIGHLIGHTS}
+      />
     </View>
   );
 }
@@ -75,7 +78,6 @@ const styles = StyleSheet.create({
   body: { flex: 1, minWidth: 220 },
   title: { fontSize: fonts.small, fontFamily: fontFamily.bold, fontWeight: '700', color: '#B45309', marginBottom: 1 },
   desc: { fontSize: fonts.tiny, color: '#92400E', lineHeight: 16 },
-  recado: { fontSize: fonts.tiny, color: '#92400E', fontFamily: fontFamily.medium, marginTop: 4 },
   btn: {
     backgroundColor: '#B45309',
     borderRadius: borderRadius.sm,
