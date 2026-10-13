@@ -40,16 +40,6 @@ if (typeof document !== 'undefined') {
   // (evita zoom automático no Safari iOS ao focar campos).
   injectMobileWebFixes();
 
-  // Medição de anúncios (Meta Pixel + atribuição). O script só carrega o Pixel
-  // depois do aceite de cookies; ver public/pcf-tracking.js.
-  if (!document.querySelector('script[data-pcf-tracking]')) {
-    const script = document.createElement('script');
-    script.src = '/pcf-tracking.js';
-    script.async = true;
-    script.setAttribute('data-pcf-tracking', '1');
-    document.head.appendChild(script);
-  }
-
   // Manifest link
   if (!document.querySelector('link[rel="manifest"]')) {
     const link = document.createElement('link');

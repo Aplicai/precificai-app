@@ -114,6 +114,19 @@ if (typeof document !== 'undefined') {
     el.setAttribute('href', href);
     Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
   }
+  // === MEDIÇÃO DE ANÚNCIOS (Meta Pixel + atribuição) ===============
+  // O script só carrega o Pixel depois do aceite de cookies; ver
+  // public/pcf-tracking.js e src/utils/marketing.js.
+  try {
+    if (!document.querySelector('script[data-pcf-tracking]')) {
+      const tracking = document.createElement('script');
+      tracking.src = '/pcf-tracking.js';
+      tracking.async = true;
+      tracking.setAttribute('data-pcf-tracking', '1');
+      document.head.appendChild(tracking);
+    }
+  } catch (_) {}
+
   setLink('manifest', '/manifest.json');
   setLink('apple-touch-icon', '/icon-192.png');
   // Apple touch icons em múltiplos tamanhos pra cada device
