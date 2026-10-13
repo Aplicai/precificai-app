@@ -74,3 +74,11 @@ Paradas para o dono: os 3 vídeos de cada lote prontos. Voz e estilo já aprovad
 - Cota gratuita do Gemini TTS: 3 pedidos por janela. Uma tomada por vídeo.
 - Quem produz não ouve o áudio nem vê o vídeo rodando: volume, pronúncia e fluidez dependem da revisão do dono.
 - Pixel da Meta, evento de cadastro e UTM continuam fora do app. Sem isso a campanha não otimiza para cadastro.
+
+## Mudanças durante a produção (14/10/2026)
+
+- O dono reprovou a semelhança entre os vídeos de mesa. Cada anúncio passou a ter superfície, protagonista e cor próprios (temas do molde): 02 lousa, 03 papel azul com sacola, 04 mármore com pizza, 05 tapete de corte, 09 madeira, 10 azulejo com foto de lanchonete.
+- "Sem cartão" saiu de todos os vídeos (fala, legenda e selo).
+- #8 deixou de prometer "preço em um minuto" e virou tour do app em 15 segundos, que é verificável no próprio vídeo.
+- #3 usa o valor "mesmo lucro" do app (R$ 33,22 com comissão de 27%).
+- Trilha diferente por vídeo, nivelada abaixo da voz.
