@@ -11,7 +11,7 @@ import usePersistedState from '../../hooks/usePersistedState';
 import useListDensity from '../../hooks/useListDensity';
 import usePlan from '../../hooks/usePlan';
 import UpgradeModal from '../UpgradeModal';
-import { FEATURE_MIN_PLAN, PLAN_LABELS } from '../../config/plans';
+import { FEATURE_MIN_PLAN, PLAN_LABELS, UPGRADE_HIGHLIGHTS } from '../../config/plans';
 
 // Ordem segue o fluxo de composição (audit P1-08):
 // Insumos → Preparos (combina insumos) → Embalagens (wrapper) → Produtos (final).
@@ -370,9 +370,7 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse, initi
                         requiredPlan: reqPlan,
                         title: `${item.label} é um recurso ${PLAN_LABELS[reqPlan]}`,
                         message: 'Desbloqueie este recurso e muito mais:',
-                        highlights: reqPlan === 'ilimitado'
-                          ? ['Produtos e combos ilimitados', 'Ranking de Produtos (Matriz BCG)']
-                          : ['Delivery, Lista de compras, Relatórios e PDF', 'Até 30 produtos e 30 combos'],
+                        highlights: UPGRADE_HIGHLIGHTS,
                       });
                       return;
                     }

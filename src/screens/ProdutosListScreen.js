@@ -30,7 +30,7 @@ import useUndoableDelete from '../hooks/useUndoableDelete';
 import useBulkSelection from '../hooks/useBulkSelection';
 import usePlan from '../hooks/usePlan';
 import UpgradeModal from '../components/UpgradeModal';
-import { PLAN_LABELS } from '../config/plans';
+import { PLAN_LABELS, UPGRADE_HIGHLIGHTS } from '../config/plans';
 // Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
 // Para produtos, o blocker crítico é "vendas registradas" — aviso de soft-delete recomendado.
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
@@ -130,9 +130,7 @@ export default function ProdutosListScreen({ navigation }) {
         requiredPlan: next,
         title: 'Você atingiu o limite de produtos',
         message: `No plano ${PLAN_LABELS[plano]} você cadastra até ${limitFor('produtos')} produtos. Faça upgrade pra continuar cadastrando:`,
-        highlights: next === 'ilimitado'
-          ? ['Produtos e combos ilimitados', 'Ranking de Produtos (Matriz BCG)']
-          : ['Até 30 produtos e 30 combos', 'Delivery, Lista de compras, relatórios e mais'],
+        highlights: UPGRADE_HIGHLIGHTS,
       });
       return;
     }

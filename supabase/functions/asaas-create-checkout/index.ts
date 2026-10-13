@@ -136,6 +136,11 @@ serve(async (req: Request) => {
       chargeType: 'RECURRENT',
       subscriptionCycle: CYCLE_MAP[ciclo],
       value,
+      // Obrigatório quando a cobrança não é cartão. Sem ele o Asaas devolve
+      // 400 invalid_object "É necessário informar a quantidade de dias úteis
+      // para vencimento da cobrança" — foi o que derrubou o anual no Pix em
+      // 13/10. No cartão o campo é ignorado, então vai só quando precisa.
+      ...(BILLING_MAP[ciclo] !== 'CREDIT_CARD' ? { dueDateLimitDays: 3 } : {}),
       // Carrega quem é + qual plano/ciclo. O webhook lê em payment.externalReference.
       externalReference: `${user.id}|${plano}|${ciclo}`,
       notificationEnabled: true,

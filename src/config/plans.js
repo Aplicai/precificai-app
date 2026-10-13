@@ -59,6 +59,15 @@ export const PLAN_BENEFITS = {
   ],
 };
 
+// Destaques curtos do UpgradeModal. Fonte ÚNICA: antes cada tela tinha a sua
+// cópia do texto, e quando o plano virou faixa única cinco delas continuaram
+// dizendo "Até 30 produtos e 30 combos".
+export const UPGRADE_HIGHLIGHTS = [
+  'Produtos e combos ilimitados',
+  'Delivery, Lista de compras, Relatórios e PDF',
+  'Ranking de Produtos (Matriz BCG)',
+];
+
 // Ranking pra comparar planos (quanto maior, mais inclui).
 const RANK = { free: 0, pro: 1, ilimitado: 2 };
 

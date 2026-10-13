@@ -9,7 +9,7 @@ import useListDensity from '../hooks/useListDensity';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePlan from '../hooks/usePlan';
 import UpgradeModal from '../components/UpgradeModal';
-import { FEATURE_MIN_PLAN, PLAN_LABELS } from '../config/plans';
+import { FEATURE_MIN_PLAN, PLAN_LABELS, UPGRADE_HIGHLIGHTS } from '../config/plans';
 
 /**
  * Hub "Ferramentas" reorganizado (audit S9 — Sprint 4).
@@ -240,9 +240,7 @@ export default function MaisScreen({ navigation }) {
                       requiredPlan: reqPlan,
                       title: `${item.title} é um recurso ${PLAN_LABELS[reqPlan]}`,
                       message: 'Desbloqueie este recurso e muito mais:',
-                      highlights: reqPlan === 'ilimitado'
-                        ? ['Produtos e combos ilimitados', 'Ranking de Produtos (Matriz BCG)']
-                        : ['Delivery, Lista de compras, Relatórios e PDF', 'Até 30 produtos e 30 combos'],
+                      highlights: UPGRADE_HIGHLIGHTS,
                     });
                     return;
                   }

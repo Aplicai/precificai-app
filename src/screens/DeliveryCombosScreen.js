@@ -34,7 +34,7 @@ import { calcSheetMaxHeight } from '../utils/keyboardInset';
 import usePersistedState from '../hooks/usePersistedState';
 import usePlan from '../hooks/usePlan';
 import UpgradeModal from '../components/UpgradeModal';
-import { PLAN_LABELS } from '../config/plans';
+import { PLAN_LABELS, UPGRADE_HIGHLIGHTS } from '../config/plans';
 
 // ─── Numeric helpers (audit P0 — defesa contra NaN/Infinity) ─────────────
 function parseInputNumber(raw) {
@@ -356,9 +356,7 @@ export default function DeliveryCombosScreen() {
         requiredPlan: next,
         title: 'Você atingiu o limite de combos',
         message: `No plano ${PLAN_LABELS[plano]} você cria até ${limitFor('combos')} combos. Faça upgrade pra montar mais:`,
-        highlights: next === 'ilimitado'
-          ? ['Produtos e combos ilimitados', 'Ranking de Produtos (Matriz BCG)']
-          : ['Até 30 produtos e 30 combos', 'Delivery, Lista de compras, relatórios e mais'],
+        highlights: UPGRADE_HIGHLIGHTS,
       });
       return;
     }
@@ -660,9 +658,7 @@ export default function DeliveryCombosScreen() {
         requiredPlan: next,
         title: 'Você atingiu o limite de combos',
         message: `No plano ${PLAN_LABELS[plano]} você cria até ${limitFor('combos')} combos. Faça upgrade pra montar mais:`,
-        highlights: next === 'ilimitado'
-          ? ['Produtos e combos ilimitados', 'Ranking de Produtos (Matriz BCG)']
-          : ['Até 30 produtos e 30 combos', 'Delivery, Lista de compras, relatórios e mais'],
+        highlights: UPGRADE_HIGHLIGHTS,
       });
       return;
     }
