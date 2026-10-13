@@ -16,6 +16,7 @@ import MobileOnboardingOverlay from '../components/MobileOnboardingOverlay';
 import OnboardingChecklist from '../components/OnboardingChecklist';
 import HomeInstallBanner from '../components/HomeInstallBanner';
 import PrecosZeradosBanner from '../components/PrecosZeradosBanner';
+import PlanoVencendoBanner from '../components/PlanoVencendoBanner';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { useAuth } from '../contexts/AuthContext';
 import useFeatureFlag from '../hooks/useFeatureFlag';
@@ -565,6 +566,7 @@ export default function HomeScreen({ navigation }) {
 
       {/* UX audit 09/09: aviso de preços estimados vive aqui (abaixo do header),
           só em Início e Insumos — antes era global e ficava acima do header. */}
+      <PlanoVencendoBanner />
       <PrecosZeradosBanner />
 
       {/* HomeInstallBanner: movido pra depois de "Ações Rápidas" (UX walkthrough —
