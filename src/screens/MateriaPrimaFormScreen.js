@@ -20,7 +20,7 @@ import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useListDensity from '../hooks/useListDensity';
 import { t } from '../i18n/pt-BR';
-import { UNIDADES_MEDIDA, calcPrecoBase, calcFatorCorrecao, getLabelPrecoBase, formatCurrency, converterParaBase, calcCustoIngrediente, calcCustoPreparo, calcMargem, parseDecimalBR, calcCustoPorKgPreparo } from '../utils/calculations';
+import { UNIDADES_MEDIDA, calcPrecoBase, calcFatorCorrecao, formatCurrency, converterParaBase, calcCustoIngrediente, calcCustoPreparo, calcMargem, parseDecimalBR, calcCustoPorKgPreparo } from '../utils/calculations';
 // Sprint 2 S5 — checagem de dependências antes de DELETE (evita órfãos em preparo_ingredientes / produto_ingredientes).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 // Sessão 28.8 — sugestão automática via dicionário pré-cadastrado (zero IA, zero custo)
@@ -28,6 +28,10 @@ import { normalize as normalizeStr, getAllInsumos } from '../data/dicionario';
 // Walkthrough 2026-09: helpers puros (format PT-BR, líquida=bruta se vazio,
 // aproveitamento %, filtro de histórico no aviso de exclusão, matcher de sugestão).
 import { formatDecimalBR, formatMoneyBR, liquidaEfetiva, aproveitamentoPercent, semHistoricoPrecos, escolherSugestao } from '../utils/insumoFormHelpers';
+// Frase de compra 2026-10: "Comprei [5] [kg] por R$ [25,00]" + toggle "Tem perda?"
+// + resultado "Isso dá R$ 5,00 por kg". Helpers puros testados em
+// __tests__/compraSentence.test.mjs. As colunas salvas NÃO mudaram.
+import { UNIDADE_PADRAO_NOVO, deveAbrirPerda, fraseCustoResultado, sufixoPrecoBase, mensagensErroCompra } from '../utils/compraSentence';
 
 const CATEGORY_COLORS = [
   colors.primary, colors.accent, colors.coral, colors.purple,
@@ -50,13 +54,10 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   const onSavedModal = route.params?.onSavedModal;
   const onCloseModal = route.params?.onCloseModal;
   const defaultCategoriaId = route.params?.defaultCategoriaId;
-  const { isDesktop, isMobile } = useResponsiveLayout();
+  const { isDesktop } = useResponsiveLayout();
   const { isCompact, buttonHeight } = useListDensity();
-  // Sessão Forms-Mobile — agrupamentos 2/3-col viram coluna no mobile p/ não
-  // espremer os inputs e respeitar o padrão de 1-campo-por-linha.
-  const rowStyle = isMobile
-    ? { flexDirection: 'column', gap: 0 }
-    : styles.row;
+  // Frase de compra 2026-10: as palavras entre os campos ("Comprei", "por R$").
+  const sentenceWordStyle = { fontSize: fonts.regular, color: colors.text, fontFamily: fontFamily.medium, fontWeight: '500' };
 
   // Mapa estático: returnTo → tab pai (Sessão 24).
   // MateriaPrimaForm é registrado em 3 stacks distintos (Insumos, Produtos, Preparos)
@@ -110,9 +111,15 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   const [form, setForm] = useState({
     nome: '', marca: '', categoria_id: null,
     quantidade_bruta: '', quantidade_liquida: '',
-    unidade_medida: 'g',
+    // Frase de compra 2026-10: novo ingrediente começa em kg (era g). Edição
+    // mantém a unidade salva (loadItem).
+    unidade_medida: UNIDADE_PADRAO_NOVO,
     valor_pago: '',
   });
+  // Frase de compra 2026-10: "Tem perda? (casca, osso, aparas)". Off por
+  // padrão; quando off, quantidade_liquida fica vazia → liquidaEfetiva = bruta.
+  // Ao editar item cuja líquida difere da bruta, abre sozinho (loadItem).
+  const [temPerda, setTemPerda] = useState(false);
   const [categorias, setCategorias] = useState([]);
   const [catPickerVisible, setCatPickerVisible] = useState(false);
   const [novaCatMode, setNovaCatMode] = useState(false);
@@ -325,6 +332,8 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
         unidade_medida: unidadeFinal,
         valor_pago: formatMoneyBR(item.valor_pago),
       });
+      // Frase de compra 2026-10: líquida ≠ bruta → abre o toggle "Tem perda?"
+      setTemPerda(deveAbrirPerda(item.quantidade_bruta, item.quantidade_liquida));
       // Carregar histórico de preços
       try {
         const hist = await db.getAllAsync(
@@ -358,7 +367,6 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
   const valorPago = parseNum(form.valor_pago);
   const fatorCorrecao = calcFatorCorrecao(qtBruta, qtLiquida);
   const precoBase = calcPrecoBase(valorPago, qtLiquida, form.unidade_medida);
-  const labelPreco = getLabelPrecoBase(form.unidade_medida);
 
   const temDadosCalculo = qtBruta > 0 && qtLiquida > 0 && valorPago > 0;
   const formTitle = editId ? 'Editar Ingrediente' : 'Novo Ingrediente';
@@ -609,8 +617,12 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       // Sessão 28.36: toast em vez de Alert.alert (que silenciava em modal nested)
-      try { showToast('Preencha os campos em vermelho antes de salvar', 'alert-circle', 3500); } catch (_) {}
-      try { Alert.alert('Campos obrigatórios', 'Preencha todos os campos obrigatórios antes de salvar.'); } catch (_) {}
+      // Frase de compra 2026-10: a mensagem aponta pra nova frase
+      // ("Diga quanto você comprou" / "Diga quanto pagou").
+      const msgs = [errs.nome ? 'Dê um nome ao ingrediente' : null, ...mensagensErroCompra(errs)].filter(Boolean);
+      const msgToast = msgs.length ? msgs.join('. ') : 'Preencha os campos em vermelho antes de salvar';
+      try { showToast(msgToast, 'alert-circle', 3500); } catch (_) {}
+      try { Alert.alert('Falta pouco', msgToast + '.'); } catch (_) {}
       return;
     }
     // APP-04: valida unidade no save manual também
@@ -985,6 +997,9 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                       ? String(valorPagoMercado).replace('.', ',')
                       : p.valor_pago,
                   }));
+                  // Frase de compra 2026-10: FC de referência aplicou líquida ≠ bruta
+                  // → abre o toggle "Tem perda?" pra o campo não ficar escondido.
+                  setTemPerda(deveAbrirPerda(qtdBruta, qtdLiquida));
                   // Marca como "estimado" pra UI mostrar badge amarelo
                   if (valorPagoMercado != null) {
                     try { setEhValorEstimado(true); } catch {}
@@ -1013,151 +1028,86 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* Marca + Categoria */}
-        <View style={rowStyle}>
-          <View style={{ flex: 1 }}>
-            <InputField
-              label="Marca (opcional)"
-              value={form.marca}
-              onChangeText={(v) => setForm(p => ({ ...p, marca: v }))}
-              placeholder="Pode deixar em branco"
-              style={styles.fieldCompact}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <View style={styles.pickerContainer}>
-              <Text style={styles.pickerLabel}>Categoria</Text>
-              <TouchableOpacity style={styles.pickerSelector} onPress={() => { setCatPickerVisible(true); setNovaCatMode(false); }}>
-                {form.categoria_id && (() => {
-                    const idx = categorias.findIndex(x => x.id === form.categoria_id);
-                    return idx >= 0 ? <View style={[styles.catDot, { backgroundColor: getCategoryColor(idx) }]} /> : null;
-                  })()}
-                <Text style={[styles.pickerText, !form.categoria_id && styles.pickerPlaceholder, form.categoria_id && { flex: 1 }]} numberOfLines={1}>
-                  {form.categoria_id
-                    ? (() => { const c = categorias.find(x => x.id === form.categoria_id); return c ? c.nome : 'Selecione'; })()
-                    : 'Selecione'}
-                </Text>
-                <Feather name="chevron-down" size={14} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-          </View>
+        {/* Categoria (Frase de compra 2026-10: "Marca" desceu pra baixo da frase) */}
+        <View style={styles.pickerContainer}>
+          <Text style={styles.pickerLabel}>Categoria</Text>
+          <TouchableOpacity style={styles.pickerSelector} onPress={() => { setCatPickerVisible(true); setNovaCatMode(false); }}>
+            {form.categoria_id && (() => {
+                const idx = categorias.findIndex(x => x.id === form.categoria_id);
+                return idx >= 0 ? <View style={[styles.catDot, { backgroundColor: getCategoryColor(idx) }]} /> : null;
+              })()}
+            <Text style={[styles.pickerText, !form.categoria_id && styles.pickerPlaceholder, form.categoria_id && { flex: 1 }]} numberOfLines={1}>
+              {form.categoria_id
+                ? (() => { const c = categorias.find(x => x.id === form.categoria_id); return c ? c.nome : 'Selecione'; })()
+                : 'Selecione'}
+            </Text>
+            <Feather name="chevron-down" size={14} color={colors.textSecondary} />
+          </TouchableOpacity>
         </View>
 
-        {/* Unidade + Qtd. Bruta + Qtd. Líquida */}
-        <View style={rowStyle}>
-          <View style={{ flex: isMobile ? 1 : 0.7 }}>
-            <PickerSelect
-              label="Unidade"
-              value={form.unidade_medida}
-              onValueChange={(v) => setForm(p => ({ ...p, unidade_medida: v }))}
-              options={UNIDADES_MEDIDA.map(u => ({ label: u.label, value: u.value }))}
-            />
-          </View>
-          {/* Sessão 28.21: pra unidade 'un' não faz sentido bruta/líquida — só "Quantidade".
-              FC sempre 1, ambas iguais. UI mostra UM input só. */}
-          {form.unidade_medida === 'un' ? (
-            <View style={{ flex: 2 }}>
-              <InputField
-                label="Quantidade"
-                value={form.quantidade_bruta}
-                onChangeText={(v) => {
-                  setForm(p => ({ ...p, quantidade_bruta: v, quantidade_liquida: v }));
-                  setErrors(p => ({ ...p, quantidade_bruta: undefined, quantidade_liquida: undefined }));
-                }}
-                keyboardType="decimal-pad"
-                placeholder="Ex.: 12"
-                error={errors.quantidade_bruta}
-                style={styles.fieldCompact}
-                rightLabel={
-                  <InfoTooltip
-                    title="Quantidade comprada"
-                    text="Quantas unidades você comprou pelo valor pago. Pra ingredientes vendidos por unidade não tem perda de casca/osso, então é só esse valor."
-                    examples={['Ex: 12 ovos custaram R$ 18,00 → 12 unidades']}
-                  />
-                }
-              />
-            </View>
-          ) : (
-            <>
-              <View style={{ flex: 1 }}>
-                <InputField
-                  label="Qtd. Bruta"
-                  value={form.quantidade_bruta}
-                  onChangeText={(v) => { setForm(p => ({ ...p, quantidade_bruta: v })); setErrors(p => ({ ...p, quantidade_bruta: undefined })); }}
-                  keyboardType="decimal-pad"
-                  placeholder="Ex.: 1000"
-                  error={errors.quantidade_bruta}
-                  style={styles.fieldCompact}
-                  rightLabel={
-                    <InfoTooltip
-                      title="Quantidade Bruta (o que você paga)"
-                      text="É o peso ou volume TOTAL na hora da compra, incluindo o que será descartado. É por essa quantidade que a nota fiscal cobra."
-                      examples={[
-                        '1 kg de maracujá com casca = 1000 g',
-                        '500 g de camarão com cabeça = 500 g',
-                        '1 kg de cebola com casca = 1000 g',
-                      ]}
-                    />
-                  }
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <InputField
-                  label="Qtd. Líquida"
-                  value={form.quantidade_liquida}
-                  onChangeText={(v) => { setForm(p => ({ ...p, quantidade_liquida: v })); setErrors(p => ({ ...p, quantidade_liquida: undefined })); }}
-                  keyboardType="decimal-pad"
-                  placeholder="Igual à bruta se vazio"
-                  error={errors.quantidade_liquida}
-                  style={styles.fieldCompact}
-                  rightLabel={
-                    <InfoTooltip
-                      title="Quantidade Líquida (o que você usa)"
-                      text="É o peso ou volume APROVEITÁVEL, depois de tirar casca, osso, semente, talo ou qualquer parte que vai pro lixo. É essa quantidade que entra de fato no produto."
-                      examples={[
-                        '1 kg de maracujá rende 350 g de polpa',
-                        '500 g de camarão limpo = 350 g',
-                        '1 kg de cebola descascada = 800 g',
-                      ]}
-                    />
-                  }
-                />
-              </View>
-            </>
-          )}
+        {/* Frase de compra 2026-10: "Comprei [5] [kg] por R$ [25,00]".
+            Substitui Unidade / Qtd. Bruta / Valor pago. Mesmo estado e mesmas
+            colunas salvas (quantidade_bruta, unidade_medida, valor_pago) — só a
+            apresentação mudou. flexWrap: no mobile quebra em duas linhas
+            ("Comprei [5] [kg]" / "por R$ [25,00]"), no desktop fica numa só. */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs + 2, marginBottom: spacing.xs }}>
+          <Text style={sentenceWordStyle}>Comprei</Text>
+          <InputField
+            value={form.quantidade_bruta}
+            onChangeText={(v) => {
+              // Pra 'un' não existe bruta/líquida (Sessão 28.21) — líquida segue a bruta.
+              setForm(p => (p.unidade_medida === 'un'
+                ? { ...p, quantidade_bruta: v, quantidade_liquida: v }
+                : { ...p, quantidade_bruta: v }));
+              setErrors(p => ({ ...p, quantidade_bruta: undefined }));
+            }}
+            keyboardType="decimal-pad"
+            inputMode="decimal"
+            placeholder="5"
+            error={errors.quantidade_bruta}
+            style={{ marginBottom: 0, width: 88 }}
+            inputStyle={{ textAlign: 'center' }}
+            testID="compra-quantidade"
+          />
+          <PickerSelect
+            value={form.unidade_medida}
+            displayValue={form.unidade_medida}
+            onValueChange={(v) => {
+              setForm(p => (v === 'un'
+                // 'un' não tem perda: líquida = bruta, toggle fecha.
+                ? { ...p, unidade_medida: v, quantidade_liquida: p.quantidade_bruta }
+                : { ...p, unidade_medida: v }));
+              if (v === 'un') setTemPerda(false);
+            }}
+            options={UNIDADES_MEDIDA.map(u => ({ label: u.label, value: u.value }))}
+            style={{ marginBottom: 0, width: 92 }}
+          />
+          <Text style={sentenceWordStyle}>por R$</Text>
+          <InputField
+            value={form.valor_pago}
+            onChangeText={(v) => { setForm(p => ({ ...p, valor_pago: v })); setErrors(p => ({ ...p, valor_pago: undefined })); }}
+            keyboardType="decimal-pad"
+            inputMode="decimal"
+            placeholder="25,00"
+            error={errors.valor_pago}
+            style={{ marginBottom: 0, width: 110 }}
+            testID="compra-valor"
+          />
+          <InfoTooltip
+            title="Como preencher"
+            text="Diga quanto você comprou e quanto pagou no total, como está na nota. Não é o valor por kg nem por unidade — o app calcula isso pra você."
+            examples={['Comprei 1 kg de cebola por R$ 5,00', 'Comprei 500 g de camarão por R$ 35,00', 'Comprei 12 un de ovos por R$ 18,00']}
+          />
         </View>
-
-        {/* Valor Pago — microcopy explícito: é o total pago pela QUANTIDADE
-            BRUTA comprada (não por kg / não por unidade aproveitável). */}
-        <InputField
-          label="Valor pago pela quantidade comprada (R$)"
-          value={form.valor_pago}
-          onChangeText={(v) => { setForm(p => ({ ...p, valor_pago: v })); setErrors(p => ({ ...p, valor_pago: undefined })); }}
-          keyboardType="decimal-pad"
-          placeholder="Ex.: 5,90"
-          error={errors.valor_pago}
-          style={styles.fieldCompact}
-          rightLabel={
-            <InfoTooltip
-              title="Valor pago pela quantidade comprada"
-              text="É o valor TOTAL que você pagou pela quantidade bruta comprada, como aparece na nota fiscal. Não é o valor por kg nem por unidade — o app calcula isso pra você."
-              examples={['1 kg de cebola por R$ 5,00', '500 g de camarão por R$ 35,00', '12 ovos por R$ 18,00']}
-            />
-          }
-        />
-        <Text
-          numberOfLines={2}
-          style={{
-            fontSize: 12,
-            color: colors.textSecondary,
-            marginTop: -spacing.xs,
-            marginBottom: spacing.sm,
-            fontFamily: fontFamily.regular,
-            lineHeight: 16,
-          }}
-        >
-          Quanto você pagou no total por essa quantidade bruta. O custo por kg/unidade é calculado automaticamente abaixo.
-        </Text>
+        {(errors.quantidade_bruta || errors.valor_pago) ? (
+          <View style={{ marginBottom: spacing.sm }} accessibilityLiveRegion="polite">
+            {mensagensErroCompra(errors).map(m => (
+              <Text key={m} style={{ fontSize: fonts.tiny || 11, color: colors.error, fontFamily: fontFamily.medium, fontWeight: '500' }}>{m}</Text>
+            ))}
+          </View>
+        ) : (
+          <View style={{ height: spacing.xs }} />
+        )}
 
         {/* APP-14: badge "valor estimado" quando o item veio pré-preenchido pelo Kit de Início */}
         {ehValorEstimado && (
@@ -1169,32 +1119,97 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* Resultado Calculado */}
+        {/* Frase de compra 2026-10: "Qtd. Líquida" escondida atrás do toggle
+            "Tem perda?". Off → quantidade_liquida vazia → liquidaEfetiva = bruta
+            (mesma regra do walkthrough 2026-09). Sessão 28.21: 'un' não tem perda. */}
+        {form.unidade_medida !== 'un' && (
+          <>
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: spacing.xs + 2, marginBottom: spacing.xs, minHeight: 40 }}
+              onPress={() => {
+                const next = !temPerda;
+                setTemPerda(next);
+                if (!next) {
+                  setForm(p => ({ ...p, quantidade_liquida: '' }));
+                  setErrors(p => ({ ...p, quantidade_liquida: undefined }));
+                }
+              }}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: temPerda }}
+              accessibilityLabel="Tem perda? (casca, osso, aparas)"
+              activeOpacity={0.7}
+            >
+              <Feather name={temPerda ? 'check-square' : 'square'} size={20} color={temPerda ? colors.primary : colors.textSecondary} />
+              <Text style={{ fontSize: fonts.small, color: colors.text, fontFamily: fontFamily.medium, fontWeight: '500' }}>
+                Tem perda? (casca, osso, aparas)
+              </Text>
+            </TouchableOpacity>
+            {temPerda && (
+              <>
+                <InputField
+                  label="Quanto sobra depois de limpar"
+                  value={form.quantidade_liquida}
+                  onChangeText={(v) => { setForm(p => ({ ...p, quantidade_liquida: v })); setErrors(p => ({ ...p, quantidade_liquida: undefined })); }}
+                  keyboardType="decimal-pad"
+                  inputMode="decimal"
+                  placeholder={form.quantidade_bruta ? `Menos que ${form.quantidade_bruta}` : 'Ex.: 0,8'}
+                  suffix={sufixoUnidade()}
+                  error={errors.quantidade_liquida}
+                  style={{ marginBottom: spacing.xs }}
+                  rightLabel={
+                    <InfoTooltip
+                      title="Quanto sobra depois de limpar"
+                      text="É o peso ou volume APROVEITÁVEL, depois de tirar casca, osso, semente, talo ou qualquer parte que vai pro lixo. O app divide o que você pagou por essa quantidade — é o fator de correção."
+                      examples={[
+                        '1 kg de maracujá rende 350 g de polpa',
+                        '500 g de camarão limpo = 350 g',
+                        '1 kg de cebola descascada = 800 g',
+                      ]}
+                    />
+                  }
+                />
+                <Text style={{ fontSize: 12, color: colors.textSecondary, fontFamily: fontFamily.regular, lineHeight: 16, marginBottom: spacing.sm }}>
+                  Na mesma unidade da compra ({sufixoUnidade()}). Se sobra menos do que comprou, o custo {sufixoPrecoBase(form.unidade_medida)} sobe na mesma proporção (fator de correção).
+                </Text>
+              </>
+            )}
+          </>
+        )}
+
+        {/* Resultado calculado — Frase de compra 2026-10: lido como resultado
+            pra leigo ("Isso dá R$ 5,00 por kg"). Mesmo cálculo de antes
+            (calcPrecoBase sobre a líquida efetiva). */}
         {temDadosCalculo ? (
           <>
-            <View style={styles.resultBar}>
-              <View style={styles.resultChip}>
-                <View style={styles.resultChipLabelRow}>
-                  <Text style={styles.resultChipLabel}>Aproveitamento</Text>
-                  <InfoTooltip
-                    title="Aproveitamento"
-                    text="Percentual do que sobra pronto pra uso depois das perdas na limpeza (casca, osso, semente, talo etc). Quanto menor o aproveitamento, maior a perda do ingrediente."
-                    examples={['100% = sem perda', '80% = 20% de perda na limpeza', '50% = metade descartada']}
-                  />
-                </View>
-                <Text style={styles.resultChipValue}>{aproveitamento}%</Text>
-              </View>
-              <View style={[styles.resultChip, styles.resultChipHighlight]}>
-                <Text style={styles.resultChipLabel}>{labelPreco}</Text>
-                <Text style={[styles.resultChipValue, { color: colors.primary }]}>{formatCurrency(precoBase)}</Text>
-              </View>
+            <View style={[styles.resultChip, styles.resultChipHighlight, { alignItems: 'flex-start', paddingHorizontal: spacing.sm + 2, marginTop: spacing.xs }]}>
+              <Text style={[styles.resultChipValue, { color: colors.primary, fontSize: fonts.large }]}>
+                {fraseCustoResultado(precoBase, form.unidade_medida)}
+              </Text>
               {perdaPercent > 0 && (
+                <Text style={{ fontSize: 12, color: colors.textSecondary, fontFamily: fontFamily.regular, marginTop: 2 }}>
+                  já descontando o que vai pro lixo
+                </Text>
+              )}
+            </View>
+            {perdaPercent > 0 && (
+              <View style={styles.resultBar}>
+                <View style={styles.resultChip}>
+                  <View style={styles.resultChipLabelRow}>
+                    <Text style={styles.resultChipLabel}>Aproveitamento</Text>
+                    <InfoTooltip
+                      title="Aproveitamento"
+                      text="Percentual do que sobra pronto pra uso depois das perdas na limpeza (casca, osso, semente, talo etc). Quanto menor o aproveitamento, maior a perda do ingrediente."
+                      examples={['100% = sem perda', '80% = 20% de perda na limpeza', '50% = metade descartada']}
+                    />
+                  </View>
+                  <Text style={styles.resultChipValue}>{aproveitamento}%</Text>
+                </View>
                 <View style={[styles.resultChip, { backgroundColor: colors.warning + '10' }]}>
                   <Text style={styles.resultChipLabel}>Perda</Text>
                   <Text style={[styles.resultChipValue, { color: colors.warning }]}>{perdaPercent.toFixed(0)}%</Text>
                 </View>
-              )}
-            </View>
+              </View>
+            )}
             {perdaPercent > 0 && (
               <Text style={styles.perdaHint}>
                 Perda estimada: {perdaPercent.toFixed(0)}%. O custo real é {fatorCorrecao > 0 ? (1 / fatorCorrecao).toFixed(1) : '-'}x o preço pago
@@ -1214,10 +1229,19 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
           <View style={styles.resultEmpty}>
             <Feather name="bar-chart-2" size={14} color={colors.disabled} />
             <Text style={styles.resultEmptyText}>
-              Preencha os campos para ver o custo calculado.
+              Complete a frase acima pra ver quanto custa por kg, litro ou unidade.
             </Text>
           </View>
         )}
+
+        {/* Marca — opcional, abaixo da frase de compra (Frase de compra 2026-10) */}
+        <InputField
+          label="Marca (opcional)"
+          value={form.marca}
+          onChangeText={(v) => setForm(p => ({ ...p, marca: v }))}
+          placeholder="Pode deixar em branco"
+          style={[styles.fieldCompact, { marginTop: spacing.md }]}
+        />
 
         {/* Histórico de preços */}
         {editId && historicoPrecos.length > 1 && (
