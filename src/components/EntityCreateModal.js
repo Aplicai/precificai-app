@@ -29,13 +29,14 @@ import { entityCreateModalStyles as styles } from './styles/entityCreateModal.st
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
+import { rowsOrThrow } from '../database/dbResult';
 import InputField from './InputField';
 import SearchBar from './SearchBar';
 import EmptyState from './EmptyState';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import {
   formatCurrency, formatPercent,
-  calcDespesasFixasPercentual, calcMarkup, calcPrecoSugerido,
+  calcMarkup, calcPrecoSugerido, buildPricingConfig,
   calcCustoIngrediente, calcCustoPreparo, calcCustoEmbalagem,
   calcLucroLiquido, calcCMVPercentual, calcMargem, calcMargemLiquida,
   safeNum, getTipoUnidade, parseDecimalBROrZero,
@@ -319,14 +320,13 @@ export default function EntityCreateModal({
   const [nestedEmbalagemDestino, setNestedEmbalagemDestino] = useState('itens'); // 'itens' | 'delivery'
   const abrirCadastroEmbalagem = (destino) => { setNestedEmbalagemDestino(destino); setNestedEmbalagemVisible(true); };
 
-  // Config de markup/precificação (carregado do banco — só relevante pra Produto)
-  const [pricingConfig, setPricingConfig] = useState({
-    despFixasPerc: 0,
-    despVarPerc: 0,
-    margemSeguranca: 0,
-    lucroDesejado: 0.15,
-    markup: 0,
-  });
+  // Config de markup/precificação (carregado do banco — só relevante pra Produto).
+  // null = ainda não carregou: o resumo mostra "carregando" em vez da estimativa
+  // sem despesas fixas (antes o default {lucro 15%, fixos 0} aparecia como se
+  // fosse o Financeiro real até a carga terminar, e ficava assim se ela falhasse).
+  const [pricingConfig, setPricingConfig] = useState(null);
+  const [pricingConfigErro, setPricingConfigErro] = useState(false);
+  const pricingReqRef = useRef(0);
 
   // Constrói um snapshot estável dos valores do form pra comparar com o estado atual.
   // Bug C fix: igualdade só leva em conta os campos QUE O USUÁRIO PODE EDITAR.
@@ -382,6 +382,8 @@ export default function EntityCreateModal({
     setEditingCat(null);
     setEditingCatNome('');
     setConfirmDeleteCat(null);
+    // Config de preço primeiro e separada do picker: o Sugerido depende só dela.
+    if (isProduto) loadPricingConfig();
     if (isEditing) {
       loadForEdit();
     } else {
@@ -575,34 +577,40 @@ export default function EntityCreateModal({
       if (isProduto) {
         const cats = await db.getAllAsync('SELECT * FROM categorias_produtos ORDER BY nome');
         setCategorias(cats || []);
-        // Sessão 28.9 — config de markup pra análise de preço (mesma lógica do ProdutoFormScreen)
-        try {
-          const [cfgs, fixas, variaveis, fat] = await Promise.all([
-            db.getAllAsync('SELECT * FROM configuracao'),
-            db.getAllAsync('SELECT * FROM despesas_fixas'),
-            db.getAllAsync('SELECT * FROM despesas_variaveis'),
-            db.getAllAsync('SELECT * FROM faturamento_mensal'),
-          ]);
-          const cfg = cfgs && cfgs[0];
-          const totalFixas = (fixas || []).reduce((a, d) => a + (d.valor || 0), 0);
-          const totalVar = (variaveis || []).reduce((a, d) => a + (d.percentual || 0), 0);
-          const mesesComFat = (fat || []).filter(f => f.valor > 0);
-          const fatMedio = mesesComFat.length > 0
-            ? mesesComFat.reduce((a, f) => a + f.valor, 0) / mesesComFat.length
-            : 0;
-          const dfPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
-          const lucro = (cfg && cfg.lucro_desejado) || 0.15;
-          const mk = calcMarkup(dfPerc, totalVar, lucro);
-          setPricingConfig({ despFixasPerc: dfPerc, despVarPerc: totalVar, lucroDesejado: lucro, markup: mk, margemSeguranca: (cfg && cfg.margem_seguranca) || 0 });
-        } catch (e2) {
-          if (typeof console !== 'undefined' && console.warn) console.warn('[EntityCreateModal.loadConfig]', e2);
-        }
       } else {
         const cats = await db.getAllAsync('SELECT * FROM categorias_preparos ORDER BY nome');
         setCategorias(cats || []);
       }
     } catch (e) {
       if (typeof console !== 'undefined' && console.error) console.error('[EntityCreateModal.loadPicker]', e);
+    }
+  }
+
+  // Config de markup pra análise de preço (mesma lógica do ProdutoFormScreen).
+  // Mantém a config anterior enquanto recarrega (modal fica montado entre
+  // aberturas); leitura com erro vira estado de erro, nunca a estimativa de 15%.
+  async function loadPricingConfig() {
+    const req = ++pricingReqRef.current;
+    setPricingConfigErro(false);
+    try {
+      try {
+        const { clearQueryCache } = await import('../database/supabaseDb');
+        clearQueryCache();
+      } catch (_) {}
+      const db = await getDatabase();
+      const [cfgs, fixas, vars, fat] = (await Promise.all([
+        db.getAllAsync('SELECT * FROM configuracao'),
+        db.getAllAsync('SELECT * FROM despesas_fixas'),
+        db.getAllAsync('SELECT * FROM despesas_variaveis'),
+        db.getAllAsync('SELECT * FROM faturamento_mensal'),
+      ])).map(rowsOrThrow);
+      if (req !== pricingReqRef.current) return;
+      setPricingConfig(buildPricingConfig({ cfgs, fixas, vars, fat }));
+    } catch (e) {
+      if (req !== pricingReqRef.current) return;
+      if (typeof console !== 'undefined' && console.warn) console.warn('[EntityCreateModal.loadPricingConfig]', e);
+      setPricingConfig(null);
+      setPricingConfigErro(true);
     }
   }
 
@@ -1210,7 +1218,9 @@ export default function EntityCreateModal({
                   <Text style={[styles.resumoDestaqueValue, {
                     color: (lucroLiquidoPerc * 100) >= 25 ? colors.success : (lucroLiquidoPerc * 100) >= 15 ? colors.accent : colors.error,
                   }]}>
-                    {formatCurrency(lucroLiquido)} <Text style={styles.resumoDestaquePerc}>({formatPercent(lucroLiquidoPerc)})</Text>
+                    {pricingPronto
+                      ? <>{formatCurrency(lucroLiquido)} <Text style={styles.resumoDestaquePerc}>({formatPercent(lucroLiquidoPerc)})</Text></>
+                      : '…'}
                   </Text>
                 </View>
                 <View style={styles.resumoGrid}>
@@ -1222,7 +1232,9 @@ export default function EntityCreateModal({
                     <Text style={styles.resumoLabel}>
                       Sugerido{sugeridoSemFixos ? ' *' : ''}
                     </Text>
-                    {precoSugerido > 0 ? (
+                    {!pricingPronto ? (
+                      <Text style={[styles.resumoValue, { color: colors.textSecondary }]}>{pricingConfigErro ? '—' : '…'}</Text>
+                    ) : precoSugerido > 0 ? (
                       <Text style={[styles.resumoValue, { color: colors.textSecondary }]}>
                         {formatCurrency(precoSugerido)}
                       </Text>
@@ -1241,6 +1253,25 @@ export default function EntityCreateModal({
                     </Text>
                   </View>
                 </View>
+                {!pricingPronto && (
+                  pricingConfigErro ? (
+                    <TouchableOpacity
+                      style={styles.analiseHint}
+                      activeOpacity={0.7}
+                      onPress={loadPricingConfig}
+                      accessibilityRole="button"
+                      accessibilityLabel="Tentar carregar o Financeiro de novo"
+                    >
+                      <Feather name="alert-circle" size={11} color={colors.error} />
+                      <Text style={styles.analiseHintText}>
+                        <Text>Não foi possível carregar seu Financeiro. </Text>
+                        <Text style={{ color: colors.primary }}>Tentar de novo</Text>
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={styles.analiseHintText}>Calculando com seu Financeiro…</Text>
+                  )
+                )}
                 {precoVendaNum > 0 && precoSugerido > 0 && Math.abs(diffSugerido) > 0.005 && (
                   <Text style={[styles.resumoComparacao, {
                     color: diffSugerido > 0 ? colors.success : colors.accent,
@@ -1259,23 +1290,23 @@ export default function EntityCreateModal({
                     {custoEmbalagens > 0 && <Text style={styles.resumoBreakdownItem}>Emb. {formatCurrency(custoEmbalagens / divisor)}</Text>}
                   </View>
                 )}
-                {precoEfetivo > 0 && (pricingConfig.despFixasPerc > 0 || pricingConfig.despVarPerc > 0) && (
+                {pricingPronto && precoEfetivo > 0 && (pc.despFixasPerc > 0 || pc.despVarPerc > 0) && (
                   <View style={styles.analiseBox}>
                     <Text style={styles.analiseTitulo}>Composição por unidade vendida</Text>
                     <View style={styles.analiseLinha}>
                       <Text style={styles.analiseLabel}>Custo dos ingredientes (CMV)</Text>
                       <Text style={styles.analiseValor}>{formatCurrency(cmvUnitario)} <Text style={styles.analisePerc}>({formatPercent(cmvPerc)})</Text></Text>
                     </View>
-                    {pricingConfig.despFixasPerc > 0 && (
+                    {pc.despFixasPerc > 0 && (
                       <View style={styles.analiseLinha}>
                         <Text style={styles.analiseLabel}>Custos do mês</Text>
-                        <Text style={styles.analiseValor}>{formatCurrency(despFixasValor)} <Text style={styles.analisePerc}>({formatPercent(pricingConfig.despFixasPerc)})</Text></Text>
+                        <Text style={styles.analiseValor}>{formatCurrency(despFixasValor)} <Text style={styles.analisePerc}>({formatPercent(pc.despFixasPerc)})</Text></Text>
                       </View>
                     )}
-                    {pricingConfig.despVarPerc > 0 && (
+                    {pc.despVarPerc > 0 && (
                       <View style={styles.analiseLinha}>
                         <Text style={styles.analiseLabel}>Custos por venda</Text>
-                        <Text style={styles.analiseValor}>{formatCurrency(despVarValor)} <Text style={styles.analisePerc}>({formatPercent(pricingConfig.despVarPerc)})</Text></Text>
+                        <Text style={styles.analiseValor}>{formatCurrency(despVarValor)} <Text style={styles.analisePerc}>({formatPercent(pc.despVarPerc)})</Text></Text>
                       </View>
                     )}
                     <View style={[styles.analiseLinha, styles.analiseLinhaTotal]}>
@@ -1522,26 +1553,29 @@ export default function EntityCreateModal({
   // - Caminho sem Financeiro: fallback markup com fixos=0, mantendo o lucro
   //   alvo (default 15% — mesmo default já usado em pricingConfig.lucroDesejado
   //   e no ProdutoFormScreen) e as variáveis reais, se houver.
-  const temFinanceiro = isProduto && pricingConfig.despFixasPerc > 0;
+  // Enquanto a config não chega (ou falhou), nada que dependa dela é exibido.
+  const pricingPronto = !isProduto || pricingConfig != null;
+  const pc = pricingConfig || { despFixasPerc: 0, despVarPerc: 0, lucroDesejado: 0, markup: 0, margemSeguranca: 0 };
+  const temFinanceiro = isProduto && pc.despFixasPerc > 0;
   const MARGEM_ALVO_DEFAULT = 0.15; // mesmo default existente no app
-  const lucroAlvoEfetivo = pricingConfig.lucroDesejado > 0 ? pricingConfig.lucroDesejado : MARGEM_ALVO_DEFAULT;
+  const lucroAlvoEfetivo = pc.lucroDesejado > 0 ? pc.lucroDesejado : MARGEM_ALVO_DEFAULT;
   // Markup usado quando o Financeiro NÃO está preenchido: fixos forçados a 0.
   const markupSemFixos = isProduto
-    ? calcMarkup(0, pricingConfig.despVarPerc, lucroAlvoEfetivo)
+    ? calcMarkup(0, pc.despVarPerc, lucroAlvoEfetivo)
     : 0;
   const markupParaSugerido = isProduto
-    ? (pricingConfig.markup > 0 ? pricingConfig.markup : markupSemFixos)
+    ? (pc.markup > 0 ? pc.markup : markupSemFixos)
     : 0;
-  const precoSugerido = isProduto && markupParaSugerido > 0
-    ? calcPrecoSugerido(cmvUnitario, markupParaSugerido, pricingConfig.margemSeguranca || 0)
+  const precoSugerido = isProduto && pricingPronto && markupParaSugerido > 0
+    ? calcPrecoSugerido(cmvUnitario, markupParaSugerido, pc.margemSeguranca || 0)
     : 0;
   // true quando o "Sugerido" exibido é a estimativa sem despesas fixas.
   const sugeridoSemFixos = isProduto && precoSugerido > 0 && !temFinanceiro;
   // Análise sobre o preço de venda informado (ou sugerido se vazio)
   // Sessão 28.9 — Auditoria P0-02: usar funções centrais (mesma fonte que telas)
   const precoEfetivo = precoVendaNum > 0 ? precoVendaNum : precoSugerido;
-  const despFixasValor = precoEfetivo * pricingConfig.despFixasPerc;
-  const despVarValor = precoEfetivo * pricingConfig.despVarPerc;
+  const despFixasValor = precoEfetivo * pc.despFixasPerc;
+  const despVarValor = precoEfetivo * pc.despVarPerc;
   const lucroLiquido = calcLucroLiquido(precoEfetivo, cmvUnitario, despFixasValor, despVarValor);
   const lucroLiquidoPerc = calcMargemLiquida(precoEfetivo, cmvUnitario, despFixasValor, despVarValor);
   const cmvPerc = calcCMVPercentual(cmvUnitario, precoEfetivo);
