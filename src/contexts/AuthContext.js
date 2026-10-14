@@ -4,7 +4,8 @@ import { supabase } from '../config/supabase';
 import { isRecoveryIntent, clearRecoveryIntent } from '../utils/recoveryFlag';
 import { resetDatabase } from '../database/database';
 import { captureException, addBreadcrumb, setUser as reportSetUser } from '../utils/errorReporter';
-import { getAttribution, trackRegistrationOnce, syncMarketingForUser } from '../utils/marketing';
+import { getAttribution, trackRegistrationOnce, syncMarketingForUser, checkActivation } from '../utils/marketing';
+import { subscribeDataChanged } from '../utils/dataSync';
 
 const AuthContext = createContext({});
 
@@ -128,6 +129,15 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (userId) syncMarketingForUser(user, supabase);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  // Ativação (3 produtos próprios): confere a cada mudança em produtos.
+  useEffect(() => {
+    if (!userId || Platform.OS !== 'web') return undefined;
+    checkActivation(supabase);
+    return subscribeDataChanged((table) => {
+      if (table === 'produtos') checkActivation(supabase);
+    });
   }, [userId]);
 
   useEffect(() => {

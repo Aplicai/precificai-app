@@ -72,3 +72,57 @@ test('grava a origem no perfil uma vez, e só quando há campanha', async () => 
   assert.equal(chamadas.length, 1); // primeira origem vale
   delete globalThis.window;
 });
+
+test('produtos próprios: exemplos do Kit de Início não contam', async () => {
+  const { countOwnProducts } = await import('../src/utils/marketing.js');
+  assert.equal(countOwnProducts([
+    { observacoes: 'Exemplo do Kit de Início — ajuste conforme sua receita.' },
+    { observacoes: 'Exemplo do Kit de Início — ajuste conforme sua receita.' },
+    { observacoes: '' }, { observacoes: null }, {},
+  ]), 3);
+  assert.equal(countOwnProducts(null), 0);
+});
+
+function fakeSupabase(rows, uid = 'u9') {
+  const consultas = [];
+  return {
+    consultas,
+    auth: { getSession: async () => ({ data: { session: { user: { id: uid } } } }) },
+    from: (t) => ({ select: () => ({ eq: () => ({ limit: async () => { consultas.push(t); return { data: rows, error: null }; } }) }) }),
+  };
+}
+
+test('Ativacao: dispara uma vez com 3 produtos próprios e aceite', async () => {
+  const { checkActivation } = await import('../src/utils/marketing.js');
+  const enviados = [];
+  const store = {};
+  globalThis.window = {
+    pcf: { consent: () => 'granted', track: (...a) => enviados.push(a) },
+    localStorage: { getItem: (k) => store[k] || null, setItem: (k, v) => { store[k] = v; } },
+  };
+  await checkActivation(fakeSupabase([{}, {}]));
+  assert.equal(enviados.length, 0); // 2 próprios: ainda não
+
+  await checkActivation(fakeSupabase([{}, {}, {}]));
+  assert.deepEqual(enviados[0], ['Ativacao', { content_name: '3_produtos' }, 'act_u9']);
+
+  const sb = fakeSupabase([{}, {}, {}, {}]);
+  await checkActivation(sb);
+  assert.equal(enviados.length, 1); // não repete
+  assert.equal(sb.consultas.length, 0); // nem consulta o banco de novo
+  delete globalThis.window;
+});
+
+test('Ativacao: sem aceite de cookies não envia nem marca', async () => {
+  const { checkActivation } = await import('../src/utils/marketing.js');
+  const store = {};
+  const enviados = [];
+  globalThis.window = {
+    pcf: { consent: () => null, track: (...a) => enviados.push(a) },
+    localStorage: { getItem: (k) => store[k] || null, setItem: (k, v) => { store[k] = v; } },
+  };
+  await checkActivation(fakeSupabase([{}, {}, {}]));
+  assert.equal(enviados.length, 0);
+  assert.deepEqual(store, {});
+  delete globalThis.window;
+});

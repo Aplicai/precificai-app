@@ -14,6 +14,13 @@
 // Google e a confirmação de e-mail feita logo em seguida).
 export const JANELA_CADASTRO_NOVO_MS = 30 * 60 * 1000;
 
+// Ativação = conta com N produtos PRÓPRIOS (os exemplos do Kit de Início não contam).
+// É o sinal de dono de negócio usando o app de verdade, a dois produtos do limite
+// do plano Grátis (5) que abre o convite de upgrade. Evento custom `Ativacao`.
+export const ATIVACAO_MIN_PRODUTOS = 3;
+// Texto gravado em `observacoes` pelos produtos de exemplo do Kit (KitInicioScreen).
+export const KIT_OBS_PREFIXO = 'Exemplo do Kit de Início';
+
 const CAMPOS_ATRIBUICAO = [
   'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
   'fbclid', 'fbc', 'fbp', 'landing', 'ts', 'consent',
@@ -112,5 +119,42 @@ export async function syncMarketingForUser(user, supabase) {
     await supabase.auth.updateUser({ data: { attribution } });
   } catch {
     // medição é melhor esforço
+  }
+}
+
+/** Conta produtos que não são exemplo do Kit de Início. */
+export function countOwnProducts(rows) {
+  if (!Array.isArray(rows)) return 0;
+  return rows.filter((r) => !(typeof r?.observacoes === 'string' && r.observacoes.startsWith(KIT_OBS_PREFIXO))).length;
+}
+
+let _ativacaoEmAndamento = false;
+
+/**
+ * Dispara `Ativacao` uma vez por conta quando ela chega a ATIVACAO_MIN_PRODUTOS
+ * produtos próprios. Só marca como enviado com aceite de cookies: sem resposta
+ * ainda, tenta de novo na próxima mudança de produtos.
+ * @param {object} supabase cliente (injetado)
+ */
+export async function checkActivation(supabase) {
+  const api = pcf();
+  if (!api || _ativacaoEmAndamento) return;
+  _ativacaoEmAndamento = true;
+  try {
+    if (api.consent() !== 'granted') return;
+    const { data: { session } = {} } = await supabase.auth.getSession();
+    const uid = session?.user?.id;
+    if (!uid) return;
+    const chave = `pcf_act_${uid}`;
+    if (window.localStorage.getItem(chave)) return;
+    const { data, error } = await supabase
+      .from('produtos').select('observacoes').eq('user_id', uid).limit(50);
+    if (error || countOwnProducts(data) < ATIVACAO_MIN_PRODUTOS) return;
+    window.localStorage.setItem(chave, '1');
+    trackEvent('Ativacao', { content_name: `${ATIVACAO_MIN_PRODUTOS}_produtos` }, `act_${uid}`);
+  } catch {
+    // medição é melhor esforço
+  } finally {
+    _ativacaoEmAndamento = false;
   }
 }

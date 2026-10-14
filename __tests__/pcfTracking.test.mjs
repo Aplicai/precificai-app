@@ -187,3 +187,13 @@ test('fbc é montado do fbclid só com aceite; consentimento vai junto na atribu
 test('sem campanha e sem resposta a atribuição é nula', () => {
   assert.equal(boot().pcf.attribution(), null);
 });
+
+test('evento fora da lista padrão do Meta vai por trackCustom', () => {
+  const { pcf, calls } = boot({ cookies: { pcf_consent: 'granted' } });
+  pcf.track('Ativacao', { content_name: '3_produtos' }, 'act_1');
+  pcf.track('InitiateCheckout');
+  const ativ = calls.find((c) => c[1] === 'Ativacao');
+  assert.equal(ativ[0], 'trackCustom');
+  assert.equal(ativ[3].eventID, 'act_1');
+  assert.equal(calls.find((c) => c[1] === 'InitiateCheckout')[0], 'track');
+});

@@ -25,6 +25,9 @@
   var CONSENT_COOKIE = 'pcf_consent';
   var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid'];
   var MAX_VALUE_LEN = 200;
+  // Eventos padrão do Meta vão por fbq('track'); o resto (ex.: Ativacao) por 'trackCustom'.
+  var STANDARD_EVENTS = ['PageView', 'CompleteRegistration', 'InitiateCheckout', 'Purchase', 'Lead',
+    'Subscribe', 'StartTrial', 'ViewContent', 'Contact', 'AddPaymentInfo'];
 
   // ---------- cookies ----------
   function cookieDomain() {
@@ -133,8 +136,9 @@
   }
 
   function send(name, params, eventId) {
-    if (eventId) window.fbq('track', name, params || {}, { eventID: String(eventId) });
-    else window.fbq('track', name, params || {});
+    var method = STANDARD_EVENTS.indexOf(name) > -1 ? 'track' : 'trackCustom';
+    if (eventId) window.fbq(method, name, params || {}, { eventID: String(eventId) });
+    else window.fbq(method, name, params || {});
   }
 
   function flush() {

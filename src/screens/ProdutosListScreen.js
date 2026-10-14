@@ -38,6 +38,8 @@ import { PLAN_LABELS, UPGRADE_HIGHLIGHTS } from '../config/plans';
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 import { t } from '../i18n/pt-BR';
 import { subscribeDataChanged } from '../utils/dataSync';
+import { supabase } from '../config/supabase';
+import { checkActivation } from '../utils/marketing';
 
 // Cores para categorias
 const CATEGORY_COLORS = [
@@ -360,6 +362,7 @@ export default function ProdutosListScreen({ navigation }) {
     }
 
     setTotalProdutos(result.length);
+    checkActivation(supabase);
 
     // Aplicar ordenação P1-22
     const cmpStr = (a, b) => (a || '').localeCompare(b || '', 'pt-BR', { sensitivity: 'base' });
