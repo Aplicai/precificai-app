@@ -91,11 +91,18 @@ export function trackEvent(name, params, eventId) {
  * Chamado no cadastro por e-mail e na primeira sessão (cobre Google).
  */
 export function trackRegistrationOnce(user) {
-  if (!user?.id || !pcf()) return;
+  const api = pcf();
+  if (!user?.id || !api) return;
+  let consent = null;
+  try { consent = api.consent(); } catch {}
+  if (consent === 'denied') return;
   const chave = `pcf_reg_${user.id}`;
   try {
     if (window.localStorage.getItem(chave)) return;
-    window.localStorage.setItem(chave, '1');
+    // Só marca como enviado com aceite. Sem resposta ainda, o evento fica na fila do
+    // script e a próxima sessão tenta de novo; marcar antes perdia o cadastro de vez
+    // quando a pessoa aceitava os cookies depois de se cadastrar.
+    if (consent === 'granted') window.localStorage.setItem(chave, '1');
   } catch {
     return; // sem storage não dá pra garantir "uma vez": melhor não mandar
   }

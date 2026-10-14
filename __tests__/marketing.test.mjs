@@ -126,3 +126,25 @@ test('Ativacao: sem aceite de cookies não envia nem marca', async () => {
   assert.deepEqual(store, {});
   delete globalThis.window;
 });
+
+test('cadastro sem resposta de cookies não é marcado como enviado (tenta de novo depois)', async () => {
+  const { trackRegistrationOnce } = await import('../src/utils/marketing.js');
+  const enviados = []; const store = {}; let consent = null;
+  globalThis.window = {
+    pcf: { consent: () => consent, track: (...a) => enviados.push(a) },
+    localStorage: { getItem: (k) => store[k] || null, setItem: (k, v) => { store[k] = v; } },
+  };
+  trackRegistrationOnce({ id: 'u7' });
+  assert.equal(enviados.length, 1);          // vai pra fila do script
+  assert.deepEqual(store, {});               // mas não marca
+  consent = 'granted';
+  trackRegistrationOnce({ id: 'u7' });
+  assert.equal(enviados.length, 2);          // nova tentativa, mesmo event_id (Meta deduplica)
+  assert.equal(enviados[1][2], 'reg_u7');
+  trackRegistrationOnce({ id: 'u7' });
+  assert.equal(enviados.length, 2);          // agora sim, uma vez só
+  consent = 'denied';
+  trackRegistrationOnce({ id: 'u8' });
+  assert.equal(enviados.length, 2);          // recusa: nada
+  delete globalThis.window;
+});
