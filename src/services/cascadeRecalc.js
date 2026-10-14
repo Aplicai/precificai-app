@@ -81,7 +81,9 @@ export async function recalcularPreparo(db, preparoId) {
   const custoPorKg = rendimento > 0
     ? calcCustoPorKgPreparo(custoTotal, rendimento, p.unidade_medida)
     : custoTotal;
-  await db.runAsync('UPDATE preparos SET custo_por_kg = ? WHERE id = ?', [custoPorKg, preparoId]);
+  // custo_total vai junto: gravar só custo_por_kg deixava o total congelado no
+  // valor antigo (ex.: o que o Kit de Início escreveu) e a lista mostrava lixo.
+  await db.runAsync('UPDATE preparos SET custo_por_kg = ?, custo_total = ? WHERE id = ?', [custoPorKg, custoTotal, preparoId]);
   return { id: preparoId, custoTotal, custoPorKg };
 }
 
