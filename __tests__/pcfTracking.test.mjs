@@ -133,7 +133,7 @@ test('aceitar carrega o Pixel, manda PageView e solta a fila com o event_id', ()
   const { pcf, scripts, window, jar } = boot();
   pcf.track('CompleteRegistration', { a: 1 }, 'reg_1');
   pcf.setConsent('granted');
-  assert.equal(jar.pcf_consent, 'granted');
+  assert.equal(jar.pcf_consent_v2, 'granted');
   assert.equal(scripts.length, 1);
   assert.equal(scripts[0].src, 'https://connect.facebook.net/en_US/fbevents.js');
   const calls = window.fbq.queue.map((a) => Array.from(a));
@@ -148,13 +148,13 @@ test('recusar descarta a fila e nunca carrega o Pixel', () => {
   pcf.track('InitiateCheckout');
   pcf.setConsent('denied');
   pcf.track('InitiateCheckout');
-  assert.equal(jar.pcf_consent, 'denied');
+  assert.equal(jar.pcf_consent_v2, 'denied');
   assert.equal(scripts.length, 0);
   assert.equal(window.fbq, undefined);
 });
 
 test('aceite anterior carrega o Pixel já no boot', () => {
-  const { calls, scripts } = boot({ cookies: { pcf_consent: 'granted' } });
+  const { calls, scripts } = boot({ cookies: { pcf_consent_v2: 'granted' } });
   assert.equal(scripts.length, 1);
   assert.deepEqual(calls[0], ['init', '1416674450624075']);
   assert.deepEqual(calls[1], ['track', 'PageView']);
@@ -177,7 +177,7 @@ test('fbc é montado do fbclid só com aceite; consentimento vai junto na atribu
   assert.equal(semAceite.pcf.attribution().fbc, undefined);
   assert.equal(semAceite.pcf.attribution().consent, undefined);
 
-  const comAceite = boot({ url: 'https://precificaiapp.com/?fbclid=XYZ', cookies: { pcf_consent: 'granted', _fbp: 'fb.1.1.999' } });
+  const comAceite = boot({ url: 'https://precificaiapp.com/?fbclid=XYZ', cookies: { pcf_consent_v2: 'granted', _fbp: 'fb.1.1.999' } });
   const attr = comAceite.pcf.attribution();
   assert.match(attr.fbc, /^fb\.1\.\d+\.XYZ$/);
   assert.equal(attr.fbp, 'fb.1.1.999');
@@ -189,11 +189,17 @@ test('sem campanha e sem resposta a atribuição é nula', () => {
 });
 
 test('evento fora da lista padrão do Meta vai por trackCustom', () => {
-  const { pcf, calls } = boot({ cookies: { pcf_consent: 'granted' } });
+  const { pcf, calls } = boot({ cookies: { pcf_consent_v2: 'granted' } });
   pcf.track('Ativacao', { content_name: '3_produtos' }, 'act_1');
   pcf.track('InitiateCheckout');
   const ativ = calls.find((c) => c[1] === 'Ativacao');
   assert.equal(ativ[0], 'trackCustom');
   assert.equal(ativ[3].eventID, 'act_1');
   assert.equal(calls.find((c) => c[1] === 'InitiateCheckout')[0], 'track');
+});
+
+test('aceite antigo (pcf_consent, só medição) não vale para o v2: o aviso volta e nada é enviado', () => {
+  const { calls, scripts } = boot({ cookies: { pcf_consent: 'granted' } });
+  assert.equal(scripts.length, 0);
+  assert.equal(calls.length, 0);
 });

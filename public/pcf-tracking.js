@@ -22,7 +22,10 @@
   var PIXEL_ID = '1416674450624075';
   var ROOT_DOMAIN = 'precificaiapp.com';
   var ATTR_COOKIE = 'pcf_attr';
-  var CONSENT_COOKIE = 'pcf_consent';
+  // v2 (14/10/2026): o aceite passou a cobrir medição E anúncios para quem já
+  // visitou (remarketing). O aceite antigo (só medição) não vale para isso, por
+  // isso o nome mudou: todo mundo vê o aviso de novo.
+  var CONSENT_COOKIE = 'pcf_consent_v2';
   var ATTR_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid'];
   var MAX_VALUE_LEN = 200;
   // Eventos padrão do Meta vão por fbq('track'); o resto (ex.: Ativacao) por 'trackCustom'.
@@ -194,7 +197,7 @@
     var text = document.createElement('p');
     text.style.cssText = 'margin:0 0 12px 0;';
     text.appendChild(document.createTextNode(
-      'Usamos cookies para medir nossos anúncios e melhorar o Precificaí. Você escolhe se aceita. '
+      'Usamos cookies para medir nossos anúncios e para mostrar anúncios do Precificaí a quem já nos visitou. Você escolhe se aceita. '
     ));
     var link = document.createElement('a');
     link.href = 'https://app.precificaiapp.com/privacy';

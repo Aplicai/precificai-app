@@ -139,7 +139,7 @@
   </header>
 
   <main class="container">
-    <p class="updated">Versão 2.1 &middot; Última atualização: 13 de outubro de 2026</p>
+    <p class="updated">Versão 2.2 &middot; Última atualização: 14 de outubro de 2026</p>
 
     <div class="lead">
       Esta Política de Privacidade descreve como a <strong>Aplicaí Consultoria</strong> (&ldquo;Aplicaí&rdquo;, &ldquo;nós&rdquo;)
@@ -231,8 +231,8 @@
     <h2>4. Bases legais do tratamento (art. 7º da LGPD)</h2>
     <ul>
       <li><strong>Execução de contrato (art. 7º, V):</strong> dados estritamente necessários à prestação do Serviço contratado mediante criação da conta.</li>
-      <li><strong>Consentimento (art. 7º, I):</strong> tratamentos opcionais &mdash; em especial o login com Google, telefone e dados adicionais de perfil.</li>
-      <li><strong>Legítimo interesse (art. 7º, IX):</strong> prevenção a fraude, segurança da informação, telemetria agregada e melhoria do Serviço, sempre observados os direitos fundamentais do Titular.</li>
+      <li><strong>Consentimento (art. 7º, I):</strong> tratamentos opcionais &mdash; em especial o login com Google, telefone, dados adicionais de perfil e os cookies de medição e de anúncios (item 9.1).</li>
+      <li><strong>Legítimo interesse (art. 7º, IX):</strong> prevenção a fraude, segurança da informação, telemetria agregada, melhoria do Serviço e divulgação do próprio Precificaí a quem já tem conta (itens 9.2 e 9.3), sempre observados os direitos fundamentais do Titular e com direito de oposição a qualquer momento.</li>
       <li><strong>Cumprimento de obrigação legal (art. 7º, II):</strong> guarda de logs de acesso (Marco Civil) e atendimento a requisições judiciais.</li>
     </ul>
 
@@ -247,7 +247,7 @@
       <li><strong>Functional Software, Inc. (Sentry)</strong> &mdash; monitoramento de erros e estabilidade (servidores nos Estados Unidos).</li>
       <li><strong>Google LLC</strong> &mdash; somente quando o Titular opta por &ldquo;Entrar com Google&rdquo; (OAuth).</li>
       <li><strong>Vercel Inc.</strong> &mdash; hospedagem da versão web do aplicativo.</li>
-      <li><strong>Meta Platforms, Inc.</strong> &mdash; medição de resultado dos nossos anúncios no Facebook e no Instagram, <strong>somente se o Titular aceitar os cookies de medição</strong> (ver item 9).</li>
+      <li><strong>Meta Platforms, Inc.</strong> &mdash; medição do resultado e exibição de anúncios do próprio Precificaí no Facebook e no Instagram, nos limites do item 9: cookies <strong>somente com o aceite do Titular</strong> (9.1) e e-mail <strong>em formato embaralhado</strong>, com direito de oposição (9.2).</li>
     </ul>
     <p>
       Poderemos divulgar dados quando exigido por lei, ordem judicial ou determinação de autoridade competente
@@ -318,23 +318,46 @@
       <li><strong>Cookies/localStorage de sessão</strong> &mdash; para manter o Titular autenticado;</li>
       <li><strong>localStorage de preferências</strong> &mdash; densidade de listas, tema e configurações da interface;</li>
       <li><strong>Cookie de origem da visita</strong> (<code>pcf_attr</code>) &mdash; guarda de qual campanha ou anúncio a visita veio (parâmetros <code>utm</code> do link), para sabermos quais divulgações funcionam;</li>
-      <li><strong>Cookie de escolha</strong> (<code>pcf_consent</code>) &mdash; lembra se o Titular aceitou ou recusou os cookies de medição.</li>
+      <li><strong>Cookie de escolha</strong> (<code>pcf_consent_v2</code>) &mdash; lembra se o Titular aceitou ou recusou os cookies de medição e de anúncios.</li>
     </ul>
-    <h3>9.1 Cookies de medição de anúncios (opcionais)</h3>
+    <h3>9.1 Cookies de medição e de anúncios (opcionais)</h3>
     <p>
       Com o <strong>consentimento</strong> do Titular (art. 7º, I, da LGPD), dado no aviso de cookies, utilizamos o
-      <strong>Pixel da Meta</strong> e a <strong>API de Conversões da Meta</strong> para medir o resultado dos nossos
-      anúncios no Facebook e no Instagram. Nesse caso:
+      <strong>Pixel da Meta</strong> e a <strong>API de Conversões da Meta</strong> para duas finalidades:
+      (i) medir o resultado dos nossos anúncios no Facebook e no Instagram; e (ii) mostrar anúncios do Precificaí
+      a quem já visitou o site ou o aplicativo (remarketing) &mdash; por exemplo, o convite para concluir o cadastro
+      ou para conhecer o plano Pro. Nesse caso:
     </p>
     <ul>
-      <li>o Pixel grava cookies próprios (<code>_fbp</code>, <code>_fbc</code>) e informa à Meta as páginas visitadas, a criação de conta e o início de uma assinatura;</li>
+      <li>o Pixel grava cookies próprios (<code>_fbp</code>, <code>_fbc</code>) e informa à Meta as páginas visitadas e ações como a criação de conta, o uso inicial do aplicativo, o vídeo tutorial assistido e o início de uma assinatura;</li>
+      <li>a Meta usa essas informações para formar públicos e exibir anúncios do Precificaí ao Titular no Facebook e no Instagram;</li>
       <li>quando uma assinatura é paga, informamos à Meta a compra (valor e plano), acompanhada do e-mail e do identificador da conta <strong>em formato embaralhado (hash SHA-256)</strong>, que não permite a leitura direta do dado;</li>
       <li>não enviamos à Meta receitas, insumos, preços, custos ou qualquer dado do negócio cadastrado no aplicativo.</li>
     </ul>
     <p>
-      Sem o aceite, o Pixel não é carregado e nenhuma dessas informações é enviada. O Titular pode mudar de ideia a
-      qualquer momento apagando os cookies deste site no navegador (o aviso volta a aparecer) ou escrevendo para o
-      contato do item 14.
+      Sem o aceite, o Pixel não é carregado e nenhuma dessas informações é enviada. Quem aceitou o aviso anterior
+      (antes de 14 de outubro de 2026) aceitou apenas a medição; por isso o aviso é exibido de novo, já com as duas
+      finalidades. O Titular pode mudar de ideia a qualquer momento apagando os cookies deste site no navegador
+      (o aviso volta a aparecer) ou escrevendo para o contato do item 14.
+    </p>
+    <h3>9.2 Lista de clientes para anúncios (públicos personalizados)</h3>
+    <p>
+      Podemos enviar à Meta o e-mail das contas cadastradas, <strong>em formato embaralhado (hash SHA-256)</strong>,
+      para mostrar anúncios do Precificaí a quem já tem conta (por exemplo, novidades do aplicativo ou o convite para
+      assinar o plano Pro) e para deixar de mostrar anúncios de cadastro a quem já é cliente. A Meta compara esses
+      códigos com os das contas dela e descarta os que não coincidem. Não enviamos nome, telefone nem dados do negócio.
+    </p>
+    <p>
+      Base legal: legítimo interesse (art. 7º, IX, da LGPD). O Titular pode se opor a qualquer momento escrevendo para o
+      contato do item 14 com o assunto &ldquo;Não usar meu e-mail em anúncios&rdquo;; o e-mail é retirado das listas
+      seguintes em até 15 dias. Para contas criadas antes de 14 de outubro de 2026, este uso só começa em
+      <strong>29 de outubro de 2026</strong>, conforme o item 12.
+    </p>
+    <h3>9.3 E-mails do Precificaí</h3>
+    <p>
+      Enviamos e-mails sobre a conta (confirmação de cadastro, segurança, cobrança) e, ocasionalmente, dicas de uso e
+      novidades do Precificaí. Todo e-mail de dicas e novidades traz uma forma de parar de recebê-los; os e-mails sobre a
+      conta continuam enquanto ela existir.
     </p>
     <p>
       <strong>Não utilizamos</strong> Google Analytics nem outros trackers de terceiros para fins de marketing além dos descritos acima.
