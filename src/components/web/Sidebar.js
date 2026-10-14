@@ -10,8 +10,7 @@ import usePersistedState from '../../hooks/usePersistedState';
 // Sessão 28.8 — alinha altura do logoArea com WebHeader.container (mesmo token)
 import useListDensity from '../../hooks/useListDensity';
 import usePlan from '../../hooks/usePlan';
-import UpgradeModal from '../UpgradeModal';
-import { FEATURE_MIN_PLAN, PLAN_LABELS, UPGRADE_HIGHLIGHTS } from '../../config/plans';
+import { FEATURE_MIN_PLAN, PLAN_LABELS } from '../../config/plans';
 
 // Ordem segue o fluxo de composição (audit P1-08):
 // Insumos → Preparos (combina insumos) → Embalagens (wrapper) → Produtos (final).
@@ -242,8 +241,9 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse, initi
   // (que usa headerHeight do useListDensity: 52 compact / 64 comfortable).
   const { headerHeight } = useListDensity();
   // Planos (Fase 0) — itens pagos aparecem com cadeado 🔒 e abrem o popup ao tocar.
+  // Planos: itens pagos levam a tag "PRO" mas abrem normalmente — a tela
+  // mostra os dados da pessoa e só a ação final pede assinatura.
   const { hasFeature } = usePlan();
-  const [upgradeModal, setUpgradeModal] = useState(null);
   // Sessão 26 — feature flags filtram itens da sidebar para esconder Delivery/BCG/Fornecedores
   const [usaDelivery] = useFeatureFlag('usa_delivery');
   const [analiseAvancada] = useFeatureFlag('modo_avancado_analise');
@@ -355,33 +355,21 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse, initi
             {section.items.map((item) => {
               const isActive = activeKey === item.key;
               const IconComp = item.iconSet === 'material' ? MaterialCommunityIcons : Feather;
-              // Planos: item bloqueado se tem feature paga fora do plano atual.
-              const locked = item.feature && !hasFeature(item.feature);
-              const reqPlan = locked ? FEATURE_MIN_PLAN[item.feature] : null;
+              // Planos: feature paga fora do plano → tag "PRO"; a navegação segue livre.
+              const isPro = !!item.feature && !hasFeature(item.feature);
+              const proLabel = isPro ? PLAN_LABELS[FEATURE_MIN_PLAN[item.feature]] : null;
 
               return (
                 <SidebarButton
                   key={item.key}
-                  label={locked ? `${item.label} (recurso ${PLAN_LABELS[reqPlan]})` : item.label}
+                  label={isPro ? `${item.label} (recurso ${proLabel})` : item.label}
                   selected={activeKey === item.key}
-                  onPress={() => {
-                    if (locked) {
-                      setUpgradeModal({
-                        requiredPlan: reqPlan,
-                        title: `${item.label} é um recurso ${PLAN_LABELS[reqPlan]}`,
-                        message: 'Desbloqueie este recurso e muito mais:',
-                        highlights: UPGRADE_HIGHLIGHTS,
-                      });
-                      return;
-                    }
-                    handlePress(item);
-                  }}
-                  tooltip={collapsed ? (locked ? `${item.label} — ${PLAN_LABELS[reqPlan]}` : item.label) : undefined}
+                  onPress={() => handlePress(item)}
+                  tooltip={collapsed ? (isPro ? `${item.label} — ${proLabel}` : item.label) : undefined}
                   style={[
                     styles.navItem,
                     isActive && styles.navItemActive,
                     collapsed && styles.navItemCollapsed,
-                    locked && { opacity: 0.7 },
                   ]}
                 >
                   {isActive && <View style={styles.activeBar} />}
@@ -401,8 +389,10 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse, initi
                       {item.label}
                     </Text>
                   )}
-                  {!collapsed && locked && (
-                    <Feather name="lock" size={14} color={NAV_ICON_INACTIVE} style={{ marginLeft: 'auto' }} />
+                  {!collapsed && isPro && (
+                    <View style={styles.proTag}>
+                      <Text style={styles.proTagText}>{proLabel.toUpperCase()}</Text>
+                    </View>
                   )}
                 </SidebarButton>
               );
@@ -430,15 +420,6 @@ export default function Sidebar({ navigation, collapsed, onToggleCollapse, initi
         </SidebarButton>
       </View>
 
-      {/* Planos (Fase 0) — popup de upgrade ao clicar num item bloqueado */}
-      <UpgradeModal
-        visible={!!upgradeModal}
-        onClose={() => setUpgradeModal(null)}
-        requiredPlan={upgradeModal?.requiredPlan}
-        title={upgradeModal?.title}
-        message={upgradeModal?.message}
-        highlights={upgradeModal?.highlights || []}
-      />
     </View>
   );
 }
@@ -520,6 +501,13 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontFamily: fontFamily.bold,
   },
+  // Tag "PRO" nos itens pagos — a tela abre, só a ação final pede assinatura.
+  proTag: {
+    marginLeft: 'auto',
+    backgroundColor: colors.primary + '14', borderWidth: 1, borderColor: colors.primary + '40',
+    borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1,
+  },
+  proTagText: { fontSize: 9, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.primary, letterSpacing: 0.5 },
   bottomArea: {
     borderTopWidth: 1,
     borderTopColor: colors.border,

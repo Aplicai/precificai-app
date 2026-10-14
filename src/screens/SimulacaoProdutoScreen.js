@@ -25,6 +25,8 @@ import { calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils
 import { buildContextoFinanceiro, normalizePlataforma } from '../utils/deliveryAdapter';
 // Sessão 28.26: service unificado de upsert do preço delivery
 import { upsertPrecoDelivery } from '../services/precoDeliveryService';
+import usePlan from '../hooks/usePlan';
+import UpgradeModal from '../components/UpgradeModal';
 
 const safe = (v) => {
   const n = Number(v);
@@ -45,6 +47,9 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
   const [data, setData] = useState(null);
   const [precoEscolhido, setPrecoEscolhido] = useState('');
   const [precoSalvo, setPrecoSalvo] = useState(null);
+  // Planos: simular é livre; gravar o preço por plataforma é Pro.
+  const { hasFeature } = usePlan();
+  const [upgradeModal, setUpgradeModal] = useState(null);
 
   // Sessão 28.25: em modo popup usamos useEffect (não useFocusEffect) — o popup
   // não desfocaliza/refocaliza ao trocar produtoId/plataformaId; o parent só
@@ -158,6 +163,16 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
   async function salvarComoPrecoDelivery() {
     const num = parseDecimalBR(precoEscolhido);
     if (!Number.isFinite(num) || num <= 0) return;
+    // Planos: simular é livre; gravar o preço por plataforma é Pro.
+    if (!hasFeature('delivery')) {
+      setUpgradeModal({
+        requiredPlan: 'pro',
+        title: 'Delivery é um recurso Pro',
+        message: 'Simular é grátis. Para salvar o seu preço por plataforma, assine:',
+        highlights: ['Módulo Delivery completo (iFood, Rappi, próprio)', 'Lista de compras, Relatórios, PDF e mais'],
+      });
+      return;
+    }
     setSaving(true);
     try {
       // Sessão 28.26: delegado pro service unificado.
@@ -394,6 +409,14 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
 
         <View style={{ height: 60 }} />
       </ScrollView>
+      <UpgradeModal
+        visible={!!upgradeModal}
+        onClose={() => setUpgradeModal(null)}
+        requiredPlan={upgradeModal?.requiredPlan}
+        title={upgradeModal?.title}
+        message={upgradeModal?.message}
+        highlights={upgradeModal?.highlights || []}
+      />
     </View>
   );
 }

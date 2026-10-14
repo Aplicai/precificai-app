@@ -20,7 +20,6 @@ import { useRoute } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import usePlan from '../hooks/usePlan';
-import UpgradeModal from '../components/UpgradeModal';
 
 import RelatorioSimplesScreen from './RelatorioSimplesScreen';
 import RelatorioInsumosScreen from './RelatorioInsumosScreen';
@@ -32,22 +31,21 @@ const TABS = [
 
 export default function RelatoriosHubScreen({ navigation }) {
   const route = useRoute();
-  // Planos (Fase 0) — aba "Insumos" é Pro+; "Geral" é livre.
+  // Planos: a aba "Ingredientes" é Pro, mas ABRE pra todo mundo — a pessoa vê o
+  // relatório com os próprios dados e a tela trava só a ação (ProPreviewBanner
+  // em RelatorioInsumosScreen). Aqui fica só a tag "PRO" na aba.
   const { hasFeature } = usePlan();
-  const canInsumos = hasFeature('relatorio_insumos');
-  const [upgradeModal, setUpgradeModal] = useState(null);
-  const initialTab = (route?.params?.aba === 'insumos' && canInsumos) ? 'insumos' : 'geral';
+  const initialTab = route?.params?.aba === 'insumos' ? 'insumos' : 'geral';
   const [activeTab, setActiveTab] = useState(initialTab);
 
-  // Permite que outras telas naveguem pra cá com `aba: 'insumos'` e a tab certa abra
-  // (só troca pra Insumos se o plano permitir).
+  // Permite que outras telas naveguem pra cá com `aba: 'insumos'` e a tab certa abra.
   useEffect(() => {
-    if (route?.params?.aba === 'insumos' && canInsumos) {
+    if (route?.params?.aba === 'insumos') {
       setActiveTab('insumos');
     } else if (route?.params?.aba === 'geral') {
       setActiveTab('geral');
     }
-  }, [route?.params?.aba, canInsumos]);
+  }, [route?.params?.aba]);
 
   return (
     <View style={styles.container}>
@@ -66,29 +64,24 @@ export default function RelatoriosHubScreen({ navigation }) {
         <View style={styles.tabsRow}>
           {TABS.map(tab => {
             const isActive = activeTab === tab.key;
-            const locked = tab.feature && !hasFeature(tab.feature);
+            const isPro = !!tab.feature && !hasFeature(tab.feature);
             return (
               <TouchableOpacity
                 key={tab.key}
                 style={[styles.tab, isActive && styles.tabActive]}
-                onPress={() => {
-                  if (locked) {
-                    setUpgradeModal({
-                      requiredPlan: 'pro',
-                      title: 'Relatório de Ingredientes é um recurso Pro',
-                      message: 'O relatório Geral é grátis. Para o de Ingredientes (saúde do cadastro, preços e curva), assine:',
-                      highlights: ['Relatório de ingredientes completo', 'Delivery, Lista de compras, PDF e mais'],
-                    });
-                    return;
-                  }
-                  setActiveTab(tab.key);
-                }}
+                onPress={() => setActiveTab(tab.key)}
                 activeOpacity={0.7}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: isActive }}
+                accessibilityLabel={isPro ? `${tab.label} (recurso Pro)` : tab.label}
               >
-                <Feather name={locked ? 'lock' : tab.icon} size={14} color={isActive ? colors.primary : colors.textSecondary} />
+                <Feather name={tab.icon} size={14} color={isActive ? colors.primary : colors.textSecondary} />
                 <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{tab.label}</Text>
+                {isPro && (
+                  <View style={styles.proTag}>
+                    <Text style={styles.proTagText}>PRO</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             );
           })}
@@ -117,15 +110,6 @@ export default function RelatoriosHubScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Planos (Fase 0) — popup ao tocar na aba Insumos sem plano Pro */}
-      <UpgradeModal
-        visible={!!upgradeModal}
-        onClose={() => setUpgradeModal(null)}
-        requiredPlan={upgradeModal?.requiredPlan}
-        title={upgradeModal?.title}
-        message={upgradeModal?.message}
-        highlights={upgradeModal?.highlights || []}
-      />
     </View>
   );
 }
@@ -160,4 +144,10 @@ const styles = {
   tabActive: { borderBottomColor: colors.primary },
   tabText: { fontSize: 13, fontFamily: fontFamily.semiBold, color: colors.textSecondary },
   tabTextActive: { color: colors.primary },
+  // Tag "PRO" na aba paga — abre pra todo mundo, a tela trava só a ação.
+  proTag: {
+    backgroundColor: colors.primary + '14', borderWidth: 1, borderColor: colors.primary + '40',
+    borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1,
+  },
+  proTagText: { fontSize: 9, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.primary, letterSpacing: 0.5 },
 };

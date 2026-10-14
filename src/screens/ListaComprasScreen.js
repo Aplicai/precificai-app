@@ -11,6 +11,9 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import useListDensity from '../hooks/useListDensity';
 import { openPrintableHTML } from '../utils/openPrintableHTML';
+import usePlan from '../hooks/usePlan';
+import UpgradeModal from '../components/UpgradeModal';
+import ProPreviewBanner from '../components/ProPreviewBanner';
 
 const CATEGORY_COLORS = [
   '#004d47', '#265bb0', '#e3b842', '#e3704d', '#6a4fb0',
@@ -45,6 +48,20 @@ export default function ListaComprasScreen({ navigation }) {
   const [gerarError, setGerarError] = useState(null);
   // Sessão 28.53 — toast de feedback para gerar lista / exportar PDF
   const [toast, setToast] = useState(null);
+  // Planos: escolher produtos e quantidades é livre; "Gerar lista" e o PDF são Pro.
+  const { hasFeature } = usePlan();
+  const [upgradeModal, setUpgradeModal] = useState(null);
+  // Retorna true (e abre o popup) quando o plano NÃO inclui a lista de compras.
+  function gateLista() {
+    if (hasFeature('lista_compras')) return false;
+    setUpgradeModal({
+      requiredPlan: 'pro',
+      title: 'Lista de Compras é um recurso Pro',
+      message: 'Montar a seleção é grátis. Para gerar a lista e exportar em PDF, assine:',
+      highlights: ['Lista de compras automática', 'Delivery, Relatórios, PDF e mais'],
+    });
+    return true;
+  }
 
   useFocusEffect(useCallback(() => {
     loadProdutos();
@@ -102,6 +119,7 @@ export default function ListaComprasScreen({ navigation }) {
   }
 
   async function gerarLista() {
+    if (gateLista()) return;
     setGerando(true);
     setGerarError(null);
     try {
@@ -315,6 +333,7 @@ export default function ListaComprasScreen({ navigation }) {
   }
 
   async function exportarPDF() {
+    if (gateLista()) return;
     if (!lista || Platform.OS !== 'web') return;
 
     // Sessão 28.50: puxa nome da empresa do `perfil` pra cabeçalho do PDF
@@ -398,6 +417,12 @@ export default function ListaComprasScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: isMobile ? 200 : 100 }]}>
+        <ProPreviewBanner
+          feature="lista_compras"
+          tela="Lista de Compras"
+          acao="gerar a lista e exportar em PDF"
+          style={{ marginHorizontal: 0, marginTop: 0, marginBottom: spacing.sm }}
+        />
         {/* Audit P0: banner de erro de carregamento (era silent) */}
         {loadError ? (
           <TouchableOpacity
@@ -625,6 +650,14 @@ export default function ListaComprasScreen({ navigation }) {
         message={toast?.message}
         icon={toast?.icon}
         onDismiss={() => setToast(null)}
+      />
+      <UpgradeModal
+        visible={!!upgradeModal}
+        onClose={() => setUpgradeModal(null)}
+        requiredPlan={upgradeModal?.requiredPlan}
+        title={upgradeModal?.title}
+        message={upgradeModal?.message}
+        highlights={upgradeModal?.highlights || []}
       />
     </View>
   );

@@ -9,6 +9,9 @@ import InfoTooltip from '../components/InfoTooltip';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { safeNum } from '../utils/calculations';
+import usePlan from '../hooks/usePlan';
+import UpgradeModal from '../components/UpgradeModal';
+import ProPreviewBanner from '../components/ProPreviewBanner';
 
 // ─── Numeric helpers (audit P0) ─────────────
 function parseInputNumber(raw) {
@@ -86,6 +89,19 @@ export default function DeliveryPlataformasScreen() {
   const [saveError, setSaveError] = useState(null);
   const isLoadingRef = useRef(false);
   const saveErrorTimerRef = useRef(null);
+  // Planos: ver as plataformas é livre; salvar (adicionar, taxas, ativar) é Pro.
+  const { hasFeature } = usePlan();
+  const [upgradeModal, setUpgradeModal] = useState(null);
+  function gateDelivery() {
+    if (hasFeature('delivery')) return false;
+    setUpgradeModal({
+      requiredPlan: 'pro',
+      title: 'Delivery é um recurso Pro',
+      message: 'Ver as plataformas é grátis. Para salvar taxas e comissões, assine:',
+      highlights: ['Módulo Delivery completo (iFood, Rappi, próprio)', 'Lista de compras, Relatórios, PDF e mais'],
+    });
+    return true;
+  }
 
   function showSaveError(msg) {
     setSaveError(msg);
@@ -126,6 +142,7 @@ export default function DeliveryPlataformasScreen() {
   }
 
   async function updatePlatform(id, field, value) {
+    if (gateDelivery()) return;
     // Audit P0: SQL injection defense — only allow whitelisted fields
     if (!PLAT_NUMERIC_FIELDS.includes(field)) {
       console.error('[DeliveryPlataformasScreen.updatePlatform] campo não permitido:', field);
@@ -157,6 +174,7 @@ export default function DeliveryPlataformasScreen() {
   async function adicionarPlataforma() {
     const nome = novaPlataforma.trim();
     if (!nome) return;
+    if (gateDelivery()) return;
     const exists = plataformas.some(p => (p.plataforma || '').trim().toLowerCase() === nome.toLowerCase());
     if (exists) {
       showSaveError('Já existe uma plataforma com esse nome.');
@@ -217,6 +235,12 @@ export default function DeliveryPlataformasScreen() {
   return (
     <>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <ProPreviewBanner
+          feature="delivery"
+          tela="Delivery"
+          acao="salvar plataformas, taxas e comissões"
+          style={{ marginHorizontal: 0, marginTop: 0, marginBottom: spacing.sm }}
+        />
         {/* Audit P0: error banners */}
         {loadError && (
           <View
@@ -477,6 +501,14 @@ export default function DeliveryPlataformasScreen() {
         onConfirm={confirmRemove?.onConfirm}
         onCancel={() => setConfirmRemove(null)}
         confirmLabel="Remover"
+      />
+      <UpgradeModal
+        visible={!!upgradeModal}
+        onClose={() => setUpgradeModal(null)}
+        requiredPlan={upgradeModal?.requiredPlan}
+        title={upgradeModal?.title}
+        message={upgradeModal?.message}
+        highlights={upgradeModal?.highlights || []}
       />
     </>
   );

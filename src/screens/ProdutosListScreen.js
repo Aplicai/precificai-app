@@ -30,9 +30,10 @@ import ViewModeToggle from '../components/ViewModeToggle';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useUndoableDelete from '../hooks/useUndoableDelete';
 import useBulkSelection from '../hooks/useBulkSelection';
-import usePlan from '../hooks/usePlan';
+import usePlan, { getPlan } from '../hooks/usePlan';
 import UpgradeModal from '../components/UpgradeModal';
-import { PLAN_LABELS, UPGRADE_HIGHLIGHTS } from '../config/plans';
+import { PLAN_LABELS, UPGRADE_HIGHLIGHTS, limitFor as limitForPlan } from '../config/plans';
+import { showToast } from '../utils/toastBus';
 // Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
 // Para produtos, o blocker crítico é "vendas registradas" — aviso de soft-delete recomendado.
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
@@ -85,6 +86,16 @@ function getMargemClass(margem, meta = 0.15) {
   return 'abaixo';
 }
 
+// Planos: aviso "falta 1 pro teto" aparece UMA vez por sessão.
+let _avisoLimiteMostrado = false;
+function avisarLimiteProximo(total) {
+  if (_avisoLimiteMostrado) return;
+  const limite = limitForPlan(getPlan(), 'produtos');
+  if (!Number.isFinite(limite) || total !== limite - 1) return;
+  _avisoLimiteMostrado = true;
+  showToast('Mais 1 e o plano Grátis enche. No Pro é ilimitado.', 'info', 4000);
+}
+
 export default function ProdutosListScreen({ navigation }) {
   const { isDesktop } = useResponsiveLayout();
   const isFocused = useIsFocused();
@@ -126,6 +137,12 @@ export default function ProdutosListScreen({ navigation }) {
   // Planos (Fase 0) — gate de limite de produtos por plano.
   const { canAdd, limitFor, plano, upgradeTo } = usePlan();
   const [upgradeModal, setUpgradeModal] = useState(null);
+  // Badge "3 de 5 no Grátis" no cabeçalho: só faz sentido com teto finito.
+  const limiteProdutos = limitFor('produtos');
+  // Some durante o carregamento: antes mostrava "0 de 5" até a lista chegar.
+  const mostraLimite = Number.isFinite(limiteProdutos) && !loading;
+  // Último total carregado — pra avisar quando a pessoa chega a 1 do teto.
+  const ultimoTotalRef = useRef(null);
   function abrirCriacao() {
     // Bloqueia o cadastro acima do limite do plano → popup de upgrade.
     if (!canAdd('produtos', totalProdutos)) {
@@ -361,6 +378,14 @@ export default function ProdutosListScreen({ navigation }) {
       result.push({ ...p, custoTotal: custoUn, precoVenda, lucro, cmv, despFixasVal, despVarVal, margem, embDeliveryCusto, temEmbDelivery });
     }
 
+    // Aviso suave ao ficar a 1 produto do teto do plano (só quando o total SOBE,
+    // nunca na primeira carga). getPlan() em vez do hook: loadData roda dentro
+    // de closures antigas (useFocusEffect) e o plano pode ter mudado depois.
+    const totalAnterior = ultimoTotalRef.current;
+    ultimoTotalRef.current = result.length;
+    if (totalAnterior !== null && result.length > totalAnterior) {
+      avisarLimiteProximo(result.length);
+    }
     setTotalProdutos(result.length);
     checkActivation(supabase);
 
@@ -954,6 +979,18 @@ export default function ProdutosListScreen({ navigation }) {
               ]}
             />
           </View>
+          {/* Planos: quanto do teto do Grátis já foi usado (some no Pro). */}
+          {mostraLimite && (
+            <View
+              style={[styles.planLimitBadge, !isDesktop && { alignSelf: 'flex-end' }, totalProdutos >= limiteProdutos && styles.planLimitBadgeFull]}
+              accessibilityRole="text"
+              accessibilityLabel={`${totalProdutos} de ${limiteProdutos} produtos no plano ${PLAN_LABELS[plano]}`}
+            >
+              <Text style={[styles.planLimitText, totalProdutos >= limiteProdutos && styles.planLimitTextFull]}>
+                {totalProdutos} de {limiteProdutos} no {PLAN_LABELS[plano]}
+              </Text>
+            </View>
+          )}
           {/* Bug fix: toggle de grid escondido no mobile — grid mobile mostrava só chips de preço. */}
         </View>
         {/* Chips clicáveis de filtro por faixa de lucro (substituem a legenda passiva).
@@ -1429,6 +1466,14 @@ const styles = StyleSheet.create({
   sortMenuWrap: {
     paddingTop: spacing.xs,
   },
+  // Planos: badge "3 de 5 no Grátis" ao lado da busca/ordenação.
+  planLimitBadge: {
+    backgroundColor: colors.primary + '10', borderWidth: 1, borderColor: colors.primary + '35',
+    borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, marginLeft: spacing.xs,
+  },
+  planLimitBadgeFull: { backgroundColor: '#FEF3C7', borderColor: '#FCD34D' },
+  planLimitText: { fontSize: fonts.tiny, fontFamily: fontFamily.semiBold, color: colors.primary },
+  planLimitTextFull: { color: '#92400E' },
   sortMenuWrapMobile: {
     paddingTop: 0,
     paddingHorizontal: spacing.md,

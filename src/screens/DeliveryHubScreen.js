@@ -26,6 +26,9 @@ import { buildContextoFinanceiro, normalizePlataforma, custoDelivery, embalagemD
 import { upsertPrecoDelivery } from '../services/precoDeliveryService';
 // D-24: simulador em lote renderiza inline dentro do hub
 import SimuladorLoteScreen from './SimuladorLoteScreen';
+import usePlan from '../hooks/usePlan';
+import UpgradeModal from '../components/UpgradeModal';
+import ProPreviewBanner from '../components/ProPreviewBanner';
 
 const isWeb = Platform.OS === 'web';
 
@@ -81,6 +84,21 @@ export default function DeliveryHubScreen({ navigation }) {
   const [precosMap, setPrecosMap] = useState({}); // { produtoId: precoStr }
   const [precosLoading, setPrecosLoading] = useState(false);
   const precosSaveTimers = useRef({});
+  // Planos: quem está no Grátis VÊ o Delivery com os próprios dados (abas,
+  // plataformas, visão geral). Só gravar — plataforma, taxa, preço — é Pro.
+  const { hasFeature } = usePlan();
+  const [upgradeModal, setUpgradeModal] = useState(null);
+  // Retorna true (e abre o popup) quando o plano NÃO inclui o Delivery.
+  function gateDelivery() {
+    if (hasFeature('delivery')) return false;
+    setUpgradeModal({
+      requiredPlan: 'pro',
+      title: 'Delivery é um recurso Pro',
+      message: 'Ver a simulação é grátis. Para salvar plataformas, taxas e preços, assine:',
+      highlights: ['Módulo Delivery completo (iFood, Rappi, próprio)', 'Lista de compras, Relatórios, PDF e mais'],
+    });
+    return true;
+  }
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
@@ -279,6 +297,7 @@ export default function DeliveryHubScreen({ navigation }) {
 
   // ── Plataformas functions ──
   async function togglePlataforma(plat) {
+    if (gateDelivery()) return;
     try {
       const db = await getDatabase();
       const newAtivo = plat.ativo ? 0 : 1;
@@ -297,6 +316,7 @@ export default function DeliveryHubScreen({ navigation }) {
   }
 
   async function savePlatField(platId, field, value) {
+    if (gateDelivery()) return;
     // Validação de field name (defesa contra SQL injection no UPDATE dinâmico)
     if (!PLAT_NUMERIC_FIELDS.includes(field)) {
       console.error('[DeliveryHubScreen.savePlatField] campo não permitido:', field);
@@ -321,6 +341,7 @@ export default function DeliveryHubScreen({ navigation }) {
 
   async function addPlataforma() {
     if (!newPlatNome.trim()) return;
+    if (gateDelivery()) return;
     try {
       const db = await getDatabase();
       await db.runAsync(
@@ -352,6 +373,7 @@ export default function DeliveryHubScreen({ navigation }) {
   // ── Simulador functions ──
   function simularPreco() {
     if (!selectedProd || !selectedPlat) return;
+    if (gateDelivery()) return;
     const isComboSel = typeof selectedProd === 'string' && selectedProd.startsWith('combo_');
     const prod = isComboSel
       ? combos.find(c => 'combo_' + c.id === selectedProd)
@@ -505,6 +527,7 @@ export default function DeliveryHubScreen({ navigation }) {
 
       {/* Sessão 25: heroInfoCard removido — redundante com o subtítulo do
           pageHeader e o infoCard contextual de cada tab abaixo. */}
+      <ProPreviewBanner feature="delivery" tela="Delivery" acao="salvar plataformas, taxas e preços" />
 
       {/* Tabs */}
       <View style={styles.tabsRow}>
@@ -637,7 +660,7 @@ export default function DeliveryHubScreen({ navigation }) {
                           borderRadius: borderRadius.md, marginTop: spacing.sm, marginBottom: spacing.xs,
                           flexDirection: 'row', alignItems: 'center', gap: 10,
                         }}
-                        onPress={() => setPrecosPopupPlat({ id: plat.id, nome: plat.plataforma })}
+                        onPress={() => { if (gateDelivery()) return; setPrecosPopupPlat({ id: plat.id, nome: plat.plataforma }); }}
                         activeOpacity={0.7}
                       >
                         <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primary + '14', alignItems: 'center', justifyContent: 'center' }}>
@@ -1245,6 +1268,14 @@ export default function DeliveryHubScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+      <UpgradeModal
+        visible={!!upgradeModal}
+        onClose={() => setUpgradeModal(null)}
+        requiredPlan={upgradeModal?.requiredPlan}
+        title={upgradeModal?.title}
+        message={upgradeModal?.message}
+        highlights={upgradeModal?.highlights || []}
+      />
     </View>
   );
 }

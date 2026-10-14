@@ -14,6 +14,9 @@ import { classificarMatrizBCG } from '../utils/bcgClassify';
 // Auditoria 2026-09-09 [B3]: custo unitário de item de combo por TIPO (unidade
 // nativa) — mesma função das telas de Delivery/Combos.
 import { resolveCustoUnitarioItemCombo } from '../utils/comboPricing';
+import usePlan from '../hooks/usePlan';
+import UpgradeModal from '../components/UpgradeModal';
+import ProPreviewBanner from '../components/ProPreviewBanner';
 
 // Classification config (audit P1-07): nomes afetivos em vez de jargão BCG.
 // Chaves mantidas em português gastronômico para compatibilidade com dados
@@ -95,6 +98,10 @@ export default function MatrizBCGScreen({ navigation }) {
   const [searchText, setSearchText] = useState('');
   const [quadranteModal, setQuadranteModal] = useState(null); // chave do BCGQuadranteModal ou null
   const { isDesktop, isMobile } = useResponsiveLayout();
+  // Planos: o ranking inteiro aparece pra quem está no Grátis (com as vendas da
+  // própria conta). Só a ação — abrir o produto a partir do ranking — é Pro.
+  const { hasFeature } = usePlan();
+  const [upgradeModal, setUpgradeModal] = useState(null);
   // Sessão auditoria 09/09 — bug fix: era 1 timer COMPARTILHADO por todos os produtos.
   // Editar produto A e depois produto B antes de 800ms cancelava o save de A → ao
   // clicar "Atualizar análise" o valor de A nunca chegava no banco. Agora é 1 timer
@@ -363,6 +370,15 @@ export default function MatrizBCGScreen({ navigation }) {
   }
 
   function navigateToProduto(item) {
+    if (!hasFeature('ranking_bcg')) {
+      setUpgradeModal({
+        requiredPlan: 'pro',
+        title: 'Ranking de Produtos é um recurso Pro',
+        message: 'Ver o ranking é grátis. Para abrir e ajustar cada produto a partir dele, assine:',
+        highlights: ['Ranking de Produtos (Matriz BCG)', 'Delivery, Lista de compras, Relatórios e PDF'],
+      });
+      return;
+    }
     if (item.isCombo) {
       // Combos: navega para o Delivery Hub (que tem acesso aos combos)
       navigation.navigate('DeliveryHub');
@@ -472,6 +488,12 @@ export default function MatrizBCGScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 1200, alignSelf: 'center', width: '100%' }]}>
+      <ProPreviewBanner
+        feature="ranking_bcg"
+        tela="Ranking de Produtos"
+        acao="abrir e ajustar cada produto a partir do ranking"
+        style={{ marginHorizontal: 0, marginTop: 0, marginBottom: spacing.sm }}
+      />
 
       {!loading && (
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 14 }}>
@@ -965,6 +987,14 @@ export default function MatrizBCGScreen({ navigation }) {
         visible={quadranteModal !== null}
         quadrante={quadranteModal}
         onClose={() => setQuadranteModal(null)}
+      />
+      <UpgradeModal
+        visible={!!upgradeModal}
+        onClose={() => setUpgradeModal(null)}
+        requiredPlan={upgradeModal?.requiredPlan}
+        title={upgradeModal?.title}
+        message={upgradeModal?.message}
+        highlights={upgradeModal?.highlights || []}
       />
     </ScrollView>
   );

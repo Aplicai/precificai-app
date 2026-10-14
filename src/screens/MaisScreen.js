@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
@@ -8,8 +8,7 @@ import usePersistedState from '../hooks/usePersistedState';
 import useListDensity from '../hooks/useListDensity';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePlan from '../hooks/usePlan';
-import UpgradeModal from '../components/UpgradeModal';
-import { FEATURE_MIN_PLAN, PLAN_LABELS, UPGRADE_HIGHLIGHTS } from '../config/plans';
+import { FEATURE_MIN_PLAN, PLAN_LABELS } from '../config/plans';
 
 /**
  * Hub "Ferramentas" reorganizado (audit S9 — Sprint 4).
@@ -179,9 +178,9 @@ export default function MaisScreen({ navigation }) {
   const { isCompact, cardPadding, sectionGap, titleFontSize, iconSize, listItemSubtitleFontSize, bodyLineHeight } = useListDensity();
   // Área 9 — esconder itens marcados como desktopOnly quando em mobile
   const { isDesktop } = useResponsiveLayout();
-  // Planos (Fase 0) — itens pagos aparecem com cadeado 🔒 e abrem o popup ao tocar.
+  // Planos: itens pagos levam a tag "PRO" mas ABREM normalmente — a tela mostra
+  // os dados da pessoa e só a ação final pede assinatura (ver ProPreviewBanner).
   const { hasFeature } = usePlan();
-  const [upgradeModal, setUpgradeModal] = useState(null);
   const _isFlagOn = (name) => {
     if (!name) return true;
     if (name === 'usa_delivery') return !!usaDelivery;
@@ -226,24 +225,16 @@ export default function MaisScreen({ navigation }) {
           <View key={group.key} style={[styles.group, gIdx > 0 && { marginTop: sectionGap }]}>
             <Text style={[styles.sectionTitle, { fontSize: titleFontSize, marginBottom: isCompact ? 8 : 12 }]}>{group.title}</Text>
             {group.items.map((item) => {
-              // Planos: item bloqueado se tem feature paga que o plano atual não inclui.
-              const locked = item.feature && !hasFeature(item.feature);
-              const reqPlan = locked ? FEATURE_MIN_PLAN[item.feature] : null;
+              // Planos: feature paga fora do plano → tag "PRO" no item, mas a
+              // navegação segue livre (a tela trava só a ação final).
+              const isPro = !!item.feature && !hasFeature(item.feature);
+              const proLabel = isPro ? PLAN_LABELS[FEATURE_MIN_PLAN[item.feature]] : null;
               return (
               <TouchableOpacity
                 key={item.key}
-                style={[styles.menuCard, { padding: cardPadding, marginBottom: isCompact ? 6 : 10 }, locked && { opacity: 0.7 }]}
+                style={[styles.menuCard, { padding: cardPadding, marginBottom: isCompact ? 6 : 10 }]}
                 activeOpacity={0.6}
                 onPress={() => {
-                  if (locked) {
-                    setUpgradeModal({
-                      requiredPlan: reqPlan,
-                      title: `${item.title} é um recurso ${PLAN_LABELS[reqPlan]}`,
-                      message: 'Desbloqueie este recurso e muito mais:',
-                      highlights: UPGRADE_HIGHLIGHTS,
-                    });
-                    return;
-                  }
                   // Sessão 28.8 — item.tab opcional pra cross-stack navigation (ex: Combos vive em Produtos)
                   if (item.tab) {
                     navigation.navigate(item.tab, { screen: item.screen });
@@ -252,7 +243,7 @@ export default function MaisScreen({ navigation }) {
                   }
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={locked ? `${item.title}. Disponível no plano ${PLAN_LABELS[reqPlan]}` : `${item.title}. ${item.desc}`}
+                accessibilityLabel={isPro ? `${item.title}. ${item.desc}. Recurso ${proLabel}` : `${item.title}. ${item.desc}`}
               >
                 <View style={[styles.iconCircle, { backgroundColor: c + '12', borderWidth: 1, borderColor: c + '30', width: isCompact ? 36 : 44, height: isCompact ? 36 : 44, borderRadius: isCompact ? 18 : 22, marginRight: isCompact ? 10 : spacing.md }]}>
                   {item.set === 'material' ? (
@@ -262,12 +253,19 @@ export default function MaisScreen({ navigation }) {
                   )}
                 </View>
                 <View style={styles.menuBody}>
-                  <Text style={styles.menuTitle} numberOfLines={1}>{item.title}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={[styles.menuTitle, { flexShrink: 1 }]} numberOfLines={1}>{item.title}</Text>
+                    {isPro && (
+                      <View style={styles.proTag}>
+                        <Text style={styles.proTagText}>{proLabel.toUpperCase()}</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={[styles.menuDesc, { fontSize: listItemSubtitleFontSize, lineHeight: bodyLineHeight }]} numberOfLines={2}>
-                    {locked ? `Disponível no ${PLAN_LABELS[reqPlan]}` : item.desc}
+                    {item.desc}
                   </Text>
                 </View>
-                <Feather name={locked ? 'lock' : 'chevron-right'} size={iconSize} color={locked ? colors.primary : colors.textSecondary} />
+                <Feather name="chevron-right" size={iconSize} color={colors.textSecondary} />
               </TouchableOpacity>
               );
             })}
@@ -276,16 +274,6 @@ export default function MaisScreen({ navigation }) {
       })}
 
       <View style={{ height: 40 }} />
-
-      {/* Planos (Fase 0) — popup de upgrade ao tocar num item bloqueado */}
-      <UpgradeModal
-        visible={!!upgradeModal}
-        onClose={() => setUpgradeModal(null)}
-        requiredPlan={upgradeModal?.requiredPlan}
-        title={upgradeModal?.title}
-        message={upgradeModal?.message}
-        highlights={upgradeModal?.highlights || []}
-      />
     </ScrollView>
   );
 }
@@ -326,4 +314,10 @@ const styles = StyleSheet.create({
     fontSize: fonts.tiny, fontFamily: fontFamily.regular,
     color: colors.textSecondary, lineHeight: 16,
   },
+  // Tag "PRO" nos itens pagos — a tela abre, só a ação final pede assinatura.
+  proTag: {
+    backgroundColor: colors.primary + '14', borderWidth: 1, borderColor: colors.primary + '40',
+    borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1, marginBottom: 2,
+  },
+  proTagText: { fontSize: 9, fontFamily: fontFamily.bold, fontWeight: '700', color: colors.primary, letterSpacing: 0.5 },
 });

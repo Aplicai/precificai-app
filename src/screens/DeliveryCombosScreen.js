@@ -1063,7 +1063,21 @@ export default function DeliveryCombosScreen() {
             <Feather name="layers" size={isDesktop ? 22 : 18} color={colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.screenHeaderTitle}>Combos / Kits</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={styles.screenHeaderTitle}>Combos / Kits</Text>
+              {/* Planos: quanto do teto do Grátis já foi usado (some no Pro). */}
+              {Number.isFinite(limitFor('combos')) && (
+                <View
+                  style={[styles.planLimitBadge, totalCombos >= limitFor('combos') && styles.planLimitBadgeFull]}
+                  accessibilityRole="text"
+                  accessibilityLabel={`${totalCombos} de ${limitFor('combos')} combos no plano ${PLAN_LABELS[plano]}`}
+                >
+                  <Text style={[styles.planLimitText, totalCombos >= limitFor('combos') && styles.planLimitTextFull]}>
+                    {totalCombos} de {limitFor('combos')} no {PLAN_LABELS[plano]}
+                  </Text>
+                </View>
+              )}
+            </View>
             <Text style={styles.screenHeaderSubtitle} numberOfLines={1}>
               {totalCombos === 0
                 ? 'Pacotes de produtos vendidos juntos'
@@ -1919,6 +1933,14 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 20,
   },
+  // Planos: badge "3 de 5 no Grátis" ao lado do título.
+  planLimitBadge: {
+    backgroundColor: colors.primary + '10', borderWidth: 1, borderColor: colors.primary + '35',
+    borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2,
+  },
+  planLimitBadgeFull: { backgroundColor: '#FEF3C7', borderColor: '#FCD34D' },
+  planLimitText: { fontSize: fonts.tiny, fontFamily: fontFamily.semiBold, color: colors.primary },
+  planLimitTextFull: { color: '#92400E' },
   screenHeaderSubtitle: {
     fontSize: fonts.tiny,
     fontFamily: fontFamily.regular,

@@ -27,6 +27,8 @@ import { calcularPrecoBalcao } from '../utils/precificacao';
 import { buildContextoFinanceiro, custoDelivery, embalagemDeliveryDoProduto } from '../utils/deliveryAdapter';
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
 import usePersistedState from '../hooks/usePersistedState';
+import usePlan from '../hooks/usePlan';
+import UpgradeModal from '../components/UpgradeModal';
 
 // Audit 09/09: a coluna "MÍNIMO" (antes "SUGERIDO (financeiro)") é o menor
 // preço que ainda entrega a margem do Financeiro. Quando fica ABAIXO do
@@ -37,12 +39,45 @@ function corMinimo(okFin, sugFinanceiro, precoBalcao) {
   return colors.success;
 }
 
+// Plataforma de EXEMPLO pra quem está no Grátis e ainda não cadastrou nenhuma:
+// a Visão Geral mostra o que a pessoa teria (preços sugeridos por produto) em
+// vez de um vazio "cadastre uma plataforma" — que ela não pode salvar sem o Pro.
+// Comissão do iFood (27%) + taxa de pagamento online (3,2%), mesmos defaults de
+// DeliveryPlataformasScreen.
+const PLATAFORMA_EXEMPLO = Object.freeze({
+  id: 'exemplo-ifood', plataforma: 'iFood', exemplo: true,
+  taxa_plataforma: 27, taxa_entrega: 0, comissao_app: 3.2, desconto_promocao: 0, outros_perc: 0, ativo: 1,
+});
+
 export default function SimuladorLoteScreen() {
   const navigation = useNavigation();
+  // Planos: a tabela inteira aparece pra quem está no Grátis (com os próprios
+  // produtos). Só a ação — editar/salvar o preço por plataforma — é Pro.
+  const { hasFeature } = usePlan();
+  const temDelivery = hasFeature('delivery');
+  const [upgradeModal, setUpgradeModal] = useState(null);
+  function abrirSimulacao(produtoId, plataformaId) {
+    if (!temDelivery) {
+      setUpgradeModal({
+        requiredPlan: 'pro',
+        title: 'Delivery é um recurso Pro',
+        message: 'Ver os preços sugeridos é grátis. Para simular e salvar o seu preço por plataforma, assine:',
+        highlights: ['Módulo Delivery completo (iFood, Rappi, próprio)', 'Lista de compras, Relatórios, PDF e mais'],
+      });
+      return;
+    }
+    setPopupSimulacao({ produtoId, plataformaId });
+  }
   const { isMobile } = useResponsiveLayout();
   const [loading, setLoading] = useState(true);
   const [produtos, setProdutos] = useState([]);
-  const [plataformas, setPlataformas] = useState([]);
+  const [plataformasDb, setPlataformas] = useState([]);
+  // Grátis sem plataforma cadastrada → a tabela usa o iFood de exemplo. Derivado
+  // no render (não no carregar) pra reagir quando o plano termina de carregar.
+  const plataformas = useMemo(
+    () => (plataformasDb.length > 0 || temDelivery) ? plataformasDb : [PLATAFORMA_EXEMPLO],
+    [plataformasDb, temDelivery]
+  );
   const [contexto, setContexto] = useState({ lucroPerc: 0.15, fixoPerc: 0, impostoPerc: 0, variavelPerc: 0 });
   const [modalCalculo, setModalCalculo] = useState(null);
   // Sessão 28.21: simulação agora abre como POPUP (não nova tela)
@@ -369,7 +404,7 @@ export default function SimuladorLoteScreen() {
                   return (
                     <TouchableOpacity
                       key={plat.id}
-                      onPress={() => setPopupSimulacao({ produtoId: linha.prod.id, plataformaId: plat.id })}
+                      onPress={() => abrirSimulacao(linha.prod.id, plat.id)}
                       activeOpacity={0.7}
                       style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8, marginTop: 8, alignItems: 'center', gap: 6 }}
                     >
@@ -427,8 +462,13 @@ export default function SimuladorLoteScreen() {
               {plataformas.map(plat => (
                 <View key={plat.id} style={{ width: 270, borderRightWidth: 1, borderRightColor: colors.border, borderBottomWidth: 2, borderBottomColor: colors.primary, paddingTop: 0 }}>
                   {/* Sessão 28.25: header da plataforma com fundo destacado, centralizado SOBRE as 3 sub-colunas */}
-                  <View style={{ width: '100%', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, backgroundColor: colors.primary + '22', borderBottomWidth: 1, borderBottomColor: colors.primary }}>
+                  <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 6, backgroundColor: colors.primary + '22', borderBottomWidth: 1, borderBottomColor: colors.primary }}>
                     <Text style={[styles.headerText, { fontSize: 13, color: colors.primary }]} numberOfLines={1}>{plat.plataforma}</Text>
+                    {plat.exemplo && (
+                      <View style={{ backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FCD34D', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 }}>
+                        <Text style={{ fontSize: 9, fontFamily: fontFamily.bold, color: '#92400E' }}>exemplo · {plat.taxa_plataforma}% comissão</Text>
+                      </View>
+                    )}
                   </View>
                   <View style={{ flexDirection: 'row', width: '100%' }}>
                     <View style={{ width: 90, alignItems: 'center', padding: 4, borderRightWidth: 1, borderRightColor: colors.border }}>
@@ -497,7 +537,7 @@ export default function SimuladorLoteScreen() {
                         return (
                           <TouchableOpacity
                             style={{ width: 90, alignItems: 'center', justifyContent: 'center', padding: spacing.xs, borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: bg }}
-                            onPress={() => setPopupSimulacao({ produtoId: linha.prod.id, plataformaId: plat.id })}
+                            onPress={() => abrirSimulacao(linha.prod.id, plat.id)}
                             activeOpacity={0.6}
                           >
                             {meuPreco > 0 ? (
@@ -512,7 +552,7 @@ export default function SimuladorLoteScreen() {
                       })()}
                       <TouchableOpacity
                         style={{ width: 90, alignItems: 'center', justifyContent: 'center', padding: spacing.xs, borderRightWidth: 1, borderRightColor: colors.border }}
-                        onPress={() => setPopupSimulacao({ produtoId: linha.prod.id, plataformaId: plat.id })}
+                        onPress={() => abrirSimulacao(linha.prod.id, plat.id)}
                         activeOpacity={0.6}
                       >
                         {okMantem ? (
@@ -535,7 +575,7 @@ export default function SimuladorLoteScreen() {
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={{ width: 90, alignItems: 'center', justifyContent: 'center', padding: spacing.xs }}
-                        onPress={() => setPopupSimulacao({ produtoId: linha.prod.id, plataformaId: plat.id })}
+                        onPress={() => abrirSimulacao(linha.prod.id, plat.id)}
                         activeOpacity={0.6}
                         disabled={!okFin}
                       >
@@ -616,6 +656,14 @@ export default function SimuladorLoteScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+      <UpgradeModal
+        visible={!!upgradeModal}
+        onClose={() => setUpgradeModal(null)}
+        requiredPlan={upgradeModal?.requiredPlan}
+        title={upgradeModal?.title}
+        message={upgradeModal?.message}
+        highlights={upgradeModal?.highlights || []}
+      />
     </View>
   );
 }

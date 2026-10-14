@@ -19,6 +19,9 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency } from '../utils/calculations';
 import { isMarcaEstimada, formatInsumoNome } from '../utils/insumoDisplay';
+import usePlan from '../hooks/usePlan';
+import UpgradeModal from '../components/UpgradeModal';
+import ProPreviewBanner from '../components/ProPreviewBanner';
 
 const safe = (v) => {
   const n = Number(v);
@@ -55,6 +58,22 @@ function SectionBlock({ icon, color, title, subtitle, children }) {
 // header global "Relatórios") e ajusta paddings.
 export default function RelatorioInsumosScreen({ embedded = false } = {}) {
   const navigation = useNavigation();
+  // Planos: o relatório é Pro, mas quem está no Grátis VÊ tudo com os próprios
+  // dados. Só a ação — corrigir o ingrediente direto daqui — pede assinatura.
+  const { hasFeature } = usePlan();
+  const [upgradeModal, setUpgradeModal] = useState(null);
+  function abrirInsumo(id) {
+    if (!hasFeature('relatorio_insumos')) {
+      setUpgradeModal({
+        requiredPlan: 'pro',
+        title: 'Relatório de Ingredientes é um recurso Pro',
+        message: 'Ver o relatório é grátis. Para corrigir os ingredientes direto daqui, assine:',
+        highlights: ['Relatório de ingredientes completo', 'Delivery, Lista de compras, PDF e mais'],
+      });
+      return;
+    }
+    navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } });
+  }
   const [loading, setLoading] = useState(true);
   const [insumos, setInsumos] = useState([]);
   const [categoriaStats, setCategoriaStats] = useState([]);
@@ -279,6 +298,12 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
   return (
     <View style={styles.container}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
+        <ProPreviewBanner
+          feature="relatorio_insumos"
+          tela="Relatório de Ingredientes"
+          acao="corrigir os ingredientes direto daqui"
+          style={{ marginHorizontal: 0, marginTop: 0, marginBottom: spacing.sm }}
+        />
         {/* Sessão 28.39/28.40: header polido — quando embedded no RelatoriosHub,
             mostra apenas subtitle + refresh (header principal está no hub). */}
         {!embedded && (
@@ -401,7 +426,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                       <TouchableOpacity
                         key={i.id || idx}
                         style={styles.listRow}
-                        onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
+                        onPress={() => abrirInsumo(i.id)}
                       >
                         <Text style={styles.listRowNome} numberOfLines={1}>{i.nome}</Text>
                         <Text style={styles.listRowValor}>{formatCurrency(i.preco_por_kg)}/kg</Text>
@@ -429,7 +454,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                       <TouchableOpacity
                         key={i.id || idx}
                         style={styles.listRow}
-                        onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
+                        onPress={() => abrirInsumo(i.id)}
                       >
                         <Text style={styles.listRowNome} numberOfLines={1}>{i.nome}</Text>
                         <Feather name="chevron-right" size={14} color={colors.textSecondary} />
@@ -456,7 +481,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                       <TouchableOpacity
                         key={i.id || idx}
                         style={styles.listRow}
-                        onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
+                        onPress={() => abrirInsumo(i.id)}
                       >
                         <Text style={styles.listRowNome} numberOfLines={1}>{i.nome}</Text>
                         <Text style={styles.listRowValor}>
@@ -488,7 +513,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                     <TouchableOpacity
                       key={i}
                       style={styles.listRow}
-                      onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: v.materia_prima_id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
+                      onPress={() => abrirInsumo(v.materia_prima_id)}
                     >
                       <View style={{ flex: 1 }}>
                         <Text style={styles.listRowNome} numberOfLines={1}>{v.nome}</Text>
@@ -520,7 +545,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                   <TouchableOpacity
                     key={i.id || idx}
                     style={styles.listRow}
-                    onPress={() => navigation.navigate('Insumos', { screen: 'MateriaPrimaForm', params: { id: i.id, returnTo: 'Relatorios', returnToParams: { aba: 'insumos' } } })}
+                    onPress={() => abrirInsumo(i.id)}
                   >
                     <View style={[styles.rankBadge, { backgroundColor: colors.error + '18' }]}>
                       <Text style={[styles.rankBadgeText, { color: colors.error }]}>{idx + 1}</Text>
@@ -575,6 +600,14 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+      <UpgradeModal
+        visible={!!upgradeModal}
+        onClose={() => setUpgradeModal(null)}
+        requiredPlan={upgradeModal?.requiredPlan}
+        title={upgradeModal?.title}
+        message={upgradeModal?.message}
+        highlights={upgradeModal?.highlights || []}
+      />
     </View>
   );
 }
