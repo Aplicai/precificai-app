@@ -610,9 +610,9 @@ function MainTabs({ route }) {
 
 const AuthStack = createNativeStackNavigator();
 
-function AuthNavigator() {
+function AuthNavigator({ initialRouteName = 'Login' }) {
   return (
-    <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+    <AuthStack.Navigator initialRouteName={initialRouteName} screenOptions={{ headerShown: false }}>
       {/* Sessão 28.8 — Landing institucional vive em projeto Vercel separado
           (`precificai-site` em precificaiapp.com). O app abre direto em Login. */}
       <AuthStack.Screen name="Login" component={LoginScreen} />
@@ -804,9 +804,18 @@ export default function AppNavigator() {
   // nunca apareceria pro usuário que clicou no link do email.
   const isAuthRoutes = !user || passwordRecovery;
 
+  // Link de redefinir senha que cai na RAIZ (`/#access_token=…&type=recovery`)
+  // em vez de `/reset-password` — acontece quando o e-mail é disparado pelo
+  // painel do Supabase (usa o Site URL) ou por um cliente de e-mail que
+  // reescreve o link. O caminho não casa com nenhuma rota e o AuthStack abria
+  // em Login, com a sessão de recuperação valendo por baixo. Durante a
+  // recuperação a tela inicial é sempre ResetPassword, sem depender da URL;
+  // o `key` remonta o stack caso a intenção só seja detectada depois do mount.
+  const recovering = !!passwordRecovery;
+
   return (
     <NavigationContainer
-      linking={isAuthRoutes ? linking : undefined}
+      linking={isAuthRoutes && !recovering ? linking : undefined}
       // UX walkthrough: sem formatter, o React Navigation usa `options.title ?? route.name`
       // e a aba do browser mostrava "HomeMain" após o voltar do header.
       documentTitle={{
@@ -814,7 +823,9 @@ export default function AppNavigator() {
           (route?.name && ROUTE_TITLES[route.name]) || options?.title || APP_NAME,
       }}
     >
-      {isAuthRoutes ? <AuthNavigator /> : <AppContent />}
+      {isAuthRoutes
+        ? <AuthNavigator key={recovering ? 'recovery' : 'auth'} initialRouteName={recovering ? 'ResetPassword' : 'Login'} />
+        : <AppContent />}
     </NavigationContainer>
   );
 }
