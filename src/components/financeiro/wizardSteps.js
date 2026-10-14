@@ -9,7 +9,7 @@ import { parseDecimalBR } from '../../utils/calculations';
 
 // Ordem em que o wizard pergunta (Margem → Faturamento → Custos do mês → Custos por venda).
 // Copy em reais e palavras do dia a dia (dono de negócio de comida, não contador).
-// `opcional: true` = refinamento: o wizard deixa pular e o status não cobra.
+// Os 4 passos são obrigatórios (decisão do dono 14/10/2026): sem custos o preço não fica certo.
 export const WIZARD_STEPS = [
   {
     key: 'lucro',
@@ -30,16 +30,14 @@ export const WIZARD_STEPS = [
     titulo: 'O que você paga todo mês mesmo sem vender?',
     ajuda: 'Aluguel, luz, água, salários, o seu próprio salário.',
     exemplo: 'Ex.: aluguel R$ 1.200, luz R$ 300, seu salário R$ 2.000.',
-    pendente: 'Sem isso o preço sai um pouco menos preciso. Pode pular e voltar depois.',
-    opcional: true,
+    pendente: 'Adicione pelo menos um custo do mês (ex.: aluguel ou luz) para continuar.',
   },
   {
     key: 'variaveis',
     titulo: 'O que sai de cada venda?',
     ajuda: 'Taxa do cartão, imposto, embalagem do delivery: o que some de cada venda.',
     exemplo: 'Ex.: taxa da maquininha 3,5% e imposto 6%.',
-    pendente: 'Sem isso o preço sai um pouco menos preciso. Pode pular e voltar depois.',
-    opcional: true,
+    pendente: 'Adicione pelo menos um custo por venda (ex.: taxa da maquininha) para continuar.',
   },
 ];
 
@@ -62,8 +60,8 @@ export function wizardProgressLabel(index, total = WIZARD_STEPS.length) {
   return `Passo ${i + 1} de ${total}`;
 }
 
-/** true quando o status foi carregado e falta margem ou faturamento (`completo` do
- * financeiroStatus — custos são opcionais e não reabrem o wizard). */
+/** true quando o status foi carregado e falta qualquer passo (`completo` do
+ * financeiroStatus: margem, faturamento, custos do mês e custos por venda). */
 export function deveMostrarWizard(status) {
   return !!status && status.completo === false;
 }
@@ -71,6 +69,19 @@ export function deveMostrarWizard(status) {
 export function passoConcluido(status, key) {
   const etapa = status?.etapas?.find(e => e.key === key);
   return etapa?.done === true;
+}
+
+/**
+ * Texto inline de pendência do passo (`pendente`), mostrado perto do Continuar.
+ * Só aparece depois que o usuário tentou continuar NESTE passo (`tentativaKey`)
+ * e some sozinho quando o passo fica concluído (ex.: adicionou um custo).
+ * No web o Alert.alert não aparecia de forma confiável — o texto inline é a fonte.
+ */
+export function mensagemPendenteWizard(status, stepKey, tentativaKey) {
+  if (!stepKey || stepKey !== tentativaKey) return '';
+  const step = WIZARD_STEPS.find(s => s.key === stepKey);
+  if (!step || passoConcluido(status, stepKey)) return '';
+  return step.pendente;
 }
 
 /** Índice (em WIZARD_STEPS) do primeiro passo pendente; 0 sem status; -1 se tudo feito. */

@@ -12,12 +12,13 @@ import { Feather } from '@expo/vector-icons';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { colors, spacing, fonts, fontFamily, borderRadius, radius } from '../utils/theme';
 import { formatCurrency, formatPercent, calcDespesasFixasPercentual, calcMarkup, parseDecimalBR } from '../utils/calculations';
-import { getFinanceiroStatus } from '../utils/financeiroStatus';
+import { getFinanceiroStatus, textoPendenciaFinanceiro } from '../utils/financeiroStatus';
 // UX audit 09/09 (Fase B) — wizard guiado de primeiro uso: helpers puros + copy dos passos
 import {
   WIZARD_STEPS, SUGESTOES_LUCRO, wizardProgressLabel, deveMostrarWizard,
   passoConcluido, primeiroPassoPendente, validarLucroInput, validarFaturamentoInput,
   fracaoParaInputPercentual, formatMarkup, exemploMargemEmReais, MARKUP_NAO_FECHA,
+  mensagemPendenteWizard,
 } from '../components/financeiro/wizardSteps';
 // APP-30/33/34 — config centralizada de constantes financeiras
 import {
@@ -102,6 +103,11 @@ export default function FinanceiroConfigScreen() {
   // pra não expulsar o usuário do formulário completo a cada autosave/refocus.
   const [wizardMode, setWizardMode] = useState(null);
   const [wizardStep, setWizardStep] = useState(0);
+  // Feedback inline do wizard (no web o Alert.alert não aparecia de forma confiável):
+  // `wizardTentativa` = chave do passo em que o usuário tentou continuar sem
+  // concluir (mostra o `pendente`); `wizardErro` = valor digitado inválido.
+  const [wizardTentativa, setWizardTentativa] = useState(null);
+  const [wizardErro, setWizardErro] = useState('');
   const [wizardLucroInput, setWizardLucroInput] = useState('');
   const [wizardFatInput, setWizardFatInput] = useState('');
   const wizardDecidedRef = useRef(false);
@@ -779,12 +785,7 @@ export default function FinanceiroConfigScreen() {
         {finStatus && !finStatus.completo && (
           <View style={s.summaryWarning}>
             <Feather name="info" size={13} color={colors.primary} style={{ marginRight: 4 }} />
-            <Text style={s.summaryWarningText}>Diga sua margem e quanto vende por mês para o preço sugerido ficar certo.</Text>
-          </View>
-        )}
-        {finStatus && finStatus.faltamOpcionais && (
-          <View style={s.summaryWarning}>
-            <Text style={s.summaryHintText}>Quer o preço mais preciso? Informe seus custos do mês e por venda.</Text>
+            <Text style={s.summaryWarningText}>Preencha os 4 passos para o preço sugerido ficar certo. {textoPendenciaFinanceiro(finStatus)}</Text>
           </View>
         )}
       </View>
@@ -820,26 +821,41 @@ export default function FinanceiroConfigScreen() {
   async function avancarWizard() {
     const step = WIZARD_STEPS[wizardStep];
     if (!step) return fecharWizard();
+    setWizardErro('');
+    const vazio = (str) => !String(str ?? '').trim();
     let status = finStatus;
     if (step.key === 'lucro') {
       const r = validarLucroInput(wizardLucroInput);
-      if (!r.ok) return showError(r.erro);
-      if (!(r.valor > 0)) return Alert.alert('Falta preencher', step.pendente);
+      if (!r.ok) {
+        if (vazio(wizardLucroInput)) return setWizardTentativa(step.key);
+        return setWizardErro(r.erro);
+      }
+      // 0% digitado: mostra o pendente direto (o status salvo pode ainda ter a margem antiga).
+      if (!(r.valor > 0)) return setWizardErro(step.pendente);
       status = await persistLucro(wizardLucroInput);
       if (!status) return;
     } else if (step.key === 'faturamento') {
+      const r = validarFaturamentoInput(wizardFatInput);
+      if (!r.ok) {
+        if (vazio(wizardFatInput) || r.valor === 0) return setWizardTentativa(step.key);
+        return setWizardErro(r.erro);
+      }
       status = await salvarFaturamentoMedio(wizardFatInput);
       if (!status) return;
     }
-    // Custos (opcional: true) podem ser pulados — são refinamento, não bloqueio.
-    if (!passoConcluido(status, step.key) && !step.opcional) {
-      return Alert.alert('Falta preencher', step.pendente);
+    // Todos os passos são obrigatórios (custos inclusive): sem item, não avança.
+    // O motivo aparece inline, perto do Continuar (mensagemPendenteWizard).
+    if (!passoConcluido(status, step.key)) {
+      return setWizardTentativa(step.key);
     }
+    setWizardTentativa(null);
     if (wizardStep >= WIZARD_STEPS.length - 1) setWizardMode('resumo');
     else setWizardStep(wizardStep + 1);
   }
 
   function voltarWizard() {
+    setWizardTentativa(null);
+    setWizardErro('');
     if (wizardMode === 'resumo') { setWizardMode('steps'); setWizardStep(WIZARD_STEPS.length - 1); return; }
     if (wizardStep > 0) setWizardStep(wizardStep - 1);
   }
@@ -903,7 +919,7 @@ export default function FinanceiroConfigScreen() {
                     <TextInput
                       style={s.wizardInput}
                       value={wizardLucroInput}
-                      onChangeText={setWizardLucroInput}
+                      onChangeText={(t) => { setWizardLucroInput(t); setWizardTentativa(null); setWizardErro(''); }}
                       keyboardType="decimal-pad"
                       placeholder="20"
                       placeholderTextColor={colors.placeholder}
@@ -938,7 +954,7 @@ export default function FinanceiroConfigScreen() {
                     <TextInput
                       style={s.wizardInput}
                       value={wizardFatInput}
-                      onChangeText={setWizardFatInput}
+                      onChangeText={(t) => { setWizardFatInput(t); setWizardTentativa(null); setWizardErro(''); }}
                       keyboardType="decimal-pad"
                       placeholder="15.000,00"
                       placeholderTextColor={colors.placeholder}
@@ -954,6 +970,15 @@ export default function FinanceiroConfigScreen() {
             </View>
           </View>
         )}
+
+        {!isResumo && (wizardErro || mensagemPendenteWizard(finStatus, step.key, wizardTentativa)) ? (
+          <View style={s.wizardPendente} accessibilityRole="alert" accessibilityLiveRegion="polite">
+            <Feather name="alert-circle" size={14} color={colors.error} style={{ marginRight: 6, marginTop: 1 }} />
+            <Text style={s.wizardPendenteText}>
+              {wizardErro || mensagemPendenteWizard(finStatus, step.key, wizardTentativa)}
+            </Text>
+          </View>
+        ) : null}
 
         {!isResumo && (
           <View style={s.wizardNav}>
@@ -974,9 +999,7 @@ export default function FinanceiroConfigScreen() {
               accessibilityRole="button"
               accessibilityLabel="Continuar para o próximo passo"
             >
-              <Text style={s.wizardPrimaryBtnText}>
-                {step.opcional && !passoConcluido(finStatus, step.key) ? 'Pular por enquanto' : 'Continuar'}
-              </Text>
+              <Text style={s.wizardPrimaryBtnText}>Continuar</Text>
               <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
             </TouchableOpacity>
           </View>
@@ -1280,7 +1303,7 @@ export default function FinanceiroConfigScreen() {
               {finStatus.etapas.filter(e => !e.done).map(e => (
                 <View key={e.key} style={s.pendenciaChip}>
                   <Feather name="circle" size={8} color="#E65100" style={{ marginRight: 4 }} />
-                  <Text style={s.pendenciaText}>{e.label}{e.opcional ? ' (opcional)' : ''}</Text>
+                  <Text style={s.pendenciaText}>{e.label}</Text>
                 </View>
               ))}
             </View>
@@ -1593,7 +1616,7 @@ export default function FinanceiroConfigScreen() {
           <View style={s.stepHeader}>
             <StepNumber number={3} color={colors.coral} />
             <View style={[{ flex: 1, flexDirection: 'row', alignItems: 'center' }]}>
-              <Text style={s.stepTitle}>Custos do mês <Text style={s.stepOpcional}>(opcional)</Text></Text>
+              <Text style={s.stepTitle}>Custos do mês</Text>
             </View>
             {totalFixas > 0 && (
               <Chip
@@ -1615,7 +1638,7 @@ export default function FinanceiroConfigScreen() {
           <View style={s.stepHeader}>
             <StepNumber number={4} color={colors.purple} />
             <View style={[{ flex: 1, flexDirection: 'row', alignItems: 'center' }]}>
-              <Text style={s.stepTitle}>Custos por venda <Text style={s.stepOpcional}>(opcional)</Text></Text>
+              <Text style={s.stepTitle}>Custos por venda</Text>
               <InfoTooltip
                 title="O que são Custos por venda?"
                 text={
@@ -1856,6 +1879,11 @@ const s = StyleSheet.create({
     paddingVertical: spacing.md, minHeight: 56,
   },
   wizardInputUnit: { fontSize: fonts.title, fontFamily: fontFamily.bold, color: colors.primary, marginHorizontal: 4 },
+  wizardPendente: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    marginTop: spacing.sm, paddingHorizontal: spacing.xs,
+  },
+  wizardPendenteText: { flex: 1, fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.error, lineHeight: 18 },
   wizardNav: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginTop: spacing.sm, gap: spacing.sm,
@@ -2131,14 +2159,8 @@ const s = StyleSheet.create({
   summaryWarningText: {
     fontSize: 11, color: colors.primary, flex: 1,
   },
-  summaryHintText: {
-    fontSize: 11, color: colors.textSecondary, flex: 1,
-  },
   kpiValueNaoFecha: {
     fontSize: 11, lineHeight: 15, color: colors.error, textAlign: 'center',
-  },
-  stepOpcional: {
-    fontSize: fonts.tiny, fontFamily: fontFamily.regular, fontWeight: '400', color: colors.textSecondary,
   },
 
   inviabilityBanner: {

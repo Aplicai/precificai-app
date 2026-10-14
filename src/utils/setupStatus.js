@@ -41,8 +41,8 @@ export async function getSetupStatus() {
   ]);
 
   const config = configRows[0] ?? null;
-  // Regra única de "Financeiro completo" (margem + faturamento; custos são
-  // refinamento opcional) vive em financeiroStatus.js — ver montarStatusFinanceiro.
+  // Regra única de "Financeiro completo" (margem + faturamento + custos do mês
+  // + custos por venda, todos obrigatórios) vive em financeiroStatus.js.
   const fin = montarStatusFinanceiro({
     lucroOk: config != null && config.lucro_desejado != null,
     faturamentoOk: fatOkN >= 1,
@@ -62,14 +62,14 @@ export async function getSetupStatus() {
   const etapas = [
     {
       key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign',
-      desc: 'Diga sua margem e quanto vende por mês',
+      desc: 'Margem, quanto vende por mês e seus custos',
       done: financeiroCompleto, obrigatoria: true, tab: 'Financeiro',
       progresso: financeiroProgresso,
       detalhes: [
         { label: 'Margem de lucro', done: finEtapa('lucro').done },
         { label: 'Faturamento', done: finEtapa('faturamento').done },
-        { label: 'Custos do mês (opcional)', done: finEtapa('fixas').done, opcional: true },
-        { label: 'Custos por venda (opcional)', done: finEtapa('variaveis').done, opcional: true },
+        { label: 'Custos do mês', done: finEtapa('fixas').done },
+        { label: 'Custos por venda', done: finEtapa('variaveis').done },
       ],
     },
     {

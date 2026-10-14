@@ -8,11 +8,11 @@ import {
   WIZARD_STEPS, SUGESTOES_LUCRO, MARKUP_NAO_FECHA,
   wizardProgressLabel, deveMostrarWizard, passoConcluido, primeiroPassoPendente,
   validarLucroInput, validarFaturamentoInput, fracaoParaInputPercentual, formatMarkup,
-  exemploMargemEmReais,
+  exemploMargemEmReais, mensagemPendenteWizard,
 } from '../src/components/financeiro/wizardSteps.js';
 import { montarStatusFinanceiro } from '../src/utils/financeiroStatus.js';
 
-// Mesma regra de "completo" da tela (margem + faturamento; custos opcionais).
+// Mesma regra de "completo" da tela (margem + faturamento + custos do mês + custos por venda).
 function status(done) {
   return montarStatusFinanceiro({
     lucroOk: !!done.lucro, faturamentoOk: !!done.faturamento,
@@ -30,10 +30,18 @@ test('WIZARD_STEPS: 4 passos na ordem margem → faturamento → fixas → vari�
   assert.deepEqual(SUGESTOES_LUCRO, [10, 20, 30]);
 });
 
-test('WIZARD_STEPS: só custos (fixas/variaveis) são opcionais; margem e faturamento são núcleo', () => {
-  assert.deepEqual(WIZARD_STEPS.filter(s => s.opcional === true).map(s => s.key), ['fixas', 'variaveis']);
-  assert.equal(WIZARD_STEPS.find(s => s.key === 'lucro').opcional, undefined);
-  assert.equal(WIZARD_STEPS.find(s => s.key === 'faturamento').opcional, undefined);
+test('WIZARD_STEPS: os 4 passos são obrigatórios (nenhum opcional, custos inclusive)', () => {
+  assert.deepEqual(WIZARD_STEPS.filter(s => s.opcional).map(s => s.key), []);
+});
+
+test('WIZARD_STEPS: custos pedem pelo menos um item, sem falar em pular', () => {
+  const fixas = WIZARD_STEPS.find(s => s.key === 'fixas');
+  const variaveis = WIZARD_STEPS.find(s => s.key === 'variaveis');
+  assert.equal(fixas.pendente, 'Adicione pelo menos um custo do mês (ex.: aluguel ou luz) para continuar.');
+  assert.equal(variaveis.pendente, 'Adicione pelo menos um custo por venda (ex.: taxa da maquininha) para continuar.');
+  for (const s of WIZARD_STEPS) {
+    assert.ok(!/pular|menos preciso|opcional/i.test(`${s.titulo} ${s.ajuda} ${s.exemplo} ${s.pendente}`), `passo ${s.key} ainda sugere que dá pra pular`);
+  }
 });
 
 test('WIZARD_STEPS: copy em reais e linguagem do dia a dia (sem jargão contábil)', () => {
@@ -68,14 +76,15 @@ test('wizardProgressLabel: "Passo N de 4", com clamp', () => {
   assert.equal(wizardProgressLabel(undefined), 'Passo 1 de 4');
 });
 
-test('deveMostrarWizard: só quando status carregado e falta margem ou faturamento', () => {
+test('deveMostrarWizard: quando status carregado e falta qualquer um dos 4 passos', () => {
   assert.equal(deveMostrarWizard(null), false);
   assert.equal(deveMostrarWizard(undefined), false);
   assert.equal(deveMostrarWizard(status({})), true);
   assert.equal(deveMostrarWizard(status({ lucro: true })), true);
   assert.equal(deveMostrarWizard(status({ fixas: true, variaveis: true })), true);
-  // Custos são opcionais: margem + faturamento já bastam pra não reabrir o wizard.
-  assert.equal(deveMostrarWizard(status({ lucro: true, faturamento: true })), false);
+  // Custos são obrigatórios: sem eles o wizard continua aberto.
+  assert.equal(deveMostrarWizard(status({ lucro: true, faturamento: true })), true);
+  assert.equal(deveMostrarWizard(status({ lucro: true, faturamento: true, fixas: true })), true);
   assert.equal(deveMostrarWizard(status({ lucro: true, faturamento: true, fixas: true, variaveis: true })), false);
 });
 
@@ -145,4 +154,20 @@ test('formatMarkup: usa vírgula PT-BR (nunca ponto), sufixo "x"', () => {
   assert.equal(formatMarkup(undefined), '∞');
   // nunca deve conter ponto decimal
   assert.ok(!formatMarkup(3.14159).includes('.'));
+});
+
+test('mensagemPendenteWizard: texto inline só depois de tentar continuar e enquanto o passo segue pendente', () => {
+  const fixas = WIZARD_STEPS.find(s => s.key === 'fixas');
+  const vazio = status({ lucro: true, faturamento: true });
+  assert.equal(mensagemPendenteWizard(vazio, 'fixas', null), '');
+  assert.equal(mensagemPendenteWizard(vazio, 'fixas', 'fixas'), fixas.pendente);
+  // tentativa de outro passo não vaza para este
+  assert.equal(mensagemPendenteWizard(vazio, 'fixas', 'lucro'), '');
+  // item adicionado → some
+  assert.equal(mensagemPendenteWizard(status({ lucro: true, faturamento: true, fixas: true }), 'fixas', 'fixas'), '');
+  for (const step of WIZARD_STEPS) {
+    assert.equal(mensagemPendenteWizard(status({}), step.key, step.key), step.pendente);
+  }
+  assert.equal(mensagemPendenteWizard(null, 'lucro', 'lucro'), WIZARD_STEPS[0].pendente);
+  assert.equal(mensagemPendenteWizard(vazio, 'inexistente', 'inexistente'), '');
 });

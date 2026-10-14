@@ -2,10 +2,10 @@ import { getDatabase } from '../database/database';
 import { rowsOrThrow, countOrThrow } from '../database/dbResult';
 
 /**
- * Regra de "Financeiro completo" (decisão do dono, 10/2026): basta margem de
- * lucro + faturamento mensal. Custos do mês e custos por venda continuam
- * aparecendo como etapas, mas são refinamento (`opcional: true`): nunca
- * seguram banner de erro nem a pendência vermelha da Home.
+ * Regra de "Financeiro completo" (decisão do dono, 14/10/2026 — reverte 4ca0482):
+ * margem de lucro + faturamento mensal + custos do mês + custos por venda.
+ * Sem os custos o preço sugerido não fica certo, então nenhuma etapa é
+ * opcional: todas seguram o banner e a pendência da Home até serem preenchidas.
  *
  * Puro (sem DB) — usado aqui, em `setupStatus.js` e no cálculo inline da
  * Home, pra que os três nunca discordem. Testado em
@@ -14,19 +14,58 @@ import { rowsOrThrow, countOrThrow } from '../database/dbResult';
 export function montarStatusFinanceiro({ lucroOk, faturamentoOk, fixasOk, variaveisOk }) {
   const etapas = [
     { key: 'faturamento', label: 'Faturamento mensal', done: !!faturamentoOk },
-    { key: 'fixas', label: 'Custos do mês', done: !!fixasOk, opcional: true },
-    { key: 'variaveis', label: 'Custos por venda', done: !!variaveisOk, opcional: true },
+    { key: 'fixas', label: 'Custos do mês', done: !!fixasOk },
+    { key: 'variaveis', label: 'Custos por venda', done: !!variaveisOk },
     { key: 'lucro', label: 'Margem de lucro', done: !!lucroOk },
   ];
 
   const concluidas = etapas.filter(e => e.done).length;
-  // Completo = nenhuma etapa de núcleo pendente (as opcionais não contam).
-  const completo = etapas.filter(e => !e.opcional).every(e => e.done);
-  // true quando só falta refinamento (custos): vale no máximo uma linha discreta.
-  const faltamOpcionais = completo && etapas.some(e => e.opcional && !e.done);
+  const completo = concluidas === etapas.length;
   const progresso = concluidas / etapas.length;
 
-  return { etapas, concluidas, total: etapas.length, completo, faltamOpcionais, progresso };
+  return { etapas, concluidas, total: etapas.length, completo, progresso };
+}
+
+// Ordem e palavras de quem vende comida (não de contador).
+const NOMES_PENDENCIA = [
+  ['lucro', 'margem de lucro'],
+  ['faturamento', 'quanto entra por mês'],
+  ['fixas', 'custos do mês'],
+  ['variaveis', 'custos por venda'],
+];
+
+/**
+ * "Falta: margem de lucro, custos do mês e custos por venda." — '' quando
+ * completo ou sem status. Usado nos avisos da Home e no banner.
+ */
+export function textoPendenciaFinanceiro(status) {
+  if (!status?.etapas) return '';
+  const faltando = NOMES_PENDENCIA
+    .filter(([key]) => status.etapas.find(e => e.key === key)?.done === false)
+    .map(([, nome]) => nome);
+  if (faltando.length === 0) return '';
+  const lista = faltando.length === 1
+    ? faltando[0]
+    : `${faltando.slice(0, -1).join(', ')} e ${faltando[faltando.length - 1]}`;
+  return `Falta: ${lista}.`;
+}
+
+// Broadcast do status (module-level store, mesmo padrão de useListDensity):
+// o FinanceiroPendenteBanner é global e só lia o status na montagem, então
+// continuava "Falta: …" depois de o usuário salvar no Financeiro. Toda leitura
+// via getFinanceiroStatus (e a Home, que calcula inline) publica aqui.
+const assinantesStatus = new Set();
+
+export function assinarStatusFinanceiro(fn) {
+  assinantesStatus.add(fn);
+  return () => { assinantesStatus.delete(fn); };
+}
+
+export function publicarStatusFinanceiro(status) {
+  if (!status?.etapas) return;
+  for (const fn of [...assinantesStatus]) {
+    try { fn(status); } catch { /* um assinante quebrado não derruba os outros */ }
+  }
 }
 
 export async function getFinanceiroStatus() {
@@ -46,10 +85,12 @@ export async function getFinanceiroStatus() {
   ]);
   const config = configRows[0] ?? null;
 
-  return montarStatusFinanceiro({
+  const status = montarStatusFinanceiro({
     lucroOk: config != null && config.lucro_desejado > 0,
     faturamentoOk: fatN >= 1,
     fixasOk: fixasN > 0,
     variaveisOk: variaveisN > 0,
   });
+  publicarStatusFinanceiro(status);
+  return status;
 }

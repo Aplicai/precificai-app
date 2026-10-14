@@ -1,22 +1,33 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
-import { getFinanceiroStatus } from '../utils/financeiroStatus';
+import { getFinanceiroStatus, textoPendenciaFinanceiro, assinarStatusFinanceiro } from '../utils/financeiroStatus';
 
 /**
- * Aparece só quando falta margem OU faturamento (`completo` do financeiroStatus).
- * Custos do mês / por venda são refinamento opcional: não acionam este banner.
- * Tom informativo (cor da marca), não de erro.
+ * Aparece quando falta qualquer etapa do Financeiro (`completo` do
+ * financeiroStatus): margem, faturamento, custos do mês ou custos por venda —
+ * todas obrigatórias desde 14/10/2026. Tom informativo (cor da marca), não de erro.
  */
 export default function FinanceiroPendenteBanner() {
   const navigation = useNavigation();
   const [pendente, setPendente] = useState(false);
+  const [faltando, setFaltando] = useState('');
+
+  const aplicar = useCallback((s) => {
+    setPendente(!s.completo);
+    setFaltando(textoPendenciaFinanceiro(s));
+  }, []);
+
+  // Atualiza a cada leitura de status em qualquer tela (salvar no Financeiro,
+  // concluir o wizard, Home) — antes só lia na montagem e ficava "Falta: …"
+  // mesmo depois de tudo preenchido.
+  useEffect(() => assinarStatusFinanceiro(aplicar), [aplicar]);
 
   useFocusEffect(useCallback(() => {
-    getFinanceiroStatus().then(s => setPendente(!s.completo)).catch(() => {});
-  }, []));
+    getFinanceiroStatus().then(aplicar).catch(() => {});
+  }, [aplicar]));
 
   if (!pendente) return null;
 
@@ -39,8 +50,8 @@ export default function FinanceiroPendenteBanner() {
     <TouchableOpacity style={styles.banner} activeOpacity={0.8} onPress={goToFinanceiro}>
       <Feather name="info" size={18} color={colors.primary} style={styles.icon} />
       <View style={styles.body}>
-        <Text style={styles.title}>Falta a margem ou quanto você vende por mês</Text>
-        <Text style={styles.desc}>Diga sua margem e quanto vende por mês para o preço sugerido ficar certo. Leva um minuto.</Text>
+        <Text style={styles.title}>Complete o Financeiro</Text>
+        <Text style={styles.desc}>{faltando ? `${faltando} ` : ''}Sem isso o preço sugerido não fica certo.</Text>
       </View>
     </TouchableOpacity>
   );

@@ -14,7 +14,7 @@ import { syncPlanFromServer } from '../hooks/usePlan';
 import useListDensity from '../hooks/useListDensity';
 import WebLayout from '../components/web/WebLayout';
 import FinanceiroPendenteBanner from '../components/FinanceiroPendenteBanner';
-import { getFinanceiroStatus } from '../utils/financeiroStatus';
+import { getFinanceiroStatus, assinarStatusFinanceiro } from '../utils/financeiroStatus';
 import { getSetupStatus } from '../utils/setupStatus';
 import { determineInitialRoute, determineInitialRouteSafe } from '../utils/initialRoute';
 import { useAuth } from '../contexts/AuthContext';
@@ -485,6 +485,8 @@ const VALID_TABS = ['Início', 'Insumos', 'Preparos', 'Embalagens', 'Produtos', 
 function MainTabs({ route }) {
   const savedTab = route.params?.initialTab;
   const [finPendente, setFinPendente] = useState(false);
+  // Badge do 'Mais' segue o mesmo broadcast do banner (sem esperar o throttle de 5s).
+  useEffect(() => assinarStatusFinanceiro(st => setFinPendente(!st.completo)), []);
   const { isDesktop, width } = useResponsiveLayout();
   // Sessão 28 — em telas estreitas (≤360pt) "Ferramentas" e "Embalagens" truncavam.
   // Encolher fonte e padding mantém label legível sem clip.

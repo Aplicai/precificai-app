@@ -8,7 +8,7 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius, typography, numeric, radius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual } from '../utils/calculations';
 import { calcSobraMes } from '../utils/breakeven';
-import { getFinanceiroStatus, montarStatusFinanceiro } from '../utils/financeiroStatus';
+import { getFinanceiroStatus, montarStatusFinanceiro, textoPendenciaFinanceiro, publicarStatusFinanceiro } from '../utils/financeiroStatus';
 import { getSetupStatus, soFaltamEtapasOpcionais } from '../utils/setupStatus';
 import { rowsOrThrow, countOrThrow } from '../database/dbResult';
 import InfoTooltip from '../components/InfoTooltip';
@@ -143,15 +143,16 @@ export default function HomeScreen({ navigation }) {
       const faturamentoOk = fat.filter(f => f.valor > 0).length >= 1;
       const fixasOk = fixas.length > 0;
       const variaveisOk = variaveis.length > 0;
-      // Regra única (financeiroStatus.js): completo = margem + faturamento;
-      // custos do mês / por venda são refinamento opcional.
+      // Regra única (financeiroStatus.js): completo = margem + faturamento +
+      // custos do mês + custos por venda (todos obrigatórios desde 14/10/2026).
       const status = montarStatusFinanceiro({ lucroOk, faturamentoOk, fixasOk, variaveisOk });
       const finCompleto = status.completo;
       setFinStatus(status);
+      publicarStatusFinanceiro(status); // mantém o banner global em dia
 
       const deliveryOk = delProdsN > 0 || combosN > 0;
       const setupEtapas = [
-        { key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign', desc: 'Diga sua margem e quanto vende por mês', done: finCompleto, obrigatoria: true, tab: 'Financeiro', progresso: status.progresso },
+        { key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign', desc: 'Margem, quanto vende por mês e seus custos', done: finCompleto, obrigatoria: true, tab: 'Financeiro', progresso: status.progresso },
         { key: 'insumos', label: 'Ingredientes', icon: 'shopping-bag', desc: 'Cadastre seus ingredientes', done: insumosN > 0, tab: 'Insumos', count: insumosN },
         // UX audit 09/09 (Fase B, item 16): `opcional: true` = não segura o
         // banner "Configuração do app" sozinha (ver soFaltamEtapasOpcionais).
@@ -275,17 +276,13 @@ export default function HomeScreen({ navigation }) {
           acao: 'Financeiro',
         });
       }
-      // Só margem/faturamento pendentes viram aviso (tom informativo, específico).
-      // Custos faltando não geram pendência aqui — no máximo uma linha discreta no Financeiro.
+      // Qualquer etapa do Financeiro pendente (custos inclusive) vira aviso,
+      // dizendo exatamente o que falta.
       if (!status.completo) {
-        const faltaMargem = !lucroOk, faltaFat = !faturamentoOk;
         pendencias.push({
           tipo: 'info',
-          texto: 'Diga sua margem e quanto vende por mês para o preço sugerido ficar certo',
-          descricao: faltaMargem && faltaFat
-            ? 'Falta a margem de lucro e quanto entra por mês. Leva um minuto.'
-            : faltaMargem ? 'Só falta a margem: de cada R$ 100 vendidos, quanto quer que sobre?'
-              : 'Só falta dizer quanto entra na sua loja por mês, mais ou menos.',
+          texto: 'Complete o Financeiro para o preço sugerido ficar certo',
+          descricao: textoPendenciaFinanceiro(status),
           acao: 'Financeiro',
         });
       }
@@ -729,7 +726,7 @@ export default function HomeScreen({ navigation }) {
             <View style={styles.setupFinAlert}>
               <Feather name="info" size={12} color={colors.primary} style={{ marginRight: 6 }} />
               <Text style={styles.setupFinAlertText}>
-                Diga sua margem e quanto vende por mês para o preço sugerido ficar certo
+                Complete o Financeiro (margem, quanto vende por mês e seus custos) para o preço sugerido ficar certo
               </Text>
             </View>
           )}

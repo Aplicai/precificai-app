@@ -277,19 +277,18 @@ export default function OnboardingScreen({ navigation }) {
           </View>
         )}
 
-        {/* Item C (redesenho de ativação): Financeiro deixou de ser GATE no
-            1º uso — agora é refinamento RECOMENDADO, não obrigatório. O usuário
-            chega ao 1º produto/Home sem precisar completar o financeiro antes.
-            Mantemos o destaque (é o passo de maior impacto em margem/preço),
-            mas sem travar o resto do fluxo. */}
+        {/* Decisão do dono 14/10/2026: Financeiro (margem, faturamento e custos)
+            é OBRIGATÓRIO para o preço ficar certo. Item C continua valendo: não
+            é um gate de navegação — a saída para a Home segue disponível e a
+            Home/banner cobram o que falta. */}
         {!finStep.done && (
           <View style={styles.finAlert}>
             <View style={styles.finAlertHeader}>
               <Feather name="trending-up" size={18} color="#E65100" style={{ marginRight: 6 }} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.finAlertTitle}>Financeiro (recomendado)</Text>
+                <Text style={styles.finAlertTitle}>Financeiro (obrigatório)</Text>
                 <Text style={styles.finAlertDesc}>
-                  Esses dados refinam markup, margem e preço sugerido dos seus produtos. Você pode configurar agora ou depois.
+                  Margem, faturamento e seus custos. Sem eles o preço sugerido não fica certo.
                 </Text>
               </View>
             </View>
@@ -367,8 +366,9 @@ export default function OnboardingScreen({ navigation }) {
 
         {/* Skip — Item C: saída para a Home SEMPRE disponível. Antes só
             aparecia quando o financeiro estava completo, o que prendia o
-            usuário de 1º uso na tela (sem financeiro = sem saída). Agora o
-            financeiro é opcional, então o caminho para a Home nunca é bloqueado. */}
+            usuário de 1º uso na tela (sem financeiro = sem saída). O Financeiro
+            (margem, faturamento e custos) continua obrigatório para o preço
+            ficar certo, mas a Home segue acessível e cobra o que falta. */}
         <TouchableOpacity style={styles.skipBtn} onPress={skipToHome} activeOpacity={0.7}>
           <Text style={styles.skipText}>
             {finStep.done ? 'Ir para a Home' : 'Pular por enquanto'}
