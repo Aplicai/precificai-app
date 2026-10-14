@@ -398,7 +398,7 @@ export function montarEmail(p: Pedido): { assunto: string; html: string; texto: 
 </td></tr>
 </table>
 </body>
-</html>`.replace(/R\$ (?=\d)/g, 'R$&nbsp;'); // "R$" nunca fica sozinho no fim da linha
+</html>`.replace(/R\$ (?=\d)/g, () => 'R$&nbsp;'); // "R$" nunca fica sozinho no fim da linha (função: na string, "$&" seria o trecho encontrado)
 
   const texto = [
     ola,
