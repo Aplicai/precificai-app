@@ -286,6 +286,28 @@ export function calcPrecoSugerido(custoTotal, markup, margemSegurancaPerc = 0) {
   return cmvProtegido * _safeNum(markup);
 }
 
+// Config de precificação do produto a partir das linhas do Financeiro
+// (configuracao, despesas_fixas, despesas_variaveis, faturamento_mensal).
+// Faturamento = média dos meses com valor > 0; sem lucro_desejado → 15%.
+export function buildPricingConfig({ cfgs, fixas, vars, fat } = {}) {
+  const cfg = (cfgs && cfgs[0]) || {};
+  const totalFixas = (fixas || []).reduce((a, d) => a + _safeNum(d.valor), 0);
+  const despVarPerc = (vars || []).reduce((a, d) => a + _safeNum(d.percentual), 0);
+  const mesesComFat = (fat || []).filter(f => _safeNum(f.valor) > 0);
+  const fatMedio = mesesComFat.length > 0
+    ? mesesComFat.reduce((a, f) => a + _safeNum(f.valor), 0) / mesesComFat.length
+    : 0;
+  const despFixasPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
+  const lucroDesejado = _safeNum(cfg.lucro_desejado) || 0.15;
+  return {
+    despFixasPerc,
+    despVarPerc,
+    lucroDesejado,
+    markup: calcMarkup(despFixasPerc, despVarPerc, lucroDesejado),
+    margemSeguranca: _safeNum(cfg.margem_seguranca),
+  };
+}
+
 /**
  * Determina o divisor correto para o custo unitário de um produto.
  * - Produtos vendidos por kg/litro usam `rendimento_total` (valor em kg/L)
