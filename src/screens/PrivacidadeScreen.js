@@ -12,11 +12,13 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { useNavigation } from '@react-navigation/native';
 import BackToSettings from '../components/BackToSettings';
+import { EMPRESA_IDENTIFICACAO } from '../config/empresa';
 
 const POLITICA_URL = 'https://app.precificaiapp.com/privacy';
 const VERSAO = 'Versão 2.2 · 14 de outubro de 2026';
 
 const RESUMO = [
+  { icon: 'briefcase', texto: `Responsável pelos seus dados: ${EMPRESA_IDENTIFICACAO}.` },
   { icon: 'database', texto: 'Os dados do seu negócio (ingredientes, receitas, preços, custos) são seus. Não vendemos nem compartilhamos com anunciantes.' },
   { icon: 'shield', texto: 'Usamos poucos parceiros para o app funcionar: banco de dados e login (Supabase), hospedagem (Vercel), erros (Sentry) e, se você escolher, login com Google.' },
   { icon: 'target', texto: 'Com o seu aceite no aviso de cookies, a Meta mede nossos anúncios e mostra anúncios do Precificaí a quem já nos visitou.' },
