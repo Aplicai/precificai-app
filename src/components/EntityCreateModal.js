@@ -21,7 +21,7 @@
  *   defaultCategoriaId: number | null
  */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Platform, Switch, Alert } from 'react-native';
 import usePushPermissions from '../hooks/usePushPermissions';
 // Sessão 28.29: styles extraídos pra arquivo dedicado (eram 611 linhas inline)
@@ -200,6 +200,10 @@ export default function EntityCreateModal({
   // Flag pra ignorar o primeiro render após carregar (evita race onde
   // setState async ainda não refletiu no snapshot).
   const snapshotReadyRef = useRef(false);
+  // Incrementa a cada abertura/fechamento/troca de editId. loadForEdit compara
+  // com o valor capturado no início e descarta o resultado se o modal já foi
+  // reaberto pra outra entidade (load de A não pode sobrescrever o form de B).
+  const loadSeqRef = useRef(0);
 
   // Categoria picker
   const [categorias, setCategorias] = useState([]);
@@ -354,12 +358,37 @@ export default function EntityCreateModal({
     });
   }
 
-  // Reset / load on open
-  useEffect(() => {
+  // Valores "em branco" do form. O modal fica montado entre aberturas, então
+  // sem isso a abertura seguinte mostra itens/CMV/Sugerido da anterior até o
+  // load assíncrono terminar.
+  function resetFormFields() {
+    setNome('');
+    setCategoriaId(defaultCategoriaId);
+    setPrecoVenda('');
+    setTipoVenda('unidade');
+    setRendimentoUnidades('1');
+    setRendimentoTotalProd('');
+    setRendimentoTotalPrep('');
+    setUnidadeMedidaPrep('g');
+    setItens([]);
+    // Default de "Vende no delivery?" é corrigido em loadPickerAndCategorias
+    // assim que soubermos se a conta tem alguma plataforma ativa.
+    setDeliveryOn(true);
+    setEmbalagensDelivery([]);
+    setEmbalagemDeliveryOrigem('padrao');
+  }
+
+  // Reset / load on open. useLayoutEffect (não useEffect): o reset precisa
+  // valer ANTES do primeiro paint da abertura — com useEffect o modal pintava
+  // a entidade anterior (título, itens, CMV) por centenas de ms no web.
+  useLayoutEffect(() => {
+    loadSeqRef.current += 1;
     if (!visible) {
       // Modal fechou — invalida snapshot pra próxima abertura recapturar do zero.
       snapshotReadyRef.current = false;
       initialSnapshotRef.current = null;
+      // Um loadForEdit em voo vira stale (loadSeqRef) e não chega a setLoading(false).
+      setLoading(false);
       return;
     }
     // Invalida snapshot antigo no início de cada nova abertura.
@@ -383,6 +412,9 @@ export default function EntityCreateModal({
     setEditingCatNome('');
     setConfirmDeleteCat(null);
     if (isEditing) {
+      // Limpa o form da entidade anterior ANTES do load (2026-10-14: abrir B
+      // depois de A mostrava os itens/CMV/Sugerido de A por ~150 ms).
+      resetFormFields();
       loadForEdit();
     } else {
       // Sessão 28.25 BUG FIX (B3 do auditor): antes resetava SYNC (linhas 209-217)
@@ -391,20 +423,8 @@ export default function EntityCreateModal({
       // Agora: reset síncrono UMA vez (preenche imediato pra evitar flash de
       // valores antigos do render anterior), e o async APENAS restaura se houver
       // draft válido — se não houver, mantém o reset que já foi aplicado.
-      setNome('');
-      setCategoriaId(defaultCategoriaId);
-      setPrecoVenda('');
-      setTipoVenda('unidade');
-      setRendimentoUnidades('1');
-      setRendimentoTotalProd('');
-      setRendimentoTotalPrep('');
-      setUnidadeMedidaPrep('g');
-      setItens([]);
-      // Default de "Vende no delivery?" é corrigido em loadPickerAndCategorias
-      // assim que soubermos se a conta tem alguma plataforma ativa.
-      setDeliveryOn(true);
-      setEmbalagensDelivery([]);
-      setEmbalagemDeliveryOrigem('padrao');
+      resetFormFields();
+      setLoading(false);
 
       // Sessão 28.19: restaura draft do AsyncStorage (se voltou de editar item)
       // — antes os itens digitados eram perdidos quando user clicava em editar
@@ -607,6 +627,8 @@ export default function EntityCreateModal({
   }
 
   async function loadForEdit() {
+    const seq = loadSeqRef.current;
+    const isStale = () => seq !== loadSeqRef.current;
     setLoading(true);
     try {
       // Sessão 28.20: ANTES de carregar do DB, checa se tem draft em memória
@@ -619,6 +641,7 @@ export default function EntityCreateModal({
         const raw = await AsyncStorage.getItem('entityDraftToRestore');
         if (raw) {
           const info = JSON.parse(raw);
+          if (isStale()) return;
           if (info?.mode === mode && info?.draft && info?.editId === editId && (Date.now() - info.ts) < 5 * 60 * 1000) {
             await AsyncStorage.removeItem('entityDraftToRestore');
             const d = info.draft;
@@ -663,6 +686,7 @@ export default function EntityCreateModal({
             } catch (e) {
               if (typeof console !== 'undefined') console.warn('[EntityCreateModal.draftRefresh]', e?.message || e);
             }
+            if (isStale()) return;
             setNome(d.nome || '');
             setCategoriaId(d.categoriaId || null);
             setPrecoVenda(d.precoVenda || '');
@@ -685,6 +709,7 @@ export default function EntityCreateModal({
       const db = await getDatabase();
       if (isProduto) {
         const rows = await db.getAllAsync('SELECT * FROM produtos WHERE id = ?', [editId]);
+        if (isStale()) return;
         const p = rows && rows[0];
         if (!p) {
           setErro('Produto não encontrado');
@@ -719,6 +744,7 @@ export default function EntityCreateModal({
           `SELECT pe.*, e.nome as e_nome, e.preco_unitario, e.unidade_medida as e_unidade
            FROM produto_embalagens pe JOIN embalagens e ON e.id = pe.embalagem_id
            WHERE pe.produto_id = ?`, [editId]);
+        if (isStale()) return;
         const next = [];
         (ings || []).forEach(i => next.push({
           tipo: 'materia_prima',
@@ -748,6 +774,7 @@ export default function EntityCreateModal({
         setItens(next);
       } else {
         const rows = await db.getAllAsync('SELECT * FROM preparos WHERE id = ?', [editId]);
+        if (isStale()) return;
         const p = rows && rows[0];
         if (!p) {
           setErro('Receita base não encontrada');
@@ -809,12 +836,15 @@ export default function EntityCreateModal({
         } catch (e) {
           if (typeof console !== 'undefined') console.warn('[EntityCreateModal preparo_subpreparos load]', e?.message || e);
         }
+        if (isStale()) return;
         setItens(nextPrep);
       }
     } catch (e) {
+      if (isStale()) return;
       setErro('Erro ao carregar');
       if (typeof console !== 'undefined' && console.error) console.error('[EntityCreateModal.loadForEdit]', e);
     }
+    if (isStale()) return;
     setLoading(false);
   }
 
