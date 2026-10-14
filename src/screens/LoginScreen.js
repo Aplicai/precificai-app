@@ -5,7 +5,7 @@ import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
 import useListDensity from '../hooks/useListDensity';
 import useRateLimit from '../hooks/useRateLimit';
-import { mapAuthError } from '../utils/authErrors';
+import { mapAuthError, classifyAuthError, AUTH_ERROR_KIND } from '../utils/authErrors';
 import { parseRateLimitSeconds } from '../utils/parseRateLimit';
 
 // Validação simples: nome@dominio.tld (subset de RFC 5322 suficiente para UX antes do backend).
@@ -14,7 +14,11 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const LOGIN_TIMEOUT_MS = 30000;
 
 export default function LoginScreen({ navigation }) {
-  const { signIn, signInWithGoogle, setRememberMe } = useAuth();
+  const { signIn, signInWithGoogle, setRememberMe, resendConfirmation } = useAuth();
+  // E-mail ainda não confirmado: guarda o endereço pra oferecer "Reenviar".
+  const [naoConfirmado, setNaoConfirmado] = useState(null); // email | null
+  const [reenvio, setReenvio] = useState({ estado: 'idle', espera: 0, erro: '' }); // idle | enviando | enviado
+
   const { isCompact, inputHeight, buttonHeight } = useListDensity();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -42,7 +46,30 @@ export default function LoginScreen({ navigation }) {
   }, [retryIn]);
 
   // P2 quick-win: limpa erro ao digitar (evita feedback "preso" quando usuário corrige)
-  const onChangeEmail = (v) => { if (error) setError(''); setEmail(v); };
+  const onChangeEmail = (v) => { if (error) setError(''); setNaoConfirmado(null); setEmail(v); };
+
+  // Espera entre reenvios: o Supabase recusa o mesmo e-mail em menos de 60 s.
+  useEffect(() => {
+    if (reenvio.espera <= 0) return undefined;
+    const t = setTimeout(() => setReenvio((r) => ({ ...r, espera: r.espera - 1 })), 1000);
+    return () => clearTimeout(t);
+  }, [reenvio.espera]);
+
+  const handleReenviar = async () => {
+    if (!naoConfirmado || reenvio.estado === 'enviando' || reenvio.espera > 0) return;
+    setReenvio({ estado: 'enviando', espera: 0, erro: '' });
+    try {
+      await resendConfirmation(naoConfirmado);
+      setReenvio({ estado: 'enviado', espera: 60, erro: '' });
+    } catch (err) {
+      const seconds = parseRateLimitSeconds(err);
+      setReenvio({
+        estado: 'idle',
+        espera: seconds || 0,
+        erro: seconds ? '' : mapAuthError(err, { context: 'signIn' }),
+      });
+    }
+  };
   const onChangePassword = (v) => { if (error) setError(''); setPassword(v); };
 
   const handleLogin = async () => {
@@ -94,7 +121,12 @@ export default function LoginScreen({ navigation }) {
         setRetryIn(seconds);
         setError('');
       } else {
-        setError(mapAuthError(err, { context: 'signIn' }));
+        const classificado = classifyAuthError(err, { context: 'signIn' });
+        setError(classificado.message);
+        if (classificado.kind === AUTH_ERROR_KIND.UNCONFIRMED) {
+          setNaoConfirmado(emailTrim.toLowerCase());
+          setReenvio({ estado: 'idle', espera: 0, erro: '' });
+        }
       }
     } finally {
       clearTimeout(timeoutId);
@@ -146,6 +178,36 @@ export default function LoginScreen({ navigation }) {
             <View style={styles.errorBox}>
               <Feather name="alert-circle" size={14} color="#dc2626" style={{ marginRight: 6 }} />
               <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : null}
+
+          {/* E-mail não confirmado (link de 1 h expirado ou perdido): reenvia daqui mesmo. */}
+          {naoConfirmado ? (
+            <View style={styles.resendBox}>
+              {reenvio.estado === 'enviado' ? (
+                <Text style={styles.resendOk}>
+                  Enviamos um novo link para {naoConfirmado}. Confira a caixa de entrada e o spam; ele vale por 1 hora.
+                </Text>
+              ) : null}
+              {reenvio.erro ? <Text style={styles.errorText}>{reenvio.erro}</Text> : null}
+              <TouchableOpacity
+                style={[styles.resendBtn, (reenvio.estado === 'enviando' || reenvio.espera > 0) && { opacity: 0.6 }]}
+                onPress={handleReenviar}
+                disabled={reenvio.estado === 'enviando' || reenvio.espera > 0}
+                accessibilityRole="button"
+                accessibilityLabel="Reenviar e-mail de confirmação"
+              >
+                {reenvio.estado === 'enviando' ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <>
+                    <Feather name="mail" size={15} color={colors.primary} />
+                    <Text style={styles.resendBtnText}>
+                      {reenvio.espera > 0 ? `Reenviar de novo em ${reenvio.espera}s` : 'Reenviar e-mail de confirmação'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
           ) : null}
 
@@ -359,6 +421,14 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   errorText: { color: '#dc2626', fontSize: 13, fontFamily: fontFamily.regular, flex: 1 },
+  resendBox: { marginTop: 6, marginBottom: 4, gap: 8 },
+  resendOk: { color: colors.success || '#15803d', fontSize: 13, fontFamily: fontFamily.regular, lineHeight: 18 },
+  resendBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderWidth: 1, borderColor: colors.primary, borderRadius: borderRadius.sm,
+    paddingVertical: 10,
+  },
+  resendBtnText: { color: colors.primary, fontSize: 14, fontFamily: fontFamily.semiBold, fontWeight: '600' },
   // Botão "Continuar com Google" — pattern visual recomendado pelo Google
   // (fundo branco, borda cinza clara, texto cor #3c4043, ícone à esquerda).
   googleBtn: {

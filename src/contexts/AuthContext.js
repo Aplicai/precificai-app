@@ -448,6 +448,22 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  // Reenvia o link de confirmação de cadastro. O link expira em 1 hora; quem
+  // tenta entrar depois disso recebe "email não confirmado" e precisa de outro.
+  const resendConfirmation = async (email) => {
+    addBreadcrumb({ category: 'auth', message: 'resendConfirmation attempt' });
+    const emailRedirectTo =
+      Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin
+        ? `${window.location.origin}/`
+        : undefined;
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      ...(emailRedirectTo ? { options: { emailRedirectTo } } : {}),
+    });
+    if (error) throw error;
+  };
+
   return (
     <AuthContext.Provider value={{
       user, session, loading,
@@ -456,6 +472,7 @@ export function AuthProvider({ children }) {
       passwordRecovery, clearPasswordRecovery,
       setRememberMe,
       reloadSession,
+      resendConfirmation,
     }}>
       {children}
     </AuthContext.Provider>
