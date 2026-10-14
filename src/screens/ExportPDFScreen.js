@@ -251,7 +251,10 @@ export default function ExportPDFScreen({ navigation }) {
         const preparo = preparos.find(p => p.id === id);
         if (!preparo) continue;
         const ings = ingsByPrep[id] || [];
-        const custoTotal = preparo.custo_total || ings.reduce((a, ing) => {
+        // custo_por_kg é a fonte (cascade mantém atualizado); custo_total gravado pode estar velho.
+        const custoTotal = (preparo.custo_por_kg > 0 && preparo.rendimento_total > 0)
+          ? calcCustoPreparo(preparo.custo_por_kg, preparo.rendimento_total, preparo.unidade_medida || 'g')
+          : ings.reduce((a, ing) => {
           return a + calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada, ing.unidade_medida || 'g', ing.unidade_medida || 'g');
         }, 0);
         const rendimento = preparo.rendimento_total || 0;

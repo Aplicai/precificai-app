@@ -290,7 +290,10 @@ export function getMarketPrice(nome, qtdBruta, unidade) {
   }
   if (!entry) return null;
 
-  const base = _toBase(entry.qty, entry.unidade);
+  // `entry.qty` já está na unidade-base (g/mL/un) — 'kg'/'L' na entrada só diz
+  // o TIPO. Passar por _toBase multiplicava por 1000 (395 g → 395 kg) e o preço
+  // saía 1000× menor (leite condensado R$ 0,01).
+  const base = { qty: Number(entry.qty) || 0, unit: _toBase(1, entry.unidade).unit };
   const req = _toBase(qtdBruta, unidade);
   if (base.qty <= 0 || req.qty <= 0) return entry.valor;
 

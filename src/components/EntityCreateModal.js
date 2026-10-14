@@ -39,7 +39,7 @@ import {
   calcCustoIngrediente, calcCustoPreparo, calcCustoEmbalagem,
   calcLucroLiquido, calcCMVPercentual, calcMargem, calcMargemLiquida,
   safeNum, getTipoUnidade, parseDecimalBROrZero,
-  calcCustoPorKgPreparo,
+  calcCustoPorKgPreparo, calcCustoListaPreparo,
 } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 // Área 4 (Preparos) — toast de confirmação ao salvar preparo via modal
@@ -2313,7 +2313,7 @@ export default function EntityCreateModal({
                 }
                 return (
                   <>
-                    {renderCatBlock('preparo', 'Receitas base', filteredPreparos, (p) => renderRow(p, `prep-${p.id}`, 'preparo', (x) => safeNum(x.custo_total)))}
+                    {renderCatBlock('preparo', 'Receitas base', filteredPreparos, (p) => renderRow(p, `prep-${p.id}`, 'preparo', (x) => calcCustoListaPreparo(x.custo_por_kg, x.unidade_medida)))}
                     {renderCatBlock('materia_prima', 'Ingredientes', filteredMaterias, (m) => renderRow(m, `mp-${m.id}`, 'materia_prima', (x) => safeNum(x.preco_por_kg)))}
                     {renderCatBlock('embalagem', 'Embalagens', filteredEmbalagens, (e) => renderRow(e, `emb-${e.id}`, 'embalagem', (x) => safeNum(x.preco_unitario)))}
                   </>

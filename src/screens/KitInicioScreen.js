@@ -18,7 +18,7 @@ import {
   CATEGORIAS_PREPAROS_POR_SEGMENTO,
   CATEGORIAS_EMBALAGENS_POR_SEGMENTO,
 } from '../data/templates';
-import { calcPrecoBase, calcFatorCorrecao, safeNum, calcCustoPorKgPreparo } from '../utils/calculations';
+import { calcFatorCorrecao, safeNum, calcCustoPorKgPreparo } from '../utils/calculations';
 // D-27/D-28: aplica fatores de correção de referência (TACO) automaticamente
 import { getFatorCorrecaoReferencia, estimarQuantidadeLiquida } from '../data/fatoresCorrecao';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -332,8 +332,8 @@ export default function KitInicioScreen({ navigation, route }) {
       // cadastrados na tabela materias_primas (errado, devem estar em embalagens).
       // User reportou "tem embalagens dentro de Insumos". As embalagens reais
       // já vêm de EMBALAGENS_POR_SEGMENTO num passo separado mais abaixo.
-      const { aplicarPrecosMercado } = await import('../data/marketPrices');
-      const _todosTemplateInsumos = aplicarPrecosMercado(INSUMOS_POR_SEGMENTO[selected] || []);
+      // Preço de mercado não entra mais (2026-10-13, ver Step 3): o kit grava 0.
+      const _todosTemplateInsumos = INSUMOS_POR_SEGMENTO[selected] || [];
       const CATEGORIAS_NAO_INSUMO = new Set(['Embalagens', 'Descartáveis', 'Limpeza']);
       const insumosTemplate = _todosTemplateInsumos.filter(i => !CATEGORIAS_NAO_INSUMO.has(i.categoria));
       const categoriasTemplate = (CATEGORIAS_POR_SEGMENTO[selected] || [])
@@ -504,10 +504,11 @@ export default function KitInicioScreen({ navigation, route }) {
       // Build map: nome insumo → id (pra usar nos preparos depois)
       // Re-busca após insert pra garantir que pegamos os ids
       const insumosMap = {};
+      const precoPorKgInsumo = {}; // preço GRAVADO (0 nos novos; real nos que já existiam)
       try {
         const { data: insumosCadastrados } = await supabase
-          .from('materias_primas').select('id, nome').eq('user_id', userId);
-        (insumosCadastrados || []).forEach(i => { insumosMap[i.nome] = i.id; });
+          .from('materias_primas').select('id, nome, preco_por_kg').eq('user_id', userId);
+        (insumosCadastrados || []).forEach(i => { insumosMap[i.nome] = i.id; precoPorKgInsumo[i.nome] = safeNum(i.preco_por_kg); });
       } catch (e) { console.warn('[KitInicio] falha ao buscar insumos cadastrados:', e); }
 
       // ===== Step 4: Embalagens =====
@@ -582,9 +583,10 @@ export default function KitInicioScreen({ navigation, route }) {
               console.warn(`[KitInicio.preparos] insumo "${ing.nome_insumo}" não encontrado, pulando`);
               continue;
             }
-            // Buscar preco_por_kg do insumo cadastrado (já com cálculo correto)
-            const insumoOriginal = (insumosTemplate || []).find(i => i.nome === ing.nome_insumo);
-            const precoPorKg = insumoOriginal ? calcPrecoBase(insumoOriginal.valor_pago, insumoOriginal.quantidade_liquida, insumoOriginal.unidade_medida) : 0;
+            // Preço do insumo como ficou GRAVADO — não o do template. Antes o
+            // custo saía do preço de mercado do template (com escala errada),
+            // enquanto o insumo nascia com preço 0: receita com custo fantasma.
+            const precoPorKg = precoPorKgInsumo[ing.nome_insumo] || 0;
             // Custo do uso: ing em g/ml/un × preco_por_kg/1000 (ou × preco_por_un se ehUnidade)
             const u = String(ing.unidade || 'g').toLowerCase();
             const ehUn = u === 'un' || u.includes('unid');
