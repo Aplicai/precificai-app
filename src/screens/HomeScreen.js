@@ -10,6 +10,7 @@ import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPerc
 import { calcSobraMes } from '../utils/breakeven';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { getSetupStatus, soFaltamEtapasOpcionais } from '../utils/setupStatus';
+import { rowsOrThrow, countOrThrow } from '../database/dbResult';
 import InfoTooltip from '../components/InfoTooltip';
 import Loader from '../components/Loader';
 import MobileOnboardingOverlay from '../components/MobileOnboardingOverlay';
@@ -119,12 +120,12 @@ export default function HomeScreen({ navigation }) {
       // Audit perf: contadores usam COUNT(*) (head request) em vez de baixar a
       // tabela inteira só p/ `.length` — com 2.400 insumos isso era MBs por load.
       const [insumosN, embsN, prepsN, prodsR, delProdsN, combosN, fixas, variaveis, fat, allProdIngs, allProdEmbs, allProdPreps, configs] = await Promise.all([
-        db.getFirstAsync('SELECT COUNT(*) as n FROM materias_primas').then(r => r?.n || 0),
-        db.getFirstAsync('SELECT COUNT(*) as n FROM embalagens').then(r => r?.n || 0),
-        db.getFirstAsync('SELECT COUNT(*) as n FROM preparos').then(r => r?.n || 0),
+        countOrThrow(db, 'SELECT COUNT(*) as n FROM materias_primas'),
+        countOrThrow(db, 'SELECT COUNT(*) as n FROM embalagens'),
+        countOrThrow(db, 'SELECT COUNT(*) as n FROM preparos'),
         db.getAllAsync('SELECT * FROM produtos'),
-        db.getFirstAsync('SELECT COUNT(*) as n FROM delivery_produtos').then(r => r?.n || 0),
-        db.getFirstAsync('SELECT COUNT(*) as n FROM delivery_combos').then(r => r?.n || 0),
+        countOrThrow(db, 'SELECT COUNT(*) as n FROM delivery_produtos'),
+        countOrThrow(db, 'SELECT COUNT(*) as n FROM delivery_combos'),
         db.getAllAsync('SELECT * FROM despesas_fixas'),
         db.getAllAsync('SELECT * FROM despesas_variaveis'),
         db.getAllAsync('SELECT * FROM faturamento_mensal'),
@@ -133,6 +134,8 @@ export default function HomeScreen({ navigation }) {
         db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
         db.getAllAsync('SELECT * FROM configuracao'),
       ]);
+      // Falha de leitura vira erro (banner "Tentar de novo"), nunca "conta vazia".
+      [prodsR, fixas, variaveis, fat, allProdIngs, allProdEmbs, allProdPreps, configs].forEach(rowsOrThrow);
       // Compute financeiro + setup status inline (avoid separate queries)
       const config = configs?.[0];
       const lucroOk = config != null && config.lucro_desejado > 0;
@@ -420,7 +423,10 @@ export default function HomeScreen({ navigation }) {
   // UX audit 09/09 (Fase B, item 5): só UMA lista de passos por vez. Quando o
   // bloco "Como começar a precificar" (com contagens) está visível, o
   // OnboardingChecklist não renderiza — eram dois checklists quase iguais empilhados.
-  const mostrarComoComecar = (d.totalProdutos === 0 || d.totalInsumos === 0) && !loading;
+  // Com erro de carga os totais ficam em 0 por falta de dados, não por conta
+  // nova: nenhum estado de "comece aqui" é mostrado enquanto houver loadError.
+  const dadosOk = !loading && !loadError;
+  const mostrarComoComecar = (d.totalProdutos === 0 || d.totalInsumos === 0) && dadosOk;
   // UX walkthrough: o insight em destaque (banner) NÃO repete em "Análises Rápidas"
   // ("Produto campeão" aparecia duas vezes na mesma tela).
   const featuredShown = !!(d.featuredInsight && !pendente && !baseIncompleta);
@@ -587,7 +593,7 @@ export default function HomeScreen({ navigation }) {
         <Text style={[styles.greetingText, isMobile && styles.greetingTextMobile]}>{getGreeting()}</Text>
         {/* UX audit 09/09 (Fase B, item 9): subtítulo só quando informa algo.
             "Veja como está sua precificação" era eco do título — removido. */}
-        {(pendente || d.totalProdutos === 0) && (
+        {!loadError && (pendente || d.totalProdutos === 0) && (
           <Text style={styles.greetingDesc}>
             {pendente ? 'Complete a configuração para começar' : 'Cadastre seus primeiros produtos'}
           </Text>
@@ -614,7 +620,7 @@ export default function HomeScreen({ navigation }) {
           quando os 4 passos estão completos, ou se o usuário ocultar.
           Reusa os dados já carregados por loadAll (zero queries extras).
           Não renderiza junto com "Como começar a precificar" (item 5 da auditoria). */}
-      {!loading && !mostrarComoComecar && (
+      {dadosOk && !mostrarComoComecar && (
         <OnboardingChecklist
           financeiroCompleto={!!(finStatus && finStatus.completo)}
           totalInsumos={d.totalInsumos}
@@ -625,7 +631,7 @@ export default function HomeScreen({ navigation }) {
       )}
 
       {/* Kit de Início banner — prominent for new users with no data */}
-      {d.totalInsumos === 0 && d.totalProdutos === 0 && !loading && (
+      {d.totalInsumos === 0 && d.totalProdutos === 0 && dadosOk && (
         <TouchableOpacity
           style={[styles.setupBanner, { backgroundColor: colors.primary + '08', borderColor: colors.primary + '30' }]}
           activeOpacity={0.7}
@@ -688,7 +694,7 @@ export default function HomeScreen({ navigation }) {
 
       {/* Setup progress banner */}
       {/* Não empilha com o checklist "Como começar" (mesma informação). */}
-      {emSetup && setupStatus && !mostrarComoComecar && (
+      {emSetup && setupStatus && dadosOk && !mostrarComoComecar && (
         <TouchableOpacity style={styles.setupBanner} activeOpacity={0.7} onPress={() => nav('Onboarding')}>
           <View style={styles.setupBannerTop}>
             <View style={styles.setupBannerLeft}>

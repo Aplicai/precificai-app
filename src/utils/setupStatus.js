@@ -1,4 +1,5 @@
 import { getDatabase } from '../database/database';
+import { rowsOrThrow, countOrThrow } from '../database/dbResult';
 
 /**
  * UX audit 09/09 (Fase B, item 16): a barra "Configuração do app 83% —
@@ -21,9 +22,12 @@ export async function getSetupStatus() {
   // Audit perf: eram 10 queries SEQUENCIAIS trazendo tabelas INTEIRAS só p/
   // `.length` (com 2.400 insumos, MBs por chamada — e esta função roda no boot
   // e a cada mudança de navegação). Agora: paralelo + COUNT(*).
-  const n = (sql) => db.getFirstAsync(sql).then(r => r?.n || 0);
-  const [config, fatOkN, fixasN, variaveisN, insumosN, embalagensN, preparosN, produtosN, delProdsN, combosN] = await Promise.all([
-    db.getFirstAsync('SELECT * FROM configuracao LIMIT 1'),
+  // Leitura que falha LANÇA (DbReadError) em vez de virar "0 cadastrados":
+  // este status decide a rota de boot e os checklists — com a falha mascarada
+  // o cliente antigo caía no assistente de configuração como se fosse novo.
+  const n = (sql) => countOrThrow(db, sql);
+  const [configRows, fatOkN, fixasN, variaveisN, insumosN, embalagensN, preparosN, produtosN, delProdsN, combosN] = await Promise.all([
+    db.getAllAsync('SELECT * FROM configuracao LIMIT 1').then(rowsOrThrow),
     n('SELECT COUNT(*) as n FROM faturamento_mensal WHERE valor > 0'),
     n('SELECT COUNT(*) as n FROM despesas_fixas'),
     n('SELECT COUNT(*) as n FROM despesas_variaveis'),
@@ -35,6 +39,7 @@ export async function getSetupStatus() {
     n('SELECT COUNT(*) as n FROM delivery_combos'),
   ]);
 
+  const config = configRows[0] ?? null;
   const lucroOk = config != null && config.lucro_desejado != null;
   const faturamentoOk = fatOkN >= 1;
   const fixasOk = fixasN > 0;

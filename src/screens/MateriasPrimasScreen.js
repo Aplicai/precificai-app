@@ -3,6 +3,7 @@ import { View, Text, SectionList, ScrollView, StyleSheet, TouchableOpacity, Pres
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
+import { rowsOrThrow } from '../database/dbResult';
 import FAB from '../components/FAB';
 // Sprint 4 F1 — FABMenu expõe "Lançar compra" / "Ajustar saldo" quando
 // modo_avancado_estoque on; antes estavam escondidos dentro dos cards a 15px.
@@ -273,7 +274,7 @@ export default function MateriasPrimasScreen({ navigation }) {
     setLoadError(null);
     try {
       const db = await getDatabase();
-      const cats = await db.getAllAsync('SELECT * FROM categorias_insumos ORDER BY nome');
+      const cats = rowsOrThrow(await db.getAllAsync('SELECT * FROM categorias_insumos ORDER BY nome'));
       setCategorias(cats);
 
       // Monta mapa de cores fixo por ID
@@ -293,7 +294,7 @@ export default function MateriasPrimasScreen({ navigation }) {
         favoritos: 'nome COLLATE NOCASE ASC', // P3-H — busca por nome, sort final em JS
       };
       const orderBy = orderClauses[sortBy] || orderClauses.nome_asc;
-      let materias = await db.getAllAsync(`SELECT * FROM materias_primas ORDER BY ${orderBy}`);
+      let materias = rowsOrThrow(await db.getAllAsync(`SELECT * FROM materias_primas ORDER BY ${orderBy}`));
       // P3-H: re-sort em JS para colocar favoritos no topo (parser SQL não suporta multi-col ORDER BY)
       if (sortBy === 'favoritos') {
         materias = [...materias].sort((a, b) => {
@@ -744,7 +745,7 @@ export default function MateriasPrimasScreen({ navigation }) {
               {loading ? (
                 <Skeleton.List count={6} />
               ) : visibleSections.length === 0 ? (
-                <EmptyState {...emptyProps} />
+                loadError ? null : <EmptyState {...emptyProps} />
               ) : (
                 <View style={styles.desktopGrid}>
                   {visibleSections.map((section, catIdx) => (
@@ -862,7 +863,7 @@ export default function MateriasPrimasScreen({ navigation }) {
           ListEmptyComponent={
             loading ? (
               <Skeleton.List count={6} />
-            ) : (
+            ) : loadError ? null : (
               <EmptyState {...emptyProps} />
             )
           }

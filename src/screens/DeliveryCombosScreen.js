@@ -6,6 +6,7 @@ import UndoToast from '../components/UndoToast';
 import useUndoableDelete from '../hooks/useUndoableDelete';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
+import { rowsOrThrow } from '../database/dbResult';
 import FAB from '../components/FAB';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
@@ -219,6 +220,9 @@ export default function DeliveryCombosScreen() {
       db.getAllAsync('SELECT percentual FROM despesas_variaveis'),
       db.getAllAsync('SELECT valor FROM faturamento_mensal WHERE valor > 0'),
     ]);
+    // Falha de leitura vira erro (banner "Tentar de novo"), nunca "Nenhum combo criado".
+    [prods, allIngs, allPreps, allEmbs, embalagensList, preparosList, materiasList,
+     combosList, allComboItens, dProds, allDProdItens, cfgRows, fixasRows, varsRows, fatRows].forEach(rowsOrThrow);
 
     // Sessão 28.26: usa builder unificado em deliveryAdapter
     // Combos são precificados pelo modelo BALCÃO (lucro_desejado, sem comissão)
@@ -1113,7 +1117,7 @@ export default function DeliveryCombosScreen() {
       {/* Combo list */}
       {isDesktop ? (
         <ScrollView contentContainerStyle={[styles.list, { maxWidth: 1200, alignSelf: 'center', width: '100%' }]}>
-          {combosFiltrados.length === 0 ? (
+          {loadError ? null : combosFiltrados.length === 0 ? (
             <EmptyState
               icon={busca.trim() ? 'search' : 'layers'}
               title={busca.trim() ? 'Nenhum combo encontrado' : 'Nenhum combo criado'}
@@ -1140,7 +1144,7 @@ export default function DeliveryCombosScreen() {
           keyExtractor={(item) => String(item.id)}
           renderItem={renderComboCard}
           contentContainerStyle={styles.list}
-          ListEmptyComponent={
+          ListEmptyComponent={loadError ? null : (
             <EmptyState
               icon={busca.trim() ? 'search' : 'layers'}
               title={busca.trim() ? 'Nenhum combo encontrado' : 'Nenhum combo criado'}
@@ -1150,7 +1154,7 @@ export default function DeliveryCombosScreen() {
               ctaLabel={!busca.trim() ? 'Criar primeiro combo' : undefined}
               onPress={!busca.trim() ? abrirCriarCombo : undefined}
             />
-          }
+          )}
           ListFooterComponent={<View style={{ height: 20 }} />}
         />
       )}

@@ -5,6 +5,7 @@
  */
 import { supabase } from '../config/supabase';
 import { parseWhereSimple, parseValue, applyWhere, matchesConditions, parseOrderBy, parseSelectColumns } from './sqlParse';
+import { markErrorResult, isErrorResult, getErrorInfo, unwrapErrorResult } from './dbResult';
 
 let currentUserId = null;
 
@@ -49,16 +50,8 @@ const queryCache = new Map();
 const inflight = new Map();
 const CACHE_TTL = 2000;
 
-// Sentinel: marks a result that came from a SWALLOWED Supabase error (not a
-// legitimate empty result). `getAllAsync` checks for it to SKIP caching, so a
-// transient error window (session refresh / RLS / network) doesn't poison the
-// 2s cache and zero-out every screen that reads the same tables.
-// BLAST RADIUS: this property is non-enumerable and is only ever read inside
-// this module by `isErrorResult`. Consumers (all screens) iterate the array
-// via .map/.forEach/index — they never see it. Legitimate empty results never
-// carry it, so they keep being cached normally (no perf regression).
-const ERROR_RESULT = Symbol('supabaseDbErrorResult');
-const ERROR_INFO = Symbol('supabaseDbErrorInfo');
+// Marcação de resultado-por-erro: ver ./dbResult.js (puro, testado).
+
 
 // Telemetria (Sessão 25/06): extrai uma string CURTA e segura do erro do Supabase
 // — código + mensagem (capada em 180). PostgREST traz erro de SCHEMA (coluna/tabela/
@@ -72,44 +65,7 @@ function safeDbErrInfo(error) {
   return [code, msg].filter(Boolean).join(' ') || 'erro sem mensagem';
 }
 
-// Tag a fallback ([] or null) as coming from an error path. `info` (opcional) =
-// string segura do erro real, recuperável depois via getErrorInfo.
-function markErrorResult(result, info) {
-  if (result == null) {
-    // null can't carry a property; return a boxed sentinel object that
-    // getFirstAsync/getAllAsync treat as "error, value is null".
-    return { [ERROR_RESULT]: true, value: null, [ERROR_INFO]: info || null };
-  }
-  try {
-    Object.defineProperty(result, ERROR_RESULT, {
-      value: true, enumerable: false, configurable: true, writable: true,
-    });
-    if (info) Object.defineProperty(result, ERROR_INFO, {
-      value: info, enumerable: false, configurable: true, writable: true,
-    });
-  } catch {
-    // Frozen/sealed objects: fall back to wrapper so we still skip cache.
-    return { [ERROR_RESULT]: true, value: result, [ERROR_INFO]: info || null };
-  }
-  return result;
-}
 
-function isErrorResult(result) {
-  return !!(result && typeof result === 'object' && result[ERROR_RESULT]);
-}
-
-// Recupera a info de erro segura (string) anexada por markErrorResult, se houver.
-function getErrorInfo(result) {
-  return (result && typeof result === 'object' && result[ERROR_INFO]) || null;
-}
-
-// Unwrap a possibly-boxed error result back to its plain value for consumers.
-function unwrapErrorResult(result) {
-  if (result && typeof result === 'object' && ERROR_RESULT in result && 'value' in result) {
-    return result.value;
-  }
-  return result;
-}
 
 function getCacheKey(sql, params) {
   return sql + '|' + JSON.stringify(params);
@@ -198,9 +154,11 @@ export function createSupabaseDb(userId) {
         if (versionAtStart === writeVersion) setCache(key, result);
         return result;
       }).catch(err => {
-        // Exceção inesperada: loga e devolve vazio — nunca derruba a tela.
+        // Exceção inesperada (ex.: "Lock broken" da sessão, rede): loga e devolve
+        // vazio — nunca derruba a tela. MARCADO como erro: sem a marca, a falha
+        // virava "0 cadastrados" nas telas e o cliente via o app zerado.
         reportDbError('getAllAsync', sql, params, err);
-        return [];
+        return markErrorResult([], safeDbErrInfo(err));
       }).finally(() => { if (inflight.get(key) === promise) inflight.delete(key); });
       inflight.set(key, promise);
       return promise;

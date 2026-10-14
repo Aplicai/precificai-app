@@ -24,6 +24,7 @@ import { exportToCSV, isCsvExportSupported } from '../utils/exportCsv';
 import ItemPreviewModal from '../components/ItemPreviewModal';
 import EntityCreateModal from '../components/EntityCreateModal';
 import { embalagemDeliveryDoProduto } from '../utils/deliveryAdapter';
+import { rowsOrThrow } from '../database/dbResult';
 import { formatTimeAgo } from '../utils/timeAgo';
 import ViewModeToggle from '../components/ViewModeToggle';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -268,6 +269,8 @@ export default function ProdutosListScreen({ navigation }) {
       db.getAllAsync('SELECT * FROM embalagens'),
       db.getAllAsync('SELECT lucro_desejado FROM configuracao LIMIT 1'),
     ]);
+    // Falha de leitura vira erro (banner "Tentar de novo"), nunca "Nenhum produto ainda".
+    [fixas, variaveis, fat, cats, prods, rawProdIngs, rawMPs, rawProdPreps, rawPreparos, rawProdEmbs, rawEmbalagens, configRows].forEach(rowsOrThrow);
 
     // Build lookup maps for JOINs in JS
     const mpMap = {};
@@ -1039,7 +1042,7 @@ export default function ProdutosListScreen({ navigation }) {
               {visibleSections.length === 0 ? (
                 loading ? (
                   <Skeleton.List count={6} />
-                ) : (
+                ) : loadError ? null : (
                   <EmptyState {...emptyProps} />
                 )
               ) : (
@@ -1071,7 +1074,7 @@ export default function ProdutosListScreen({ navigation }) {
           ListEmptyComponent={
             loading ? (
               <Skeleton.List count={6} />
-            ) : (
+            ) : loadError ? null : (
               <EmptyState {...emptyProps} />
             )
           }

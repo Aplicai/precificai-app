@@ -3,6 +3,7 @@ import { View, Text, SectionList, ScrollView, StyleSheet, TouchableOpacity, Pres
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused, useRoute } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
+import { rowsOrThrow } from '../database/dbResult';
 import FAB from '../components/FAB';
 import SearchBar from '../components/SearchBar';
 import { Feather } from '@expo/vector-icons';
@@ -306,7 +307,7 @@ export default function PreparosScreen({ navigation }) {
     setLoadError(false);
     try {
     const db = await getDatabase();
-    const cats = await db.getAllAsync('SELECT * FROM categorias_preparos ORDER BY nome');
+    const cats = rowsOrThrow(await db.getAllAsync('SELECT * FROM categorias_preparos ORDER BY nome'));
     setCategorias(cats);
 
     // Monta mapa de cores fixo por ID
@@ -324,7 +325,7 @@ export default function PreparosScreen({ navigation }) {
       favoritos: 'nome COLLATE NOCASE ASC', // P3-H — re-sort em JS
     };
     const orderBy = orderClauses[sortBy] || orderClauses.nome_asc;
-    let preparos = await db.getAllAsync(`SELECT * FROM preparos ORDER BY ${orderBy}`);
+    let preparos = rowsOrThrow(await db.getAllAsync(`SELECT * FROM preparos ORDER BY ${orderBy}`));
     if (sortBy === 'favoritos') {
       preparos = [...preparos].sort((a, b) => {
         const fa = a.favorito ? 1 : 0, fb = b.favorito ? 1 : 0;
@@ -843,7 +844,7 @@ export default function PreparosScreen({ navigation }) {
               {visibleSections.length === 0 ? (
                 loading ? (
                   <Skeleton.List count={6} />
-                ) : (
+                ) : loadError ? null : (
                   <EmptyState {...emptyProps} />
                 )
               ) : (
@@ -879,7 +880,7 @@ export default function PreparosScreen({ navigation }) {
           ListEmptyComponent={
             loading ? (
               <Skeleton.List count={6} />
-            ) : (
+            ) : loadError ? null : (
               <EmptyState {...emptyProps} />
             )
           }

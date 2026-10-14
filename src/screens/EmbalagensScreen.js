@@ -3,6 +3,7 @@ import { View, Text, SectionList, ScrollView, StyleSheet, TouchableOpacity, Pres
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
+import { rowsOrThrow } from '../database/dbResult';
 import FAB from '../components/FAB';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius, radius, numeric } from '../utils/theme';
@@ -215,7 +216,7 @@ export default function EmbalagensScreen({ navigation }) {
     setLoadError(false);
     try {
     const db = await getDatabase();
-    const cats = await db.getAllAsync('SELECT * FROM categorias_embalagens ORDER BY nome');
+    const cats = rowsOrThrow(await db.getAllAsync('SELECT * FROM categorias_embalagens ORDER BY nome'));
     setCategorias(cats);
 
     // Monta mapa de cores fixo por ID
@@ -234,7 +235,7 @@ export default function EmbalagensScreen({ navigation }) {
       favoritos: 'nome COLLATE NOCASE ASC', // P3-H — re-sort em JS
     };
     const orderBy = orderClauses[sortBy] || orderClauses.nome_asc;
-    let embalagens = await db.getAllAsync(`SELECT * FROM embalagens ORDER BY ${orderBy}`);
+    let embalagens = rowsOrThrow(await db.getAllAsync(`SELECT * FROM embalagens ORDER BY ${orderBy}`));
     if (sortBy === 'favoritos') {
       embalagens = [...embalagens].sort((a, b) => {
         const fa = a.favorito ? 1 : 0, fb = b.favorito ? 1 : 0;
@@ -665,7 +666,7 @@ export default function EmbalagensScreen({ navigation }) {
               {loading ? (
                 <Skeleton.List count={6} />
               ) : visibleSections.length === 0 ? (
-                <EmptyState {...emptyProps} />
+                loadError ? null : <EmptyState {...emptyProps} />
               ) : (
                 <View style={styles.desktopGrid}>
                   {visibleSections.map((section, catIdx) => (
@@ -775,7 +776,7 @@ export default function EmbalagensScreen({ navigation }) {
           ListEmptyComponent={
             loading ? (
               <Skeleton.List count={6} />
-            ) : (
+            ) : loadError ? null : (
               <EmptyState {...emptyProps} />
             )
           }
