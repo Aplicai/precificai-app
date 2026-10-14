@@ -3,6 +3,8 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Linking, TextInpu
 import Constants from 'expo-constants';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import { abrirTutorial } from '../utils/tutorialBus';
+import { CAPITULOS, ORDEM_CAPITULOS, TUTORIAL_TITULO, TUTORIAL_DURACAO, formatarTempo } from '../config/tutorial';
 import usePersistedState from '../hooks/usePersistedState';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../config/supabase';
@@ -267,28 +269,48 @@ export default function SuporteScreen({ navigation, route }) {
       {cameFromConfig && <BackToSettings navigation={navigation} />}
       <Text style={styles.header} accessibilityRole="header">Central de Suporte</Text>
 
-      {/* APP-54 — placeholder pra vídeo tutorial (até gravarmos com o Eric) */}
+      {/* Vídeo tutorial 01 (YouTube): abre embutido; cada capítulo pula direto pro ponto. */}
       <View style={{
         backgroundColor: colors.surface,
         borderRadius: 12,
         padding: 16,
         marginBottom: 12,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
         borderLeftWidth: 3,
         borderLeftColor: colors.primary,
       }}>
-        <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary + '15', alignItems: 'center', justifyContent: 'center' }}>
-          <Feather name="play-circle" size={26} color={colors.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontFamily: fontFamily.bold, color: colors.text, marginBottom: 2 }}>
-            Vídeo tutorial em produção
-          </Text>
-          <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 16 }}>
-            Em breve um tour rápido pelas principais funções. Por enquanto, use o FAQ abaixo ou fale com a gente direto.
-          </Text>
+        <TouchableOpacity
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
+          onPress={() => abrirTutorial('abertura')}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Assistir o vídeo de primeiros passos"
+        >
+          <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
+            <Feather name="play" size={24} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontFamily: fontFamily.bold, color: colors.text, marginBottom: 2 }}>
+              Vídeo: {TUTORIAL_TITULO}
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 16 }}>
+              Do primeiro acesso ao primeiro produto com preço sugerido, em {TUTORIAL_DURACAO}.
+            </Text>
+          </View>
+        </TouchableOpacity>
+        <View style={{ marginTop: 12, gap: 2 }}>
+          {ORDEM_CAPITULOS.map((k) => (
+            <TouchableOpacity
+              key={k}
+              onPress={() => abrirTutorial(k)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Assistir: ${CAPITULOS[k].titulo}`}
+            >
+              <Text style={{ width: 36, fontSize: 12, fontFamily: fontFamily.bold, color: colors.primary }}>{formatarTempo(CAPITULOS[k].t)}</Text>
+              <Text style={{ flex: 1, fontSize: 13, color: colors.text }}>{CAPITULOS[k].titulo}</Text>
+              <Feather name="play-circle" size={14} color={colors.textSecondary} />
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
 

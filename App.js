@@ -7,6 +7,7 @@ import { AuthProvider } from './src/contexts/AuthContext';
 import { colors } from './src/utils/theme';
 import { initErrorReporter, wrap as wrapWithSentry } from './src/utils/errorReporter';
 import GlobalToastHost from './src/components/GlobalToastHost';
+import TutorialVideoHost from './src/components/TutorialVideoHost';
 import ErrorBoundary from './src/components/ErrorBoundary';
 
 // Inicializa o reporter de erros (P0-01). No-op se DSN ausente.
@@ -53,6 +54,8 @@ function App() {
           <AppNavigator />
           {/* Sessão 28.53 — toast bus global p/ feedback após ações que encerram a tela */}
           <GlobalToastHost />
+          {/* Vídeo tutorial: qualquer tela abre via abrirTutorial(capitulo). */}
+          <TutorialVideoHost />
         </View>
       </AuthProvider>
     </ErrorBoundary>

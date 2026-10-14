@@ -14,6 +14,7 @@ import { rowsOrThrow, countOrThrow } from '../database/dbResult';
 import InfoTooltip from '../components/InfoTooltip';
 import Loader from '../components/Loader';
 import MobileOnboardingOverlay from '../components/MobileOnboardingOverlay';
+import TutorialHomeCard from '../components/TutorialHomeCard';
 import OnboardingChecklist from '../components/OnboardingChecklist';
 import HomeInstallBanner from '../components/HomeInstallBanner';
 import PrecosZeradosBanner from '../components/PrecosZeradosBanner';
@@ -587,7 +588,12 @@ export default function HomeScreen({ navigation }) {
           (Financeiro → Insumos → Preparos → Embalagens → Produtos → Análise).
           O componente decide internamente quando aparecer (flag dismiss +
           contador de aberturas) e filtra mobile via useResponsiveLayout. */}
-      <MobileOnboardingOverlay navigation={navigation} />
+      {/* Sem produto ainda: o vídeo de primeiros passos ocupa o lugar do
+          "Por onde começar?" (mesmo papel, agora mostrando em vez de listar). */}
+      {/* Só decide depois de carregar, senão um pisca no lugar do outro. */}
+      {!dadosOk ? null : d.totalProdutos === 0
+        ? <TutorialHomeCard />
+        : <MobileOnboardingOverlay navigation={navigation} />}
 
       {/* UX audit 09/09: removidos MobileDesktopHint ("use no computador") e o
           2º banner de instalação. A Home mobile chegava a 5 avisos antes do

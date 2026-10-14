@@ -36,7 +36,9 @@ const SECURITY_HEADERS = {
     // (openPrintableHTML.js usa iframe oculto + sandbox sem allow-same-origin
     // → origem opaca, sem risco XSS). Sem isso o frame-src cai no default-src
     // 'self' e bloqueia o iframe → diálogo de impressão NUNCA abre.
-    "frame-src 'self' blob:",
+    // youtube-nocookie: player do vídeo tutorial (TutorialVideoHost). Só o
+    // domínio sem cookie; youtube.com fica de fora.
+    "frame-src 'self' blob: https://www.youtube-nocookie.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "object-src 'none'",
