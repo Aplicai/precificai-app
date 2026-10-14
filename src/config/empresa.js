@@ -8,7 +8,7 @@ export const EMPRESA = {
   razaoSocial: 'APLICAI CONSULTORIA E TREINAMENTO LTDA',
   nome: 'Aplicaí',
   cnpj: '53.054.196/0001-63',
-  endereco: 'Rua Antônio Altaf, 390, apto. 101, Cascatinha, Juiz de Fora/MG, CEP 36033-330',
+  endereco: 'Rua Antônio Altaf, 390, Cascatinha, Juiz de Fora/MG, CEP 36033-330',
   email: 'contato@precificaiapp.com',
 };
 
