@@ -14,7 +14,7 @@
 
 import { Platform, Linking } from 'react-native';
 import { supabase } from '../config/supabase';
-import { syncPlanFromServer, getSubscriptionInfo } from '../hooks/usePlan';
+import { syncPlanFromServer, getSubscriptionInfo, getPlan } from '../hooks/usePlan';
 import { showToast } from '../utils/toastBus';
 import { aguardarAtivacao } from '../utils/aguardarAtivacao';
 import { trackEvent } from '../utils/marketing';
@@ -27,21 +27,50 @@ let _esperaAtual = 0;
  * Fica consultando o plano depois que o checkout abriu e avisa quando ativar.
  * Não é aguardada por quem chama: roda em segundo plano na aba original.
  */
-async function observarAtivacao() {
+// Marca = plano + validade. Na primeira assinatura muda o plano; na renovação
+// o plano continua 'pro' e o que muda é a validade.
+export function marcaPlanoLocal(plano, expiresAt) {
+  return `${plano || 'free'}|${expiresAt || ''}`;
+}
+async function lerMarcaPlano() {
+  const plano = await syncPlanFromServer();
+  return marcaPlanoLocal(plano, getSubscriptionInfo().expiresAt);
+}
+const marcaAtiva = (m) => typeof m === 'string' && !m.startsWith('free|');
+
+/** Interrompe a espera em andamento (ex.: o usuário já confirmou pelo botão). */
+export function cancelarObservacao() { _esperaAtual++; }
+
+/**
+ * Botão "Já paguei": consulta o servidor agora e diz se o plano mudou desde
+ * que o checkout foi aberto. Não depende da aba do Asaas nem do redirecionamento.
+ * @param {string} marcaAntes — devolvida por startCheckout
+ * @returns {Promise<{ativou: boolean, erro?: string}>}
+ */
+export async function verificarAtivacao(marcaAntes) {
+  try {
+    const agora = await lerMarcaPlano();
+    const ativou = marcaAtiva(agora) && agora !== marcaAntes;
+    if (ativou) {
+      cancelarObservacao();
+      showToast({ message: 'Pagamento confirmado. Seu plano já está ativo.', icon: 'check-circle', durationMs: 6000 });
+    }
+    return { ativou };
+  } catch {
+    return { ativou: false, erro: 'Não conseguimos consultar agora. Verifique a conexão e tente de novo.' };
+  }
+}
+
+async function observarAtivacao(marcaAntes) {
   const minha = ++_esperaAtual;
-  // Marca = plano + validade. Na primeira assinatura muda o plano; na renovação
-  // o plano continua 'pro' e o que muda é a validade.
-  const marca = async () => {
-    const plano = await syncPlanFromServer();
-    return `${plano}|${getSubscriptionInfo().expiresAt || ''}`;
-  };
-  let antes = 'free|';
-  try { antes = await marca(); } catch {}
+  const marca = lerMarcaPlano;
+  let antes = marcaAntes;
+  if (!antes) { antes = 'free|'; try { antes = await marca(); } catch {} }
 
   const r = await aguardarAtivacao({
     planoAntes: antes,
     consultar: marca,
-    estaAtivo: (m) => typeof m === 'string' && !m.startsWith('free|'),
+    estaAtivo: marcaAtiva,
     cancelado: () => minha !== _esperaAtual,
   });
   if (r.ativou && minha === _esperaAtual) {
@@ -57,7 +86,9 @@ async function observarAtivacao() {
  * Inicia o checkout de um plano.
  * @param {'pro'|'ilimitado'} plano
  * @param {'mensal'|'anual'} ciclo
- * @returns {Promise<{ok: boolean, url?: string, error?: string}>}
+ * @returns {Promise<{ok: boolean, url?: string, aberto?: boolean, marcaAntes?: string, error?: string}>}
+ *   `aberto=false` = o navegador bloqueou a nova aba (pop-up); quem chama deve
+ *   oferecer um botão pra abrir a `url` num gesto do usuário.
  */
 export async function startCheckout(plano, ciclo) {
   try {
@@ -85,12 +116,15 @@ export async function startCheckout(plano, ciclo) {
       return { ok: false, error: data?.error || 'Resposta inválida do checkout.' };
     }
 
-    // Abre o checkout hospedado.
+    // Estado do plano ANTES de abrir: é contra isso que "Já paguei" compara.
+    const marcaAntes = marcaPlanoLocal(getPlan(), getSubscriptionInfo().expiresAt);
+
+    // Abre o checkout hospedado. No web, bloqueador de pop-up devolve null em
+    // silêncio — antes o modal fechava e a pessoa ficava sem o pagamento.
     const url = data.url;
+    let aberto = true;
     if (Platform.OS === 'web') {
-      if (typeof window !== 'undefined') {
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
+      aberto = abrirNovaAba(url);
     } else {
       await Linking.openURL(url);
     }
@@ -98,14 +132,25 @@ export async function startCheckout(plano, ciclo) {
     trackEvent('InitiateCheckout', { content_name: `${plano}_${ciclo}`, currency: 'BRL' });
 
     // A tela de redirecionamento do Asaas é lenta; esta aba descobre sozinha.
-    observarAtivacao().catch(() => {});
+    observarAtivacao(marcaAntes).catch(() => {});
 
-    return { ok: true, url };
+    return { ok: true, url, aberto, marcaAntes };
   } catch (e) {
     if (typeof console !== 'undefined' && console.error) {
       console.error('[startCheckout]', e);
     }
     return { ok: false, error: 'Erro ao iniciar o checkout. Tente novamente.' };
+  }
+}
+
+/** Abre a URL numa aba nova; false quando o navegador bloqueou. */
+export function abrirNovaAba(url) {
+  if (typeof window === 'undefined') return false;
+  try {
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
+    return !!win;
+  } catch {
+    return false;
   }
 }
 

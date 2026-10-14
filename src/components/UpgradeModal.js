@@ -3,7 +3,8 @@ import { View, Text, Modal, Pressable, StyleSheet, Platform, ScrollView, Activit
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { PLAN_LABELS, PLAN_PRICES, PLAN_PRICES_ANNUAL, PLAN_BENEFITS } from '../config/plans';
-import { startCheckout } from '../services/checkout';
+import { startCheckout, verificarAtivacao, abrirNovaAba, marcaPlanoLocal } from '../services/checkout';
+import usePlan from '../hooks/usePlan';
 
 /**
  * UpgradeModal — popup de upgrade reutilizável (Fase 0).
@@ -42,9 +43,33 @@ export default function UpgradeModal({
   const [ciclo, setCiclo] = useState(defaultCiclo); // 'mensal' | 'anual'
   // Cada abertura começa no ciclo pedido por quem chamou (a renovação do anual
   // abre em "anual"; os cadeados abrem em "mensal").
-  useEffect(() => { if (visible) { setCiclo(defaultCiclo); setErro(''); } }, [visible, defaultCiclo]);
+  useEffect(() => { if (visible) { setCiclo(defaultCiclo); setErro(''); setAguardando(null); setRecado(''); } }, [visible, defaultCiclo]);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState('');
+  // Depois de "Assinar": o pagamento abre em OUTRA aba e o modal não some mais.
+  // Antes ele fechava em silêncio — com pop-up bloqueado a pessoa ficava sem
+  // nada; e sem o redirecionamento do Asaas ninguém dizia se deu certo.
+  const [aguardando, setAguardando] = useState(null); // { url, aberto, marcaAntes }
+  const [verificando, setVerificando] = useState(false);
+  const [recado, setRecado] = useState('');
+
+  // Fecha sozinho quando o plano muda (a aba original detecta a ativação).
+  const { plano: planoAtual, planExpiresAt } = usePlan();
+  useEffect(() => {
+    if (!aguardando) return;
+    const agora = marcaPlanoLocal(planoAtual, planExpiresAt);
+    if (agora !== aguardando.marcaAntes && !agora.startsWith('free|')) { if (onClose) onClose(); }
+  }, [aguardando, planoAtual, planExpiresAt]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleVerificar = async () => {
+    if (!aguardando) return;
+    setRecado('');
+    setVerificando(true);
+    const r = await verificarAtivacao(aguardando.marcaAntes);
+    setVerificando(false);
+    if (r.ativou) { if (onClose) onClose(); return; }
+    setRecado(r.erro || 'Ainda não chegou a confirmação. Depois de pagar pode levar até 1 minuto; no Pix, aguarde a compensação. Pode fechar: avisamos aqui quando entrar.');
+  };
 
   // Vantagens: usa as passadas ou cai no padrão do plano (sempre comunica valor).
   const benefits = (highlights && highlights.length > 0)
@@ -62,8 +87,11 @@ export default function UpgradeModal({
     const r = await startCheckout(requiredPlan, ciclo);
     setLoading(false);
     if (r.ok) {
-      // Checkout aberto em nova aba/navegador. Fecha o modal.
-      if (onClose) onClose();
+      if (Platform.OS === 'web') {
+        setAguardando({ url: r.url, aberto: r.aberto !== false, marcaAntes: r.marcaAntes });
+      } else if (onClose) {
+        onClose();
+      }
     } else {
       setErro(r.error || 'Não foi possível iniciar a assinatura. Tente novamente.');
     }
@@ -73,6 +101,59 @@ export default function UpgradeModal({
     <Modal visible={!!visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
         <Pressable style={styles.card} onPress={() => {}}>
+          {aguardando ? (
+            <View>
+              <View style={styles.header}>
+                <View style={styles.iconCircle}>
+                  <Feather name={aguardando.aberto ? 'external-link' : 'alert-triangle'} size={22} color="#fff" />
+                </View>
+              </View>
+              <Text style={styles.title}>
+                {aguardando.aberto ? 'Pagamento aberto em outra aba' : 'O navegador bloqueou a aba do pagamento'}
+              </Text>
+              <Text style={styles.message}>
+                {aguardando.aberto
+                  ? 'Finalize o pagamento na aba que abriu. Esta tela percebe sozinha quando ele entrar; se preferir, confira pelo botão.'
+                  : 'Toque em "Abrir pagamento" para abrir a página do Asaas. Depois de pagar, volte aqui.'}
+              </Text>
+              {!!recado && <Text style={styles.recado}>{recado}</Text>}
+              {!aguardando.aberto && (
+                <Pressable
+                  style={({ pressed }) => [styles.btnPrimary, pressed && { opacity: 0.85 }]}
+                  onPress={() => { if (abrirNovaAba(aguardando.url)) setAguardando(a => ({ ...a, aberto: true })); }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Abrir pagamento"
+                >
+                  <Feather name="external-link" size={16} color="#fff" />
+                  <Text style={styles.btnPrimaryText}>Abrir pagamento</Text>
+                </Pressable>
+              )}
+              <Pressable
+                style={({ pressed }) => [aguardando.aberto ? styles.btnPrimary : styles.btnOutline, (pressed || verificando) && { opacity: 0.85 }]}
+                onPress={handleVerificar}
+                disabled={verificando}
+                accessibilityRole="button"
+                accessibilityLabel="Já paguei, verificar agora"
+              >
+                {verificando ? (
+                  <ActivityIndicator size="small" color={aguardando.aberto ? '#fff' : colors.primary} />
+                ) : (
+                  <>
+                    <Feather name="refresh-cw" size={16} color={aguardando.aberto ? '#fff' : colors.primary} />
+                    <Text style={aguardando.aberto ? styles.btnPrimaryText : styles.btnOutlineText}>Já paguei — verificar</Text>
+                  </>
+                )}
+              </Pressable>
+              {aguardando.aberto && (
+                <Pressable style={styles.btnSecondary} onPress={() => abrirNovaAba(aguardando.url)} accessibilityRole="button">
+                  <Text style={styles.btnSecondaryText}>Abrir o pagamento de novo</Text>
+                </Pressable>
+              )}
+              <Pressable style={styles.btnSecondary} onPress={onClose} accessibilityRole="button">
+                <Text style={styles.btnSecondaryText}>Fechar</Text>
+              </Pressable>
+            </View>
+          ) : (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ alignItems: 'stretch' }}>
             {/* Header */}
             <View style={styles.header}>
@@ -163,6 +244,7 @@ export default function UpgradeModal({
               <Text style={styles.btnSecondaryText}>Agora não</Text>
             </Pressable>
           </ScrollView>
+          )}
         </Pressable>
       </Pressable>
     </Modal>
@@ -373,6 +455,30 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     fontWeight: '700',
     color: '#fff',
+  },
+  recado: {
+    fontSize: fonts.small,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  btnOutline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderRadius: borderRadius.md,
+    paddingVertical: 12,
+    marginBottom: spacing.sm,
+  },
+  btnOutlineText: {
+    color: colors.primary,
+    fontSize: fonts.regular,
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
   },
   btnSecondary: {
     paddingVertical: 12,
