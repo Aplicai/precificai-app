@@ -1,71 +1,26 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Modal, Image } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import zxcvbn from 'zxcvbn';
 import { colors, spacing, fontFamily, borderRadius } from '../utils/theme';
 import { useAuth } from '../contexts/AuthContext';
 import useListDensity from '../hooks/useListDensity';
 import useRateLimit from '../hooks/useRateLimit';
 import { mapAuthError } from '../utils/authErrors';
 import { parseRateLimitSeconds } from '../utils/parseRateLimit';
-import { MIN_PASSWORD_LENGTH, validatePassword } from '../utils/passwordPolicy';
+import { MIN_PASSWORD_LENGTH, validatePassword, passwordCriteria } from '../utils/passwordPolicy';
 import { askConsent } from '../utils/marketing';
 
-// D-01: alinhar com checklist visual exibido ao usuário (8 chars + maiúscula + minúscula + número).
-// Símbolo é recomendado mas não obrigatório.
-// Sessão 28.68 (L-3): MIN_PASSWORD_LENGTH e validatePassword agora vêm de
-// `utils/passwordPolicy.js` (compartilhado com ResetPasswordScreen).
-// Sessão 28.9 — APP-03: relaxado de 2→1 (zxcvbn 0..4). Antes "teste2026*" era
-// bloqueado, frustrando user. Score 1 = "weak mas aceitável" (deixa user
-// decidir), bloqueia só score 0 (top-100 senhas comuns tipo "123456").
-const MIN_PASSWORD_SCORE = 1;
+// Política de senha: `utils/passwordPolicy.js` (compartilhada com
+// ResetPasswordScreen e ContaSegurancaScreen). 8+ caracteres, 1 letra, 1 número.
+// Decisão do dono (2026-10): sem símbolo, sem maiúscula/minúscula e sem barreira
+// de força (zxcvbn removido — ~400 KB de dicionário só pra frustrar cadastro).
 
-// Mapa de cores e rótulos por nível de força (0=muito fraca → 4=excelente).
-// Usa paleta do theme: error (vermelho) → warning (coral) → success (verde).
-const STRENGTH_LEVELS = [
-  { label: 'Muito fraca', color: colors.error },
-  { label: 'Fraca',       color: colors.error },
-  { label: 'Razoável',    color: colors.warning },
-  { label: 'Boa',         color: colors.primaryMid },
-  { label: 'Excelente',   color: colors.success },
-];
-
-// Traduz os feedbacks padrão do zxcvbn (en) para PT-BR. Cobre os mais comuns;
-// fallback retorna a string original caso a chave não esteja mapeada.
-const FEEDBACK_PT = {
-  'Use a few words, avoid common phrases': 'Use algumas palavras, evite frases comuns',
-  'No need for symbols, digits, or uppercase letters': 'Não é necessário usar símbolos, dígitos ou maiúsculas',
-  'Add another word or two. Uncommon words are better.': 'Adicione mais uma ou duas palavras. Palavras incomuns são melhores.',
-  'Straight rows of keys are easy to guess': 'Sequências do teclado são fáceis de adivinhar',
-  'Short keyboard patterns are easy to guess': 'Padrões curtos do teclado são fáceis de adivinhar',
-  'Use a longer keyboard pattern with more turns': 'Use um padrão de teclado mais longo e variado',
-  'Repeats like "aaa" are easy to guess': 'Repetições como "aaa" são fáceis de adivinhar',
-  'Repeats like "abcabcabc" are only slightly harder to guess than "abc"': 'Repetições como "abcabcabc" são quase tão fáceis quanto "abc"',
-  'Avoid repeated words and characters': 'Evite palavras e caracteres repetidos',
-  'Sequences like abc or 6543 are easy to guess': 'Sequências como abc ou 6543 são fáceis de adivinhar',
-  'Avoid sequences': 'Evite sequências',
-  'Recent years are easy to guess': 'Anos recentes são fáceis de adivinhar',
-  'Avoid recent years': 'Evite anos recentes',
-  'Avoid years that are associated with you': 'Evite anos associados a você',
-  'Dates are often easy to guess': 'Datas são geralmente fáceis de adivinhar',
-  'Avoid dates and years that are associated with you': 'Evite datas e anos associados a você',
-  'This is a top-10 common password': 'Esta é uma das 10 senhas mais comuns',
-  'This is a top-100 common password': 'Esta é uma das 100 senhas mais comuns',
-  'This is a very common password': 'Esta é uma senha muito comum',
-  'This is similar to a commonly used password': 'Esta senha é similar a uma muito comum',
-  'A word by itself is easy to guess': 'Uma palavra isolada é fácil de adivinhar',
-  'Names and surnames by themselves are easy to guess': 'Nomes e sobrenomes isolados são fáceis de adivinhar',
-  'Common names and surnames are easy to guess': 'Nomes e sobrenomes comuns são fáceis de adivinhar',
-  'Capitalization doesn\'t help very much': 'Usar maiúsculas não ajuda muito',
-  'All-uppercase is almost as easy to guess as all-lowercase': 'Tudo em maiúscula é quase tão fácil quanto tudo em minúscula',
-  'Reversed words aren\'t much harder to guess': 'Palavras invertidas não são muito mais difíceis',
-  'Predictable substitutions like \'@\' instead of \'a\' don\'t help very much': 'Substituições previsíveis como "@" no lugar de "a" não ajudam muito',
-  'Add another word or two. Uncommon words are better': 'Adicione mais uma ou duas palavras. Palavras incomuns são melhores',
-};
-const translateFeedback = (msg) => (msg ? (FEEDBACK_PT[msg] || msg) : '');
+// Polling de fallback da tela "Verifique seu email" (ver useEffect abaixo).
+const CONFIRM_POLL_INTERVAL_MS = 5000;
+const CONFIRM_POLL_MAX_TICKS = (10 * 60 * 1000) / CONFIRM_POLL_INTERVAL_MS; // 10 min
 
 export default function RegisterScreen({ navigation }) {
-  const { signUp, signInWithGoogle } = useAuth();
+  const { signUp, signInWithGoogle, reloadSession } = useAuth();
   const rateLimit = useRateLimit();
   const { isCompact, inputHeight, buttonHeight } = useListDensity();
   const [email, setEmail] = useState('');
@@ -99,18 +54,6 @@ export default function RegisterScreen({ navigation }) {
   const onChangeEmail = (v) => { if (error) setError(''); setEmail(v); };
   const onChangePassword = (v) => { if (error) setError(''); setPassword(v); };
 
-  // Avalia força da senha com zxcvbn. useMemo evita reprocessar a cada render
-  // (zxcvbn não é leve — ~400KB de dicionário); só recalcula quando a senha muda.
-  const passwordStrength = useMemo(() => {
-    if (!password) return null;
-    const result = zxcvbn(password);
-    return {
-      score: result.score, // 0..4
-      warning: translateFeedback(result.feedback?.warning),
-      suggestions: (result.feedback?.suggestions || []).map(translateFeedback),
-    };
-  }, [password]);
-
   const handleRegister = async () => {
     const limitMsg = rateLimit.checkLimit();
     if (limitMsg) { setError(limitMsg); return; }
@@ -133,15 +76,10 @@ export default function RegisterScreen({ navigation }) {
       setError('Email inválido. Verifique se está no formato nome@dominio.com');
       return;
     }
-    // D-01 + Sessão 28.17 + Sessão 28.68 (L-3): política única em passwordPolicy.js
-    // (compartilhada com ResetPasswordScreen). Todos os 5 critérios são obrigatórios.
+    // Política única em passwordPolicy.js (compartilhada com ResetPasswordScreen).
     const pol = validatePassword(password);
     if (!pol.ok) {
       setError(pol.error);
-      return;
-    }
-    if (passwordStrength && passwordStrength.score < 2) {
-      setError('Senha muito fraca — evite sequências óbvias (ex.: "abc123", "qwerty"). Use uma combinação imprevisível.');
       return;
     }
     setError('');
@@ -188,6 +126,40 @@ export default function RegisterScreen({ navigation }) {
   };
   const googleDisabled = googleLoading || loading;
 
+  // Tela "Verifique seu email": a confirmação acontece em OUTRA aba (a que o
+  // link do e-mail abre, já logada via detectSessionInUrl). O auth-js avisa
+  // esta aba por BroadcastChannel → AuthContext seta `user` → o navigator troca
+  // pro app sozinho. Fallback pra quando o aviso não chega (browser sem
+  // BroadcastChannel, aba suspensa): relê a sessão do storage compartilhado a
+  // cada 5 s, por no máximo 10 min. Quando aparecer, o AuthContext adota e a
+  // navegação normal assume — esta tela desmonta.
+  const [checkingSession, setCheckingSession] = useState(false);
+  useEffect(() => {
+    if (!success) return undefined;
+    let ticks = 0;
+    let cancelled = false;
+    const id = setInterval(async () => {
+      ticks += 1;
+      if (ticks > CONFIRM_POLL_MAX_TICKS) { clearInterval(id); return; }
+      const s = await reloadSession();
+      if (cancelled) return;
+      if (s?.user) clearInterval(id);
+    }, CONFIRM_POLL_INTERVAL_MS);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [success, reloadSession]);
+
+  // "Já confirmei, entrar": mesma checagem, na hora. Com sessão, o navigator
+  // assume; sem sessão (ainda não clicou no link), vai pro Login.
+  const handleAlreadyConfirmed = async () => {
+    setCheckingSession(true);
+    try {
+      const s = await reloadSession();
+      if (!s?.user) navigation.replace('Login');
+    } finally {
+      setCheckingSession(false);
+    }
+  };
+
   if (success) {
     return (
       <View style={styles.container}>
@@ -198,14 +170,27 @@ export default function RegisterScreen({ navigation }) {
             </View>
             <Text style={styles.cardTitle}>Verifique seu email</Text>
             <Text style={styles.successText}>
-              Enviamos um link de confirmação para{' '}
+              Enviamos um link para{' '}
               <Text style={{ fontFamily: fontFamily.semiBold, color: colors.text }}>{email}</Text>.
-              {'\n\n'}Clique no link para ativar sua conta e começar a usar.
+              {' '}Clique nele e esta tela avança sozinha.
             </Text>
             <Text style={styles.successHint}>Não encontrou? Verifique a pasta de spam.</Text>
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.replace('Login')} activeOpacity={0.8}>
-              <Text style={styles.primaryBtnText}>Ir para Login</Text>
-              <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
+            <TouchableOpacity
+              style={[styles.primaryBtn, checkingSession && styles.primaryBtnDisabled]}
+              onPress={handleAlreadyConfirmed}
+              disabled={checkingSession}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: checkingSession }}
+            >
+              {checkingSession ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Text style={styles.primaryBtnText}>Já confirmei, entrar</Text>
+                  <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
+                </>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -307,64 +292,21 @@ export default function RegisterScreen({ navigation }) {
           {/* Sessão 28.9 — APP-03: hint de critérios visível ANTES de digitar */}
           {!password && (
             <Text style={styles.passwordHint}>
-              Use no m&iacute;nimo {MIN_PASSWORD_LENGTH} caracteres. Misture letras e n&uacute;meros pra ficar mais segura.
+              Use no m&iacute;nimo {MIN_PASSWORD_LENGTH} caracteres, com pelo menos 1 letra e 1 n&uacute;mero.
             </Text>
           )}
 
-          {/* APP-03: checklist de critérios em tempo real (caracteres, maiúscula, número, símbolo).
-              Não bloqueia — só ajuda o usuário a entender por que a barra está num nível e o que melhorar. */}
+          {/* Checklist em tempo real — exatamente as 3 regras que `validatePassword`
+              exige, vindas da mesma fonte (passwordCriteria). Nada de critério
+              "recomendado" que não bloqueia: o que aparece aqui é o que vale. */}
           {password ? (
             <View style={styles.criteriaWrap}>
-              {[
-                { ok: password.length >= 8, label: 'Mínimo 8 caracteres' },
-                { ok: /[A-Z]/.test(password), label: 'Pelo menos 1 letra maiúscula' },
-                { ok: /[a-z]/.test(password), label: 'Pelo menos 1 letra minúscula' },
-                { ok: /[0-9]/.test(password), label: 'Pelo menos 1 número' },
-                { ok: /[^A-Za-z0-9]/.test(password), label: 'Pelo menos 1 símbolo (recomendado)' },
-              ].map((c, i) => (
+              {passwordCriteria(password).map((c, i) => (
                 <View key={i} style={styles.criteriaRow}>
                   <Feather name={c.ok ? 'check-circle' : 'circle'} size={12} color={c.ok ? colors.success : colors.disabled} />
                   <Text style={[styles.criteriaText, { color: c.ok ? colors.success : colors.textSecondary }]}>{c.label}</Text>
                 </View>
               ))}
-            </View>
-          ) : null}
-
-          {/* Indicador de força da senha — só aparece quando há texto digitado */}
-          {passwordStrength ? (
-            <View style={styles.strengthWrap}>
-              <View
-                style={styles.strengthBarTrack}
-                accessibilityRole="progressbar"
-                accessibilityLabel="Força da senha"
-                accessibilityValue={{ min: 0, max: 4, now: passwordStrength.score }}
-              >
-                <View
-                  style={[
-                    styles.strengthBarFill,
-                    {
-                      // Largura proporcional ao score (0=20%, 4=100%) para sempre haver
-                      // pelo menos algum preenchimento visual quando há texto.
-                      width: `${((passwordStrength.score + 1) / 5) * 100}%`,
-                      backgroundColor: STRENGTH_LEVELS[passwordStrength.score].color,
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={[styles.strengthLabel, { color: STRENGTH_LEVELS[passwordStrength.score].color }]}>
-                {STRENGTH_LEVELS[passwordStrength.score].label}
-              </Text>
-              {/* Dicas só quando ainda fraca (< Boa). Acima disso, evita poluir UI. */}
-              {passwordStrength.score < 3 && (passwordStrength.warning || passwordStrength.suggestions.length > 0) ? (
-                <View style={styles.strengthFeedback}>
-                  {passwordStrength.warning ? (
-                    <Text style={styles.strengthWarning}>{passwordStrength.warning}</Text>
-                  ) : null}
-                  {passwordStrength.suggestions.map((s, i) => (
-                    <Text key={i} style={styles.strengthSuggestion}>• {s}</Text>
-                  ))}
-                </View>
-              ) : null}
             </View>
           ) : null}
 
@@ -532,7 +474,7 @@ const styles = StyleSheet.create({
   },
   eyeBtn: { paddingHorizontal: 12, paddingVertical: 12, justifyContent: 'center', alignItems: 'center' },
 
-  // Indicador de força da senha (zxcvbn)
+  // Dica de política de senha (visível antes de digitar)
   passwordHint: {
     fontSize: 12, color: colors.textSecondary, marginTop: 6,
     fontFamily: fontFamily.regular, lineHeight: 16,
@@ -541,21 +483,6 @@ const styles = StyleSheet.create({
   criteriaWrap: { marginTop: 8, marginBottom: 4, gap: 4 },
   criteriaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   criteriaText: { fontSize: 12, fontFamily: fontFamily.medium },
-  strengthWrap: { marginTop: 8 },
-  strengthBarTrack: {
-    height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden',
-  },
-  strengthBarFill: { height: '100%', borderRadius: 3 },
-  strengthLabel: {
-    fontSize: 12, fontFamily: fontFamily.medium, marginTop: 4,
-  },
-  strengthFeedback: { marginTop: 4 },
-  strengthWarning: {
-    fontSize: 12, color: colors.warning, fontFamily: fontFamily.medium, marginBottom: 2,
-  },
-  strengthSuggestion: {
-    fontSize: 12, color: colors.textSecondary, fontFamily: fontFamily.regular, lineHeight: 16,
-  },
 
   // Terms (now as notice text below button)
   termsNotice: {

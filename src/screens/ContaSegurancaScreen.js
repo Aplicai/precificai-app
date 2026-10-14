@@ -24,7 +24,7 @@ function mapAuthError(rawMsg) {
   if (m.includes('rate') || m.includes('too many')) return 'Muitas tentativas. Aguarde alguns minutos antes de tentar de novo.';
   if (m.includes('email') && (m.includes('invalid') || m.includes('format'))) return 'E-mail em formato inválido.';
   if (m.includes('email') && m.includes('use')) return 'Este e-mail já está em uso por outra conta.';
-  if (m.includes('password') && m.includes('weak')) return 'Senha muito fraca. Use letras maiúsculas, minúsculas e números.';
+  if (m.includes('password') && m.includes('weak')) return 'Senha muito fraca. Use no mínimo 8 caracteres, com letras e números.';
   if (m.includes('network') || m.includes('fetch')) return 'Sem conexão. Verifique sua internet e tente novamente.';
   if (m.includes('invalid') && m.includes('credential')) return 'Senha incorreta.';
   if (m.includes('user') && m.includes('not')) return 'Usuário não encontrado.';
@@ -493,7 +493,7 @@ export default function ContaSegurancaScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.hint}>A senha deve ter no mínimo 8 caracteres, com letras maiúsculas, minúsculas e números.</Text>
+          <Text style={styles.hint}>A senha deve ter no mínimo 8 caracteres, com pelo menos 1 letra e 1 número.</Text>
 
           <TouchableOpacity
             style={[styles.saveBtn, { minHeight: buttonHeight, paddingVertical: isCompact ? 8 : 12 }, loading && { opacity: 0.6 }]}

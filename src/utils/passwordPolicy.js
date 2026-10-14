@@ -1,22 +1,29 @@
 /**
  * passwordPolicy.js — Sessão 28.68 (L-3)
  *
- * Política única de senha. Usada por RegisterScreen e ResetPasswordScreen
- * para garantir que ambos exijam o MESMO nível mínimo de complexidade.
+ * Política única de senha. Usada por RegisterScreen, ResetPasswordScreen e
+ * ContaSegurancaScreen para garantir que todos exijam o MESMO mínimo.
  *
- * Regras (alinhadas com o checklist visual mostrado no RegisterScreen):
+ * Regras (alinhadas com o checklist visual mostrado nas telas):
  *  - Mínimo 8 caracteres
- *  - Pelo menos 1 letra MAIÚSCULA
- *  - Pelo menos 1 letra minúscula
+ *  - Pelo menos 1 letra
  *  - Pelo menos 1 número
- *  - Pelo menos 1 símbolo (não alfanumérico)
+ *
+ * Decisão do dono (2026-10): sem exigência de símbolo, sem maiúscula/minúscula
+ * e sem barreira de "força" (zxcvbn). Tamanho + letra + número é o bastante;
+ * o resto só frustrava o cadastro.
  *
  * Exporta:
  *  - MIN_PASSWORD_LENGTH (constante)
  *  - validatePassword(pw) → { ok, error } com mensagem PT-BR consistente
+ *  - passwordCriteria(pw) → lista { ok, label } pro checklist em tempo real
  */
 
 export const MIN_PASSWORD_LENGTH = 8;
+
+// \p{L} cobre letras acentuadas (ç, ã, é…) — "senha" em PT-BR não é só ASCII.
+const HAS_LETTER = /\p{L}/u;
+const HAS_DIGIT = /[0-9]/;
 
 /**
  * Valida senha contra a política única.
@@ -28,17 +35,11 @@ export function validatePassword(password) {
   if (pw.length < MIN_PASSWORD_LENGTH) {
     return { ok: false, error: `A senha precisa de pelo menos ${MIN_PASSWORD_LENGTH} caracteres.` };
   }
-  if (!/[A-Z]/.test(pw)) {
-    return { ok: false, error: 'A senha precisa ter pelo menos 1 letra MAIÚSCULA.' };
+  if (!HAS_LETTER.test(pw)) {
+    return { ok: false, error: 'A senha precisa ter pelo menos 1 letra.' };
   }
-  if (!/[a-z]/.test(pw)) {
-    return { ok: false, error: 'A senha precisa ter pelo menos 1 letra minúscula.' };
-  }
-  if (!/[0-9]/.test(pw)) {
+  if (!HAS_DIGIT.test(pw)) {
     return { ok: false, error: 'A senha precisa ter pelo menos 1 número.' };
-  }
-  if (!/[^A-Za-z0-9]/.test(pw)) {
-    return { ok: false, error: 'A senha precisa ter pelo menos 1 símbolo (ex.: !@#$%&*).' };
   }
   return { ok: true, error: '' };
 }
@@ -52,9 +53,7 @@ export function passwordCriteria(password) {
   const pw = typeof password === 'string' ? password : '';
   return [
     { ok: pw.length >= MIN_PASSWORD_LENGTH, label: `Mínimo ${MIN_PASSWORD_LENGTH} caracteres` },
-    { ok: /[A-Z]/.test(pw), label: 'Pelo menos 1 letra maiúscula' },
-    { ok: /[a-z]/.test(pw), label: 'Pelo menos 1 letra minúscula' },
-    { ok: /[0-9]/.test(pw), label: 'Pelo menos 1 número' },
-    { ok: /[^A-Za-z0-9]/.test(pw), label: 'Pelo menos 1 símbolo' },
+    { ok: HAS_LETTER.test(pw), label: 'Pelo menos 1 letra' },
+    { ok: HAS_DIGIT.test(pw), label: 'Pelo menos 1 número' },
   ];
 }

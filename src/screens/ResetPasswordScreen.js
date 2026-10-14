@@ -19,8 +19,8 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { MIN_PASSWORD_LENGTH, validatePassword, passwordCriteria } from '../utils/passwordPolicy';
 import { mapAuthError } from '../utils/authErrors';
 
-// Sessão 28.68 (L-3): política unificada com RegisterScreen — 8 chars +
-// maiúscula + minúscula + número + símbolo. Antes aceitava apenas 6 chars.
+// Sessão 28.68 (L-3): política unificada com RegisterScreen via
+// `utils/passwordPolicy.js` — 8 chars + 1 letra + 1 número. Antes aceitava 6 chars.
 
 export default function ResetPasswordScreen({ navigation }) {
   const { clearPasswordRecovery } = useAuth();
@@ -158,7 +158,7 @@ export default function ResetPasswordScreen({ navigation }) {
           <Feather name="lock" size={24} color={colors.primary} />
         </View>
         <Text style={styles.title}>Redefinir senha</Text>
-        <Text style={styles.desc}>Crie uma nova senha pra sua conta. Use no mínimo {MIN_PASSWORD_LENGTH} caracteres, com maiúscula, minúscula, número e símbolo.</Text>
+        <Text style={styles.desc}>Crie uma nova senha pra sua conta. Use no mínimo {MIN_PASSWORD_LENGTH} caracteres, com pelo menos 1 letra e 1 número.</Text>
 
         <Text style={styles.label}>Nova senha</Text>
         <View style={styles.inputWrap}>

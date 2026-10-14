@@ -425,6 +425,29 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  // Relê a sessão do storage e adota no estado. Usado pela tela "Verifique seu
+  // email": quando a conta é confirmada em OUTRA aba, o auth-js avisa esta aba
+  // por BroadcastChannel — mas se o aviso se perder (browser sem suporte, aba
+  // suspensa), o storage compartilhado ainda tem a sessão. `getSession()`
+  // sozinho não emite evento, então quem chama precisa deste adotar explícito.
+  const reloadSession = useCallback(async () => {
+    try {
+      const { data: { session: s } } = await supabase.auth.getSession();
+      if (s?.user) {
+        setSession(s);
+        setUser(s.user);
+        reportSetUser(s.user);
+        setLoading(false);
+      }
+      return s ?? null;
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('[AuthContext.reloadSession] falhou:', e?.message);
+      }
+      return null;
+    }
+  }, []);
+
   return (
     <AuthContext.Provider value={{
       user, session, loading,
@@ -432,6 +455,7 @@ export function AuthProvider({ children }) {
       signInWithGoogle,
       passwordRecovery, clearPasswordRecovery,
       setRememberMe,
+      reloadSession,
     }}>
       {children}
     </AuthContext.Provider>
