@@ -7,12 +7,12 @@
  */
 
 // APP-33 — Salário mínimo nacional vigente.
-// Decreto 12.342/2024 fixou em R$ 1.518,00 desde Jan/2025.
+// Decreto 12.797/2025 fixou em R$ 1.621,00 desde Jan/2026 (antes R$ 1.518,00).
 // Atualizar anualmente (geralmente em Janeiro).
-export const SALARIO_MINIMO_VIGENTE = 1518;
+export const SALARIO_MINIMO_VIGENTE = 1621;
 
 // String formatada pra exibir em tooltips/placeholders.
-export const SALARIO_MINIMO_FMT = 'R$ 1.518,00';
+export const SALARIO_MINIMO_FMT = 'R$ 1.621,00';
 
 /**
  * APP-30 — Sugestões de margem de segurança por segmento.

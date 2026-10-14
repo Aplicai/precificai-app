@@ -495,7 +495,7 @@ export default function HomeScreen({ navigation }) {
     { label: 'Atualizar Preços', icon: 'refresh-cw', set: 'feather', tab: 'AtualizarPrecos' },
     { label: 'Novo Produto', icon: 'box', set: 'feather', tab: 'ProdutoFormHome' },
     // Sprint 1 Q4 — "Ranking de Produtos" (linguagem clara para usuário leigo).
-    ...(analiseAvancada ? [{ label: 'Ranking de Produtos', icon: 'bar-chart-2', set: 'feather', tab: 'BCG' }] : []),
+    ...(analiseAvancada ? [{ label: 'Ranking de Produtos', icon: 'award', set: 'feather', tab: 'BCG' }] : []),
     ...(usaDelivery ? [{ label: 'Delivery', icon: 'moped-outline', set: 'material', tab: 'Delivery' }] : []),
     { label: 'Lista de Compras', icon: 'shopping-cart', set: 'feather', tab: 'ListaCompras' }, // CORE — Sessão 26
   ];

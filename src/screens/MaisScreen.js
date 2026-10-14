@@ -93,7 +93,7 @@ const MENU_GROUPS = [
         key: 'bcg',
         title: 'Ranking de Produtos',
         desc: 'Veja quais produtos vendem mais e dão mais lucro',
-        icon: 'bar-chart-2',
+        icon: 'award',
         set: 'feather',
         screen: 'MatrizBCG',
         feature: 'ranking_bcg', // Planos: exclusivo Ilimitado
