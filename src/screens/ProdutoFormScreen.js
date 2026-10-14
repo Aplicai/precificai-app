@@ -15,6 +15,8 @@ import SuggestPriceModal from '../components/SuggestPriceModal';
 import { suggestPrice, gatherFinancialContext, getCategoriaMedia, getHistoricoVendas } from '../services/aiPricing';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import { resolverPrecoAoSalvar, avisoPrecoAoSalvar } from '../utils/precoAoSalvar';
+import { showToast } from '../utils/toastBus';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useListDensity from '../hooks/useListDensity';
 import { t } from '../i18n/pt-BR';
@@ -316,15 +318,18 @@ export default function ProdutoFormScreen({ route, navigation }) {
   const [lastAddedQtyKey, setLastAddedQtyKey] = useState(null);
 
   // Validação dos campos obrigatórios
+  // Salvar exige só o nome: preço vazio vira o sugerido (ou "sem preço"), ver
+  // utils/precoAoSalvar. O autosave da edição continua exigindo preço digitado,
+  // senão apagar o campo pra redigitar gravaria 0 no meio da digitação.
   function validateForm(f) {
     const errs = {};
     if (!f.nome.trim()) errs.nome = true;
-    if (!f.preco_venda || parseDecimalBR(f.preco_venda) <= 0) errs.preco_venda = true;
     return errs;
   }
 
   function isFormComplete(f) {
-    return Object.keys(validateForm(f)).length === 0;
+    if (Object.keys(validateForm(f)).length > 0) return false;
+    return !!f.preco_venda && parseDecimalBR(f.preco_venda) > 0;
   }
 
   useEffect(() => {
@@ -901,7 +906,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       scrollRef.current?.scrollTo({ y: 0, animated: true });
-      return Alert.alert('Campos obrigatórios', 'Preencha o nome do produto e o preço de venda antes de salvar.');
+      return Alert.alert('Falta o nome', 'Dê um nome ao produto antes de salvar.');
     }
     setErrors({});
     allowExit.current = true;
@@ -912,7 +917,10 @@ export default function ProdutoFormScreen({ route, navigation }) {
       const margemRaw = parseNum(form.margem_lucro_produto);
       const margemSalvar = form.margem_lucro_produto.trim() !== '' && Number.isFinite(margemRaw) ? margemRaw / 100 : null;
       const pvRaw = parseDecimalBR(form.preco_venda);
-      const pv = Number.isFinite(pvRaw) ? pvRaw : 0;
+      const precoResolvido = resolverPrecoAoSalvar(Number.isFinite(pvRaw) ? pvRaw : 0, precoSugerido);
+      const pv = precoResolvido.preco;
+      const avisoPreco = avisoPrecoAoSalvar(precoResolvido, formatCurrency);
+      if (avisoPreco) { try { showToast(avisoPreco, 'info', 5000); } catch (_) {} }
       const { lista: embsDeliveryToSave, primeiroId: embDeliveryIdToSave, primeiraQtd: embDeliveryQtdToSave } = embalagensDeliveryParaSalvar();
       const params = [
         form.nome, form.categoria_id, parseNum(form.rendimento_total) ?? 0, form.unidade_rendimento,
@@ -1152,7 +1160,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <InputField
-                        label="Preço de Venda /un (R$) *"
+                        label="Preço de Venda /un (R$)"
                         value={form.preco_venda}
                         onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
                         keyboardType="decimal-pad"
@@ -1175,7 +1183,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     </View>
                     <View style={{ flex: 1 }}>
                       <InputField
-                        label={`Preço por ${tipoVenda === 'kg' ? 'kg' : 'litro'} (R$) *`}
+                        label={`Preço por ${tipoVenda === 'kg' ? 'kg' : 'litro'} (R$)`}
                         value={form.preco_venda}
                         onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
                         keyboardType="decimal-pad"
@@ -1831,7 +1839,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </TouchableOpacity>
 
               <InputField
-                label="Preço de Venda (R$) *"
+                label="Preço de Venda (R$)"
                 value={form.preco_venda}
                 onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
                 keyboardType="numeric"

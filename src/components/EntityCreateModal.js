@@ -45,6 +45,7 @@ import {
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 // Área 4 (Preparos) — toast de confirmação ao salvar preparo via modal
 import { showToast } from '../utils/toastBus';
+import { resolverPrecoAoSalvar, avisoPrecoAoSalvar } from '../utils/precoAoSalvar';
 // Sessão 28.71: cascata empilhada — insumo/embalagem abrem como modal
 // empilhado (igual o nested preparo), reaproveitando os formulários completos
 // via shim ScreenInModal em vez de navegar pra tela cheia.
@@ -1635,11 +1636,10 @@ export default function EntityCreateModal({
           : 'Informe o rendimento total da receita.');
         return;
       }
-      if (!(precoVendaNum > 0)) {
-        setErro('Informe o preço de venda do produto.');
-        return;
-      }
+      // Preço vazio não bloqueia mais: salva o sugerido, ou sem preço (ver precoAoSalvar).
     }
+    const precoResolvido = isProduto ? resolverPrecoAoSalvar(precoVendaNum, precoSugerido) : null;
+    const precoParaSalvar = precoResolvido ? precoResolvido.preco : precoVendaNum;
     setSaving(true);
     setErro(null);
     try {
@@ -1676,7 +1676,7 @@ export default function EntityCreateModal({
           await db.runAsync(
             `UPDATE produtos SET nome=?, categoria_id=?, rendimento_total=?, unidade_rendimento=?, rendimento_unidades=?,
              preco_venda=?, embalagem_delivery_id=?, embalagem_delivery_quantidade=?, embalagens_delivery=? WHERE id=?`,
-            [nome.trim(), categoriaId, rendTotal, unidadeRendimentoDb, rendUn, precoVendaNum, embDeliveryIdToSave, embDeliveryQtdToSave, embsDeliveryToSave, editId]
+            [nome.trim(), categoriaId, rendTotal, unidadeRendimentoDb, rendUn, precoParaSalvar, embDeliveryIdToSave, embDeliveryQtdToSave, embsDeliveryToSave, editId]
           );
           savedId = editId;
           // Captura ids das linhas ANTIGAS (NÃO deleta ainda). getAllAsync retorna [] em erro.
@@ -1691,7 +1691,7 @@ export default function EntityCreateModal({
              modo_preparo, observacoes, embalagem_delivery_id, embalagem_delivery_quantidade, embalagens_delivery) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             [
               nome.trim(), categoriaId, rendTotal, unidadeRendimentoDb, rendUn,
-              0, precoVendaNum, 0, 0, 0, 0,
+              0, precoParaSalvar, 0, 0, 0, 0,
               0, 0, 0, 0,
               '', '',
               embDeliveryIdToSave, embDeliveryQtdToSave, embsDeliveryToSave,
@@ -1870,6 +1870,10 @@ export default function EntityCreateModal({
       // a cargo da Área que cuida dele.
       if (!isProduto) {
         try { showToast('Receita base salva', 'check-circle'); } catch (_) {}
+      }
+      if (isProduto && savedId && precoResolvido) {
+        const aviso = avisoPrecoAoSalvar(precoResolvido, formatCurrency);
+        if (aviso) { try { showToast(aviso, 'info', 5000); } catch (_) {} }
       }
       if (isProduto && savedId) {
         // R1 — earned moment: pede permissão de push após o 1º produto salvo.
@@ -2230,6 +2234,27 @@ export default function EntityCreateModal({
                         />
                       </View>
                     </View>
+                  )}
+                  {/* Um toque copia o sugerido pro campo; vazio, ele é salvo sozinho. */}
+                  {precoSugerido > 0 && Math.abs(precoVendaNum - precoSugerido) > 0.005 && (
+                    <TouchableOpacity
+                      onPress={() => setPrecoVenda(precoSugerido.toFixed(2).replace('.', ','))}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-end', paddingVertical: 4 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Usar o preço sugerido de ${formatCurrency(precoSugerido)}`}
+                    >
+                      <Feather name="zap" size={13} color={colors.primary} />
+                      <Text style={{ fontSize: fonts.small, color: colors.primary, fontFamily: fontFamily.semiBold }}>
+                        Usar sugerido: {formatCurrency(precoSugerido)}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  {!(precoVendaNum > 0) && (
+                    <Text style={{ fontSize: fonts.tiny, color: colors.textSecondary, marginTop: 2 }}>
+                      {precoSugerido > 0
+                        ? 'Deixou em branco? Salvamos com o preço sugerido.'
+                        : 'Pode salvar sem preço e completar depois.'}
+                    </Text>
                   )}
                 </>
               ) : (
