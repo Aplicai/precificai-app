@@ -8,7 +8,7 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius, typography, numeric, radius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual } from '../utils/calculations';
 import { calcSobraMes } from '../utils/breakeven';
-import { getFinanceiroStatus } from '../utils/financeiroStatus';
+import { getFinanceiroStatus, montarStatusFinanceiro } from '../utils/financeiroStatus';
 import { getSetupStatus, soFaltamEtapasOpcionais } from '../utils/setupStatus';
 import { rowsOrThrow, countOrThrow } from '../database/dbResult';
 import InfoTooltip from '../components/InfoTooltip';
@@ -142,23 +142,15 @@ export default function HomeScreen({ navigation }) {
       const faturamentoOk = fat.filter(f => f.valor > 0).length >= 1;
       const fixasOk = fixas.length > 0;
       const variaveisOk = variaveis.length > 0;
-      const finCompleto = lucroOk && faturamentoOk && fixasOk && variaveisOk;
-      const finConcluidas = [lucroOk, faturamentoOk, fixasOk, variaveisOk].filter(Boolean).length;
-
-      const status = {
-        etapas: [
-          { key: 'faturamento', label: 'Faturamento mensal', done: faturamentoOk },
-          { key: 'fixas', label: 'Custos do mês', done: fixasOk },
-          { key: 'variaveis', label: 'Custos por venda', done: variaveisOk },
-          { key: 'lucro', label: 'Margem de lucro', done: lucroOk },
-        ],
-        concluidas: finConcluidas, total: 4, completo: finCompleto, progresso: finConcluidas / 4,
-      };
+      // Regra única (financeiroStatus.js): completo = margem + faturamento;
+      // custos do mês / por venda são refinamento opcional.
+      const status = montarStatusFinanceiro({ lucroOk, faturamentoOk, fixasOk, variaveisOk });
+      const finCompleto = status.completo;
       setFinStatus(status);
 
       const deliveryOk = delProdsN > 0 || combosN > 0;
       const setupEtapas = [
-        { key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign', desc: 'Configure markup, despesas e margem de lucro', done: finCompleto, obrigatoria: true, tab: 'Financeiro', progresso: finConcluidas / 4 },
+        { key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign', desc: 'Diga sua margem e quanto vende por mês', done: finCompleto, obrigatoria: true, tab: 'Financeiro', progresso: status.progresso },
         { key: 'insumos', label: 'Ingredientes', icon: 'shopping-bag', desc: 'Cadastre seus ingredientes', done: insumosN > 0, tab: 'Insumos', count: insumosN },
         // UX audit 09/09 (Fase B, item 16): `opcional: true` = não segura o
         // banner "Configuração do app" sozinha (ver soFaltamEtapasOpcionais).
@@ -282,7 +274,20 @@ export default function HomeScreen({ navigation }) {
           acao: 'Financeiro',
         });
       }
-      if (!status.completo) pendencias.push({ tipo: 'error', texto: 'Configure o Financeiro para cálculos precisos', descricao: 'Preencha margem, faturamento e custos', acao: 'Financeiro' });
+      // Só margem/faturamento pendentes viram aviso (tom informativo, específico).
+      // Custos faltando não geram pendência aqui — no máximo uma linha discreta no Financeiro.
+      if (!status.completo) {
+        const faltaMargem = !lucroOk, faltaFat = !faturamentoOk;
+        pendencias.push({
+          tipo: 'info',
+          texto: 'Diga sua margem e quanto vende por mês para o preço sugerido ficar certo',
+          descricao: faltaMargem && faltaFat
+            ? 'Falta a margem de lucro e quanto entra por mês. Leva um minuto.'
+            : faltaMargem ? 'Só falta a margem: de cada R$ 100 vendidos, quanto quer que sobre?'
+              : 'Só falta dizer quanto entra na sua loja por mês, mais ou menos.',
+          acao: 'Financeiro',
+        });
+      }
       // M1-Estoque: alerta de estoque baixo/zerado.
       // Reintroduzido condicionalmente na Fase B3 (atrás de flag.modo_avancado_estoque).
       // Quando a flag estiver ativa, os alertas levarão à tab Insumos com saldo expandido.
@@ -716,9 +721,9 @@ export default function HomeScreen({ navigation }) {
           </View>
           {!setupStatus.financeiroCompleto && (
             <View style={styles.setupFinAlert}>
-              <Feather name="alert-triangle" size={12} color="#E65100" style={{ marginRight: 6 }} />
+              <Feather name="info" size={12} color={colors.primary} style={{ marginRight: 6 }} />
               <Text style={styles.setupFinAlertText}>
-                Complete o Financeiro para ativar cálculos de preço e margem
+                Diga sua margem e quanto vende por mês para o preço sugerido ficar certo
               </Text>
             </View>
           )}
@@ -1235,7 +1240,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm, backgroundColor: colors.coral + '10', borderRadius: borderRadius.sm,
     padding: spacing.sm, flexDirection: 'row', alignItems: 'center',
   },
-  setupFinAlertText: { fontSize: fonts.tiny, fontFamily: fontFamily.medium, color: colors.coral, flex: 1 },
+  setupFinAlertText: { fontSize: fonts.tiny, fontFamily: fontFamily.medium, color: colors.primary, flex: 1 },
 
   // Step-by-step guide
   stepItem: {

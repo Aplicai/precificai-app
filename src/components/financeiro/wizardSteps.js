@@ -8,36 +8,52 @@
 import { parseDecimalBR } from '../../utils/calculations';
 
 // Ordem em que o wizard pergunta (Margem → Faturamento → Custos do mês → Custos por venda).
+// Copy em reais e palavras do dia a dia (dono de negócio de comida, não contador).
+// `opcional: true` = refinamento: o wizard deixa pular e o status não cobra.
 export const WIZARD_STEPS = [
   {
     key: 'lucro',
-    titulo: 'Quanto você quer ganhar por venda?',
-    ajuda: 'É a sua margem de lucro, em % do preço.',
-    exemplo: 'Ex.: uma confeitaria costuma ficar entre 15% e 30%.',
-    pendente: 'Digite uma margem maior que zero para continuar.',
+    titulo: 'De cada R$ 100 que você vende, quanto quer que sobre pra você?',
+    ajuda: 'Digite em %. É o que fica no seu bolso depois de pagar tudo.',
+    exemplo: 'Ex.: 20% → em R$ 100 vendidos, sobram R$ 20.',
+    pendente: 'Diga quanto quer que sobre de cada R$ 100 para continuar.',
   },
   {
     key: 'faturamento',
-    titulo: 'Quanto entra por mês?',
-    ajuda: 'Some tudo o que você vende num mês comum.',
-    exemplo: 'Ex.: uma padaria de bairro fatura R$ 15.000/mês.',
-    pendente: 'Informe quanto você fatura por mês para continuar.',
+    titulo: 'Quanto entra na sua loja por mês, mais ou menos?',
+    ajuda: 'Some tudo o que você vende num mês comum. Não precisa ser exato.',
+    exemplo: 'Ex.: uma padaria de bairro recebe uns R$ 15.000 por mês.',
+    pendente: 'Diga quanto entra por mês, mais ou menos, para continuar.',
   },
   {
     key: 'fixas',
-    titulo: 'O que você paga todo mês?',
-    ajuda: 'Contas que saem mesmo sem vender nada.',
-    exemplo: 'Ex.: aluguel R$ 1.200, luz R$ 300 e o seu pró-labore.',
-    pendente: 'Adicione pelo menos um custo do mês para continuar.',
+    titulo: 'O que você paga todo mês mesmo sem vender?',
+    ajuda: 'Aluguel, luz, água, salários, o seu próprio salário.',
+    exemplo: 'Ex.: aluguel R$ 1.200, luz R$ 300, seu salário R$ 2.000.',
+    pendente: 'Sem isso o preço sai um pouco menos preciso. Pode pular e voltar depois.',
+    opcional: true,
   },
   {
     key: 'variaveis',
     titulo: 'O que sai de cada venda?',
-    ajuda: 'Percentuais descontados toda vez que alguém compra.',
-    exemplo: 'Ex.: taxa da maquininha 3,5% e Simples 6%.',
-    pendente: 'Adicione pelo menos um custo por venda para continuar.',
+    ajuda: 'Taxa do cartão, imposto, embalagem do delivery: o que some de cada venda.',
+    exemplo: 'Ex.: taxa da maquininha 3,5% e imposto 6%.',
+    pendente: 'Sem isso o preço sai um pouco menos preciso. Pode pular e voltar depois.',
+    opcional: true,
   },
 ];
+
+/**
+ * Exemplo ao vivo da margem em reais: "Em R$ 100 vendidos, sobram R$ 20".
+ * Recebe o texto do input (PT-BR). Inválido/zero → '' (nada a mostrar).
+ */
+export function exemploMargemEmReais(str) {
+  const r = validarLucroInput(str);
+  if (!r.ok || !(r.valor > 0)) return '';
+  const sobra = Math.round(r.valor * 100 * 100) / 100;
+  const txt = Number.isInteger(sobra) ? String(sobra) : sobra.toFixed(2).replace('.', ',');
+  return `Em R$ 100 vendidos, sobram R$ ${txt}`;
+}
 
 export const SUGESTOES_LUCRO = [10, 20, 30];
 
@@ -46,7 +62,8 @@ export function wizardProgressLabel(index, total = WIZARD_STEPS.length) {
   return `Passo ${i + 1} de ${total}`;
 }
 
-/** true quando o status foi carregado e a configuração NÃO está completa. */
+/** true quando o status foi carregado e falta margem ou faturamento (`completo` do
+ * financeiroStatus — custos são opcionais e não reabrem o wizard). */
 export function deveMostrarWizard(status) {
   return !!status && status.completo === false;
 }
@@ -91,8 +108,12 @@ export function validarFaturamentoInput(str) {
 
 /**
  * Mark-up numérico → texto PT-BR com vírgula ("1,95x"). Todo o resto da tela
- * usa vírgula decimal; o mark-up saía "1.95x" (toFixed puro). NaN/≤0 → '∞'.
+ * usa vírgula decimal; o mark-up saía "1.95x" (toFixed puro). NaN/≤0 → '∞'
+ * (a tela não exibe o símbolo: usa MARKUP_NAO_FECHA no lugar).
  */
+/** Texto exibido no lugar do mark-up quando custos + lucro ≥ 100% do preço. */
+export const MARKUP_NAO_FECHA = 'Não fecha: custos + lucro passam de 100% do preço. Reduza a margem ou os custos.';
+
 export function formatMarkup(markup) {
   if (!Number.isFinite(markup) || markup <= 0) return '∞';
   return `${markup.toFixed(2).replace('.', ',')}x`;

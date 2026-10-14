@@ -5,6 +5,11 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 
+/**
+ * Aparece só quando falta margem OU faturamento (`completo` do financeiroStatus).
+ * Custos do mês / por venda são refinamento opcional: não acionam este banner.
+ * Tom informativo (cor da marca), não de erro.
+ */
 export default function FinanceiroPendenteBanner() {
   const navigation = useNavigation();
   const [pendente, setPendente] = useState(false);
@@ -32,10 +37,10 @@ export default function FinanceiroPendenteBanner() {
 
   return (
     <TouchableOpacity style={styles.banner} activeOpacity={0.8} onPress={goToFinanceiro}>
-      <Feather name="alert-triangle" size={18} color="#E65100" style={styles.icon} />
+      <Feather name="info" size={18} color={colors.primary} style={styles.icon} />
       <View style={styles.body}>
-        <Text style={styles.title}>Configuração financeira pendente</Text>
-        <Text style={styles.desc}>Markup, margens e preços sugeridos podem estar incorretos. Configure agora para corrigir.</Text>
+        <Text style={styles.title}>Falta a margem ou quanto você vende por mês</Text>
+        <Text style={styles.desc}>Diga sua margem e quanto vende por mês para o preço sugerido ficar certo. Leva um minuto.</Text>
       </View>
     </TouchableOpacity>
   );
@@ -44,13 +49,13 @@ export default function FinanceiroPendenteBanner() {
 const styles = StyleSheet.create({
   banner: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#FFF3E0',
-    borderWidth: 1, borderColor: '#FFB74D',
+    backgroundColor: colors.primary + '0F',
+    borderWidth: 1, borderColor: colors.primary + '40',
     borderRadius: borderRadius.sm,
     padding: spacing.sm, marginHorizontal: spacing.md, marginTop: spacing.sm,
   },
   icon: { fontSize: 18, marginRight: spacing.sm },
   body: { flex: 1 },
-  title: { fontSize: fonts.small, fontWeight: '700', color: '#E65100', marginBottom: 1 },
-  desc: { fontSize: fonts.tiny, color: '#BF360C', lineHeight: 16 },
+  title: { fontSize: fonts.small, fontWeight: '700', color: colors.primary, marginBottom: 1 },
+  desc: { fontSize: fonts.tiny, color: colors.textSecondary, lineHeight: 16 },
 });

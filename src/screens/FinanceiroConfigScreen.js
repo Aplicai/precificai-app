@@ -17,7 +17,7 @@ import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import {
   WIZARD_STEPS, SUGESTOES_LUCRO, wizardProgressLabel, deveMostrarWizard,
   passoConcluido, primeiroPassoPendente, validarLucroInput, validarFaturamentoInput,
-  fracaoParaInputPercentual, formatMarkup,
+  fracaoParaInputPercentual, formatMarkup, exemploMargemEmReais, MARKUP_NAO_FECHA,
 } from '../components/financeiro/wizardSteps';
 // APP-30/33/34 — config centralizada de constantes financeiras
 import {
@@ -607,7 +607,8 @@ export default function FinanceiroConfigScreen() {
   const custoMaxPerc = Math.max(0, custoBruto);
   const modeloInviavel = Number.isFinite(custoBruto) && custoBruto <= 0 && (despFixasPerc > 0 || totalVariaveis > 0 || lucroPerc > 0);
   const markupValido = Number.isFinite(markup) && markup > 0;
-  const markupDisplay = markupValido ? formatMarkup(markup) : '∞';
+  // Sem "∞": quando custos + lucro ≥ 100% o dono vê uma frase que explica o que fazer.
+  const markupDisplay = markupValido ? formatMarkup(markup) : MARKUP_NAO_FECHA;
 
   const faturamentoOrdenado = [...faturamento].sort((a, b) => mesesCurtos.indexOf(a.mes) - mesesCurtos.indexOf(b.mes));
 
@@ -638,7 +639,7 @@ export default function FinanceiroConfigScreen() {
         {/* KPI Cards */}
         <View style={s.kpiRow}>
           <View style={s.kpiCard}>
-            <Text style={[s.kpiValue, !markupValido && { color: colors.error }]}>{markupDisplay}</Text>
+            <Text style={[s.kpiValue, !markupValido && s.kpiValueNaoFecha]}>{markupDisplay}</Text>
             <View style={s.kpiLabelRow}>
               <Text style={s.kpiLabel}>Mark-up</Text>
               <InfoTooltip
@@ -770,15 +771,20 @@ export default function FinanceiroConfigScreen() {
           <View style={s.inviabilityBanner}>
             <Feather name="alert-triangle" size={16} color={colors.error} style={{ marginRight: 6 }} />
             <Text style={s.inviabilityText}>
-              Custos + lucro ({formatPercent(despFixasPerc + totalVariaveis + lucroPerc)}) passam de 100% do preço. Reduza custos ou a margem.
+              {MARKUP_NAO_FECHA} (Hoje somam {formatPercent(despFixasPerc + totalVariaveis + lucroPerc)}.)
             </Text>
           </View>
         )}
 
         {finStatus && !finStatus.completo && (
           <View style={s.summaryWarning}>
-            <Feather name="alert-circle" size={13} color="#E65100" style={{ marginRight: 4 }} />
-            <Text style={s.summaryWarningText}>Valores preliminares. Complete a configuração.</Text>
+            <Feather name="info" size={13} color={colors.primary} style={{ marginRight: 4 }} />
+            <Text style={s.summaryWarningText}>Diga sua margem e quanto vende por mês para o preço sugerido ficar certo.</Text>
+          </View>
+        )}
+        {finStatus && finStatus.faltamOpcionais && (
+          <View style={s.summaryWarning}>
+            <Text style={s.summaryHintText}>Quer o preço mais preciso? Informe seus custos do mês e por venda.</Text>
           </View>
         )}
       </View>
@@ -791,7 +797,7 @@ export default function FinanceiroConfigScreen() {
       <View style={s.markupPreview}>
         <Feather name="zap" size={13} color={colors.accent} />
         <Text style={s.markupPreviewText}>
-          Mark-up resultante: <Text style={{ fontWeight: '800', color: markupValido ? colors.primary : colors.error }}>{markupDisplay}</Text>
+          {markupValido ? 'Mark-up resultante: ' : ''}<Text style={{ fontWeight: '800', color: markupValido ? colors.primary : colors.error }}>{markupDisplay}</Text>
         </Text>
       </View>
     );
@@ -825,7 +831,8 @@ export default function FinanceiroConfigScreen() {
       status = await salvarFaturamentoMedio(wizardFatInput);
       if (!status) return;
     }
-    if (!passoConcluido(status, step.key)) {
+    // Custos (opcional: true) podem ser pulados — são refinamento, não bloqueio.
+    if (!passoConcluido(status, step.key) && !step.opcional) {
       return Alert.alert('Falta preencher', step.pendente);
     }
     if (wizardStep >= WIZARD_STEPS.length - 1) setWizardMode('resumo');
@@ -904,6 +911,9 @@ export default function FinanceiroConfigScreen() {
                     />
                     <Text style={s.wizardInputUnit}>%</Text>
                   </View>
+                  {!!exemploMargemEmReais(wizardLucroInput) && (
+                    <Text style={s.fieldMicroCopy}>{exemploMargemEmReais(wizardLucroInput)}</Text>
+                  )}
                   <View style={[s.suggestionsRow, { marginBottom: spacing.sm }]}>
                     {SUGESTOES_LUCRO.map(p => (
                       <TouchableOpacity
@@ -964,7 +974,9 @@ export default function FinanceiroConfigScreen() {
               accessibilityRole="button"
               accessibilityLabel="Continuar para o próximo passo"
             >
-              <Text style={s.wizardPrimaryBtnText}>Continuar</Text>
+              <Text style={s.wizardPrimaryBtnText}>
+                {step.opcional && !passoConcluido(finStatus, step.key) ? 'Pular por enquanto' : 'Continuar'}
+              </Text>
               <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
             </TouchableOpacity>
           </View>
@@ -1268,7 +1280,7 @@ export default function FinanceiroConfigScreen() {
               {finStatus.etapas.filter(e => !e.done).map(e => (
                 <View key={e.key} style={s.pendenciaChip}>
                   <Feather name="circle" size={8} color="#E65100" style={{ marginRight: 4 }} />
-                  <Text style={s.pendenciaText}>{e.label}</Text>
+                  <Text style={s.pendenciaText}>{e.label}{e.opcional ? ' (opcional)' : ''}</Text>
                 </View>
               ))}
             </View>
@@ -1301,8 +1313,8 @@ export default function FinanceiroConfigScreen() {
           <View style={s.stepHeader}>
             <StepNumber number={1} color={colors.success} />
             <View style={{ flex: 1 }}>
-              <Text style={s.stepTitle}>Quanto você quer ganhar por venda</Text>
-              <Text style={s.stepSubtitle}>Margem de lucro</Text>
+              <Text style={s.stepTitle}>De cada R$ 100 que você vende, quanto quer que sobre pra você?</Text>
+              <Text style={s.stepSubtitle}>{exemploMargemEmReais(lucroDesejado) || 'Margem de lucro, em %'}</Text>
             </View>
             {lucroPerc > 0 && (
               <Chip
@@ -1429,7 +1441,7 @@ export default function FinanceiroConfigScreen() {
           <View style={s.stepHeader}>
             <StepNumber number={2} color={colors.accent} />
             <View style={{ flex: 1 }}>
-              <Text style={s.stepTitle}>Quanto entra por mês</Text>
+              <Text style={s.stepTitle}>Quanto entra na sua loja por mês, mais ou menos?</Text>
               <Text style={s.stepSubtitle}>Faturamento mensal</Text>
             </View>
             {faturamentoMedio > 0 && (
@@ -1581,7 +1593,7 @@ export default function FinanceiroConfigScreen() {
           <View style={s.stepHeader}>
             <StepNumber number={3} color={colors.coral} />
             <View style={[{ flex: 1, flexDirection: 'row', alignItems: 'center' }]}>
-              <Text style={s.stepTitle}>Custos do mês</Text>
+              <Text style={s.stepTitle}>Custos do mês <Text style={s.stepOpcional}>(opcional)</Text></Text>
             </View>
             {totalFixas > 0 && (
               <Chip
@@ -1593,7 +1605,7 @@ export default function FinanceiroConfigScreen() {
           </View>
 
           <View style={s.stepBody}>
-            <Text style={s.stepSubtitle}>O que sai todo mês, independente do que você vende</Text>
+            <Text style={s.stepSubtitle}>O que você paga todo mês mesmo sem vender (aluguel, luz, salários)</Text>
             {renderFixasBody()}
           </View>
         </View>
@@ -1603,7 +1615,7 @@ export default function FinanceiroConfigScreen() {
           <View style={s.stepHeader}>
             <StepNumber number={4} color={colors.purple} />
             <View style={[{ flex: 1, flexDirection: 'row', alignItems: 'center' }]}>
-              <Text style={s.stepTitle}>Custos por venda</Text>
+              <Text style={s.stepTitle}>Custos por venda <Text style={s.stepOpcional}>(opcional)</Text></Text>
               <InfoTooltip
                 title="O que são Custos por venda?"
                 text={
@@ -1629,7 +1641,7 @@ export default function FinanceiroConfigScreen() {
           </View>
 
           <View style={s.stepBody}>
-            <Text style={s.stepSubtitle}>Percentuais descontados sobre cada venda</Text>
+            <Text style={s.stepSubtitle}>O que sai de cada venda (taxa do cartão, imposto, embalagem do delivery)</Text>
             {renderVariaveisBody()}
           </View>
         </View>
@@ -2117,7 +2129,16 @@ const s = StyleSheet.create({
     borderTopColor: colors.border,
   },
   summaryWarningText: {
-    fontSize: 11, color: '#E65100', flex: 1,
+    fontSize: 11, color: colors.primary, flex: 1,
+  },
+  summaryHintText: {
+    fontSize: 11, color: colors.textSecondary, flex: 1,
+  },
+  kpiValueNaoFecha: {
+    fontSize: 11, lineHeight: 15, color: colors.error, textAlign: 'center',
+  },
+  stepOpcional: {
+    fontSize: fonts.tiny, fontFamily: fontFamily.regular, fontWeight: '400', color: colors.textSecondary,
   },
 
   inviabilityBanner: {

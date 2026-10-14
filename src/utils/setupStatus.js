@@ -1,5 +1,6 @@
 import { getDatabase } from '../database/database';
 import { rowsOrThrow, countOrThrow } from '../database/dbResult';
+import { montarStatusFinanceiro } from './financeiroStatus';
 
 /**
  * UX audit 09/09 (Fase B, item 16): a barra "Configuração do app 83% —
@@ -40,12 +41,17 @@ export async function getSetupStatus() {
   ]);
 
   const config = configRows[0] ?? null;
-  const lucroOk = config != null && config.lucro_desejado != null;
-  const faturamentoOk = fatOkN >= 1;
-  const fixasOk = fixasN > 0;
-  const variaveisOk = variaveisN > 0;
-  const financeiroCompleto = lucroOk && faturamentoOk && fixasOk && variaveisOk;
-  const financeiroProgresso = [lucroOk, faturamentoOk, fixasOk, variaveisOk].filter(Boolean).length / 4;
+  // Regra única de "Financeiro completo" (margem + faturamento; custos são
+  // refinamento opcional) vive em financeiroStatus.js — ver montarStatusFinanceiro.
+  const fin = montarStatusFinanceiro({
+    lucroOk: config != null && config.lucro_desejado != null,
+    faturamentoOk: fatOkN >= 1,
+    fixasOk: fixasN > 0,
+    variaveisOk: variaveisN > 0,
+  });
+  const financeiroCompleto = fin.completo;
+  const financeiroProgresso = fin.progresso;
+  const finEtapa = (key) => fin.etapas.find(e => e.key === key);
 
   const insumosOk = insumosN > 0;
   const embalagensOk = embalagensN > 0;
@@ -56,14 +62,14 @@ export async function getSetupStatus() {
   const etapas = [
     {
       key: 'financeiro', label: 'Financeiro', icon: 'dollar-sign',
-      desc: 'Configure markup, despesas e margem de lucro',
+      desc: 'Diga sua margem e quanto vende por mês',
       done: financeiroCompleto, obrigatoria: true, tab: 'Financeiro',
       progresso: financeiroProgresso,
       detalhes: [
-        { label: 'Margem de lucro', done: lucroOk },
-        { label: 'Faturamento', done: faturamentoOk },
-        { label: 'Custos do mês', done: fixasOk },
-        { label: 'Custos por venda', done: variaveisOk },
+        { label: 'Margem de lucro', done: finEtapa('lucro').done },
+        { label: 'Faturamento', done: finEtapa('faturamento').done },
+        { label: 'Custos do mês (opcional)', done: finEtapa('fixas').done, opcional: true },
+        { label: 'Custos por venda (opcional)', done: finEtapa('variaveis').done, opcional: true },
       ],
     },
     {

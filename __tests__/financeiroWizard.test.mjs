@@ -5,15 +5,19 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import {
-  WIZARD_STEPS, SUGESTOES_LUCRO,
+  WIZARD_STEPS, SUGESTOES_LUCRO, MARKUP_NAO_FECHA,
   wizardProgressLabel, deveMostrarWizard, passoConcluido, primeiroPassoPendente,
   validarLucroInput, validarFaturamentoInput, fracaoParaInputPercentual, formatMarkup,
+  exemploMargemEmReais,
 } from '../src/components/financeiro/wizardSteps.js';
+import { montarStatusFinanceiro } from '../src/utils/financeiroStatus.js';
 
+// Mesma regra de "completo" da tela (margem + faturamento; custos opcionais).
 function status(done) {
-  const etapas = ['faturamento', 'fixas', 'variaveis', 'lucro'].map(key => ({ key, label: key, done: !!done[key] }));
-  const concluidas = etapas.filter(e => e.done).length;
-  return { etapas, concluidas, total: 4, completo: concluidas === 4, progresso: concluidas / 4 };
+  return montarStatusFinanceiro({
+    lucroOk: !!done.lucro, faturamentoOk: !!done.faturamento,
+    fixasOk: !!done.fixas, variaveisOk: !!done.variaveis,
+  });
 }
 
 test('WIZARD_STEPS: 4 passos na ordem margem → faturamento → fixas → variáveis, com copy curta', () => {
@@ -26,6 +30,35 @@ test('WIZARD_STEPS: 4 passos na ordem margem → faturamento → fixas → vari�
   assert.deepEqual(SUGESTOES_LUCRO, [10, 20, 30]);
 });
 
+test('WIZARD_STEPS: só custos (fixas/variaveis) são opcionais; margem e faturamento são núcleo', () => {
+  assert.deepEqual(WIZARD_STEPS.filter(s => s.opcional === true).map(s => s.key), ['fixas', 'variaveis']);
+  assert.equal(WIZARD_STEPS.find(s => s.key === 'lucro').opcional, undefined);
+  assert.equal(WIZARD_STEPS.find(s => s.key === 'faturamento').opcional, undefined);
+});
+
+test('WIZARD_STEPS: copy em reais e linguagem do dia a dia (sem jargão contábil)', () => {
+  const lucro = WIZARD_STEPS.find(s => s.key === 'lucro');
+  assert.ok(lucro.titulo.includes('R$ 100'), 'margem perguntada em cima de R$ 100');
+  const fixas = WIZARD_STEPS.find(s => s.key === 'fixas');
+  assert.ok(/aluguel/i.test(fixas.ajuda + fixas.exemplo));
+  const variaveis = WIZARD_STEPS.find(s => s.key === 'variaveis');
+  assert.ok(/cart[ãa]o/i.test(variaveis.ajuda));
+  const texto = WIZARD_STEPS.map(s => `${s.titulo} ${s.ajuda} ${s.exemplo}`).join(' ');
+  for (const jargao of ['pró-labore', 'Percentuais descontados', '% do preço']) {
+    assert.ok(!texto.includes(jargao), `jargão "${jargao}" ainda no wizard`);
+  }
+});
+
+test('exemploMargemEmReais: "Em R$ 100 vendidos, sobram R$ X" a partir do input em %', () => {
+  assert.equal(exemploMargemEmReais('20'), 'Em R$ 100 vendidos, sobram R$ 20');
+  assert.equal(exemploMargemEmReais('12,5'), 'Em R$ 100 vendidos, sobram R$ 12,50');
+  assert.equal(exemploMargemEmReais('30.0'), 'Em R$ 100 vendidos, sobram R$ 30');
+  assert.equal(exemploMargemEmReais('0'), '');
+  assert.equal(exemploMargemEmReais(''), '');
+  assert.equal(exemploMargemEmReais('abc'), '');
+  assert.equal(exemploMargemEmReais('150'), '');
+});
+
 test('wizardProgressLabel: "Passo N de 4", com clamp', () => {
   assert.equal(wizardProgressLabel(0), 'Passo 1 de 4');
   assert.equal(wizardProgressLabel(1), 'Passo 2 de 4');
@@ -35,11 +68,14 @@ test('wizardProgressLabel: "Passo N de 4", com clamp', () => {
   assert.equal(wizardProgressLabel(undefined), 'Passo 1 de 4');
 });
 
-test('deveMostrarWizard: só quando status carregado e incompleto', () => {
+test('deveMostrarWizard: só quando status carregado e falta margem ou faturamento', () => {
   assert.equal(deveMostrarWizard(null), false);
   assert.equal(deveMostrarWizard(undefined), false);
   assert.equal(deveMostrarWizard(status({})), true);
-  assert.equal(deveMostrarWizard(status({ lucro: true, faturamento: true })), true);
+  assert.equal(deveMostrarWizard(status({ lucro: true })), true);
+  assert.equal(deveMostrarWizard(status({ fixas: true, variaveis: true })), true);
+  // Custos são opcionais: margem + faturamento já bastam pra não reabrir o wizard.
+  assert.equal(deveMostrarWizard(status({ lucro: true, faturamento: true })), false);
   assert.equal(deveMostrarWizard(status({ lucro: true, faturamento: true, fixas: true, variaveis: true })), false);
 });
 
@@ -94,6 +130,11 @@ test('fracaoParaInputPercentual: fração → texto com vírgula', () => {
 
 // Auditoria 09/09 — walkthrough real reportou "1.95x" (ponto) no mark-up
 // exibido na tela Financeiro, quando o resto do app usa vírgula PT-BR.
+test('MARKUP_NAO_FECHA: frase simples no lugar do "∞" na tela', () => {
+  assert.equal(MARKUP_NAO_FECHA, 'Não fecha: custos + lucro passam de 100% do preço. Reduza a margem ou os custos.');
+  assert.ok(!MARKUP_NAO_FECHA.includes('∞'));
+});
+
 test('formatMarkup: usa vírgula PT-BR (nunca ponto), sufixo "x"', () => {
   assert.equal(formatMarkup(1.95), '1,95x');
   assert.equal(formatMarkup(2), '2,00x');
