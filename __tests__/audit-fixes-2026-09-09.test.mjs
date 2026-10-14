@@ -77,7 +77,7 @@ function fakeDb(state, opts = {}) {
     async runAsync(sql, params = []) {
       this.updates.push({ sql, params });
       if (sql.startsWith('UPDATE preparos SET custo_por_kg')) {
-        const p = findId(state.preparos, params[1]);
+        const p = findId(state.preparos, params[params.length - 1]);
         if (p) p.custo_por_kg = params[0];
       }
       return { changes: 1 };

@@ -8,7 +8,7 @@ import FAB from '../components/FAB';
 import SearchBar from '../components/SearchBar';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius, radius, numeric } from '../utils/theme';
-import { formatCurrency, getTipoUnidade, normalizeSearch } from '../utils/calculations';
+import { formatCurrency, getTipoUnidade, normalizeSearch, calcCustoListaPreparo, calcCustoTotalPreparo, reajusteCustoPreparo } from '../utils/calculations';
 import { subscribeDataChanged } from '../utils/dataSync';
 import EmptyState from '../components/EmptyState';
 import Skeleton from '../components/Skeleton';
@@ -389,7 +389,7 @@ export default function PreparosScreen({ navigation }) {
       const db = await getDatabase();
       const result = await db.runAsync(
         'INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg, updated_at) VALUES (?,?,?,?,?,?,?)',
-        [item.nome + ' (cópia)', item.categoria_id, item.rendimento_total, item.unidade_medida, item.custo_total, item.custo_por_kg, new Date().toISOString()]
+        [item.nome + ' (cópia)', item.categoria_id, item.rendimento_total, item.unidade_medida, calcCustoTotalPreparo(item.custo_por_kg, item.rendimento_total, item.unidade_medida), item.custo_por_kg, new Date().toISOString()]
       );
       const newId = result?.lastInsertRowId;
       if (newId) {
@@ -514,7 +514,7 @@ export default function PreparosScreen({ navigation }) {
     for (const item of itens) {
       const result = await db.runAsync(
         'INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg) VALUES (?,?,?,?,?,?)',
-        [item.nome + ' (cópia)', item.categoria_id, item.rendimento_total, item.unidade_medida, item.custo_total, item.custo_por_kg]
+        [item.nome + ' (cópia)', item.categoria_id, item.rendimento_total, item.unidade_medida, calcCustoTotalPreparo(item.custo_por_kg, item.rendimento_total, item.unidade_medida), item.custo_por_kg]
       );
       const newId = result?.lastInsertRowId;
       if (newId) {
@@ -537,19 +537,14 @@ export default function PreparosScreen({ navigation }) {
     const db = await getDatabase();
     const placeholders = ids.map(() => '?').join(',');
     const itens = await db.getAllAsync(`SELECT * FROM preparos WHERE id IN (${placeholders})`, ids);
-    const factor = mode === 'percent' ? 1 + (sign * value) / 100 : null;
-    // Preparos: aplica delta direto em custo_total (override manual). Recalcula custo_por_kg
-    // baseado em rendimento_total. ATENÇÃO: editar e salvar o preparo recalcula custo
-    // a partir dos ingredientes, sobrescrevendo este reajuste.
+    // Preparos: aplica delta no custo total (override manual) e grava custo_por_kg
+    // coerente. ATENÇÃO: editar e salvar o preparo recalcula custo a partir dos
+    // ingredientes, sobrescrevendo este reajuste.
     await Promise.all(itens.map((item) => {
-      const oldCusto = Number(item.custo_total) || 0;
-      let novoCusto = mode === 'percent' ? oldCusto * factor : oldCusto + sign * value;
-      if (novoCusto < 0) novoCusto = 0;
-      const rend = Number(item.rendimento_total) || 1;
-      const novoCustoKg = rend > 0 ? novoCusto / rend : 0;
+      const novo = reajusteCustoPreparo(item, mode, sign, value);
       return db.runAsync(
         'UPDATE preparos SET custo_total = ?, custo_por_kg = ? WHERE id = ?',
-        [novoCusto, novoCustoKg, item.id]
+        [novo.custo_total, novo.custo_por_kg, item.id]
       );
     }));
     bulk.clear();
@@ -604,7 +599,7 @@ export default function PreparosScreen({ navigation }) {
       categoria: it.categoria_nome || 'Sem categoria',
       unidade: it.unidade_medida,
       rendimento_total: it.rendimento_total,
-      custo_total: it.custo_total,
+      custo_total: calcCustoTotalPreparo(it.custo_por_kg, it.rendimento_total, it.unidade_medida),
       custo_por_kg: it.custo_por_kg,
     }));
     const ok = exportToCSV('preparos.csv', rows, [
@@ -761,7 +756,8 @@ export default function PreparosScreen({ navigation }) {
     const visCount = visibleItems.length;
     if (visCount === 0) return [];
     const avgKg = visibleItems.reduce((acc, it) => acc + (Number(it.custo_por_kg) || 0), 0) / visCount;
-    const totalCusto = visibleItems.reduce((acc, it) => acc + (Number(it.custo_total) || 0), 0);
+    // Total derivado de custo_por_kg (o que os produtos usam) — custo_total gravado pode estar desatualizado.
+    const totalCusto = visibleItems.reduce((acc, it) => acc + calcCustoTotalPreparo(it.custo_por_kg, it.rendimento_total, it.unidade_medida), 0);
     return [
       { icon: 'layers', label: 'Receitas base', value: String(visCount), color: colors.primary },
       { icon: 'tag', label: 'Médio/kg', value: formatCurrency(avgKg), color: colors.accent || '#FFD37A' },
@@ -951,7 +947,7 @@ export default function PreparosScreen({ navigation }) {
 
                 {/* Preço + unidade */}
                 <View style={styles.rowRight}>
-                  <Text style={styles.rowPreco}>{formatCurrency(item.custo_total)}</Text>
+                  <Text style={styles.rowPreco}>{formatCurrency(calcCustoListaPreparo(item.custo_por_kg, item.unidade_medida))}</Text>
                   <View style={[styles.unidadeBadge, { backgroundColor: unidadeInfo.color + '12' }]}>
                     <Text style={[styles.unidadeText, { color: unidadeInfo.color }]}>{unidadeInfo.label}</Text>
                   </View>
@@ -1058,7 +1054,7 @@ export default function PreparosScreen({ navigation }) {
           { label: 'Categoria', value: previewItem.categoria_nome || 'Sem categoria' },
           { label: 'Unidade', value: previewItem.unidade_medida },
           { label: 'Rendimento', value: formatRendimento(previewItem.rendimento_total, previewItem.unidade_medida) },
-          { label: 'Custo total', value: formatCurrency(previewItem.custo_total) },
+          { label: 'Custo total', value: formatCurrency(calcCustoTotalPreparo(previewItem.custo_por_kg, previewItem.rendimento_total, previewItem.unidade_medida)) },
           { label: 'Custo por kg/L', value: formatCurrency(previewItem.custo_por_kg), accent: true },
         ] : []}
         onEdit={() => {
