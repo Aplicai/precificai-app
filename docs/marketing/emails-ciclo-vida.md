@@ -127,7 +127,7 @@ Pendente na V1: prints de tela (formato `tela`, pasta `assets/email/telas/`) ain
 Logo vetorizado (SVG Tiny PS) em https://precificaiapp.com/assets/email/bimi-logo.svg (repo precificai-site). DNS na Hostinger (Erick faz; o Claude é bloqueado em DNS):
 - `_dmarc` TXT: `v=DMARC1; p=quarantine; rua=mailto:rua@dmarc.brevo.com` (era `p=none`). Remetentes alinhados: Resend (`resend._domainkey`), Brevo (`brevo1/brevo2._domainkey`), ImprovMX no SPF.
 - `default._bimi` TXT: `v=BIMI1; l=https://precificaiapp.com/assets/email/bimi-logo.svg;`
-Gmail só mostra o logo com VMC (certificado pago, marca registrada no INPI); Yahoo/AOL mostram sem.
+**Aplicados pelo Erick em 15/10** (conferidos na Hostinger, 1.1.1.1 e 8.8.8.8). Gmail só mostra o logo com VMC (certificado pago, marca registrada no INPI); Yahoo/AOL mostram sem.
 
 ## Histórico
 
