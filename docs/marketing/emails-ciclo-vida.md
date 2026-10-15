@@ -122,6 +122,13 @@ Chamadas novas: `{"regua":true}` simula; `{"regua":true,"enviar":true}` envia. A
 
 Pendente na V1: prints de tela (formato `tela`, pasta `assets/email/telas/`) ainda não existem, então nenhum tema usa esse formato; custo/margem no e-mail; datas sazonais; e-mails assinados.
 
+## Logo do remetente (BIMI)
+
+Logo vetorizado (SVG Tiny PS) em https://precificaiapp.com/assets/email/bimi-logo.svg (repo precificai-site). DNS na Hostinger (Erick faz; o Claude é bloqueado em DNS):
+- `_dmarc` TXT: `v=DMARC1; p=quarantine; rua=mailto:rua@dmarc.brevo.com` (era `p=none`). Remetentes alinhados: Resend (`resend._domainkey`), Brevo (`brevo1/brevo2._domainkey`), ImprovMX no SPF.
+- `default._bimi` TXT: `v=BIMI1; l=https://precificaiapp.com/assets/email/bimi-logo.svg;`
+Gmail só mostra o logo com VMC (certificado pago, marca registrada no INPI); Yahoo/AOL mostram sem.
+
 ## Histórico
 
 - 14/10: sistema criado (d1/d3/campanhas, descadastro com link assinado), layout novo da marca (cabeçalho verde, barra de jornada, caixa "Você escreve", capa do vídeo, preços do Pro), bug do `R$` corrigido antes de qualquer envio real, etapa do kit corrigida.
