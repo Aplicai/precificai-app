@@ -75,6 +75,14 @@ test('calcCustoListaPreparo: custo por kg/L como está; receita em unidade → p
   assert.equal(calc.calcCustoListaPreparo(0, 'g'), 0);
 });
 
+test('formatCustoListaPreparo: rótulo do card desktop com a unidade (kg/L/un)', () => {
+  // Card do grid desktop só mostrava "Rende 400 mL" — custo sumia (PR #61 só mudou a lista mobile).
+  assert.equal(calc.formatCustoListaPreparo(18.3222, 'g'), 'R$ 18,32/kg');
+  assert.equal(calc.formatCustoListaPreparo(12, 'Mililitro(s)'), 'R$ 12,00/L');
+  assert.equal(calc.formatCustoListaPreparo(1500, 'un'), 'R$ 1,50/un');
+  assert.equal(calc.formatCustoListaPreparo(0, 'g'), 'R$ 0,00/kg');
+});
+
 test('calcCustoTotalPreparo deriva o total do custo_por_kg (inverso de calcCustoPorKgPreparo)', () => {
   assert.ok(close(calc.calcCustoTotalPreparo(20.0633, 600, 'Grama(s)'), 12.03798));
   assert.ok(close(calc.calcCustoTotalPreparo(17.8002, 1, 'kg'), 17.8002));
