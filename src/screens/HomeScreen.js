@@ -419,6 +419,14 @@ export default function HomeScreen({ navigation }) {
 
   const pendente = finStatus && !finStatus.completo;
   const baseIncompleta = d.totalInsumos === 0 || d.totalProdutos === 0;
+  // Primeiro preço antes do Financeiro (15/10/2026): de 43 cadastros, 1 chegou
+  // a um produto com preço; quem era mandado ao Financeiro primeiro preenchia
+  // números e saía sem ver resultado. Enquanto nenhum produto tem preço, o
+  // passo principal é o produto; o Financeiro vem depois ("deixe o preço mais
+  // certo"). Com erro de carga, mantém a ordem antiga.
+  const semPrimeiroPreco = !loading && !loadError
+    && (d.totalProdutos === 0 || d.produtosSemPreco.length >= d.totalProdutos);
+  const financeiroNaFrente = pendente && !semPrimeiroPreco;
   // UX audit 09/09 (Fase B, item 16): banner "Configuração do app" só quando
   // falta etapa de núcleo. Só opcionais (Delivery, Preparos, Embalagens)
   // pendentes = sem banner, senão ele nunca chega a 100% pra quem não usa delivery.
@@ -439,7 +447,7 @@ export default function HomeScreen({ navigation }) {
 
   // Status
   let StatusIcon, statusColor, statusText, statusBg, statusOnPress;
-  if (pendente) {
+  if (financeiroNaFrente) {
     StatusIcon = () => <Feather name="settings" size={20} color="#fff" />;
     statusColor = colors.coral; statusText = 'Configuração pendente'; statusBg = colors.coral;
     statusOnPress = () => nav('Financeiro');
@@ -471,14 +479,16 @@ export default function HomeScreen({ navigation }) {
 
   // CTA
   let ctaLabel = null, ctaAction = null;
-  if (pendente) { ctaLabel = 'Configurar Financeiro'; ctaAction = 'Financeiro'; }
+  if (financeiroNaFrente) { ctaLabel = 'Configurar Financeiro'; ctaAction = 'Financeiro'; }
   else if (d.totalInsumos === 0) { ctaLabel = 'Cadastrar Ingredientes'; ctaAction = 'Insumos'; }
   // UX audit 09/09 (Fase B, item 6): vazio com exemplo concreto.
-  else if (d.totalProdutos === 0) { ctaLabel = 'Monte seu primeiro produto — ex.: Bolo de cenoura'; ctaAction = 'Produtos'; }
+  else if (d.totalProdutos === 0) { ctaLabel = 'Monte seu primeiro produto, ex.: Bolo de cenoura'; ctaAction = 'Produtos'; }
+  else if (semPrimeiroPreco) { ctaLabel = 'Coloque o preço do seu primeiro produto'; ctaAction = 'Produtos'; }
+  else if (pendente) { ctaLabel = 'Deixe seu preço mais certo: configure o Financeiro'; ctaAction = 'Financeiro'; }
 
   // Quick actions
   const acoes = [];
-  if (pendente) acoes.push({ label: 'Financeiro', icon: 'dollar-sign', set: 'feather', tab: 'Financeiro' });
+  if (financeiroNaFrente) acoes.push({ label: 'Financeiro', icon: 'dollar-sign', set: 'feather', tab: 'Financeiro' });
   if (d.totalInsumos === 0) acoes.push({ label: 'Cadastrar Ingrediente', icon: 'food-apple-outline', set: 'material', tab: 'Insumos' });
   if (d.totalEmbalagens === 0 && acoes.length < 4) acoes.push({ label: 'Cadastrar Embalagem', icon: 'package', set: 'feather', tab: 'Embalagens' });
   if (d.totalPreparos === 0 && acoes.length < 4) acoes.push({ label: 'Nova Receita base', icon: 'pot-steam-outline', set: 'material', tab: 'Preparos' });
@@ -603,7 +613,7 @@ export default function HomeScreen({ navigation }) {
             "Veja como está sua precificação" era eco do título — removido. */}
         {!loadError && (pendente || d.totalProdutos === 0) && (
           <Text style={styles.greetingDesc}>
-            {pendente ? 'Complete a configuração para começar' : 'Cadastre seus primeiros produtos'}
+            {financeiroNaFrente ? 'Complete a configuração para começar' : semPrimeiroPreco ? 'Monte o preço do seu primeiro produto' : 'Cadastre seus primeiros produtos'}
           </Text>
         )}
       </View>
@@ -745,12 +755,12 @@ export default function HomeScreen({ navigation }) {
           </View>
           <View style={styles.statusBody}>
             <Text style={styles.statusText}>{statusText}</Text>
-            {pendente && finStatus && (
+            {financeiroNaFrente && finStatus && (
               <Text style={styles.statusDetail}>{finStatus.concluidas} de {finStatus.total} etapas do Financeiro</Text>
             )}
             {/* UX walkthrough: copy reflete SÓ o que falta (antes dizia "ingredientes
                 e produtos" mesmo com 94 ingredientes cadastrados). */}
-            {!pendente && baseIncompleta && (
+            {!financeiroNaFrente && baseIncompleta && (
               <Text style={styles.statusDetail}>
                 {d.totalInsumos === 0 && d.totalProdutos === 0
                   ? 'Cadastre ingredientes e produtos para começar'
@@ -759,13 +769,13 @@ export default function HomeScreen({ navigation }) {
                     : 'Monte seu primeiro produto'}
               </Text>
             )}
-            {!pendente && !baseIncompleta && d.produtosMargBaixa.length > 0 && (
+            {!financeiroNaFrente && !baseIncompleta && d.produtosMargBaixa.length > 0 && (
               <Text style={styles.statusDetail}>Ver produtos afetados</Text>
             )}
           </View>
           {statusOnPress && <Feather name="chevron-right" size={18} color={colors.disabled} />}
         </View>
-        {pendente && finStatus && (
+        {financeiroNaFrente && finStatus && (
           <View style={styles.progressBarBg}>
             <View style={[styles.progressBarFill, { width: `${finStatus.progresso * 100}%`, backgroundColor: statusColor }]} />
           </View>

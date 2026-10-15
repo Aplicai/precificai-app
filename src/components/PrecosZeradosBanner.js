@@ -91,11 +91,11 @@ export default function PrecosZeradosBanner() {
         <Text style={styles.title}>
           Confira os preços dos seus ingredientes
           {info.total > 0 && (
-            <Text style={styles.titleCount}>  ({info.count} de {info.total} estão estimados)</Text>
+            <Text style={styles.titleCount}>  ({info.count} de {info.total} sem o seu preço)</Text>
           )}
         </Text>
         <Text style={styles.desc}>
-          Os valores do Kit são médias de mercado — ajuste com os preços reais do seu fornecedor pra ver custos e margens corretos.
+          Coloque o valor que você paga no seu fornecedor. Comece pelos ingredientes do produto que você mais vende: o preço sugerido aparece na hora.
         </Text>
       </View>
       <TouchableOpacity

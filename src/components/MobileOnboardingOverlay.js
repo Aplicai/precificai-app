@@ -18,7 +18,7 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 // Aparece SOMENTE em mobile (isMobile === true) e SOMENTE na Home (caller
 // renderiza só lá). Dismiss inteligente via AsyncStorage:
 //   - PREF_DISMISSED: true quando user clica "Não mostrar mais" OU concluiu
-//     o walkthrough (último passo + "Começar pelo Financeiro").
+//     o walkthrough (último passo + "Montar meu primeiro produto").
 //   - PREF_VIEWS: contador de aberturas. Acima de MAX_VIEWS, oculta.
 //
 // Não adiciona libs novas. Usa Animated da react-native + AsyncStorage.
@@ -27,48 +27,36 @@ const PREF_VIEWS = 'mobile_onboarding_views';
 const PREF_DISMISSED = 'mobile_onboarding_dismissed';
 const MAX_VIEWS = 20;
 
+// Primeiro preço antes do Financeiro (15/10/2026): o produto vem primeiro, o
+// Financeiro depois ("deixe o preço mais certo").
 const STEPS = [
   {
     n: 1,
-    icon: 'dollar-sign',
-    color: colors.coral,
-    title: 'Financeiro',
-    desc: 'Comece configurando margem, custos do mês e faturamento. É a base de tudo.',
-  },
-  {
-    n: 2,
     icon: 'shopping-bag',
     color: colors.success,
     title: 'Ingredientes',
-    desc: 'Cadastre seus ingredientes com preço, quantidade e unidade.',
+    desc: 'Cadastre o que você compra, do jeito que compra: "Comprei 5 kg por R$ 25".',
+  },
+  {
+    n: 2,
+    icon: 'box',
+    color: colors.primary,
+    title: 'Primeiro produto',
+    desc: 'Monte seu produto com os ingredientes e veja na hora o custo e o preço sugerido.',
   },
   {
     n: 3,
     icon: 'layers',
     color: colors.purple,
-    title: 'Receitas base',
-    desc: 'Crie receitas base (massas, molhos, recheios) reutilizáveis.',
+    title: 'Receitas base e embalagens',
+    desc: 'Massas, recheios e embalagens que se repetem: cadastre uma vez e use em vários produtos.',
   },
   {
     n: 4,
-    icon: 'package',
-    color: colors.accent,
-    title: 'Embalagens',
-    desc: 'Cadastre caixas, potes e sacos que entram no custo do produto.',
-  },
-  {
-    n: 5,
-    icon: 'box',
-    color: colors.primary,
-    title: 'Produtos',
-    desc: 'Monte fichas técnicas combinando ingredientes, receitas base e embalagens.',
-  },
-  {
-    n: 6,
-    icon: 'trending-up',
-    color: colors.yellow,
-    title: 'Análise & Preço',
-    desc: 'Defina preços de venda e acompanhe margens nos relatórios.',
+    icon: 'dollar-sign',
+    color: colors.coral,
+    title: 'Financeiro',
+    desc: 'Informe seus custos do mês e quanto vende para o preço sugerido ficar ainda mais certo.',
   },
 ];
 
@@ -121,21 +109,11 @@ export default function MobileOnboardingOverlay({ navigation }) {
     }
   }, [fade]);
 
-  const navigateToFinanceiro = useCallback(() => {
-    // Sessão 28.59 — bug fix: navigate direto pra FinanceiroMain pulava
-    // MaisMain, deixando a pilha do MaisStack com index=0 → sem back button.
-    // Solução em 2 passos: garantir MaisMain primeiro, depois empurrar FinanceiroMain.
+  const navigateToProdutos = useCallback(() => {
     try {
       const parent = navigation?.getParent?.();
       const nav = (parent && typeof parent.navigate === 'function') ? parent : navigation;
-      if (nav && typeof nav.navigate === 'function') {
-        // Passo 1: garante que está na tab Mais com MaisMain (inicial)
-        nav.navigate('Mais', { screen: 'MaisMain' });
-        // Passo 2: empurra FinanceiroMain por cima de MaisMain
-        setTimeout(() => {
-          try { nav.navigate('Mais', { screen: 'FinanceiroMain' }); } catch (_) {}
-        }, 60);
-      }
+      nav?.navigate?.('Produtos');
     } catch {
       // ignore
     }
@@ -264,13 +242,13 @@ export default function MobileOnboardingOverlay({ navigation }) {
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
-            onPress={navigateToFinanceiro}
+            onPress={navigateToProdutos}
             style={styles.primaryBtn}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel="Começar pelo Financeiro"
+            accessibilityLabel="Montar meu primeiro produto"
           >
-            <Text style={styles.primaryBtnText}>Começar pelo Financeiro</Text>
+            <Text style={styles.primaryBtnText}>Montar meu primeiro produto</Text>
             <Feather name="arrow-right" size={14} color="#fff" style={{ marginLeft: 4 }} />
           </TouchableOpacity>
         )}

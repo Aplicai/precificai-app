@@ -4,6 +4,20 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
 import { getFinanceiroStatus, textoPendenciaFinanceiro, assinarStatusFinanceiro } from '../utils/financeiroStatus';
+import { getDatabase } from '../database/database';
+import { countOrThrow } from '../database/dbResult';
+
+// Primeiro preço antes do Financeiro (15/10/2026): enquanto nenhum produto tem
+// preço de venda, o aviso fica escondido para não puxar a pessoa para o
+// Financeiro antes de ela ver o primeiro resultado. Erro de leitura = mostra.
+async function temProdutoComPreco() {
+  try {
+    const db = await getDatabase();
+    return (await countOrThrow(db, 'SELECT COUNT(*) as n FROM produtos WHERE preco_venda > 0')) > 0;
+  } catch {
+    return true;
+  }
+}
 
 /**
  * Aparece quando falta qualquer etapa do Financeiro (`completo` do
@@ -15,9 +29,11 @@ export default function FinanceiroPendenteBanner() {
   const [pendente, setPendente] = useState(false);
   const [faltando, setFaltando] = useState('');
 
-  const aplicar = useCallback((s) => {
-    setPendente(!s.completo);
+  const aplicar = useCallback(async (s) => {
+    const completo = !!s.completo;
     setFaltando(textoPendenciaFinanceiro(s));
+    if (completo) { setPendente(false); return; }
+    setPendente(await temProdutoComPreco());
   }, []);
 
   // Atualiza a cada leitura de status em qualquer tela (salvar no Financeiro,
@@ -50,8 +66,8 @@ export default function FinanceiroPendenteBanner() {
     <TouchableOpacity style={styles.banner} activeOpacity={0.8} onPress={goToFinanceiro}>
       <Feather name="info" size={18} color={colors.primary} style={styles.icon} />
       <View style={styles.body}>
-        <Text style={styles.title}>Complete o Financeiro</Text>
-        <Text style={styles.desc}>{faltando ? `${faltando} ` : ''}Sem isso o preço sugerido não fica certo.</Text>
+        <Text style={styles.title}>Deixe seu preço mais certo</Text>
+        <Text style={styles.desc}>{faltando ? `${faltando} ` : ''}Complete o Financeiro para o preço sugerido incluir seus custos do mês.</Text>
       </View>
     </TouchableOpacity>
   );

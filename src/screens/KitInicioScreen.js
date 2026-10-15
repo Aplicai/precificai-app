@@ -111,7 +111,12 @@ export default function KitInicioScreen({ navigation, route }) {
         }
       }
       if (isSetup) {
-        navigation.replace('Onboarding');
+        // Primeiro acesso: vai para a Home, cujo passo principal é montar o
+        // primeiro produto. Antes ia para a tela "Configure seu app" com o
+        // Financeiro obrigatório na frente, e quem saía do Kit parava ali.
+        navigation.dispatch(
+          CommonActions.reset({ index: 0, routes: [{ name: 'MainTabs', params: { initialTab: 'Início' } }] })
+        );
       } else {
         // Para "Outro / Começar do zero" + conta existente: reseta SEMPRE pro
         // MainTabs/Painel Geral. Fluxo claro: usuário escolheu começar fresh,
@@ -135,6 +140,19 @@ export default function KitInicioScreen({ navigation, route }) {
     }
   }
 
+  // No primeiro acesso o Kit é tela do RootStack (sem menu de abas acima):
+  // getParent() é undefined e os botões do sucesso caíam todos em
+  // navegarAposKit → Financeiro. Aqui abre o app já na aba/tela pedida.
+  async function abrirNoApp(tab, tabState) {
+    try { await AsyncStorage.setItem('onboarding_done', 'true'); } catch (_) {}
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'MainTabs', params: { initialTab: tab }, state: { index: 0, routes: [{ name: tab, ...(tabState ? { state: tabState } : {}) }] } }],
+      })
+    );
+  }
+
   // Redesenho de ativação: navega até a aba Insumos (CTA secundário do sucesso).
   // KitInicio é pushed sobre RootStack → precisa subir 2 níveis pra alcançar o
   // Tab navigator (mesmo padrão que o CTA original usava).
@@ -143,7 +161,7 @@ export default function KitInicioScreen({ navigation, route }) {
       const parent = navigation.getParent();
       const tabNav = parent?.getParent?.() || parent;
       if (tabNav) tabNav.navigate('Insumos');
-      else navegarAposKit();
+      else abrirNoApp('Insumos');
     } catch { navegarAposKit(); }
   }
 
@@ -156,7 +174,13 @@ export default function KitInicioScreen({ navigation, route }) {
     try {
       const parent = navigation.getParent();
       const tabNav = parent?.getParent?.() || parent;
-      if (!tabNav) { navegarAposKit(); return; }
+      if (!tabNav) {
+        abrirNoApp('Produtos', {
+          index: 0,
+          routes: [{ name: 'ProdutosList', params: firstProdutoId ? { openProductEdit: firstProdutoId } : { openNovoProduto: true } }],
+        });
+        return;
+      }
       if (firstProdutoId) {
         tabNav.navigate('Produtos', { screen: 'ProdutosList', params: { openProductEdit: firstProdutoId } });
       } else {
@@ -789,7 +813,7 @@ export default function KitInicioScreen({ navigation, route }) {
             <Text style={styles.pageHeaderTitle}>Kit de Início Rápido</Text>
             <Text style={styles.pageHeaderDesc}>
               {isSetup
-                ? 'Opcional: escolha seu segmento pra já começar com ingredientes, embalagens e produtos de exemplo. Prefere começar do zero? É só pular abaixo.'
+                ? 'Escolha seu segmento pra já começar com ingredientes, embalagens e produtos de exemplo.'
                 : 'Escolha seu segmento. Cadastramos ingredientes, embalagens, receitas base e produtos de exemplo pra você.'}
             </Text>
           </View>
@@ -820,7 +844,7 @@ export default function KitInicioScreen({ navigation, route }) {
             <View style={{ flex: 1 }}>
               <Text style={styles.skipKitTitle}>Começar com o app vazio</Text>
               <Text style={styles.skipKitDesc}>
-                Recomendado. Cadastre seus próprios ingredientes e produtos do zero. Você pode carregar o kit depois em Configurações.
+                Cadastre seus próprios ingredientes e produtos do zero. Você pode carregar o kit depois em Configurações.
               </Text>
             </View>
             <Feather name="arrow-right" size={18} color={colors.primary} />

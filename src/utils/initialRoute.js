@@ -146,11 +146,12 @@ export async function determineInitialRouteSafe({ skipWelcomeTour = false } = {}
     // Erro aqui significa DB acessível mas getSetupStatus quebrou — caso
     // que o `determineInitialRoute` original mascarava. Expomos para a UI.
     try {
-      const status = await getSetupStatus();
-      return {
-        route: status.financeiroCompleto ? 'MainTabs' : 'Onboarding',
-        routeError: null,
-      };
+      // Continua lendo o status: falha de leitura vira routeError (abaixo).
+      await getSetupStatus();
+      // Primeiro preço antes do Financeiro (15/10/2026): a tela "Configure seu
+      // app" abria com o Financeiro obrigatório na frente e quem caía nela não
+      // cadastrava nada. Agora a Home (passo principal: primeiro produto).
+      return { route: 'MainTabs', routeError: null };
     } catch (statusErr) {
       console.error('[determineInitialRouteSafe.getSetupStatus]', statusErr);
       return { route: 'ProfileSetup', routeError: statusErr };
