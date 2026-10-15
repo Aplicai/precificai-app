@@ -6,37 +6,35 @@
  *   - src/components/EntityCreateModal.js  (defaultQtyForUnidade / stepForUnidade)
  *   - src/screens/ProdutoFormScreen.js     (defaultQtyForUnidade)
  *
- * Essas funções são puras mas vivem em arquivos que importam React Native e
- * usam JSX — não são importáveis pelo runner `node --test` (falha em
- * "Unexpected token '<'"). Este arquivo replica as duas funções PALAVRA POR
- * PALAVRA (conferir contra o código-fonte se algum dia divergir) e testa o
- * contrato exigido pela auditoria: g/ml usam 100 (default) e 10 (step);
- * un/kg/L usam 1 pros dois.
+ * Contrato: g/ml usam 100 (default) e 10 (step); kg/L usam 0,1 nos dois
+ * (mesma quantidade física de 100 g, já que a quantidade do item no produto é
+ * gravada na unidade de compra do insumo); un e desconhecidas usam 1.
  */
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { defaultQtyForUnidade, stepForUnidade, somarQtd, formatQtdBR } from '../src/utils/itemQuantityDefaults.js';
 
-// Cópia exata de EntityCreateModal.js (defaultQtyForUnidade / stepForUnidade)
-// e do helper equivalente em ProdutoFormScreen.js (defaultQtyForUnidade).
-function defaultQtyForUnidade(unidade) {
-  const u = String(unidade || '').trim().toLowerCase();
-  return (u === 'g' || u === 'ml') ? 100 : 1;
-}
-function stepForUnidade(unidade) {
-  const u = String(unidade || '').trim().toLowerCase();
-  return (u === 'g' || u === 'ml') ? 10 : 1;
-}
+// Desde 14/10/2026 as funções vivem em src/utils/itemQuantityDefaults.js e são
+// importadas por EntityCreateModal.js e ProdutoFormScreen.js (antes eram
+// cópias locais; este teste replicava o código palavra por palavra).
 
-test('defaultQtyForUnidade: 100 pra g/ml, 1 pra un/kg/L', () => {
+test('defaultQtyForUnidade: 100 pra g/ml, 1 pra un', () => {
   assert.equal(defaultQtyForUnidade('g'), 100);
   assert.equal(defaultQtyForUnidade('ml'), 100);
   // case-insensitive e com espaços (shortUnidade pode devolver 'mL'/'L' capitalizados)
   assert.equal(defaultQtyForUnidade('mL'), 100);
   assert.equal(defaultQtyForUnidade(' ML '), 100);
   assert.equal(defaultQtyForUnidade('un'), 1);
-  assert.equal(defaultQtyForUnidade('kg'), 1);
-  assert.equal(defaultQtyForUnidade('L'), 1);
-  assert.equal(defaultQtyForUnidade('l'), 1);
+});
+
+test('defaultQtyForUnidade: kg/L entram com 0,1 (= os mesmos 100 g/mL do item em g/mL), não 1 kg inteiro', () => {
+  // Bug tutorial 05: ingrediente comprado em kg entrava "1 kg" no produto
+  // (R$ 59,90 de coco num bolo). A quantidade do produto é gravada na unidade
+  // de compra do insumo, então 100 g == 0,1 kg.
+  assert.equal(defaultQtyForUnidade('kg'), 0.1);
+  assert.equal(defaultQtyForUnidade('KG'), 0.1);
+  assert.equal(defaultQtyForUnidade('L'), 0.1);
+  assert.equal(defaultQtyForUnidade('l'), 0.1);
 });
 
 test('defaultQtyForUnidade: unidades desconhecidas/vazias caem no default seguro (1)', () => {
@@ -47,12 +45,28 @@ test('defaultQtyForUnidade: unidades desconhecidas/vazias caem no default seguro
   assert.equal(defaultQtyForUnidade('m'), 1);
 });
 
-test('stepForUnidade: 10 pra g/ml (stepper não fica "parado" em 1g), 1 pros demais', () => {
+test('stepForUnidade: 10 pra g/ml, 0,1 pra kg/L, 1 pros demais', () => {
   assert.equal(stepForUnidade('g'), 10);
   assert.equal(stepForUnidade('ml'), 10);
   assert.equal(stepForUnidade('un'), 1);
-  assert.equal(stepForUnidade('kg'), 1);
-  assert.equal(stepForUnidade('L'), 1);
+  assert.equal(stepForUnidade('kg'), 0.1);
+  assert.equal(stepForUnidade('L'), 0.1);
+  assert.equal(stepForUnidade('rolo'), 1);
+});
+
+test('somarQtd: sem ruído de ponto flutuante (0,1 + 0,2 = 0,3) e nunca negativo', () => {
+  assert.equal(somarQtd(0.1, 0.2), 0.3);
+  assert.equal(somarQtd(0.3, -0.1), 0.2);
+  assert.equal(somarQtd(0.1, -0.5), 0);
+  assert.equal(somarQtd('0,1', 0.1), 0.2);
+  assert.equal(somarQtd(100, 10), 110);
+});
+
+test('formatQtdBR: vírgula decimal, sem zeros à toa', () => {
+  assert.equal(formatQtdBR(0.1), '0,1');
+  assert.equal(formatQtdBR(100), '100');
+  assert.equal(formatQtdBR(0.30000000000000004), '0,3');
+  assert.equal(formatQtdBR(1.25), '1,25');
 });
 
 test('regressão do bug relatado: 1g de item a R$ 20/kg custava R$ 0,02 (ilegível); com o default de 100g o custo unitário exibido fica R$ 2,00', () => {

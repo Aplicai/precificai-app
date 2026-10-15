@@ -50,6 +50,8 @@ import { resolverPrecoAoSalvar, avisoPrecoAoSalvar } from '../utils/precoAoSalva
 // empilhado (igual o nested preparo), reaproveitando os formulários completos
 // via shim ScreenInModal em vez de navegar pra tela cheia.
 import ScreenInModal from './ScreenInModal';
+import { defaultQtyForUnidade, stepForUnidade, somarQtd, formatQtdBR } from '../utils/itemQuantityDefaults';
+import { categoriaFilhoDefault, resolveCategoriaId } from '../utils/categoriaValida';
 import MateriaPrimaFormScreen from '../screens/MateriaPrimaFormScreen';
 import EmbalagemFormScreen from '../screens/EmbalagemFormScreen';
 // Design embalagem-delivery-no-produto (2026-09-09)
@@ -99,14 +101,8 @@ function shortUnidade(rawUnidade, tipo) {
 // ilegível) + stepper andando de 1 em 1 g. g/ml usam passo/padrão maior (100
 // pra quantidade inicial, 10 pro stepper); un/kg/L continuam em 1 (fazem
 // sentido em unidades inteiras ou já são a unidade "grande").
-function defaultQtyForUnidade(unidade) {
-  const u = String(unidade || '').trim().toLowerCase();
-  return (u === 'g' || u === 'ml') ? 100 : 1;
-}
-function stepForUnidade(unidade) {
-  const u = String(unidade || '').trim().toLowerCase();
-  return (u === 'g' || u === 'ml') ? 10 : 1;
-}
+// 14/10/2026: regras movidas pra src/utils/itemQuantityDefaults.js (fonte
+// única com ProdutoFormScreen); kg/L agora começam em 0,1 (= 100 g/mL).
 
 const TIPO_BADGE = {
   preparo:       { label: 'Receita base',    color: '#7c3aed' },
@@ -907,7 +903,7 @@ export default function EntityCreateModal({
       if (idx >= 0) {
         const next = [...prev];
         const passo = stepForUnidade(next[idx].unidade);
-        next[idx] = { ...next[idx], quantidade: safeNum(next[idx].quantidade) + passo };
+        next[idx] = { ...next[idx], quantidade: somarQtd(next[idx].quantidade, passo) };
         return next;
       }
       return [...prev, buildItem(tipo, item)];
@@ -1180,14 +1176,14 @@ export default function EntityCreateModal({
                     <View style={styles.stepper}>
                       <TouchableOpacity
                         style={styles.stepperBtn}
-                        onPress={() => alterarQuantidade(index, String(Math.max(0, qtd - passo)).replace('.', ','))}
+                        onPress={() => alterarQuantidade(index, formatQtdBR(somarQtd(qtd, -passo)))}
                         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                       >
                         <Feather name="minus" size={14} color={colors.text} />
                       </TouchableOpacity>
                       <TextInput
                         ref={(el) => { itemQtyRefs.current[`${it.tipo}-${it.id}`] = el; }}
-                        value={String(it.quantidade)}
+                        value={typeof it.quantidade === 'number' ? formatQtdBR(it.quantidade) : String(it.quantidade)}
                         onChangeText={(v) => alterarQuantidade(index, v)}
                         keyboardType="decimal-pad"
                         style={styles.stepperInput}
@@ -1196,7 +1192,7 @@ export default function EntityCreateModal({
                       />
                       <TouchableOpacity
                         style={styles.stepperBtn}
-                        onPress={() => alterarQuantidade(index, String(qtd + passo).replace('.', ','))}
+                        onPress={() => alterarQuantidade(index, formatQtdBR(somarQtd(qtd, passo)))}
                         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                       >
                         <Feather name="plus" size={14} color={colors.text} />
@@ -1759,10 +1755,14 @@ export default function EntityCreateModal({
           oldEmbIds = await db.getAllAsync('SELECT id FROM preparo_embalagens WHERE preparo_id = ?', [editId]);
           oldSubIds = await db.getAllAsync('SELECT id FROM preparo_subpreparos WHERE preparo_id = ?', [editId]);
         } else {
+          // Bug tutorial 05 (defesa): só grava categoria que existe em
+          // categorias_preparos — senão a FK recusa o INSERT inteiro.
+          const categoriaPreparoId = await resolveCategoriaId(categoriaId, categorias,
+            (id) => db.getFirstAsync('SELECT id FROM categorias_preparos WHERE id = ?', [id]));
           const result = await db.runAsync(
             `INSERT INTO preparos (nome, categoria_id, rendimento_total, unidade_medida, custo_total, custo_por_kg,
              modo_preparo, observacoes, validade_dias) VALUES (?,?,?,?,?,?,?,?,?)`,
-            [nome.trim(), categoriaId, rend, unidadeMedidaPrep, custoTotal, custoPorKg, '', '', 0]
+            [nome.trim(), categoriaPreparoId, rend, unidadeMedidaPrep, custoTotal, custoPorKg, '', '', 0]
           );
           savedId = result.lastInsertRowId;
         }
@@ -2742,6 +2742,8 @@ export default function EntityCreateModal({
           visible={nestedPreparoVisible}
           mode="preparo"
           editId={null}
+          // Receita base usa categorias_preparos: só herda de outra receita base.
+          defaultCategoriaId={categoriaFilhoDefault('preparo', { mode: isProduto ? 'produto' : 'preparo', categoriaId })}
           onClose={() => setNestedPreparoVisible(false)}
           // Sessão 28.52/28.37: passa estado do pai (produto OU preparo) pro nested.
           // Se user fizer cascata "+ Insumo"/"+ Embalagem"/"+ Preparo" lá, o pai é preservado.
@@ -2769,13 +2771,15 @@ export default function EntityCreateModal({
               const custoUnit = calcCustoPreparo(safeNum(prep.custo_por_kg), 1, prep.unidade_medida || 'g');
               setItens(prev => {
                 if (prev.some(i => i.tipo === 'preparo' && i.id === prep.id)) return prev;
+                const unidadePrep = shortUnidade(prep.unidade_medida, 'preparo');
                 return [...prev, {
                   tipo: 'preparo',
                   id: prep.id,
                   nome: prep.nome,
-                  quantidade: 0,
+                  // Mesma quantidade inicial do picker (antes entrava 0).
+                  quantidade: defaultQtyForUnidade(unidadePrep),
                   custoUnit,
-                  unidade: shortUnidade(prep.unidade_medida, 'preparo'),
+                  unidade: unidadePrep,
                 }];
               });
             } catch (e) { console.warn('[EntityCreateModal.nestedPreparo.onSaved]', e); }
@@ -2794,7 +2798,9 @@ export default function EntityCreateModal({
         params={{
           __name: 'MateriaPrimaForm',
           asModal: true,
-          defaultCategoriaId: categoriaId ?? null,
+          // Bug tutorial 05: NUNCA passar a categoria do produto/receita pai —
+          // é de outra tabela (FK de categorias_insumos recusava o INSERT).
+          defaultCategoriaId: categoriaFilhoDefault('materia_prima', { mode: isProduto ? 'produto' : 'preparo', categoriaId }),
           onSavedModal: (id) => { setNestedInsumoVisible(false); addCreatedInsumoToItens(id); },
           onCloseModal: () => setNestedInsumoVisible(false),
         }}
@@ -2806,7 +2812,8 @@ export default function EntityCreateModal({
         params={{
           __name: 'EmbalagemForm',
           asModal: true,
-          defaultCategoriaId: categoriaId ?? null,
+          // Idem: categorias_embalagens ≠ categoria do pai.
+          defaultCategoriaId: categoriaFilhoDefault('embalagem', { mode: isProduto ? 'produto' : 'preparo', categoriaId }),
           onSavedModal: (id) => {
             setNestedEmbalagemVisible(false);
             if (nestedEmbalagemDestino === 'delivery') addCreatedEmbalagemToDelivery(id);

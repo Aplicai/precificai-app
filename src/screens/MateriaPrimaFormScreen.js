@@ -21,6 +21,7 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useListDensity from '../hooks/useListDensity';
 import { t } from '../i18n/pt-BR';
 import { UNIDADES_MEDIDA, calcPrecoBase, calcFatorCorrecao, formatCurrency, converterParaBase, calcCustoIngrediente, calcCustoPreparo, calcMargem, parseDecimalBR, calcCustoPorKgPreparo } from '../utils/calculations';
+import { resolveCategoriaId } from '../utils/categoriaValida';
 // Sprint 2 S5 — checagem de dependências antes de DELETE (evita órfãos em preparo_ingredientes / produto_ingredientes).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
 // Sessão 28.8 — sugestão automática via dicionário pré-cadastrado (zero IA, zero custo)
@@ -649,8 +650,14 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
     try {
       allowExit.current = true;
       const db = await getDatabase();
+      // Bug tutorial 05: aberto por dentro do produto, o form recebia a
+      // categoria DO PRODUTO (categorias_produtos) e a FK
+      // materias_primas_categoria_id_fkey recusava o INSERT. Só grava id que
+      // existe em categorias_insumos; senão salva sem categoria.
+      const categoriaIdValida = await resolveCategoriaId(form.categoria_id, categorias,
+        (id) => db.getFirstAsync('SELECT id FROM categorias_insumos WHERE id = ?', [id]));
       const params = [
-        form.nome, form.marca, form.categoria_id,
+        form.nome, form.marca, categoriaIdValida,
         qtBruta, qtLiquida,
         fatorCorrecao, form.unidade_medida,
         valorPago, precoBase,

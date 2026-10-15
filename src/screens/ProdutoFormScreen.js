@@ -29,6 +29,7 @@ import ComoCalculadoModal from '../components/ComoCalculadoModal';
 // Design embalagem-delivery-no-produto (2026-09-09)
 import { custoDelivery, embalagensDeliveryDoProduto, normalizarEmbalagensDelivery } from '../utils/deliveryAdapter';
 import ScreenInModal from '../components/ScreenInModal';
+import { defaultQtyForUnidade, somarQtd } from '../utils/itemQuantityDefaults';
 import EmbalagemFormScreen from './EmbalagemFormScreen';
 
 const UNIDADES_TEMPO = [
@@ -694,10 +695,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
   // sempre com quantidade 1 (mesmo pra g/ml, onde 1 g/mL é quase sempre
   // errado — o custo unitário exibido virava algo ilegível como R$ 0,01).
   // Default agora é 100 pra g/ml, 1 pra un/kg/L.
-  function defaultQtyForUnidade(unidade) {
-    const u = String(unidade || '').trim().toLowerCase();
-    return (u === 'g' || u === 'ml') ? 100 : 1;
-  }
+  // 14/10/2026: defaultQtyForUnidade vem de src/utils/itemQuantityDefaults.js
+  // (mesma regra do EntityCreateModal; kg/L começam em 0,1 = 100 g/mL).
 
   // Foca (com texto selecionado, via selectTextOnFocus na TextInput) o campo
   // de quantidade do item que acabou de ser adicionado.
@@ -740,7 +739,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
     const existingIdx = ingredientes.findIndex(i => i.materia_prima_id === id);
     if (existingIdx >= 0) {
-      setIngredientes(prev => prev.map((item, i) => i === existingIdx ? { ...item, quantidade_utilizada: item.quantidade_utilizada + qtd, unidade } : item));
+      setIngredientes(prev => prev.map((item, i) => i === existingIdx ? { ...item, quantidade_utilizada: somarQtd(item.quantidade_utilizada, qtd), unidade } : item));
     } else {
       setIngredientes(prev => [...prev, { materia_prima_id: id, mp_nome: mp.nome, mp_marca: mp.marca || '', preco_por_kg: mp.preco_por_kg, quantidade_utilizada: qtd, unidade }]);
     }
@@ -758,7 +757,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
     // If already exists, increment quantity
     const existingIdx = produtoPreparos.findIndex(p => p.preparo_id === id);
     if (existingIdx >= 0) {
-      setProdutoPreparos(prev => prev.map((item, i) => i === existingIdx ? { ...item, quantidade_utilizada: item.quantidade_utilizada + qtd } : item));
+      setProdutoPreparos(prev => prev.map((item, i) => i === existingIdx ? { ...item, quantidade_utilizada: somarQtd(item.quantidade_utilizada, qtd) } : item));
     } else {
       setProdutoPreparos(prev => [...prev, { preparo_id: id, pr_nome: pr.nome, custo_por_kg: pr.custo_por_kg, quantidade_utilizada: qtd, unidade: pr.unidade_medida || 'g' }]);
     }
@@ -786,7 +785,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
     const qtd = qty != null ? parseNum(qty) : defaultQtyForUnidade(unidade);
     const existingIdx = produtoEmbalagens.findIndex(e => e.embalagem_id === id);
     if (existingIdx >= 0) {
-      setProdutoEmbalagens(prev => prev.map((item, i) => i === existingIdx ? { ...item, quantidade_utilizada: item.quantidade_utilizada + qtd, unidade } : item));
+      setProdutoEmbalagens(prev => prev.map((item, i) => i === existingIdx ? { ...item, quantidade_utilizada: somarQtd(item.quantidade_utilizada, qtd), unidade } : item));
     } else {
       setProdutoEmbalagens(prev => [...prev, { embalagem_id: id, em_nome: em.nome, preco_unitario: em.preco_unitario, quantidade_utilizada: qtd, unidade }]);
     }
@@ -2429,7 +2428,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
         params={{
           __name: 'EmbalagemForm',
           asModal: true,
-          defaultCategoriaId: form.categoria_id ?? null,
+          // Bug tutorial 05: a categoria do produto é de categorias_produtos;
+          // passá-la pro formulário de embalagem fazia a FK recusar o INSERT.
+          defaultCategoriaId: null,
           onSavedModal: (em) => {
             setCadastroEmbDeliveryVisible(false);
             if (!em || typeof em !== 'object' || !em.id) return;

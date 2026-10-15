@@ -12,6 +12,7 @@ import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useListDensity from '../hooks/useListDensity';
 import { calcPrecoUnitarioEmbalagem, formatCurrency, parseDecimalBR } from '../utils/calculations';
+import { resolveCategoriaId } from '../utils/categoriaValida';
 // Walkthrough 2026-09: mesmo bug do MateriaPrimaForm ("5.9" em vez de "5,90"
 // ao editar) — helper compartilhado (ver docstring de insumoFormHelpers.js).
 import { formatDecimalBR, formatMoneyBR } from '../utils/insumoFormHelpers';
@@ -311,7 +312,12 @@ export default function EmbalagemFormScreen({ route, navigation }) {
     allowExit.current = true;
     try {
     const db = await getDatabase();
-    const params = [form.nome, form.marca, form.categoria_id, qtd, form.unidade_medida, preco, precoUn];
+    // Bug tutorial 05: aberto por dentro do produto, o form recebia a categoria
+    // DO PRODUTO (categorias_produtos) e a FK recusava o INSERT. Só grava id
+    // que existe em categorias_embalagens; senão salva sem categoria.
+    const categoriaIdValida = await resolveCategoriaId(form.categoria_id, categorias,
+      (id) => db.getFirstAsync('SELECT id FROM categorias_embalagens WHERE id = ?', [id]));
+    const params = [form.nome, form.marca, categoriaIdValida, qtd, form.unidade_medida, preco, precoUn];
     const result = await db.runAsync(
       'INSERT INTO embalagens (nome, marca, categoria_id, quantidade, unidade_medida, preco_embalagem, preco_unitario) VALUES (?,?,?,?,?,?,?)',
       params
