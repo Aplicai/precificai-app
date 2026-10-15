@@ -11,6 +11,7 @@
 //                                                   só envia entre 8h e 20h de Brasília)
 //   { campanha: 'reativacao-2026-10' }           → simulação: lista quem receberia (não envia)
 //   { campanha: '…', enviar: true, limite: 50 }  → envia de verdade
+//   + desde / ate (ISO, opcionais)               → quem se cadastrou no período, em vez da janela da campanha
 //   { teste: { para, campanha, estagio, plano, negocio } } → uma amostra para `para`, sem registrar
 // Descadastro (público): GET/POST ?sair=<uid>.<assinatura>  (link do rodapé e List-Unsubscribe)
 //
@@ -517,7 +518,12 @@ serve(async (req) => {
 
   const relatorio: Record<string, unknown>[] = [];
   for (const campanha of campanhas) {
-    const { data: candidatos, error } = await supabase.rpc('email_candidatos', { p_campanha: campanha });
+    // `desde` / `ate` (ISO): troca a janela da campanha pelo período de cadastro.
+    const periodo = automatico ? {} : {
+      ...(body?.desde ? { p_desde: String(body.desde) } : {}),
+      ...(body?.ate ? { p_ate: String(body.ate) } : {}),
+    };
+    const { data: candidatos, error } = await supabase.rpc('email_candidatos', { p_campanha: campanha, ...periodo });
     if (error) {
       relatorio.push({ campanha, erro: error.message });
       continue;
