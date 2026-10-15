@@ -84,6 +84,8 @@ function ScreenFallback() {
 const RelatoriosHubScreen = lazyScreen(() => import('../screens/RelatoriosHubScreen'));
 const RegisterScreen = lazyScreen(() => import('../screens/RegisterScreen'));
 const KitInicioScreen = lazyScreen(() => import('../screens/KitInicioScreen'));
+// Primeiro acesso guiado (15/10/2026). Lazy: puxa templates.js (~270 KB).
+const PrimeiroProdutoScreen = lazyScreen(() => import('../screens/PrimeiroProdutoScreen'));
 const SimuladorScreen = lazyScreen(() => import('../screens/SimuladorScreen'));
 const SimuladorLoteScreen = lazyScreen(() => import('../screens/SimuladorLoteScreen'));
 const FluxoCaixaDREScreen = lazyScreen(() => import('../screens/FluxoCaixaDREScreen'));
@@ -724,22 +726,14 @@ function AppContent() {
           ...screenOptions, headerShown: true, title: 'Perfil do Negócio',
         }} />
       )}
-      {(initialRoute === 'WelcomeTour' || initialRoute === 'Onboarding' || initialRoute === 'ProfileSetup') && (
-        <RootStack.Screen name="KitInicio" component={KitInicioScreen} options={{
-          ...screenOptions, headerShown: true, title: 'Kit de Início',
-        }} />
-      )}
-      {(initialRoute === 'WelcomeTour' || initialRoute === 'Onboarding' || initialRoute === 'ProfileSetup') && (
-        <RootStack.Screen name="Onboarding" component={OnboardingScreen} options={{
-          ...screenOptions, headerShown: true, title: 'Configuração Inicial',
-        }} />
-      )}
+      {/* Primeiro acesso guiado (15/10/2026): substitui o Kit de Início, que
+          ficou só em Configurações (MaisStack). Registrado sempre: a Home
+          oferece o passo a passo para conta sem ingredientes. */}
+      <RootStack.Screen name="PrimeiroProduto" component={PrimeiroProdutoScreen} options={{ headerShown: false, title: 'Seu primeiro preço' }} />
       <RootStack.Screen name="MainTabs" component={MainTabs} initialParams={{ initialTab: savedTab }} />
-      {initialRoute === 'MainTabs' && (
-        <RootStack.Screen name="Onboarding" component={OnboardingScreen} options={{
-          ...screenOptions, headerShown: true, title: 'Configuração Inicial',
-        }} />
-      )}
+      <RootStack.Screen name="Onboarding" component={OnboardingScreen} options={{
+        ...screenOptions, headerShown: true, title: 'Configuração Inicial',
+      }} />
     </RootStack.Navigator>
   );
 }

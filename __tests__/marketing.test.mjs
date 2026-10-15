@@ -148,3 +148,25 @@ test('cadastro sem resposta de cookies não é marcado como enviado (tenta de no
   assert.equal(enviados.length, 2);          // recusa: nada
   delete globalThis.window;
 });
+
+test('primeiro preço: uma vez por conta, só com preço, respeitando a recusa', async () => {
+  const { trackPrimeiroPrecoOnce } = await import('../src/utils/marketing.js');
+  const enviados = []; const store = {}; let consent = 'granted';
+  globalThis.window = {
+    pcf: { consent: () => consent, track: (...a) => enviados.push(a) },
+    localStorage: { getItem: (k) => store[k] || null, setItem: (k, v) => { store[k] = v; } },
+  };
+  trackPrimeiroPrecoOnce({ id: 'u9' }, 0);
+  assert.equal(enviados.length, 0);           // sem preço não é primeiro preço
+  trackPrimeiroPrecoOnce({ id: 'u9' }, 12.5);
+  assert.equal(enviados.length, 1);
+  assert.equal(enviados[0][0], 'PrimeiroPreco');
+  assert.deepEqual(enviados[0][1], { content_name: 'primeiro_produto', value: 12.5, currency: 'BRL' });
+  assert.equal(enviados[0][2], 'pp_u9');
+  trackPrimeiroPrecoOnce({ id: 'u9' }, 12.5);
+  assert.equal(enviados.length, 1);           // uma vez só
+  consent = 'denied';
+  trackPrimeiroPrecoOnce({ id: 'u10' }, 10);
+  assert.equal(enviados.length, 1);           // recusa: nada
+  delete globalThis.window;
+});

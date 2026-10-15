@@ -399,6 +399,7 @@ export default function HomeScreen({ navigation }) {
       return;
     }
     if (tab === 'Onboarding') { navigation.getParent()?.navigate('Onboarding'); return; }
+    if (tab === 'PrimeiroProduto') { navigation.navigate('PrimeiroProduto'); return; }
     const ferramentasScreens = ['Financeiro', 'BCG', 'Delivery', 'AtualizarPrecos', 'ListaCompras'];
     const screenMap = { 'Financeiro': 'FinanceiroMain', 'BCG': 'MatrizBCG', 'Delivery': 'DeliveryHub', 'AtualizarPrecos': 'AtualizarPrecos', 'ListaCompras': 'ListaCompras' };
     if (ferramentasScreens.includes(tab)) {
@@ -480,7 +481,7 @@ export default function HomeScreen({ navigation }) {
   // CTA
   let ctaLabel = null, ctaAction = null;
   if (financeiroNaFrente) { ctaLabel = 'Configurar Financeiro'; ctaAction = 'Financeiro'; }
-  else if (d.totalInsumos === 0) { ctaLabel = 'Cadastrar Ingredientes'; ctaAction = 'Insumos'; }
+  else if (d.totalInsumos === 0) { ctaLabel = 'Monte o preço do seu primeiro produto'; ctaAction = 'PrimeiroProduto'; }
   // UX audit 09/09 (Fase B, item 6): vazio com exemplo concreto.
   else if (d.totalProdutos === 0) { ctaLabel = 'Monte seu primeiro produto, ex.: Bolo de cenoura'; ctaAction = 'Produtos'; }
   else if (semPrimeiroPreco) { ctaLabel = 'Coloque o preço do seu primeiro produto'; ctaAction = 'Produtos'; }
@@ -648,21 +649,24 @@ export default function HomeScreen({ navigation }) {
         />
       )}
 
-      {/* Kit de Início banner — prominent for new users with no data */}
+      {/* Conta sem nada: o passo a passo do primeiro produto (15/10/2026).
+          Antes oferecia o Kit de Início (~90 ingredientes sem preço), que
+          continua em Configurações para quem quiser. */}
       {d.totalInsumos === 0 && d.totalProdutos === 0 && dadosOk && (
         <TouchableOpacity
           style={[styles.setupBanner, { backgroundColor: colors.primary + '08', borderColor: colors.primary + '30' }]}
           activeOpacity={0.7}
-          onPress={() => navigation.getParent()?.navigate('Mais', { screen: 'KitInicio', params: { setup: false } })}
+          onPress={() => navigation.navigate('PrimeiroProduto')}
+          accessibilityRole="button"
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
             <View style={[styles.setupIconCircle, { backgroundColor: colors.primary + '20' }]}>
-              <Feather name="gift" size={20} color={colors.primary} />
+              <Feather name="tag" size={20} color={colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.setupBannerTitle, { fontSize: fonts.medium }]}>Comece com o Kit de Início</Text>
+              <Text style={[styles.setupBannerTitle, { fontSize: fonts.medium }]}>Monte o preço do seu primeiro produto</Text>
               <Text style={styles.setupBannerDetail}>
-                Escolha seu segmento e receba ingredientes prontos para começar a precificar em minutos
+                Leva uns 3 minutos: o produto, os ingredientes do jeito que você compra e o preço sugerido na hora.
               </Text>
             </View>
             <Feather name="chevron-right" size={20} color={colors.primary} />

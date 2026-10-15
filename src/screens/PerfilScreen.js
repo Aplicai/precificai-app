@@ -204,13 +204,12 @@ export default function PerfilScreen({ navigation, route }) {
     }
   }
 
-  function onContinuePress() {
-    // Sessão 28.50: agora exige nome + segmento + telefone (WhatsApp).
-    // Lojas continua opcional.
+  async function onContinuePress() {
+    // 15/10/2026: telefone virou opcional (menos atrito no primeiro acesso);
+    // nome e segmento continuam (o segmento escolhe as sugestões do passo a passo).
     const faltam = [];
     if (!perfil.nome_negocio.trim()) faltam.push('Nome do negócio');
     if (!perfil.segmento.trim()) faltam.push('Segmento');
-    if (!perfil.telefone.trim()) faltam.push('Telefone / WhatsApp');
     if (faltam.length > 0) {
       setShowNameError(true);
       try {
@@ -220,7 +219,13 @@ export default function PerfilScreen({ navigation, route }) {
       } catch (_) {}
       return;
     }
-    navigation.replace('KitInicio', { setup: true });
+    // Grava já: o autosave espera 600 ms e o replace desmonta a tela, então a
+    // última digitação (às vezes o segmento inteiro) se perdia.
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    await autoSave(perfil);
+    // Primeiro acesso guiado (15/10/2026): o Kit de Início saiu daqui e ficou
+    // em Configurações.
+    navigation.replace('PrimeiroProduto', { segmento: perfil.segmento });
   }
 
   const inicial = (perfil.nome_negocio || 'N').charAt(0).toUpperCase();
@@ -336,7 +341,7 @@ export default function PerfilScreen({ navigation, route }) {
         </View>
 
         <View style={styles.field}>
-          <Text style={styles.label}>Telefone / WhatsApp {isSetup ? <Text style={{ color: '#dc2626' }}>*</Text> : null}</Text>
+          <Text style={styles.label}>Telefone / WhatsApp {isSetup ? <Text style={{ color: colors.textSecondary }}>(opcional)</Text> : null}</Text>
           <TextInput
             style={styles.input}
             value={perfil.telefone}

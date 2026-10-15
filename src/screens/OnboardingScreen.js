@@ -174,15 +174,8 @@ export default function OnboardingScreen({ navigation }) {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
 
-        {/* Botão Voltar ao Kit */}
-        <TouchableOpacity
-          style={styles.backToKit}
-          onPress={() => navigation.navigate('KitInicio', { setup: true })}
-          activeOpacity={0.7}
-        >
-          <Feather name="arrow-left" size={18} color={colors.primary} />
-          <Text style={styles.backToKitText}>Voltar ao Kit de Início</Text>
-        </TouchableOpacity>
+        {/* "Voltar ao Kit de Início" saiu em 15/10/2026: o Kit não faz mais
+            parte do primeiro acesso, e em modo setup ele apagava os dados. */}
 
         {/* Header */}
         <View style={styles.header}>
@@ -406,12 +399,6 @@ const styles = StyleSheet.create({
   content: { padding: spacing.md, maxWidth: 520, alignSelf: 'center', width: '100%' },
 
   // Back to Kit
-  backToKit: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingVertical: spacing.sm, paddingHorizontal: 2,
-    marginBottom: spacing.xs, alignSelf: 'flex-start',
-  },
-  backToKitText: { fontSize: fonts.regular, fontFamily: fontFamily.semiBold, color: colors.primary },
 
   // Header
   header: { alignItems: 'center', paddingVertical: spacing.lg, paddingBottom: spacing.md },

@@ -110,6 +110,28 @@ export function trackRegistrationOnce(user) {
 }
 
 /**
+ * Primeiro produto com preço (primeiro acesso guiado, 15/10/2026): evento
+ * PrimeiroPreco uma vez por conta neste navegador, mesma regra de aceite do
+ * cadastro. É o "aha" que queremos otimizar nos anúncios.
+ */
+export function trackPrimeiroPrecoOnce(user, preco) {
+  const api = pcf();
+  const valor = Number(preco);
+  if (!user?.id || !api || !(valor > 0)) return;
+  let consent = null;
+  try { consent = api.consent(); } catch {}
+  if (consent === 'denied') return;
+  const chave = `pcf_pp_${user.id}`;
+  try {
+    if (window.localStorage.getItem(chave)) return;
+    if (consent === 'granted') window.localStorage.setItem(chave, '1');
+  } catch {
+    return;
+  }
+  trackEvent('PrimeiroPreco', { content_name: 'primeiro_produto', value: Math.round(valor * 100) / 100, currency: 'BRL' }, `pp_${user.id}`);
+}
+
+/**
  * Primeira sessão de uma conta: registra o cadastro (se for novo) e grava a
  * origem no perfil, para saber depois qual anúncio trouxe quem pagou.
  * @param {object} user usuário do Supabase
