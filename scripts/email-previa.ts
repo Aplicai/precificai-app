@@ -19,6 +19,7 @@ const arg = (k: string) => { const i = process.argv.indexOf(k); return i > 0 ? p
 const saida = arg('--saida') || 'previa-emails.html';
 const simulacao = arg('--simulacao');
 const dia = arg('--dia') || '';
+const resultados = arg('--resultados');
 
 // Conta de exemplo dos prints (mesma dos tutoriais).
 const EXEMPLO: Dados = {
@@ -118,6 +119,33 @@ if (simulacao) {
     || '<p class="vazio">Nenhum e-mail da régua sai amanhã.</p>';
 }
 
+// ---------- acompanhamento (scripts/email-acompanhamento.sql) ----------
+let acompanhamento = '';
+if (resultados) {
+  type R = { campanha: string; modelo: string; formato: string; primeiro_envio: string; enviados: number; entregues: number; abriram: number; clicaram: number; voltaram_7d: number; avancaram: number; sairam: number; devolvidos: number; spam: number };
+  const rs: R[] = JSON.parse(readFileSync(resultados, 'utf8'));
+  const nomeModelo = (r: R) => r.campanha === 'd1' ? '1 dia após o cadastro'
+    : r.campanha === 'd3' ? '3 dias após o cadastro'
+    : r.campanha.startsWith('regua-') ? `Régua: ${r.modelo}`
+    : `Campanha: ${r.campanha}`;
+  const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : '-');
+  const cel = (n: number, d: number) => `<td><b>${n}</b> <span class="pct">${pct(n, d)}</span></td>`;
+  const tot = rs.reduce((a, r) => { for (const k of ['enviados', 'entregues', 'abriram', 'clicaram', 'voltaram_7d', 'avancaram', 'sairam', 'devolvidos', 'spam'] as const) a[k] += Number(r[k]); return a; },
+    { enviados: 0, entregues: 0, abriram: 0, clicaram: 0, voltaram_7d: 0, avancaram: 0, sairam: 0, devolvidos: 0, spam: 0 });
+  const linha = (nome: string, extra: string, r: Omit<R, 'campanha' | 'modelo' | 'formato' | 'primeiro_envio'>) => `<tr>
+      <th scope="row">${esc(nome)}${extra ? `<span class="sub-cel">${esc(extra)}</span>` : ''}</th>
+      <td><b>${r.enviados}</b></td>${cel(r.entregues, r.enviados)}${cel(r.abriram, r.enviados)}${cel(r.clicaram, r.enviados)}${cel(r.voltaram_7d, r.enviados)}${cel(r.avancaram, r.enviados)}
+      <td>${r.sairam + r.devolvidos + r.spam ? `<span class="ruim">${r.sairam} saíram · ${r.devolvidos} voltaram · ${r.spam} spam</span>` : '<span class="pct">nenhum</span>'}</td>
+    </tr>`;
+  acompanhamento = `<section class="secao" id="resultados"><div><h2>Como os e-mails estão indo</h2><p class="sub">Últimos 60 dias, só totais. Clique e "voltou ao app" contam mais que abertura: o iPhone marca como aberto sozinho e quem bloqueia imagem nunca aparece como aberto. "Voltou" e "avançou" só fecham 7 dias depois do envio.</p></div>
+    ${rs.length ? `<div class="tabela"><table>
+      <thead><tr><th scope="col">E-mail</th><th scope="col">Enviados</th><th scope="col">Entregues</th><th scope="col">Abriram</th><th scope="col">Clicaram</th><th scope="col">Voltaram ao app em 7 dias</th><th scope="col">Avançaram de etapa</th><th scope="col">Problemas</th></tr></thead>
+      <tbody>${rs.map((r) => linha(nomeModelo(r), `${r.formato !== '-' ? `${FORMATO_NOME[r.formato] || r.formato} · ` : ''}desde ${r.primeiro_envio.split('-').reverse().slice(0, 2).join('/')}`, r)).join('')}</tbody>
+      <tfoot>${linha('Total', '', tot)}</tfoot>
+    </table></div>` : '<p class="vazio">Nenhum e-mail enviado nos últimos 60 dias.</p>'}
+  </section>`;
+}
+
 // Sequência de 5 e-mails para uma pessoa que parou no Kit de Início.
 const seq: string[] = [];
 const pessoa: Candidato = { estagio: 'kit_sem_preco', plano: 'free', fase: 'semanal', temas_recebidos: [], formatos_recentes: [], padroes_recentes: [] };
@@ -180,6 +208,15 @@ iframe { border: 0; display: block; background: #f4f6f5; height: 700px; }
 .sequencia { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px; }
 .dia { display: inline-block; font-family: var(--mono); font-weight: 500; color: var(--brand); margin-bottom: 8px; }
 .vazio { color: var(--muted); }
+.tabela { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+table { border-collapse: collapse; width: 100%; min-width: 760px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 14px; }
+thead th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+tbody th { font-weight: 600; }
+tfoot th, tfoot td { border-bottom: 0; background: var(--brand-soft); }
+.sub-cel { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+.pct { color: var(--muted); font-size: 12px; }
+.ruim { color: var(--warn-fg); background: var(--warn-bg); border-radius: 6px; padding: 1px 6px; font-size: 12px; }
 details > summary { cursor: pointer; font-weight: 700; font-size: 20px; }
 details[open] > summary { margin-bottom: 16px; }
 </style>
@@ -187,9 +224,10 @@ details[open] > summary { margin-bottom: 16px; }
   <header>
     <h1>Prévia da régua de e-mails${dia ? ` · ${esc(dia)}` : ''}</h1>
     <p class="sub">Cada modelo aparece como o cliente vai ver, no computador e no celular, com os dados da conta de exemplo Doces da Ana. Nenhum e-mail foi enviado para gerar esta página.</p>
-    <nav>${simulacao ? '<a href="#amanha">Saem amanhã</a>' : ''}<a href="#sequencia">Sequência de uma pessoa</a><a href="#catalogo">Todos os modelos (${doCatalogo.length})</a></nav>
+    <nav>${resultados ? '<a href="#resultados">Resultados</a>' : ''}${simulacao ? '<a href="#amanha">Saem amanhã</a>' : ''}<a href="#sequencia">Sequência de uma pessoa</a><a href="#catalogo">Todos os modelos (${doCatalogo.length})</a></nav>
   </header>
   ${resumo}
+  ${acompanhamento}
   ${simulacao ? `<section class="secao" id="amanha"><div><h2>Modelos que saem amanhã</h2><p class="sub">Um cartão por modelo diferente, com quantas pessoas recebem cada um.</p></div>${amanha}</section>` : ''}
   <section class="secao" id="sequencia"><div><h2>Sequência de uma pessoa</h2><p class="sub">Os 5 primeiros e-mails da régua para quem parou no Kit de Início sem colocar preço, para conferir se cada um parece diferente do anterior.</p></div><ol class="sequencia">${seq.join('')}</ol></section>
   <section class="secao" id="catalogo"><details${simulacao ? '' : ' open'}><summary>Todos os modelos (${doCatalogo.length})</summary><div class="secao">${doCatalogo.join('')}</div></details></section>
