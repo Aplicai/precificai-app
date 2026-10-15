@@ -5,6 +5,7 @@ import Constants from 'expo-constants';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { useNavigation } from '@react-navigation/native';
 import BackToSettings from '../components/BackToSettings';
+import { openLegalPage, TERMS_PATH, PRIVACY_PATH } from '../utils/legalLinks';
 
 const VERSION = Constants?.expoConfig?.version || '2.0.0';
 
@@ -136,13 +137,13 @@ export default function SobreScreen() {
         <Text style={styles.cardTitle}>Contato e Suporte</Text>
         <TouchableOpacity
           style={styles.linkRow}
-          onPress={() => handleLink('https://www.precificaiapp.com')}
+          onPress={() => handleLink('https://precificaiapp.com')}
           activeOpacity={0.6}
           accessibilityRole="link"
-          accessibilityLabel="Abrir site www.precificaiapp.com"
+          accessibilityLabel="Abrir site precificaiapp.com"
         >
           <Feather name="globe" size={16} color={colors.primary} />
-          <Text style={styles.linkText}>www.precificaiapp.com</Text>
+          <Text style={styles.linkText}>precificaiapp.com</Text>
           <Feather name="external-link" size={14} color={colors.disabled} />
         </TouchableOpacity>
         <TouchableOpacity
@@ -163,7 +164,7 @@ export default function SobreScreen() {
         <Text style={styles.cardTitle}>Termos e privacidade</Text>
         <TouchableOpacity
           style={styles.linkRow}
-          onPress={() => handleLink('https://www.precificaiapp.com/termos')}
+          onPress={() => openLegalPage(TERMS_PATH)}
           activeOpacity={0.6}
           accessibilityRole="link"
           accessibilityLabel="Abrir Termos de Uso"
@@ -174,7 +175,7 @@ export default function SobreScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.linkRow}
-          onPress={() => handleLink('https://www.precificaiapp.com/privacidade')}
+          onPress={() => openLegalPage(PRIVACY_PATH)}
           activeOpacity={0.6}
           accessibilityRole="link"
           accessibilityLabel="Abrir Política de Privacidade"
