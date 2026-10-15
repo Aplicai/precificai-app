@@ -20,6 +20,7 @@ const saida = arg('--saida') || 'previa-emails.html';
 const simulacao = arg('--simulacao');
 const dia = arg('--dia') || '';
 const resultados = arg('--resultados');
+const automaticos = arg('--automaticos');
 
 // Conta de exemplo dos prints (mesma dos tutoriais).
 const EXEMPLO: Dados = {
@@ -106,8 +107,18 @@ if (simulacao) {
   if (vao.length > 150) alertas.push(`${vao.length} pessoas na régua: só 150 saem por dia.`);
   if (semTema) alertas.push(`${semTema} ${semTema === 1 ? 'pessoa já recebeu' : 'pessoas já receberam'} todos os temas. Faltam novidades mensais novas.`);
 
+  // d1/d3 saem pelo job de hora em hora (24-48 h e 72-96 h depois do cadastro), fora da régua.
+  type A = { campanha: string; estagio: string; n: number };
+  const auto: A[] = automaticos ? JSON.parse(readFileSync(automaticos, 'utf8')) : [];
+  const autoTxt = ['d1', 'd3'].map((cp) => {
+    const ls = auto.filter((a) => a.campanha === cp);
+    const n = ls.reduce((t, a) => t + Number(a.n), 0);
+    return n ? `<li><span>${cp === 'd1' ? '1 dia após o cadastro' : '3 dias após o cadastro'} <span class="pct">(${ls.map((a) => `${a.n} ${esc(ETAPA_NOME[a.estagio] || a.estagio)}`).join(', ')})</span></span><b>${n}</b></li>` : '';
+  }).join('');
+  const autoTotal = auto.reduce((t, a) => t + Number(a.n), 0);
   resumo = `<section class="resumo" aria-label="Resumo de ${esc(dia)}">
-    <div class="grande"><span class="num">${vao.length - semTema}</span><span>e-mails saem ${dia ? `em ${esc(dia)}` : 'amanhã'} às 10h</span></div>
+    <div class="grande"><span class="num">${vao.length - semTema}</span><span>e-mails da régua saem ${dia ? `em ${esc(dia)}` : 'amanhã'} às 10h</span></div>
+    ${automaticos ? `<div><h3>Automáticos do mesmo dia (para quem se cadastrou há pouco)</h3><ul class="lista-auto">${autoTxt || '<li>Nenhum</li>'}</ul><p class="sub">Saem ao longo do dia, 24 h e 72 h depois de cada cadastro${autoTotal ? `: ${autoTotal} no total` : ''}. Quem não confirmou o e-mail não recebe.</p></div>` : ''}
     <div class="grade">
       <div><h3>Por etapa</h3><ul>${[...porEtapa].map(([k, n]) => `<li><span>${esc(ETAPA_NOME[k] || k)}</span><b>${n}</b></li>`).join('') || '<li>Ninguém</li>'}</ul></div>
       <div><h3>Ficam de fora</h3><ul>${[...motivos].sort((a, b) => b[1] - a[1]).map(([k, n]) => `<li><span>${esc(k)}</span><b>${n}</b></li>`).join('') || '<li>Ninguém</li>'}</ul></div>
@@ -189,6 +200,8 @@ nav a:focus-visible, a:focus-visible { outline: 2px solid var(--mint); outline-o
 .grade ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .grade li { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding-block: 4px; }
 .grade b { font-variant-numeric: tabular-nums; }
+.lista-auto { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.lista-auto li { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding-block: 4px; }
 .aviso { background: var(--warn-bg); color: var(--warn-fg); border-radius: 10px; padding: 10px 14px; margin: 0; }
 .secao { display: grid; gap: 20px; }
 .modelo { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
