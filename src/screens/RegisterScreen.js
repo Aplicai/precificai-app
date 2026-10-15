@@ -9,6 +9,7 @@ import { mapAuthError } from '../utils/authErrors';
 import { parseRateLimitSeconds } from '../utils/parseRateLimit';
 import { MIN_PASSWORD_LENGTH, validatePassword, passwordCriteria } from '../utils/passwordPolicy';
 import { askConsent } from '../utils/marketing';
+import { ehContaGoogle } from '../utils/emailGoogle';
 
 // Política de senha: `utils/passwordPolicy.js` (compartilhada com
 // ResetPasswordScreen e ContaSegurancaScreen). 8+ caracteres, 1 letra, 1 número.
@@ -32,6 +33,10 @@ export default function RegisterScreen({ navigation }) {
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Google primeiro: quem entra pelo Google não depende do e-mail de
+  // confirmação (14–15/10: 10 de 10 entraram; por e-mail e senha, 8 de 17).
+  // O formulário fica atrás de um link.
+  const [formEmail, setFormEmail] = useState(false);
   // Countdown (segundos) para rate-limit retornado pelo Supabase.
   // Quando > 0, desabilita o botão e exibe "Aguarde Xs para tentar novamente".
   const [retryIn, setRetryIn] = useState(0);
@@ -174,7 +179,9 @@ export default function RegisterScreen({ navigation }) {
               <Text style={{ fontFamily: fontFamily.semiBold, color: colors.text }}>{email}</Text>.
               {' '}Clique nele e esta tela avança sozinha.
             </Text>
-            <Text style={styles.successHint}>Não encontrou? Verifique a pasta de spam.</Text>
+            <Text style={styles.successHint}>
+              Não encontrou? Veja no spam e na aba Promoções. O link vale por 1 hora; se vencer, peça outro na tela de entrar.
+            </Text>
             <TouchableOpacity
               style={[styles.primaryBtn, checkingSession && styles.primaryBtnDisabled]}
               onPress={handleAlreadyConfirmed}
@@ -240,9 +247,21 @@ export default function RegisterScreen({ navigation }) {
             )}
           </TouchableOpacity>
           <Text style={styles.googleHelperText}>
-            Vamos criar sua conta automaticamente com seu Google.
+            Sua conta fica pronta na hora, sem precisar confirmar e-mail.
           </Text>
 
+          {!formEmail ? (
+            <TouchableOpacity
+              style={styles.formEmailLink}
+              onPress={() => setFormEmail(true)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+            >
+              <Feather name="mail" size={15} color={colors.primary} style={{ marginRight: 6 }} />
+              <Text style={styles.formEmailLinkText}>Prefiro cadastrar com e-mail e senha</Text>
+            </TouchableOpacity>
+          ) : (
+          <>
           <View style={styles.dividerRow}>
             <View style={styles.dividerLine} />
             <Text style={styles.dividerText}>ou</Text>
@@ -264,6 +283,25 @@ export default function RegisterScreen({ navigation }) {
             onSubmitEditing={() => passwordRef.current?.focus()}
             placeholderTextColor={colors.placeholder}
           />
+
+          {ehContaGoogle(email) ? (
+            <View style={styles.gmailHint}>
+              <Text style={styles.gmailHintText}>
+                Usa Gmail? Entre com o Google: sua conta fica pronta na hora, sem esperar o e-mail de confirmação.
+              </Text>
+              <TouchableOpacity
+                style={[styles.gmailHintBtn, googleDisabled && styles.googleBtnDisabled]}
+                onPress={handleGoogleSignup}
+                disabled={googleDisabled}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Continuar com Google"
+              >
+                <MaterialCommunityIcons name="google" size={16} color="#4285F4" style={{ marginRight: 8 }} />
+                <Text style={styles.googleBtnText}>Continuar com Google</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
 
           <Text style={styles.label}>Senha</Text>
           <View style={[styles.passwordContainer, { minHeight: inputHeight }]}>
@@ -336,6 +374,8 @@ export default function RegisterScreen({ navigation }) {
               Aguarde {retryIn}s para tentar novamente
             </Text>
           ) : null}
+          </>
+          )}
 
           <Text style={styles.termsNotice}>
             Ao criar sua conta, você concorda com os{' '}
@@ -579,6 +619,46 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontFamily: fontFamily.regular,
     lineHeight: 16,
+  },
+  // "Prefiro cadastrar com e-mail e senha" (abre o formulário)
+  formEmailLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    paddingVertical: 10,
+  },
+  formEmailLinkText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontFamily: fontFamily.semiBold,
+    textDecorationLine: 'underline',
+  },
+  // Sugestão do Google quando o e-mail digitado é @gmail.com
+  gmailHint: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.surfaceTint,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  gmailHintText: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.text,
+    fontFamily: fontFamily.regular,
+  },
+  gmailHintBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#dadce0',
+    borderRadius: 8,
+    paddingVertical: 10,
+    marginTop: 10,
   },
   // Separador "ou" entre Google e form de email/senha
   dividerRow: {
