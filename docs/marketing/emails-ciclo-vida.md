@@ -82,6 +82,35 @@ Consultas no banco: `scratchpad/audit/q.py "<sql>"` (Management API, token do `.
 4. Quem não confirmou o e-mail não entra (4 contas em 14/10). Se confirmarem depois, entram no d1/d3 automático.
 5. Reportar ao Erick: quantos saíram por etapa, falhas, e no dia seguinte quantos voltaram ao app.
 
+**Checkup feito em 14/10 (noite):** crons 2 e 3 ativos. Simulação via SQL (`select estagio, plano, count(*) from public.email_candidatos(...)` passa no classificador; chamar a função HTTP não passa, nem amostra): reativação do cron 29, d1 de 13 e 14/10 11 (6 kit, 2 sem_perfil, 2 produto_sem_preco, 1 ativo), reativação até 13/10 31 (as 29 + 2 `ativo` ilimitado). Total previsto: 42. Os 11 modelos foram renderizados localmente (`montarEmail` via `node --experimental-strip-types`) sem `RR$`, sem `nbsp;` solto e sem travessão.
+**Amostras e disparo (14/10, noite):** as 11 amostras `[Teste]` saíram para erickfa@live.com e o Erick aprovou. Passos 2 e 3 agendados no pg_cron como job 4 `email-disparo-2026-10-15` (`15 12 15 10 *` = 15/10, 9h15; se apaga sozinho; o segredo vem do Vault). Falta só o passo 5 (relatório): conferir `cron.job_run_details` dos jobs 3 e 4 e `email_envios` por campanha/etapa (esperado 29 + 11 + 2 = 42).
+**Cópia para o Erick:** 1 amostra `[Teste]` de cada modelo para erickfa@live.com ANTES de cada disparo (sem BCC em cada envio). Scripts na scratchpad da sessão 5161be97: `amostras.sh` (11 amostras) e `disparo-15-10.sh` (passos 2 e 3; recusa rodar antes das 9h15). Os dois leem o segredo de `03abd2a9…/scratchpad/.email_cron_secret`; se o /tmp for limpo (reboot), ler de novo do Vault.
+
+## Régua semanal (código pronto em 14/10, NÃO aplicada nem publicada)
+
+Desenho: `.specs/plans/email-regua.design.md`. Depois do d1/d3: dias 7-30 a cada 7 dias, 31-90 a cada 15, depois mensal (pausa após 3 mensais sem clique e sem voltar ao app). Nunca para quem usou o app nos últimos 3 dias nem para quem recebeu qualquer e-mail (fora d1/d3) nos últimos 7.
+
+| Peça | Onde |
+|---|---|
+| Regra de calendário e candidatos | migration `20261015100000_email_regua.sql` (`email_regua_fase`, `email_regua_motivo`, `email_regua_candidatos(p_agora, p_todos)`, `email_dados(uid)`, tabelas `email_eventos` e `email_config`) |
+| Teste da regra (SQL) | `supabase/tests/email_regua_motivo.sql` (vazio = ok; rodado inline em 14/10: 15/15) |
+| Temas × formatos e escolha | `supabase/functions/email-ciclo-vida/regua.ts` (14 temas de etapa + 2 mensais, 2 formatos cada) |
+| Moldura e 6 formatos | `layout.ts` (`moldura`, `htmlNumeros`, `htmlMito`, `htmlChecklist`, `htmlVideo`, `htmlTela`) |
+| d1/d3/campanhas (sem mudança de HTML) | `legado.ts` |
+| Testes | `__tests__/emailRegua.test.mjs` |
+| Prévia (página) | `node scripts/email-previa.ts --saida X.html [--simulacao amanha.json --dia 16/10]`; publicada em https://claude.ai/artifact/AksERXs6xcxa3mwZM4KJPk |
+
+Chamadas novas: `{"regua":true}` simula; `{"regua":true,"enviar":true}` envia. Automático: o job de hora em hora roda a régua às 10h de Brasília em dia útil, só com `email_config.regua_ativa = true` (nasce `false`). Teto de 150/dia; 3 falhas seguidas param o dia. Webhook do Resend: POST com headers `svix-*` na mesma função (secret `RESEND_WEBHOOK_SECRET`); `bounced`/`complained` viram opt-out.
+
+**Para ligar (cada passo com OK do Erick, só depois do disparo de 15/10 9h15):**
+1. Aplicar a migration `20261015100000` e rodar `supabase/tests/email_regua_motivo.sql`.
+2. Deploy: `npx supabase functions deploy email-ciclo-vida --no-verify-jwt --project-ref lwznqpxzmqptrpbifvka`.
+3. Resend: ligar rastreio de clique no domínio e criar webhook (`email.clicked`, `email.opened`, `email.bounced`, `email.complained`, `email.delivered`) para a URL da função; salvar o segredo `whsec_…` como `RESEND_WEBHOOK_SECRET` nos secrets da função.
+4. Tarefa agendada do Claude às 17h (dias úteis): simular amanhã com `email_regua_candidatos(<amanhã 10h>, true)` + dados anonimizados, rodar `scripts/email-previa.ts` e republicar a prévia no mesmo link.
+5. 1 semana em simulação; Erick liga: `update public.email_config set valor = 'true' where chave = 'regua_ativa';`
+
+Pendente na V1: prints de tela (formato `tela`, pasta `assets/email/telas/`) ainda não existem, então nenhum tema usa esse formato; custo/margem no e-mail; datas sazonais; e-mails assinados.
+
 ## Histórico
 
 - 14/10: sistema criado (d1/d3/campanhas, descadastro com link assinado), layout novo da marca (cabeçalho verde, barra de jornada, caixa "Você escreve", capa do vídeo, preços do Pro), bug do `R$` corrigido antes de qualquer envio real, etapa do kit corrigida.
