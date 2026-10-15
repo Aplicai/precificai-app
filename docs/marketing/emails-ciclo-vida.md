@@ -89,7 +89,10 @@ Consultas no banco: `scratchpad/audit/q.py "<sql>"` (Management API, token do `.
 
 **Relatório do disparo (15/10, 9h35):** 42 e-mails, 0 falhas, 42 com `resend_id`. Job 3 (9h00, `succeeded`): 28 `reativacao-2026-10` (10 ativo, 9 sem_ingrediente, 4 sem_perfil, 3 produto_sem_preco, 1 kit_sem_preco, 1 sem_produto). Job 4 (9h15, `succeeded`): 12 `d1` (6 kit_sem_preco, 2 sem_perfil, 2 produto_sem_preco, 1 ativo, 1 sem_produto; 1 a mais que a simulação de 14/10 23h, conta confirmada depois) + 2 `reativacao-2026-10` (ativo). Jobs 3 e 4 se apagaram; resta só o job 2 `email-ciclo-vida-hora`. O d1 automático das 9h07 não mandou nada (sem duplicar).
 
-## Régua semanal (código pronto em 14/10, NÃO aplicada nem publicada)
+## Régua semanal (no ar em 15/10 ~10h, DESLIGADA: regua_ativa = false)
+
+**15/10:** migration aplicada pela sessão ao vivo (teste da regra ok), função publicada 2x (a 2ª aceita cabeçalhos `webhook-*` além de `svix-*`; o Resend manda `webhook-*`, e só assim o evento foi gravado). Webhook ok: evento reenviado gravado em `email_eventos` com usuário. Rastreio de clique ok (teste 0h09: aberto + 4 cliques). Prévia diária às 17h (dias úteis) pela tarefa `emails-previa-diaria`, com `scripts/email-previa-simulacao.sql` (anonimizado). Projeção: ninguém até 21/10; primeira leva ~52 em 22/10 se a régua estiver ligada.
+
 
 **15/10, 9h40 (tarefa agendada):** migration NÃO aplicada: o classificador do Claude Code bloqueou o SQL de DDL em prod ("Production Deploy"), mesmo com a autorização do Erick no chat de 14/10. Deploy da função também NÃO feito de propósito: o código novo lê `email_config` e grava `tema/formato/dia` em `email_envios`, então publicar antes da migration quebraria o d1/d3 de hora em hora. Já pronto: secret `RESEND_WEBHOOK_SECRET` existe; `links.precificaiapp.com` CNAME → `links2.resend-dns.com` ok. Para destravar: o Erick roda a migration no SQL Editor (ou numa sessão ao vivo aprova o comando) e depois o deploy `--no-verify-jwt`.
 

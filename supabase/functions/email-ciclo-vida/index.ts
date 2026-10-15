@@ -88,9 +88,11 @@ function diaUtilBrasilia(): boolean {
 // Assinatura Svix: HMAC-SHA256 de "id.timestamp.corpo" com o segredo whsec_… (base64).
 
 async function assinaturaResendOk(req: Request, corpo: string): Promise<boolean> {
-  const id = req.headers.get('svix-id');
-  const ts = req.headers.get('svix-timestamp');
-  const sigs = req.headers.get('svix-signature');
+  // Resend (Svix) manda svix-* ou o padrão Standard Webhooks webhook-*: mesma assinatura.
+  const h = (k: string) => req.headers.get(`svix-${k}`) ?? req.headers.get(`webhook-${k}`);
+  const id = h('id');
+  const ts = h('timestamp');
+  const sigs = h('signature');
   const segredo = Deno.env.get('RESEND_WEBHOOK_SECRET') || '';
   if (!id || !ts || !sigs || !segredo.startsWith('whsec_')) return false;
   if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false; // 5 min: barra reenvio de evento antigo
@@ -187,7 +189,7 @@ serve(async (req) => {
   }
 
   if (req.method !== 'POST') return new Response('Not found', { status: 404 });
-  if (req.headers.get('svix-id')) return eventoResend(supabase, req);
+  if (req.headers.get('svix-id') || req.headers.get('webhook-id')) return eventoResend(supabase, req);
   if (req.headers.get('x-cron-secret') !== Deno.env.get('EMAIL_CRON_SECRET')) {
     return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), { status: 401 });
   }
