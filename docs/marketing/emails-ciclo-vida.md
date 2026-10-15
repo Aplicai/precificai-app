@@ -22,7 +22,7 @@
 | Imagens do e-mail | repositório `../precificai-site/assets/email/` (logo branca, logo verde, capa do vídeo). Servidas em `https://precificaiapp.com/assets/email/…`. Mudou imagem: commit + `vercel deploy --prod --yes` no precificai-site |
 | E-mail de confirmação de cadastro | template do Supabase Auth (PT-BR), não passa por esta função |
 
-Envio pelo Resend: remetente `Precificaí <noreply@precificaiapp.com>`, resposta para `contato@precificaiapp.com`, cabeçalho List-Unsubscribe, 600 ms entre envios.
+Conta do Resend: login **contato@aplicaiconsultoria.com.br** (a `RESEND_API_KEY` é só de envio; webhook, cliques e logs só pelo painel). Envio pelo Resend: remetente `Precificaí <noreply@precificaiapp.com>`, resposta para `contato@precificaiapp.com`, cabeçalho List-Unsubscribe, 600 ms entre envios.
 
 ## Quem recebe o quê
 
