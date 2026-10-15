@@ -113,6 +113,13 @@ export function calcCustoListaPreparo(custoPorKg, unidadeMedida) {
   return getTipoUnidade(unidadeMedida) === 'unidade' ? custo / 1000 : custo;
 }
 
+/** Rótulo do custo na lista de receitas base: "R$ 18,32/kg", "R$ 12,00/L", "R$ 1,50/un". */
+export function formatCustoListaPreparo(custoPorKg, unidadeMedida) {
+  const tipo = getTipoUnidade(unidadeMedida);
+  const sufixo = tipo === 'peso' ? 'kg' : tipo === 'volume' ? 'L' : 'un';
+  return `${formatCurrency(calcCustoListaPreparo(custoPorKg, unidadeMedida))}/${sufixo}`;
+}
+
 /**
  * Reajuste em massa de receita base. Parte do total derivado de custo_por_kg
  * (não do custo_total gravado, que pode estar desatualizado) e devolve os dois

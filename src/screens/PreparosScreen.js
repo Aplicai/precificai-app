@@ -8,7 +8,7 @@ import FAB from '../components/FAB';
 import SearchBar from '../components/SearchBar';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius, radius, numeric } from '../utils/theme';
-import { formatCurrency, getTipoUnidade, normalizeSearch, calcCustoListaPreparo, calcCustoTotalPreparo, reajusteCustoPreparo } from '../utils/calculations';
+import { formatCurrency, getTipoUnidade, normalizeSearch, calcCustoListaPreparo, formatCustoListaPreparo, calcCustoTotalPreparo, reajusteCustoPreparo } from '../utils/calculations';
 import { subscribeDataChanged } from '../utils/dataSync';
 import EmptyState from '../components/EmptyState';
 import Skeleton from '../components/Skeleton';
@@ -688,11 +688,16 @@ export default function PreparosScreen({ navigation }) {
                     )}
                     <HighlightedText text={item.nome} query={busca} style={styles.gridCardName} numberOfLines={1} />
                   </View>
-                  {/* UX audit 09/09: 2 linhas — nome inteiro em cima, rendimento + ações embaixo. */}
+                  {/* UX audit 09/09: 2 linhas — nome inteiro em cima, custo + ações embaixo. */}
                   <View style={styles.gridCardBottom}>
-                    <Text style={styles.gridCardPrice}>
-                      Rende {formatRendimento(item.rendimento_total, item.unidade_medida)}
-                    </Text>
+                    <View style={{ flexShrink: 1 }}>
+                      <Text style={[styles.gridCardPrice, { textAlign: 'left' }]}>
+                        {formatCustoListaPreparo(item.custo_por_kg, item.unidade_medida)}
+                      </Text>
+                      <Text style={styles.gridCardRende} numberOfLines={1}>
+                        Rende {formatRendimento(item.rendimento_total, item.unidade_medida)}
+                      </Text>
+                    </View>
                     {!bulk.active && (
                       <View style={[{ flexDirection: 'row', alignItems: 'center', marginLeft: 6, gap: 2 }, !showActions && { opacity: 0 }]}>
                         <TouchableOpacity
@@ -1375,6 +1380,11 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     textAlign: 'right',
     ...numeric,
+  },
+  gridCardRende: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 1,
   },
   gridCatHeader: {
     flexDirection: 'row',
