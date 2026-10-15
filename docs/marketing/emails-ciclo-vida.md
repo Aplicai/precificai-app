@@ -87,7 +87,11 @@ Consultas no banco: `scratchpad/audit/q.py "<sql>"` (Management API, token do `.
 **15/10, 0h30:** conta interna `prec…@gmail.com` posta em `email_optout` a pedido do Erick (sai de tudo; desfazer = apagar a linha). `cont…@aplicaiconsultoria.com.br` fica de propósito, para o Erick ver o que chega. Reativação das 9h: 28.
 **Cópia para o Erick:** 1 amostra `[Teste]` de cada modelo para erickfa@live.com ANTES de cada disparo (sem BCC em cada envio). Scripts na scratchpad da sessão 5161be97: `amostras.sh` (11 amostras) e `disparo-15-10.sh` (passos 2 e 3; recusa rodar antes das 9h15). Os dois leem o segredo de `03abd2a9…/scratchpad/.email_cron_secret`; se o /tmp for limpo (reboot), ler de novo do Vault.
 
+**Relatório do disparo (15/10, 9h35):** 42 e-mails, 0 falhas, 42 com `resend_id`. Job 3 (9h00, `succeeded`): 28 `reativacao-2026-10` (10 ativo, 9 sem_ingrediente, 4 sem_perfil, 3 produto_sem_preco, 1 kit_sem_preco, 1 sem_produto). Job 4 (9h15, `succeeded`): 12 `d1` (6 kit_sem_preco, 2 sem_perfil, 2 produto_sem_preco, 1 ativo, 1 sem_produto; 1 a mais que a simulação de 14/10 23h, conta confirmada depois) + 2 `reativacao-2026-10` (ativo). Jobs 3 e 4 se apagaram; resta só o job 2 `email-ciclo-vida-hora`. O d1 automático das 9h07 não mandou nada (sem duplicar).
+
 ## Régua semanal (código pronto em 14/10, NÃO aplicada nem publicada)
+
+**15/10, 9h40 (tarefa agendada):** migration NÃO aplicada: o classificador do Claude Code bloqueou o SQL de DDL em prod ("Production Deploy"), mesmo com a autorização do Erick no chat de 14/10. Deploy da função também NÃO feito de propósito: o código novo lê `email_config` e grava `tema/formato/dia` em `email_envios`, então publicar antes da migration quebraria o d1/d3 de hora em hora. Já pronto: secret `RESEND_WEBHOOK_SECRET` existe; `links.precificaiapp.com` CNAME → `links2.resend-dns.com` ok. Para destravar: o Erick roda a migration no SQL Editor (ou numa sessão ao vivo aprova o comando) e depois o deploy `--no-verify-jwt`.
 
 Desenho: `.specs/plans/email-regua.design.md`. Depois do d1/d3: dias 7-30 a cada 7 dias, 31-90 a cada 15, depois mensal (pausa após 3 mensais sem clique e sem voltar ao app). Nunca para quem usou o app nos últimos 3 dias nem para quem recebeu qualquer e-mail (fora d1/d3) nos últimos 7.
 
