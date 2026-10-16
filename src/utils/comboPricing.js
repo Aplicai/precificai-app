@@ -66,12 +66,76 @@ export function calcCustoItemComboPorQuantidade(tipo, dados, quantidade) {
   return custo * (safeNum(quantidade) || 0);
 }
 
+/** Arredonda pra centavos (a mesma precisão que `formatCurrency` exibe). */
+export function arredondarCentavos(valor) {
+  const n = safeNum(valor);
+  return Math.round((n + Math.sign(n) * Number.EPSILON) * 100) / 100;
+}
+
 /**
- * Custo total do combo: soma de custoUnit × quantidade de cada item já resolvido.
+ * Custo de UMA linha do combo (custoUnit × quantidade), já em centavos.
+ * Quantidade vazia/0 conta como 1, igual ao que é gravado no banco
+ * (`safeNum(quantidade) || 1`) e ao que a linha mostra no modal.
+ */
+export function calcCustoLinhaCombo(item) {
+  return arredondarCentavos(safeNum(item?.custoUnit) * (safeNum(item?.quantidade) || 1));
+}
+
+/**
+ * Custo total do combo = soma das linhas JÁ arredondadas (calcCustoLinhaCombo).
+ * Antes somava os valores crus: cada linha aparecia arredondada no modal e o
+ * total ("Produtos R$ 84,00") não batia com a soma das linhas (R$ 84,01).
  * @param {Array<{custoUnit:number, quantidade:number|string}>} itens
  */
 export function calcCustoTotalCombo(itens) {
-  return (itens || []).reduce((acc, it) => acc + safeNum(it.custoUnit) * safeNum(it.quantidade), 0);
+  return arredondarCentavos((itens || []).reduce((acc, it) => acc + calcCustoLinhaCombo(it), 0));
+}
+
+/**
+ * Custo do combo separado por tipo de item (resumo do modal), com a mesma
+ * regra de arredondamento por linha de `calcCustoTotalCombo` — a soma das
+ * partes sempre bate com o total.
+ * @returns {{ produtos:number, insumos:number, preparos:number, embalagens:number }}
+ */
+export function calcCustoComboPorTipo(itens) {
+  const lista = itens || [];
+  const somar = (fn) => calcCustoTotalCombo(lista.filter(fn));
+  return {
+    produtos: somar((i) => i.tipo === 'produto' || i.tipo === 'delivery_produto'),
+    insumos: somar((i) => i.tipo === 'materia_prima'),
+    preparos: somar((i) => i.tipo === 'preparo'),
+    embalagens: somar((i) => i.tipo === 'embalagem'),
+  };
+}
+
+/** Número → texto do campo de preço ("12,34"). */
+export function formatarPrecoInputCombo(valor) {
+  return arredondarCentavos(valor).toFixed(2).replace('.', ',');
+}
+
+/**
+ * Valor do campo "Preço de venda" enquanto ele acompanha o preço sugerido
+ * (combo novo e a usuária ainda não digitou um preço). Recalculado a cada
+ * mudança nos itens: sem itens ou sem sugestão válida → campo vazio. Antes o
+ * campo era preenchido UMA vez, com a sugestão do 1º item, e nunca mais
+ * mudava (combo de R$ 50,67 de custo salvo a R$ 1,20).
+ */
+export function precoAutoCombo({ qtdItens, precoSugerido }) {
+  if (!(qtdItens > 0)) return '';
+  const p = safeNum(precoSugerido);
+  return p > 0 ? formatarPrecoInputCombo(p) : '';
+}
+
+/**
+ * true se nome/preço do formulário mudaram em relação ao último estado
+ * aberto/gravado. O autosave (debounce) só roda quando há mudança real —
+ * antes disparava só por abrir um combo existente ("Salvando..." sem editar).
+ * Sem base conhecida → considera mudado (nunca perder edição).
+ */
+export function camposComboMudaram(base, atual) {
+  if (!base) return true;
+  const txt = (v) => String(v ?? '');
+  return txt(base.nome) !== txt(atual?.nome) || txt(base.preco_venda) !== txt(atual?.preco_venda);
 }
 
 /**

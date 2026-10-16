@@ -31,6 +31,12 @@ import {
   calcMargemLiquidaCombo,
   calcSomaPrecoAvulsoProdutos,
   calcEconomiaCombo,
+  arredondarCentavos,
+  calcCustoLinhaCombo,
+  calcCustoComboPorTipo,
+  formatarPrecoInputCombo,
+  precoAutoCombo,
+  camposComboMudaram,
 } from '../utils/comboPricing';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useKeyboardInset from '../hooks/useKeyboardInset';
@@ -87,7 +93,7 @@ export default function DeliveryCombosScreen() {
   const { canAdd, limitFor, plano, upgradeTo } = usePlan();
   const [upgradeModal, setUpgradeModal] = useState(null);
   // APP-22: contexto financeiro pra alimentar a fórmula completa do combo
-  const [contextoFin, setContextoFin] = useState({ lucroPerc: 0.15, fixoPerc: 0, variavelPerc: 0 });
+  const [contextoFin, setContextoFin] = useState({ lucroPerc: 0.15, fixoPerc: 0, variavelPerc: 0, margemSegurancaPerc: 0 });
   const [busca, setBusca] = usePersistedState('deliveryCombos.busca', '');
   const [confirmRemove, setConfirmRemove] = useState(null);
   const undoDelete = useUndoableDelete();
@@ -150,10 +156,13 @@ export default function DeliveryCombosScreen() {
   novoComboRef.current = novoCombo;
   const editingComboRef = useRef(editingCombo);
   editingComboRef.current = editingCombo;
-  // Auditoria 2026-09-09 — true assim que a usuária digita o preço de venda
-  // manualmente, pra nunca mais sobrescrever com o preço sugerido (prefill
-  // só deve acontecer uma vez, antes de qualquer edição do campo).
-  const manualPrecoRef = useRef(false);
+  // Nome/preço do último estado aberto ou mandado gravar (modo edição). O
+  // autosave por debounce só roda quando o formulário difere disso: abrir um
+  // combo sem mexer em nada não pode disparar "Salvando...".
+  const baseSalvaRef = useRef(null);
+  // Aponta pra versão mais recente de descarregarAutoSavePendente (usada no
+  // cleanup do foco, que é criado uma vez só).
+  const descarregarAutoSaveRef = useRef(null);
 
   // Available items for picker
   const [allProdutos, setAllProdutos] = useState([]);
@@ -165,7 +174,11 @@ export default function DeliveryCombosScreen() {
   useFocusEffect(
     useCallback(() => {
       loadData();
-      return () => { setConfirmRemove(null); setShowComboModal(false); setEditingCombo(null); setLoaded(false); };
+      return () => {
+        // Sair da tela com edição ainda no debounce: grava em vez de descartar.
+        descarregarAutoSaveRef.current?.();
+        setConfirmRemove(null); setShowComboModal(false); setEditingCombo(null); setLoaded(false);
+      };
     }, [])
   );
 
@@ -174,6 +187,10 @@ export default function DeliveryCombosScreen() {
     if (!editingComboRef.current || !loaded) return;
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    // `loaded` virando true ao abrir o combo também roda este efeito: sem
+    // mudança real em nome/preço, não agenda gravação nenhuma.
+    if (!camposComboMudaram(baseSalvaRef.current, novoComboRef.current)) return;
 
     setSaveStatus(null);
     saveTimerRef.current = setTimeout(() => {
@@ -237,6 +254,9 @@ export default function DeliveryCombosScreen() {
         lucroPerc: ctx.lucroPerc,
         fixoPerc: ctx.fixoPerc,
         variavelPerc: ctx.variavelPerc,
+        // Faltava: o preço sugerido do combo ignorava a margem de segurança
+        // configurada no Financeiro (produtos já a usam no preço sugerido).
+        margemSegurancaPerc: ctx.margemSegurancaPerc,
       });
     } catch (e) { console.warn('[DeliveryCombos.contextoFin] falha ao montar:', e); }
 
@@ -320,27 +340,29 @@ export default function DeliveryCombosScreen() {
         if (item.tipo === 'produto') {
           const prod = prodResults.find(p => p.id === item.item_id);
           if (prod) {
-            custo += resolveCustoUnitarioItemCombo('produto', prod).custo * item.quantidade;
+            custo += calcCustoLinhaCombo({ custoUnit: resolveCustoUnitarioItemCombo('produto', prod).custo, quantidade: item.quantidade });
             if (safeNum(prod.precoVenda) > 0) somaAvulso += safeNum(prod.precoVenda) * item.quantidade;
           }
         } else if (item.tipo === 'delivery_produto') {
           const dp = deliveryProdResults.find(p => p.id === item.item_id);
           if (dp) {
-            custo += resolveCustoUnitarioItemCombo('delivery_produto', dp).custo * item.quantidade;
+            custo += calcCustoLinhaCombo({ custoUnit: resolveCustoUnitarioItemCombo('delivery_produto', dp).custo, quantidade: item.quantidade });
             if (safeNum(dp.precoVenda) > 0) somaAvulso += safeNum(dp.precoVenda) * item.quantidade;
           }
         } else if (item.tipo === 'materia_prima') {
           const mp = materiasList.find(m => m.id === item.item_id);
-          if (mp) custo += resolveCustoUnitarioItemCombo('materia_prima', mp).custo * item.quantidade;
+          if (mp) custo += calcCustoLinhaCombo({ custoUnit: resolveCustoUnitarioItemCombo('materia_prima', mp).custo, quantidade: item.quantidade });
         } else if (item.tipo === 'embalagem') {
           const emb = embalagensList.find(e => e.id === item.item_id);
-          if (emb) custo += resolveCustoUnitarioItemCombo('embalagem', emb).custo * item.quantidade;
+          if (emb) custo += calcCustoLinhaCombo({ custoUnit: resolveCustoUnitarioItemCombo('embalagem', emb).custo, quantidade: item.quantidade });
         } else if (item.tipo === 'preparo') {
           const prep = preparosList.find(p => p.id === item.item_id);
-          if (prep) custo += resolveCustoUnitarioItemCombo('preparo', prep).custo * item.quantidade;
+          if (prep) custo += calcCustoLinhaCombo({ custoUnit: resolveCustoUnitarioItemCombo('preparo', prep).custo, quantidade: item.quantidade });
         }
       }
-      combosWithCost.push({ ...combo, itens, custo, somaAvulso });
+      // Linhas em centavos (calcCustoLinhaCombo), igual ao modal: o custo do
+      // card bate com o "Custo dos itens" do modal.
+      combosWithCost.push({ ...combo, itens, custo: arredondarCentavos(custo), somaAvulso });
     }
     setCombos(combosWithCost);
     } catch (e) {
@@ -396,18 +418,18 @@ export default function DeliveryCombosScreen() {
         }
       }
     } catch (_) {}
-    setNovoCombo(restored || { nome: '', preco_venda: '', itens: [] });
-    // Se o draft restaurado já tinha preço, não prefilar por cima dele.
-    manualPrecoRef.current = !!(restored && restored.preco_venda);
+    // precoAuto: o campo de preço acompanha o preço sugerido (recalculado a
+    // cada item) até a usuária digitar um valor. Draft antigo sem a flag e com
+    // preço preenchido → trata o preço como digitado.
+    setNovoCombo(restored
+      ? { ...restored, precoAuto: restored.precoAuto ?? !restored.preco_venda }
+      : { nome: '', preco_venda: '', itens: [], precoAuto: true });
     setShowComboModal(true);
   }
 
   // Open modal for editing
   function abrirEditarCombo(combo) {
     setEditingCombo(combo);
-    // Combo já tem preço salvo (ou explicitamente em branco por escolha da
-    // usuária) — não prefilar por cima ao abrir pra editar.
-    manualPrecoRef.current = !!combo.preco_venda;
     // Auditoria 2026-09-09: usa resolveCustoUnitarioItemCombo (mesma função usada
     // ao adicionar item e ao carregar a lista) — antes esta função recalculava o
     // custo com 'g' fixo, deixando o custo de um item recém-adicionado (correto)
@@ -446,13 +468,18 @@ export default function DeliveryCombosScreen() {
       const { custo: custoUnit, unidade } = resolveCustoUnitarioItemCombo(item.tipo, dados || {});
       return { tipo: item.tipo, item_id: item.item_id, quantidade: item.quantidade, nome, custoUnit, unidade, precoVendaAvulso };
     });
-    setNovoCombo({
+    // Combo existente: mostra o preço SALVO, nunca preenche com a sugestão
+    // (precoAuto false). A base do autosave é o que acabou de ser aberto.
+    const formAberto = {
       nome: combo.nome,
       preco_venda: String(combo.preco_venda || '').replace('.', ','),
       itens: itensComNome,
       embalagensDelivery: (parseEmbalagensDelivery(combo.embalagens_delivery) || [])
         .map(e => ({ id: e.id, quantidade: String(e.qtd).replace('.', ',') })),
-    });
+      precoAuto: false,
+    };
+    baseSalvaRef.current = { nome: formAberto.nome, preco_venda: formAberto.preco_venda };
+    setNovoCombo(formAberto);
     setEmbDeliveryAberto(false);
     setBuscaEmbDelivery('');
     setBuscaItem('');
@@ -494,6 +521,8 @@ export default function DeliveryCombosScreen() {
     const data = novoComboRef.current;
     if (!combo) return;
     if (!data.nome.trim()) return; // don't save without name
+    // Já gravado por outro caminho (item mexido, fechar) enquanto o debounce corria.
+    if (!camposComboMudaram(baseSalvaRef.current, data)) return;
     return salvarComboEditado(combo, data, 'autoSave');
   }
 
@@ -505,6 +534,11 @@ export default function DeliveryCombosScreen() {
   // tempo, e um pedido feito durante uma gravação roda UMA vez depois, com o
   // estado mais recente (ver utils/gravacaoSegura).
   function salvarComboEditado(combo, data, origem) {
+    // Base do autosave = o que foi mandado gravar (no pedido, não no fim:
+    // desfazer a edição durante a gravação também precisa ser gravado).
+    if (editingComboRef.current?.id === combo.id) {
+      baseSalvaRef.current = { nome: data.nome, preco_venda: data.preco_venda };
+    }
     return serializarSalvamento(`combo:${combo.id}`, async () => {
       setSaveStatus('saving');
       try {
@@ -518,13 +552,15 @@ export default function DeliveryCombosScreen() {
         const ok = await reinsertComboItens(db, combo.id, data.itens);
         if (!ok) {
           setSaveStatus(null);
-          showSaveError('Não foi possível salvar. O combo anterior foi mantido — tente de novo.');
+          baseSalvaRef.current = null; // próxima mudança grava tudo de novo
+          showSaveError('Não foi possível salvar. O combo anterior foi mantido, tente de novo.');
           return;
         }
         setSaveStatus('saved');
       } catch (e) {
         console.error(`[DeliveryCombosScreen.${origem}]`, e);
         setSaveStatus(null);
+        baseSalvaRef.current = null;
         showSaveError('Falha ao salvar combo. Tente novamente.');
       }
     });
@@ -619,6 +655,21 @@ export default function DeliveryCombosScreen() {
     }
   }
 
+  // Fechar o modal (ou sair da tela) com nome/preço ainda no debounce de 600 ms
+  // limpava o timer e a última edição se perdia. Agora grava na hora o que
+  // estiver diferente do último estado gravado (pela fila do combo, então
+  // o aguardarSalvamento logo depois espera por esta gravação também).
+  function descarregarAutoSavePendente() {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    const combo = editingComboRef.current;
+    const data = novoComboRef.current;
+    if (!combo || !data?.nome?.trim()) return;
+    if (!camposComboMudaram(baseSalvaRef.current, data)) return;
+    salvarComboEditado(combo, data, 'flushOnClose');
+  }
+  descarregarAutoSaveRef.current = descarregarAutoSavePendente;
+
   // Handle closing modal with validation
   function handleCloseModal() {
     const isEditing = editingCombo !== null;
@@ -631,6 +682,7 @@ export default function DeliveryCombosScreen() {
       }
       // All good, just close and reload
       const comboId = editingCombo.id;
+      descarregarAutoSavePendente();
       setShowComboModal(false);
       setEditingCombo(null);
       setNovoCombo({ nome: '', preco_venda: '', itens: [] });
@@ -865,10 +917,14 @@ export default function DeliveryCombosScreen() {
   const isEditing = editingCombo !== null;
 
   // Breakdown by type
-  const custoProdutos = novoCombo.itens.filter(i => i.tipo === 'produto' || i.tipo === 'delivery_produto').reduce((a, i) => a + safeNum(i.custoUnit) * safeNum(i.quantidade), 0);
-  const custoInsumos = novoCombo.itens.filter(i => i.tipo === 'materia_prima').reduce((a, i) => a + safeNum(i.custoUnit) * safeNum(i.quantidade), 0);
-  const custoPreparosCombo = novoCombo.itens.filter(i => i.tipo === 'preparo').reduce((a, i) => a + safeNum(i.custoUnit) * safeNum(i.quantidade), 0);
-  const custoEmbalagensCombo = novoCombo.itens.filter(i => i.tipo === 'embalagem').reduce((a, i) => a + safeNum(i.custoUnit) * safeNum(i.quantidade), 0);
+  // Mesma regra do total (soma das linhas já arredondadas em centavos): o
+  // resumo bate com a soma dos valores exibidos em cada item.
+  const {
+    produtos: custoProdutos,
+    insumos: custoInsumos,
+    preparos: custoPreparosCombo,
+    embalagens: custoEmbalagensCombo,
+  } = calcCustoComboPorTipo(novoCombo.itens);
   // APP-22: preço sugerido do combo agora usa fórmula completa (markup divisor) com
   // lucro + custos fixos + variáveis, não mais markup fixo de 35%.
   // Antes: combo de R$ 9,88 sugeria R$ 11; agora ~R$ 22+ porque inclui fixos+variáveis+lucro real.
@@ -890,18 +946,30 @@ export default function DeliveryCombosScreen() {
   const economiaCombo = calcEconomiaCombo(somaPrecoAvulso, precoVendaModal);
   const mostrarEconomia = somaPrecoAvulso > 0 && precoVendaModal > 0 && economiaCombo.valor > 0;
 
-  // Auditoria 2026-09-09 — pré-preenche o preço de venda com o sugerido na
-  // primeira vez que o resumo aparece (itens adicionados + preço ainda vazio),
-  // sem nunca sobrescrever o que a usuária já digitou (manualPrecoRef).
+  // Combo NOVO, preço ainda não digitado (precoAuto): o campo acompanha o
+  // preço sugerido ATUAL, recalculado a cada item/quantidade. Antes era
+  // preenchido uma única vez (com a sugestão do 1º item) e ficava velho:
+  // combo de R$ 50,67 de custo salvo a R$ 1,20. Combo existente nunca é
+  // preenchido (mostra o preço salvo).
+  const precoAutoAtual = precoAutoCombo({ qtdItens: novoCombo.itens.length, precoSugerido });
   useEffect(() => {
-    if (!showComboModal) return;
-    if (manualPrecoRef.current) return;
-    if (novoCombo.preco_venda) return;
-    if (novoCombo.itens.length === 0) return;
-    if (!(precoSugerido > 0)) return;
-    setNovoCombo(prev => (prev.preco_venda ? prev : { ...prev, preco_venda: String(precoSugerido.toFixed(2)).replace('.', ',') }));
+    if (!showComboModal || editingCombo || !novoCombo.precoAuto) return;
+    if (novoCombo.preco_venda === precoAutoAtual) return;
+    setNovoCombo(prev => (prev.precoAuto ? { ...prev, preco_venda: precoAutoAtual } : prev));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showComboModal, precoSugerido, novoCombo.itens.length]);
+  }, [showComboModal, editingCombo, novoCombo.precoAuto, precoAutoAtual]);
+  const precoSugeridoInput = precoSugerido > 0 ? formatarPrecoInputCombo(precoSugerido) : '';
+  const podeUsarSugerido = novoCombo.itens.length > 0 && !!precoSugeridoInput
+    && parseInputValue(novoCombo.preco_venda) !== parseInputValue(precoSugeridoInput);
+
+  function usarPrecoSugerido() {
+    // Em combo novo volta a acompanhar a sugestão; em edição grava o valor (autosave).
+    setNovoCombo(prev => {
+      const updated = { ...prev, preco_venda: precoSugeridoInput, precoAuto: !editingComboRef.current };
+      persistDraftCombo(updated);
+      return updated;
+    });
+  }
 
   // ─── RENDER ───────────────────────────────────────────────
 
@@ -963,7 +1031,7 @@ export default function DeliveryCombosScreen() {
         {/* D-30: métricas alinhadas com card de produto (CMV / Sugerido / Lucro Líquido / Margem Líq.) */}
         <View style={styles.comboCardV2Metrics}>
           <View style={styles.comboCardV2Metric}>
-            <Text style={styles.comboCardV2MetricLabel}>Custo dos ingredientes</Text>
+            <Text style={styles.comboCardV2MetricLabel}>Custo dos itens</Text>
             <Text style={styles.comboCardV2MetricValue}>{formatCurrency(custoC)}</Text>
           </View>
           <View style={styles.comboCardV2Metric}>
@@ -1039,7 +1107,7 @@ export default function DeliveryCombosScreen() {
         </View>
         <View style={styles.comboCardV2Metrics}>
           <View style={styles.comboCardV2Metric}>
-            <Text style={styles.comboCardV2MetricLabel}>Custo dos ingredientes</Text>
+            <Text style={styles.comboCardV2MetricLabel}>Custo dos itens</Text>
             <Text style={styles.comboCardV2MetricValue}>{formatCurrency(custoC)}</Text>
           </View>
           <View style={styles.comboCardV2Metric}>
@@ -1294,12 +1362,22 @@ export default function DeliveryCombosScreen() {
                   </View>
                   <View style={styles.comboResumoGrid}>
                     <View style={styles.comboResumoCell}>
-                      <Text style={styles.comboResumoCellLabel}>Custo do combo</Text>
+                      <Text style={styles.comboResumoCellLabel}>Custo dos itens</Text>
                       <Text style={styles.comboResumoCellValue}>{formatCurrency(custoTotal)}</Text>
                     </View>
                     <View style={styles.comboResumoCell}>
                       <Text style={styles.comboResumoCellLabel}>Preço sugerido</Text>
                       <Text style={[styles.comboResumoCellValue, { color: colors.textSecondary }]}>{formatCurrency(precoSugerido)}</Text>
+                      {podeUsarSugerido && (
+                        <TouchableOpacity
+                          onPress={usarPrecoSugerido}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          accessibilityRole="button"
+                          accessibilityLabel="Usar o preço sugerido como preço de venda"
+                        >
+                          <Text style={styles.comboUsarSugeridoText}>Usar este preço</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </View>
                 </View>
@@ -1309,16 +1387,20 @@ export default function DeliveryCombosScreen() {
                 label="Preço de venda (R$)"
                 value={novoCombo.preco_venda}
                 onChangeText={(val) => setNovoCombo(prev => {
-                  // Auditoria 2026-09-09: a partir daqui o campo é "da usuária" —
-                  // nunca mais sobrescrever com o preço sugerido automaticamente.
-                  manualPrecoRef.current = true;
-                  const updated = { ...prev, preco_venda: val };
+                  // A partir daqui o campo é "da usuária": nunca mais
+                  // sobrescrever com o preço sugerido automaticamente.
+                  const updated = { ...prev, preco_venda: val, precoAuto: false };
                   persistDraftCombo(updated);
                   return updated;
                 })}
                 keyboardType="numeric"
-                placeholder="0,00"
+                placeholder={precoSugeridoInput || '0,00'}
               />
+              {!isEditing && novoCombo.precoAuto && !!novoCombo.preco_venda && (
+                <Text style={styles.comboPrecoAutoHint}>
+                  Preenchido com o preço sugerido. Ele muda conforme os itens até você digitar outro valor.
+                </Text>
+              )}
 
               {novoCombo.itens.length > 0 && (
                 <View style={styles.comboResumo}>
@@ -1370,7 +1452,8 @@ export default function DeliveryCombosScreen() {
                 const badgeInfo = getTipoBadgeInfo(item.tipo);
                 const custoUnit = safeNum(item.custoUnit);
                 const qtd = safeNum(item.quantidade) || 1;
-                const totalItem = custoUnit * qtd;
+                // Mesmo valor arredondado que entra no total do combo.
+                const totalItem = calcCustoLinhaCombo(item);
                 return (
                   <View key={index} style={styles.modalItemV2}>
                     {/* Linha 1 — badge tipo + nome + lixeira */}
@@ -1487,7 +1570,7 @@ export default function DeliveryCombosScreen() {
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text style={{ fontSize: fonts.regular, color: l.apagada ? colors.error : colors.text }} numberOfLines={1}>{l.nome}</Text>
                           <Text style={{ fontSize: fonts.tiny, color: colors.textSecondary }} numberOfLines={1}>
-                            {l.apagada ? 'Não existe mais — remova da lista' : `${formatCurrency(l.preco)} cada • ${formatCurrency(l.custo)} no pedido`}
+                            {l.apagada ? 'Não existe mais, remova da lista' : `${formatCurrency(l.preco)} cada • ${formatCurrency(l.custo)} no pedido`}
                           </Text>
                         </View>
                         <TextInput
@@ -2752,6 +2835,19 @@ const styles = StyleSheet.create({
   comboResumoBreakdownSep: {
     fontSize: 11,
     color: colors.disabled,
+  },
+  comboUsarSugeridoText: {
+    fontSize: fonts.small,
+    fontFamily: fontFamily.medium,
+    color: colors.primary,
+    textDecorationLine: 'underline',
+    marginTop: 2,
+  },
+  comboPrecoAutoHint: {
+    fontSize: fonts.small,
+    color: colors.textSecondary,
+    marginTop: -spacing.xs,
+    marginBottom: spacing.sm,
   },
   // Auditoria 2026-09-09 — linha de "Cliente economiza R$X (Y%)" no resumo do combo.
   comboEconomiaText: {
