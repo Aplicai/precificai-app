@@ -5,7 +5,11 @@ import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, safeNum, buildPricingConfig } from '../utils/calculations';
-import { calcTendenciaFaturamento, indiceDoMes, precoSugeridoProduto } from '../utils/relatorios';
+import {
+  calcTendenciaFaturamento, indiceDoMes, precoSugeridoProduto,
+  selecionarAtencao, vendeNoPrejuizo, deveSugerirAumento, textoAtencao, aplicarCustoAtualPreparos,
+} from '../utils/relatorios';
+import { sincronizarCustosPreparos } from '../services/cascadeRecalc';
 import { calcPontoEquilibrio } from '../utils/breakeven';
 import EmptyState from '../components/EmptyState';
 import Loader from '../components/Loader';
@@ -32,19 +36,6 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
-}
-
-// "Atenção!": sugere o MESMO preço sugerido da tela do produto. Só fala em
-// aumentar quando o sugerido é maior que o preço atual.
-function deveSugerirAumento(p) {
-  return p.precoSugerido > 0 && p.precoSugerido > p.precoVenda + 0.005;
-}
-
-function textoAtencao(p) {
-  const base = `${p.nome} está te custando quase o que você cobra.`;
-  return deveSugerirAumento(p)
-    ? `${base} O preço sugerido é ${formatCurrency(p.precoSugerido)} (hoje: ${formatCurrency(p.precoVenda)}).`
-    : `${base} Revise os custos e o preço desse produto.`;
 }
 
 function textoTendencia(t) {
@@ -106,7 +97,9 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
         setPerfilNome('Meu Negócio');
       }
 
-      const [fixas, variaveis, fat, configRows, prods, allIngs, allEmbs, allPreps, cats] = await Promise.all([
+      // Custo das receitas base refeito dos preços atuais (o gravado pode estar
+      // velho), igual à tela do produto. Falha → null → usa o custo gravado.
+      const [fixas, variaveis, fat, configRows, prods, allIngs, allEmbs, allPrepsGravados, cats, custosPreparos] = await Promise.all([
         db.getAllAsync('SELECT * FROM despesas_fixas'),
         db.getAllAsync('SELECT * FROM despesas_variaveis'),
         db.getAllAsync('SELECT * FROM faturamento_mensal'),
@@ -114,9 +107,11 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
         db.getAllAsync('SELECT * FROM produtos'),
         db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
         db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
-        db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
+        db.getAllAsync('SELECT pp.produto_id, pp.preparo_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
         db.getAllAsync('SELECT * FROM categorias_produtos ORDER BY nome'),
+        sincronizarCustosPreparos(db).catch(() => null),
       ]);
+      const allPreps = aplicarCustoAtualPreparos(allPrepsGravados, custosPreparos);
       setCategorias(cats || []);
       const lucroDesejado = configRows?.[0]?.lucro_desejado || 0;
 
@@ -210,7 +205,8 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
         .slice(0, 3);
 
       // --- Atenção: margem < 10% ---
-      const atencao = produtosComPreco.filter(p => p.margem < 0.10 && p.margem >= 0);
+      // Margem < 10%, incluindo prejuízo (margem negativa); pior primeiro.
+      const atencao = selecionarAtencao(produtosComPreco, 0.10);
 
       // --- Ponto de equilíbrio ---
       // Audit 09/09 [B11]: antes dividia as fixas pela margem LÍQUIDA média
@@ -382,9 +378,14 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
     }
 
     if (data.atencao && data.atencao.length > 0) {
-      linhas.push(`Alertas: ${data.atencao.length} produto(s) com margem abaixo de 10%.`);
+      const noPrejuizo = data.atencao.filter(vendeNoPrejuizo).length;
+      linhas.push(noPrejuizo > 0
+        ? `Alertas: ${data.atencao.length} produto(s) com margem abaixo de 10%, ${noPrejuizo} vendido(s) no prejuízo.`
+        : `Alertas: ${data.atencao.length} produto(s) com margem abaixo de 10%.`);
       data.atencao.slice(0, 3).forEach(p => {
-        linhas.push(`• ${p.nome} (${formatCurrency(p.precoVenda)})`);
+        linhas.push(vendeNoPrejuizo(p)
+          ? `• ${p.nome}: você perde ${formatCurrency(Math.abs(p.lucro))} a cada venda`
+          : `• ${p.nome} (${formatCurrency(p.precoVenda)})`);
       });
       linhas.push('');
     }
@@ -467,7 +468,9 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
     const atencaoHtml = (data.atencao || []).slice(0, 5).map(p => `
       <li style="margin: 6px 0; padding: 8px 12px; background: #fef2f2; border-left: 3px solid #dc2626; border-radius: 4px;">
         <strong>${escapeHtml(p.nome || '')}</strong>
-        <span style="color: #6b7280; float: right;">${formatCurrency(p.precoVenda || 0)} (CMV ${formatCurrency(p.custoUn || 0)})</span>
+        <span style="color: #6b7280; float: right;">${vendeNoPrejuizo(p)
+          ? `<span style="color: #dc2626; font-weight: 700;">perde ${formatCurrency(Math.abs(p.lucro))} por venda</span>`
+          : `${formatCurrency(p.precoVenda || 0)} (custo ${formatCurrency(p.custoUn || 0)})`}</span>
       </li>
     `).join('');
 
@@ -551,7 +554,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
     </div>` : ''}
     ${sections.map(s => `<div class="card"><h3>${escapeHtml(s.title)}</h3><p>${escapeHtml(s.text)}</p></div>`).join('')}
     ${melhoresHtml ? `<div class="card"><h3>Top ${topLista.length}: seus campeões</h3><ul class="list">${melhoresHtml}</ul></div>` : ''}
-    ${atencaoHtml ? `<div class="card"><h3>Atenção — produtos com margem apertada</h3><ul class="list">${atencaoHtml}</ul></div>` : ''}
+    ${atencaoHtml ? `<div class="card"><h3>Atenção: prejuízo e margem apertada</h3><ul class="list">${atencaoHtml}</ul></div>` : ''}
     ${graficoMargemHtml}
     <p class="footer">Gerado por Precificaí · www.precificaiapp.com</p>
     </body></html>`;
@@ -971,7 +974,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
 
       {/* Atenção */}
       {data.atencao.length > 0 && (
-        <View style={[styles.card, styles.cardWarning]}>
+        <View style={[styles.card, data.atencao.some(vendeNoPrejuizo) ? styles.cardError : styles.cardWarning]}>
           <View style={styles.cardHeader}>
             <View style={[styles.iconCircle, { backgroundColor: colors.warning + '15' }]}>
               <Feather name="alert-triangle" size={18} color={colors.warning} />
@@ -984,11 +987,20 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
                 <Feather
                   name="alert-circle"
                   size={16}
-                  color={colors.warning}
+                  color={vendeNoPrejuizo(p) ? colors.error : colors.warning}
                   style={{ marginRight: 8, marginTop: 2 }}
                 />
                 <Text style={styles.cardText}>
-                  <Text style={styles.highlightWarning}>{p.nome}</Text> está te custando quase o que você cobra.
+                  {vendeNoPrejuizo(p) ? (
+                    <>
+                      <Text style={styles.highlightError}>{p.nome}</Text>: você perde{' '}
+                      <Text style={styles.highlightError}>{formatCurrency(Math.abs(p.lucro))}</Text> a cada venda.
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.highlightWarning}>{p.nome}</Text> está te custando quase o que você cobra.
+                    </>
+                  )}
                   {deveSugerirAumento(p) ? (
                     <>
                       {' '}O preço sugerido é{' '}

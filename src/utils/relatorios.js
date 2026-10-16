@@ -3,7 +3,7 @@
  * Relatório de ingredientes e o PDF do relatório). Sem React, sem banco:
  * testado em __tests__/relatorios.test.mjs.
  */
-import { calcMarkup, calcPrecoSugerido } from './calculations';
+import { calcMarkup, calcPrecoSugerido, formatCurrency } from './calculations';
 import { isMarcaEstimada } from './insumoDisplay';
 
 const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -155,4 +155,48 @@ export function statsPorCategoria(insumos) {
     max: Math.max(...c.items.map((i) => i.preco)),
     min: Math.min(...c.items.map((i) => i.preco)),
   })).sort((a, b) => b.count - a.count);
+}
+
+/**
+ * Produtos do card "Atenção!": margem abaixo de `limite` (10%), INCLUINDO
+ * margem negativa (vende no prejuízo). Ordem: pior margem primeiro, então
+ * quem dá prejuízo aparece no topo.
+ */
+export function selecionarAtencao(produtos, limite = 0.10) {
+  return (produtos || [])
+    .filter((p) => Number.isFinite(Number(p?.margem)) && Number(p.margem) < limite)
+    .sort((a, b) => Number(a.margem) - Number(b.margem));
+}
+
+/** Prejuízo por venda: lucro líquido por unidade abaixo de meio centavo negativo. */
+export function vendeNoPrejuizo(p) {
+  return num(p?.lucro) < -0.005;
+}
+
+/** Só sugere aumentar quando o preço sugerido é maior que o preço atual. */
+export function deveSugerirAumento(p) {
+  return num(p?.precoSugerido) > 0 && num(p.precoSugerido) > num(p?.precoVenda) + 0.005;
+}
+
+/** Frase do "Atenção!" (PDF): prejuízo primeiro, depois margem apertada. */
+export function textoAtencao(p) {
+  const base = vendeNoPrejuizo(p)
+    ? `${p.nome}: você perde ${formatCurrency(Math.abs(num(p.lucro)))} a cada venda.`
+    : `${p.nome} está te custando quase o que você cobra.`;
+  return deveSugerirAumento(p)
+    ? `${base} O preço sugerido é ${formatCurrency(p.precoSugerido)} (hoje: ${formatCurrency(p.precoVenda)}).`
+    : `${base} Revise os custos e o preço desse produto.`;
+}
+
+/**
+ * Troca o custo/kg das linhas de produto_preparos (com `preparo_id`) pelo
+ * custo atual das receitas base (Map de sincronizarCustosPreparos), como faz
+ * a tela do produto. Sem Map (sincronização falhou) → linhas como vieram.
+ */
+export function aplicarCustoAtualPreparos(linhas, custos) {
+  if (!custos || typeof custos.get !== 'function') return linhas || [];
+  return (linhas || []).map((l) => {
+    const c = custos.get(l.preparo_id);
+    return c ? { ...l, custo_por_kg: c.custo_por_kg } : l;
+  });
 }

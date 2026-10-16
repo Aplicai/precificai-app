@@ -8,6 +8,7 @@ import { strict as assert } from 'node:assert';
 import {
   indiceDoMes, calcTendenciaFaturamento, precoSugeridoProduto,
   semPrecoDoDono, classificarIdadePrecos, statsPorCategoria,
+  selecionarAtencao, vendeNoPrejuizo, deveSugerirAumento, textoAtencao, aplicarCustoAtualPreparos,
 } from '../src/utils/relatorios.js';
 import { buildPricingConfig, calcMarkup } from '../src/utils/calculations.js';
 import { MARCA_VALOR_ESTIMADO } from '../src/utils/insumoDisplay.js';
@@ -132,4 +133,38 @@ test('stats por categoria: categoria sem item com preço não aparece', () => {
   assert.equal(stats[0].media, 6);
   assert.equal(stats[0].min, 5);
   assert.equal(stats[0].max, 7);
+});
+
+test('Atenção: inclui prejuízo (margem negativa) e põe o pior primeiro', () => {
+  const lista = selecionarAtencao([
+    { nome: 'Bolo', margem: 0.05 },
+    { nome: 'Pão', margem: -0.2 },
+    { nome: 'Torta', margem: 0.3 },
+    { nome: 'Café', margem: -0.05 },
+    { nome: 'Sem número', margem: NaN },
+  ]);
+  assert.deepEqual(lista.map(p => p.nome), ['Pão', 'Café', 'Bolo']);
+});
+
+test('Atenção: prejuízo vira "você perde R$ X a cada venda" com o preço sugerido', () => {
+  const p = { nome: 'Pão', lucro: -0.42, precoVenda: 1, precoSugerido: 1.8 };
+  assert.equal(vendeNoPrejuizo(p), true);
+  assert.equal(textoAtencao(p), 'Pão: você perde R$ 0,42 a cada venda. O preço sugerido é R$ 1,80 (hoje: R$ 1,00).');
+});
+
+test('Atenção: margem apertada sem prejuízo mantém o texto; sugerido menor não manda aumentar', () => {
+  const p = { nome: 'Bolo', lucro: 0.1, precoVenda: 2, precoSugerido: 1.5 };
+  assert.equal(vendeNoPrejuizo(p), false);
+  assert.equal(deveSugerirAumento(p), false);
+  assert.equal(textoAtencao(p), 'Bolo está te custando quase o que você cobra. Revise os custos e o preço desse produto.');
+});
+
+test('custo das receitas base: usa o custo atual sincronizado; sem Map mantém o gravado', () => {
+  const linhas = [
+    { produto_id: 1, preparo_id: 10, quantidade_utilizada: 100, custo_por_kg: 5 },
+    { produto_id: 1, preparo_id: 11, quantidade_utilizada: 50, custo_por_kg: 8 },
+  ];
+  const custos = new Map([[10, { custo_por_kg: 7.5, custo_total: 15 }]]);
+  assert.deepEqual(aplicarCustoAtualPreparos(linhas, custos).map(l => l.custo_por_kg), [7.5, 8]);
+  assert.equal(aplicarCustoAtualPreparos(linhas, null), linhas);
 });
