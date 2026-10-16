@@ -62,14 +62,16 @@ function passoDoComeco(d) {
   return 2;
 }
 
-function InicioSimples({ nomeNegocio, d, onAcao, onVideo }) {
+function InicioSimples({ nomeNegocio, d, onAcao, onVideo, onPrecoRapido }) {
   const passo = passoDoComeco(d);
   const produto = d.primeiroSemPreco?.nome;
   const conteudo = [
     {
-      titulo: 'Descubra o preço do seu produto em 30 segundos',
-      texto: 'Só números que você sabe de cabeça: quanto custa fazer, quanto gasta e quanto vende por mês.',
-      botao: 'Calcular meu preço',
+      // Quem chega aqui pulou o Preço rápido: oferecer o MESMO cálculo como
+      // passo principal parecia que o "Pular" não tinha funcionado (16/10).
+      titulo: 'Cadastre seu primeiro ingrediente',
+      texto: 'Do jeito que você compra: "Comprei 5 kg de farinha por R$ 25". O app calcula o preço por kg.',
+      botao: 'Cadastrar ingrediente',
     },
     {
       titulo: 'Monte seu primeiro produto',
@@ -86,7 +88,6 @@ function InicioSimples({ nomeNegocio, d, onAcao, onVideo }) {
     <View style={inicioStyles.caixa}>
       <Text style={inicioStyles.ola}>{nomeNegocio ? `Olá, ${nomeNegocio}!` : 'Olá!'}</Text>
       <Text style={inicioStyles.sub}>Vamos ao seu primeiro preço.</Text>
-      {passo > 0 ? (
       <View style={inicioStyles.passos}>
         {PASSOS_COMECO.map((nome, i) => {
           const feito = i < passo;
@@ -99,7 +100,6 @@ function InicioSimples({ nomeNegocio, d, onAcao, onVideo }) {
           );
         })}
       </View>
-      ) : null}
       <View style={inicioStyles.cartao}>
         <Text style={inicioStyles.cartaoTitulo}>{conteudo.titulo}</Text>
         <Text style={inicioStyles.cartaoTexto}>{conteudo.texto}</Text>
@@ -108,6 +108,12 @@ function InicioSimples({ nomeNegocio, d, onAcao, onVideo }) {
           <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
         </TouchableOpacity>
       </View>
+      {passo === 0 ? (
+        <TouchableOpacity style={inicioStyles.video} onPress={onPrecoRapido} accessibilityRole="button">
+          <Feather name="zap" size={16} color={colors.primary} style={{ marginRight: 6 }} />
+          <Text style={inicioStyles.videoTexto}>Ou calcule um preço rápido em 30 segundos</Text>
+        </TouchableOpacity>
+      ) : null}
       <TouchableOpacity style={inicioStyles.video} onPress={onVideo} accessibilityRole="button">
         <Feather name="play-circle" size={16} color={colors.primary} style={{ marginRight: 6 }} />
         <Text style={inicioStyles.videoTexto}>Ver o vídeo de 1 minuto</Text>
@@ -695,12 +701,13 @@ export default function HomeScreen({ navigation }) {
           nomeNegocio={nomeNegocio}
           d={d}
           onAcao={(passo) => {
-            if (passo === 0) navigation.navigate('PrecoRapido');
+            if (passo === 0) nav('NovoIngrediente');
             else if (passo === 1) nav('ProdutoFormHome');
             else if (d.primeiroSemPreco) navigation.getParent()?.navigate('Produtos', { screen: 'ProdutosList', params: { openProductEdit: d.primeiroSemPreco.id } });
             else nav('Produtos');
           }}
           onVideo={() => navigation.navigate('ComoFunciona')}
+          onPrecoRapido={() => navigation.navigate('PrecoRapido')}
         />
       ) : (<>
       <PrecosZeradosBanner />
