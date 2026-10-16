@@ -10,6 +10,7 @@ import useListDensity from '../../hooks/useListDensity';
 // (senão a aba do browser mostrava o nome cru da rota, ex.: "HomeMain").
 export const ROUTE_TITLES = {
   'ComoFunciona': 'Como funciona',
+  'PrecoRapido': 'Seu preço em 30 segundos',
   'Início': 'Painel Geral',
   'HomeMain': 'Painel Geral',
   'Insumos': 'Ingredientes',

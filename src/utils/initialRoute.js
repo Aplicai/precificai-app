@@ -1,15 +1,17 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSetupStatus } from './setupStatus';
 
-/** Marcado pela ComoFuncionaScreen: o vídeo de 1 min só aparece uma vez. */
+/** Marcado pela ComoFuncionaScreen (vídeo de 1 min). */
 export const CHAVE_COMO_FUNCIONA = 'como_funciona_visto';
+/** Marcado pela PrecoRapidoScreen: aparece sozinho uma vez só. */
+export const CHAVE_PRECO_RAPIDO = 'preco_rapido_visto';
 
-// Perfil pronto e nenhum ingrediente (16/10/2026): vídeo uma vez, depois Home.
-// Nunca mais a tela "Configure seu app" com o Financeiro na frente, onde quem
-// caía não cadastrava nada.
+// Perfil pronto e nenhum ingrediente (16/10/2026): Preço rápido uma vez,
+// depois Home (que oferece de novo). Nunca mais a tela "Configure seu app"
+// com o Financeiro na frente, onde quem caía não cadastrava nada.
 async function rotaSemIngrediente() {
-  const visto = await AsyncStorage.getItem(CHAVE_COMO_FUNCIONA);
-  return visto === 'true' ? 'MainTabs' : 'ComoFunciona';
+  const visto = await AsyncStorage.getItem(CHAVE_PRECO_RAPIDO);
+  return visto === 'true' ? 'MainTabs' : 'PrecoRapido';
 }
 import { isDbErrorResult } from '../database/supabaseDb';
 

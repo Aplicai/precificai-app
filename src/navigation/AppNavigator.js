@@ -85,6 +85,7 @@ const RelatoriosHubScreen = lazyScreen(() => import('../screens/RelatoriosHubScr
 const RegisterScreen = lazyScreen(() => import('../screens/RegisterScreen'));
 const KitInicioScreen = lazyScreen(() => import('../screens/KitInicioScreen'));
 const ComoFuncionaScreen = lazyScreen(() => import('../screens/ComoFuncionaScreen'));
+const PrecoRapidoScreen = lazyScreen(() => import('../screens/PrecoRapidoScreen'));
 const SimuladorScreen = lazyScreen(() => import('../screens/SimuladorScreen'));
 const SimuladorLoteScreen = lazyScreen(() => import('../screens/SimuladorLoteScreen'));
 const FluxoCaixaDREScreen = lazyScreen(() => import('../screens/FluxoCaixaDREScreen'));
@@ -738,6 +739,8 @@ function AppContent() {
       {/* 16/10/2026: vídeo de 1 min depois do perfil (substitui o Kit no setup). */}
       {/* Registrado sempre: a Home simples tem "Ver o vídeo de 1 minuto". */}
       <RootStack.Screen name="ComoFunciona" component={ComoFuncionaScreen} options={{ headerShown: false, title: 'Como funciona' }} />
+      {/* Preço rápido: primeiro acesso e cartão da Home simples (16/10/2026). */}
+      <RootStack.Screen name="PrecoRapido" component={PrecoRapidoScreen} options={{ headerShown: false, title: 'Seu preço em 30 segundos' }} />
       <RootStack.Screen name="MainTabs" component={MainTabs} initialParams={{ initialTab: savedTab }} />
       {initialRoute === 'MainTabs' && (
         <RootStack.Screen name="Onboarding" component={OnboardingScreen} options={{

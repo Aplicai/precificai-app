@@ -223,8 +223,8 @@ export default function PerfilScreen({ navigation, route }) {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     await autoSave(perfil);
     // 16/10/2026: o Kit de Início saiu do primeiro acesso (ninguém que pegou
-    // chegou a um preço) e ficou em Configurações. No lugar, o vídeo de 1 min.
-    navigation.replace('ComoFunciona');
+    // chegou a um preço) e ficou em Configurações. No lugar, o Preço rápido.
+    navigation.replace('PrecoRapido');
   }
 
   const inicial = (perfil.nome_negocio || 'N').charAt(0).toUpperCase();

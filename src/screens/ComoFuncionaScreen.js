@@ -28,6 +28,8 @@ export default function ComoFuncionaScreen({ navigation }) {
   const ehWeb = Platform.OS === 'web';
 
   async function irParaApp() {
+    // Aberto a partir do Preço rápido ou da Home: só volta.
+    if (navigation.canGoBack()) { navigation.goBack(); return; }
     try { await AsyncStorage.setItem('onboarding_done', 'true'); } catch (_) {}
     navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'MainTabs', params: { initialTab: 'Início' } }] }));
   }

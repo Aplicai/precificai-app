@@ -67,9 +67,9 @@ function InicioSimples({ nomeNegocio, d, onAcao, onVideo }) {
   const produto = d.primeiroSemPreco?.nome;
   const conteudo = [
     {
-      titulo: 'Cadastre seu primeiro ingrediente',
-      texto: 'Do jeito que você compra: "Comprei 5 kg de farinha por R$ 25". O app calcula o preço por kg.',
-      botao: 'Cadastrar ingrediente',
+      titulo: 'Descubra o preço do seu produto em 30 segundos',
+      texto: 'Só números que você sabe de cabeça: quanto custa fazer, quanto gasta e quanto vende por mês.',
+      botao: 'Calcular meu preço',
     },
     {
       titulo: 'Monte seu primeiro produto',
@@ -86,6 +86,7 @@ function InicioSimples({ nomeNegocio, d, onAcao, onVideo }) {
     <View style={inicioStyles.caixa}>
       <Text style={inicioStyles.ola}>{nomeNegocio ? `Olá, ${nomeNegocio}!` : 'Olá!'}</Text>
       <Text style={inicioStyles.sub}>Vamos ao seu primeiro preço.</Text>
+      {passo > 0 ? (
       <View style={inicioStyles.passos}>
         {PASSOS_COMECO.map((nome, i) => {
           const feito = i < passo;
@@ -98,6 +99,7 @@ function InicioSimples({ nomeNegocio, d, onAcao, onVideo }) {
           );
         })}
       </View>
+      ) : null}
       <View style={inicioStyles.cartao}>
         <Text style={inicioStyles.cartaoTitulo}>{conteudo.titulo}</Text>
         <Text style={inicioStyles.cartaoTexto}>{conteudo.texto}</Text>
@@ -693,7 +695,7 @@ export default function HomeScreen({ navigation }) {
           nomeNegocio={nomeNegocio}
           d={d}
           onAcao={(passo) => {
-            if (passo === 0) nav('NovoIngrediente');
+            if (passo === 0) navigation.navigate('PrecoRapido');
             else if (passo === 1) nav('ProdutoFormHome');
             else if (d.primeiroSemPreco) navigation.getParent()?.navigate('Produtos', { screen: 'ProdutosList', params: { openProductEdit: d.primeiroSemPreco.id } });
             else nav('Produtos');
