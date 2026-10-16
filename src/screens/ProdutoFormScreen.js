@@ -32,6 +32,9 @@ import { custoDelivery, embalagensDeliveryDoProduto, normalizarEmbalagensDeliver
 import ScreenInModal from '../components/ScreenInModal';
 import { defaultQtyForUnidade, somarQtd } from '../utils/itemQuantityDefaults';
 import EmbalagemFormScreen from './EmbalagemFormScreen';
+import { getPlan } from '../hooks/usePlan';
+import { limitFor as limitForPlan, PLAN_LABELS } from '../config/plans';
+import { mensagemErroSalvar } from '../utils/planGate';
 
 const UNIDADES_TEMPO = [
   { label: 'Minutos', value: 'Minutos' },
@@ -1956,28 +1959,47 @@ export default function ProdutoFormScreen({ route, navigation }) {
               const f = formRef.current;
               try { await autoSave(); } catch (e) { if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.preDuplicate.autoSave]', e); }
               const db = await getDatabase();
-              // F2-J2-02: guards Number.isFinite + `?? 0` para preservar 0 quando vazio/inválido
-              const margemDupRaw = parseDecimalBR(f.margem_lucro_produto);
-              const margemVal = f.margem_lucro_produto && f.margem_lucro_produto.trim() !== '' && Number.isFinite(margemDupRaw) ? margemDupRaw / 100 : null;
-              const pvDupRaw = parseFloat(String(f.preco_venda).replace(',','.'));
-              const pvDup = Number.isFinite(pvDupRaw) ? pvDupRaw : 0;
-              const result = await db.runAsync(
-                `INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades, tempo_preparo, preco_venda, margem_lucro_produto, validade_dias, temp_congelado, tempo_congelado, temp_refrigerado, tempo_refrigerado, temp_ambiente, tempo_ambiente, modo_preparo, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-                [f.nome.trim() + ' (cópia)', f.categoria_id, parseNum(f.rendimento_total) ?? 0, f.unidade_rendimento || 'g', parseNum(f.rendimento_unidades) || 1, parseNum(f.tempo_preparo) ?? 0, pvDup, margemVal, parseNum(f.validade_dias) ?? 0,
-                 f.conserv_congelado ? f.temp_congelado : '', f.conserv_congelado ? f.tempo_congelado : '',
-                 f.conserv_refrigerado ? f.temp_refrigerado : '', f.conserv_refrigerado ? f.tempo_refrigerado : '',
-                 f.conserv_ambiente ? f.temp_ambiente : '', f.conserv_ambiente ? f.tempo_ambiente : '',
-                 f.modo_preparo || '', f.observacoes || '']);
-              const newId = result?.lastInsertRowId;
-              if (newId) {
-                const ings = await db.getAllAsync('SELECT * FROM produto_ingredientes WHERE produto_id = ?', [editId]);
-                for (const i of ings) await db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)', [newId, i.materia_prima_id, i.quantidade_utilizada]);
-                const preps = await db.getAllAsync('SELECT * FROM produto_preparos WHERE produto_id = ?', [editId]);
-                for (const p of preps) await db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)', [newId, p.preparo_id, p.quantidade_utilizada]);
-                const embs = await db.getAllAsync('SELECT * FROM produto_embalagens WHERE produto_id = ?', [editId]);
-                for (const e of embs) await db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)', [newId, e.embalagem_id, e.quantidade_utilizada]);
-                allowExit.current = true;
-                navigation.replace('ProdutoForm', { id: newId });
+              // Duplicar também respeita o limite do plano (tutorial 05: passava do 5º
+              // produto no Grátis). Se a contagem falhar, o servidor ainda barra.
+              const limiteProdutos = limitForPlan(getPlan(), 'produtos');
+              if (Number.isFinite(limiteProdutos)) {
+                const cnt = await db.getFirstAsync('SELECT COUNT(*) as n FROM produtos');
+                const totalAtual = Number(cnt?.n);
+                if (Number.isFinite(totalAtual) && totalAtual >= limiteProdutos) {
+                  Alert.alert(
+                    'Você atingiu o limite de produtos',
+                    `No plano ${PLAN_LABELS[getPlan()] || 'Grátis'} você cadastra até ${limiteProdutos} produtos. Assine o Pro para duplicar e cadastrar sem limite.`
+                  );
+                  return;
+                }
+              }
+              try {
+                // F2-J2-02: guards Number.isFinite + `?? 0` para preservar 0 quando vazio/inválido
+                const margemDupRaw = parseDecimalBR(f.margem_lucro_produto);
+                const margemVal = f.margem_lucro_produto && f.margem_lucro_produto.trim() !== '' && Number.isFinite(margemDupRaw) ? margemDupRaw / 100 : null;
+                const pvDupRaw = parseFloat(String(f.preco_venda).replace(',','.'));
+                const pvDup = Number.isFinite(pvDupRaw) ? pvDupRaw : 0;
+                const result = await db.runAsync(
+                  `INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades, tempo_preparo, preco_venda, margem_lucro_produto, validade_dias, temp_congelado, tempo_congelado, temp_refrigerado, tempo_refrigerado, temp_ambiente, tempo_ambiente, modo_preparo, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                  [f.nome.trim() + ' (cópia)', f.categoria_id, parseNum(f.rendimento_total) ?? 0, f.unidade_rendimento || 'g', parseNum(f.rendimento_unidades) || 1, parseNum(f.tempo_preparo) ?? 0, pvDup, margemVal, parseNum(f.validade_dias) ?? 0,
+                   f.conserv_congelado ? f.temp_congelado : '', f.conserv_congelado ? f.tempo_congelado : '',
+                   f.conserv_refrigerado ? f.temp_refrigerado : '', f.conserv_refrigerado ? f.tempo_refrigerado : '',
+                   f.conserv_ambiente ? f.temp_ambiente : '', f.conserv_ambiente ? f.tempo_ambiente : '',
+                   f.modo_preparo || '', f.observacoes || '']);
+                const newId = result?.lastInsertRowId;
+                if (newId) {
+                  const ings = await db.getAllAsync('SELECT * FROM produto_ingredientes WHERE produto_id = ?', [editId]);
+                  for (const i of ings) await db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)', [newId, i.materia_prima_id, i.quantidade_utilizada]);
+                  const preps = await db.getAllAsync('SELECT * FROM produto_preparos WHERE produto_id = ?', [editId]);
+                  for (const p of preps) await db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)', [newId, p.preparo_id, p.quantidade_utilizada]);
+                  const embs = await db.getAllAsync('SELECT * FROM produto_embalagens WHERE produto_id = ?', [editId]);
+                  for (const e of embs) await db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)', [newId, e.embalagem_id, e.quantidade_utilizada]);
+                  allowExit.current = true;
+                  navigation.replace('ProdutoForm', { id: newId });
+                }
+              } catch (e) {
+                if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.duplicar]', e);
+                Alert.alert('Não foi possível duplicar', mensagemErroSalvar(e, 'Tente novamente em instantes.'));
               }
             }}>
               <Feather name="copy" size={13} color={colors.primary} style={{ marginRight: 5 }} />

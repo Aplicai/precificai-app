@@ -33,7 +33,8 @@ import useUndoableDelete from '../hooks/useUndoableDelete';
 import useBulkSelection from '../hooks/useBulkSelection';
 import usePlan, { getPlan } from '../hooks/usePlan';
 import UpgradeModal from '../components/UpgradeModal';
-import { PLAN_LABELS, UPGRADE_HIGHLIGHTS, limitFor as limitForPlan } from '../config/plans';
+import { PLAN_LABELS, UPGRADE_HIGHLIGHTS, limitFor as limitForPlan, vagasRestantes } from '../config/plans';
+import { mensagemErroSalvar } from '../utils/planGate';
 import { showToast } from '../utils/toastBus';
 // Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
 // Para produtos, o blocker crítico é "vendas registradas" — aviso de soft-delete recomendado.
@@ -136,7 +137,7 @@ export default function ProdutosListScreen({ navigation }) {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingId, setEditingId] = useState(null);
   // Planos (Fase 0) — gate de limite de produtos por plano.
-  const { canAdd, limitFor, plano, upgradeTo } = usePlan();
+  const { limitFor, plano, upgradeTo } = usePlan();
   const [upgradeModal, setUpgradeModal] = useState(null);
   // Badge "3 de 5 no Grátis" no cabeçalho: só faz sentido com teto finito.
   const limiteProdutos = limitFor('produtos');
@@ -144,18 +145,25 @@ export default function ProdutosListScreen({ navigation }) {
   const mostraLimite = Number.isFinite(limiteProdutos) && !loading;
   // Último total carregado — pra avisar quando a pessoa chega a 1 do teto.
   const ultimoTotalRef = useRef(null);
+  // Bloqueia criar `novos` produtos acima do limite do plano → popup de upgrade.
+  // Vale pra cadastro E duplicação (tutorial 05: duplicar passava do 5º produto).
+  // Devolve true quando bloqueou.
+  function bloqueiaPeloLimite(novos = 1) {
+    if (vagasRestantes(plano, 'produtos', totalProdutos) >= novos) return false;
+    const next = upgradeTo || 'pro';
+    const vagas = vagasRestantes(plano, 'produtos', totalProdutos);
+    setUpgradeModal({
+      requiredPlan: next,
+      title: 'Você atingiu o limite de produtos',
+      message: novos > 1 && vagas > 0
+        ? `No plano ${PLAN_LABELS[plano]} você cadastra até ${limitFor('produtos')} produtos — cabem só mais ${vagas}. Selecione menos produtos ou faça upgrade:`
+        : `No plano ${PLAN_LABELS[plano]} você cadastra até ${limitFor('produtos')} produtos. Faça upgrade pra continuar cadastrando:`,
+      highlights: UPGRADE_HIGHLIGHTS,
+    });
+    return true;
+  }
   function abrirCriacao() {
-    // Bloqueia o cadastro acima do limite do plano → popup de upgrade.
-    if (!canAdd('produtos', totalProdutos)) {
-      const next = upgradeTo || 'pro';
-      setUpgradeModal({
-        requiredPlan: next,
-        title: 'Você atingiu o limite de produtos',
-        message: `No plano ${PLAN_LABELS[plano]} você cadastra até ${limitFor('produtos')} produtos. Faça upgrade pra continuar cadastrando:`,
-        highlights: UPGRADE_HIGHLIGHTS,
-      });
-      return;
-    }
+    if (bloqueiaPeloLimite(1)) return;
     setEditingId(null);
     setShowCreateModal(true);
   }
@@ -578,31 +586,37 @@ export default function ProdutosListScreen({ navigation }) {
   async function duplicarEmMassa() {
     const ids = Array.from(bulk.selectedIds);
     if (ids.length === 0) return;
-    const db = await getDatabase();
-    const placeholders = ids.map(() => '?').join(',');
-    const itens = await db.getAllAsync(
-      `SELECT * FROM produtos WHERE id IN (${placeholders})`, ids
-    );
-    for (const produto of itens) {
-      const result = await db.runAsync(
-        'INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades, preco_venda, margem_lucro_produto) VALUES (?,?,?,?,?,?,?)',
-        [produto.nome + ' (cópia)', produto.categoria_id, produto.rendimento_total, produto.unidade_rendimento, produto.rendimento_unidades, produto.preco_venda, produto.margem_lucro_produto]
+    if (bloqueiaPeloLimite(ids.length)) return;
+    try {
+      const db = await getDatabase();
+      const placeholders = ids.map(() => '?').join(',');
+      const itens = await db.getAllAsync(
+        `SELECT * FROM produtos WHERE id IN (${placeholders})`, ids
       );
-      const newId = result?.lastInsertRowId;
-      if (!newId) continue;
-      const [ings, preps, embs] = await Promise.all([
-        db.getAllAsync('SELECT * FROM produto_ingredientes WHERE produto_id = ?', [produto.id]),
-        db.getAllAsync('SELECT * FROM produto_preparos WHERE produto_id = ?', [produto.id]),
-        db.getAllAsync('SELECT * FROM produto_embalagens WHERE produto_id = ?', [produto.id]),
-      ]);
-      await Promise.all([
-        ...ings.map(ing => db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)', [newId, ing.materia_prima_id, ing.quantidade_utilizada])),
-        ...preps.map(pr => db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)', [newId, pr.preparo_id, pr.quantidade_utilizada])),
-        ...embs.map(em => db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)', [newId, em.embalagem_id, em.quantidade_utilizada])),
-      ]);
+      for (const produto of itens) {
+        const result = await db.runAsync(
+          'INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades, preco_venda, margem_lucro_produto) VALUES (?,?,?,?,?,?,?)',
+          [produto.nome + ' (cópia)', produto.categoria_id, produto.rendimento_total, produto.unidade_rendimento, produto.rendimento_unidades, produto.preco_venda, produto.margem_lucro_produto]
+        );
+        const newId = result?.lastInsertRowId;
+        if (!newId) continue;
+        const [ings, preps, embs] = await Promise.all([
+          db.getAllAsync('SELECT * FROM produto_ingredientes WHERE produto_id = ?', [produto.id]),
+          db.getAllAsync('SELECT * FROM produto_preparos WHERE produto_id = ?', [produto.id]),
+          db.getAllAsync('SELECT * FROM produto_embalagens WHERE produto_id = ?', [produto.id]),
+        ]);
+        await Promise.all([
+          ...ings.map(ing => db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)', [newId, ing.materia_prima_id, ing.quantidade_utilizada])),
+          ...preps.map(pr => db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)', [newId, pr.preparo_id, pr.quantidade_utilizada])),
+          ...embs.map(em => db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)', [newId, em.embalagem_id, em.quantidade_utilizada])),
+        ]);
+      }
+      bulk.clear();
+      setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'produto duplicado' : 'produtos duplicados'}`, icon: 'copy' });
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[ProdutosListScreen.duplicarEmMassa]', e);
+      setInfoToast({ message: mensagemErroSalvar(e, 'Não foi possível duplicar os produtos.'), icon: 'alert-triangle' });
     }
-    bulk.clear();
-    setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'produto duplicado' : 'produtos duplicados'}`, icon: 'copy' });
     loadData();
   }
 
@@ -720,26 +734,33 @@ export default function ProdutosListScreen({ navigation }) {
   }
 
   async function duplicarProduto(produto) {
-    const db = await getDatabase();
-    const result = await db.runAsync(
-      'INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades, preco_venda, margem_lucro_produto) VALUES (?,?,?,?,?,?,?)',
-      [produto.nome + ' (cópia)', produto.categoria_id, produto.rendimento_total, produto.unidade_rendimento, produto.rendimento_unidades, produto.preco_venda, produto.margem_lucro_produto]
-    );
-    const newId = result?.lastInsertRowId;
-    if (!newId) return;
-    // Load all related data in parallel
-    const [ings, preps, embs] = await Promise.all([
-      db.getAllAsync('SELECT * FROM produto_ingredientes WHERE produto_id = ?', [produto.id]),
-      db.getAllAsync('SELECT * FROM produto_preparos WHERE produto_id = ?', [produto.id]),
-      db.getAllAsync('SELECT * FROM produto_embalagens WHERE produto_id = ?', [produto.id]),
-    ]);
-    // Insert all related data in parallel
-    await Promise.all([
-      ...ings.map(ing => db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)', [newId, ing.materia_prima_id, ing.quantidade_utilizada])),
-      ...preps.map(pr => db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)', [newId, pr.preparo_id, pr.quantidade_utilizada])),
-      ...embs.map(em => db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)', [newId, em.embalagem_id, em.quantidade_utilizada])),
-    ]);
-    abrirEdicao(newId);
+    if (bloqueiaPeloLimite(1)) return;
+    try {
+      const db = await getDatabase();
+      const result = await db.runAsync(
+        'INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades, preco_venda, margem_lucro_produto) VALUES (?,?,?,?,?,?,?)',
+        [produto.nome + ' (cópia)', produto.categoria_id, produto.rendimento_total, produto.unidade_rendimento, produto.rendimento_unidades, produto.preco_venda, produto.margem_lucro_produto]
+      );
+      const newId = result?.lastInsertRowId;
+      if (!newId) return;
+      // Load all related data in parallel
+      const [ings, preps, embs] = await Promise.all([
+        db.getAllAsync('SELECT * FROM produto_ingredientes WHERE produto_id = ?', [produto.id]),
+        db.getAllAsync('SELECT * FROM produto_preparos WHERE produto_id = ?', [produto.id]),
+        db.getAllAsync('SELECT * FROM produto_embalagens WHERE produto_id = ?', [produto.id]),
+      ]);
+      // Insert all related data in parallel
+      await Promise.all([
+        ...ings.map(ing => db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)', [newId, ing.materia_prima_id, ing.quantidade_utilizada])),
+        ...preps.map(pr => db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)', [newId, pr.preparo_id, pr.quantidade_utilizada])),
+        ...embs.map(em => db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)', [newId, em.embalagem_id, em.quantidade_utilizada])),
+      ]);
+      abrirEdicao(newId);
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[ProdutosListScreen.duplicarProduto]', e);
+      setInfoToast({ message: mensagemErroSalvar(e, 'Não foi possível duplicar o produto.'), icon: 'alert-triangle' });
+      loadData();
+    }
   }
 
   function removerCategoria(catId) {

@@ -37,6 +37,7 @@ import { calcSheetMaxHeight } from '../utils/keyboardInset';
 import usePersistedState from '../hooks/usePersistedState';
 import usePlan from '../hooks/usePlan';
 import UpgradeModal from '../components/UpgradeModal';
+import { mensagemErroSalvar } from '../utils/planGate';
 import { PLAN_LABELS, UPGRADE_HIGHLIGHTS } from '../config/plans';
 
 // ─── Numeric helpers (audit P0 — defesa contra NaN/Infinity) ─────────────
@@ -612,7 +613,7 @@ export default function DeliveryCombosScreen() {
     } catch (e) {
       console.error('[DeliveryCombosScreen.salvarNovo]', e);
       setSaveStatus('error');
-      showSaveError('Falha ao criar combo. Tente novamente.');
+      showSaveError(mensagemErroSalvar(e, 'Falha ao criar combo. Tente novamente.'));
     }
   }
 
@@ -721,7 +722,7 @@ export default function DeliveryCombosScreen() {
       showSaveSuccess(`Combo "${combo.nome}" duplicado`);
     } catch (e) {
       console.error('[DeliveryCombosScreen.duplicarCombo]', e);
-      showSaveError('Falha ao duplicar combo. Tente novamente.');
+      showSaveError(mensagemErroSalvar(e, 'Falha ao duplicar combo. Tente novamente.'));
     }
   }
 

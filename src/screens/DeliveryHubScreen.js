@@ -29,6 +29,7 @@ import SimuladorLoteScreen from './SimuladorLoteScreen';
 import usePlan from '../hooks/usePlan';
 import UpgradeModal from '../components/UpgradeModal';
 import ProPreviewBanner from '../components/ProPreviewBanner';
+import { mensagemErroSalvar } from '../utils/planGate';
 
 const isWeb = Platform.OS === 'web';
 
@@ -140,6 +141,10 @@ export default function DeliveryHubScreen({ navigation }) {
       plataformaId: precosPopupPlat.id,
       precoVenda: valorStr,
     });
+    if (r.planRejected) {
+      setSaveError(r.error);
+      setTimeout(() => setSaveError(null), 6000);
+    }
     return r.ok;
   }
 
@@ -310,7 +315,7 @@ export default function DeliveryHubScreen({ navigation }) {
       }
     } catch (e) {
       console.error('[DeliveryHubScreen.togglePlataforma]', e);
-      setSaveError('Não foi possível ativar/desativar essa plataforma.');
+      setSaveError(mensagemErroSalvar(e, 'Não foi possível ativar/desativar essa plataforma.'));
       setTimeout(() => setSaveError(null), 4000);
     }
   }
@@ -334,7 +339,7 @@ export default function DeliveryHubScreen({ navigation }) {
       setPlataformas(prev => prev.map(p => p.id === platId ? { ...p, [field]: parsed } : p));
     } catch (e) {
       console.error('[DeliveryHubScreen.savePlatField]', field, e);
-      setSaveError('Não foi possível salvar essa alteração. Tente novamente.');
+      setSaveError(mensagemErroSalvar(e, 'Não foi possível salvar essa alteração. Tente novamente.'));
       setTimeout(() => setSaveError(null), 4000);
     }
   }
@@ -352,7 +357,7 @@ export default function DeliveryHubScreen({ navigation }) {
       loadData();
     } catch (e) {
       console.error('[DeliveryHubScreen.addPlataforma]', e);
-      setSaveError('Não foi possível adicionar a plataforma.');
+      setSaveError(mensagemErroSalvar(e, 'Não foi possível adicionar a plataforma.'));
       setTimeout(() => setSaveError(null), 4000);
     }
   }
