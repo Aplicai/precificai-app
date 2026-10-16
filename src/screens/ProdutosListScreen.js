@@ -6,6 +6,7 @@ import { getDatabase } from '../database/database';
 import FAB from '../components/FAB';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
+import { aplicarCustosPreparos } from '../services/cascadeRecalc';
 import { formatCurrency, formatPercent, calcDespesasFixasPercentual, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual } from '../utils/calculations';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
@@ -283,7 +284,8 @@ export default function ProdutosListScreen({ navigation }) {
       db.getAllAsync('SELECT * FROM produto_ingredientes'),
       db.getAllAsync('SELECT * FROM materias_primas'),
       db.getAllAsync('SELECT * FROM produto_preparos'),
-      db.getAllAsync('SELECT * FROM preparos'),
+      // Custo das receitas base refeito dos preços atuais (gravado pode estar velho).
+      db.getAllAsync('SELECT * FROM preparos').then(rows => aplicarCustosPreparos(db, rows)),
       db.getAllAsync('SELECT * FROM produto_embalagens'),
       db.getAllAsync('SELECT * FROM embalagens'),
       db.getAllAsync('SELECT lucro_desejado FROM configuracao LIMIT 1'),

@@ -21,8 +21,16 @@
  * o cache de `custo_por_kg` (preparo) ou `custo` (combo) esteja stale.
  */
 
-import { calcCustoIngrediente, calcCustoPreparo, getDivisorRendimento, calcCustoPorKgPreparo } from '../utils/calculations';
+import { calcCustoIngrediente, calcCustoPreparo, getDivisorRendimento, calcCustoPorKgPreparo, calcCustosPreparos, custoPreparoDifere } from '../utils/calculations';
 import { resolveCustoUnitarioItemCombo } from '../utils/comboPricing';
+import { isErrorResult } from '../database/dbResult';
+
+async function clearQueryCache() {
+  try {
+    const mod = await import('../database/supabaseDb');
+    mod.clearQueryCache?.();
+  } catch (_) { /* nativo/teste: sem wrapper */ }
+}
 
 const safe = (v) => {
   const n = Number(v);
@@ -238,7 +246,8 @@ export async function recalcularPreparosDoInsumo(db, insumoId) {
 export async function cascadeFromPreparo(db, preparoId) {
   await _recalcularPreparosESeusPais(db, [preparoId]);
   await recalcularTodosCombos(db);
-  clearQueryCache();
+  // Antes chamava clearQueryCache() sem importar → ReferenceError engolido pelo caller.
+  await clearQueryCache();
 }
 
 async function _recalcularPreparosESeusPais(db, startIds) {
@@ -260,4 +269,77 @@ async function _recalcularPreparosESeusPais(db, startIds) {
     ids = new Set((parents || []).map(r => r.preparo_id).filter(x => x && !done.has(x)));
   }
   return [...done];
+}
+
+
+// PostgREST corta leituras em 1000 linhas (max-rows padrão do Supabase) e o
+// wrapper não pagina. Lista cortada daria custo MENOR — nesse caso não grava.
+const MAX_LINHAS_SYNC = 1000;
+let _syncEmVoo = null;
+
+/**
+ * Sincroniza custo_total/custo_por_kg de TODAS as receitas base com os preços
+ * atuais dos insumos/embalagens/sub-receitas (bug 2026-10: "R$ 0,01" no
+ * Brigadeiro — custo gravado pelo Kit de Início antigo nunca era refeito se o
+ * preço do insumo mudasse por um caminho sem cascade, ex.: reajuste em massa).
+ *
+ * 6 leituras simples (sem JOIN) + UPDATE só nas receitas cujo valor gravado
+ * diverge. Receitas sem linhas não são tocadas (custo manual). Qualquer falha
+ * de leitura → não grava nada e devolve null. Chamadas simultâneas compartilham
+ * a mesma execução.
+ *
+ * Retorna Map(id → { custo_total, custo_por_kg }) ou null.
+ */
+export function sincronizarCustosPreparos(db) {
+  if (_syncEmVoo) return _syncEmVoo;
+  _syncEmVoo = _sincronizarCustosPreparos(db).finally(() => { _syncEmVoo = null; });
+  return _syncEmVoo;
+}
+
+async function _sincronizarCustosPreparos(db) {
+  const leituras = await Promise.all([
+    db.getAllAsync('SELECT * FROM preparos'),
+    db.getAllAsync('SELECT * FROM preparo_ingredientes'),
+    db.getAllAsync('SELECT * FROM materias_primas'),
+    db.getAllAsync('SELECT * FROM preparo_subpreparos'),
+    db.getAllAsync('SELECT * FROM preparo_embalagens'),
+    db.getAllAsync('SELECT * FROM embalagens'),
+  ]);
+  if (leituras.some(r => !Array.isArray(r) || isErrorResult(r) || r.length >= MAX_LINHAS_SYNC)) return null;
+  const [preparos, ingredientes, materias, subpreparos, embalagensLinhas, embalagens] = leituras;
+  const custos = calcCustosPreparos({ preparos, ingredientes, materias, subpreparos, embalagensLinhas, embalagens });
+
+  const divergentes = preparos.filter(p => {
+    const c = custos.get(p.id);
+    return c && (custoPreparoDifere(p.custo_por_kg, c.custo_por_kg) || custoPreparoDifere(p.custo_total, c.custo_total));
+  });
+  for (const p of divergentes) {
+    const c = custos.get(p.id);
+    try {
+      await db.runAsync('UPDATE preparos SET custo_por_kg = ?, custo_total = ? WHERE id = ?', [c.custo_por_kg, c.custo_total, p.id]);
+    } catch (e) { console.warn('[cascadeRecalc.sincronizar]', p.id, e); }
+  }
+  return custos;
+}
+
+/**
+ * Atalho pras telas: devolve `rows` (linhas de `preparos` já carregadas) com
+ * custo_total/custo_por_kg trocados pelos valores atuais. Linhas sincronizadas
+ * levam `_custoSincronizado: true` (custo 0 aí é real, não "ainda não carregou").
+ * Se a sincronização falhar, devolve `rows` como veio — nunca derruba a tela.
+ */
+export async function aplicarCustosPreparos(db, rows) {
+  // Leitura que falhou (marcada pelo wrapper) volta intacta — a tela precisa ver a marca.
+  if (!Array.isArray(rows) || rows.length === 0 || isErrorResult(rows)) return rows;
+  try {
+    const custos = await sincronizarCustosPreparos(db);
+    if (!custos) return rows;
+    return rows.map(r => {
+      const c = custos.get(r.id);
+      return c ? { ...r, custo_total: c.custo_total, custo_por_kg: c.custo_por_kg, _custoSincronizado: true } : r;
+    });
+  } catch (e) {
+    console.warn('[cascadeRecalc.aplicarCustosPreparos]', e);
+    return rows;
+  }
 }

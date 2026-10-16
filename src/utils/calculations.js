@@ -139,6 +139,106 @@ export function reajusteCustoPreparo(preparo, mode, sign, value) {
   return { custo_total: novo, custo_por_kg: custoPorKg };
 }
 
+/**
+ * Custo ATUAL de todas as receitas base a partir das linhas e dos preços de hoje
+ * (mesma fórmula do cascadeRecalc.recalcularPreparo, mas em memória e de uma vez):
+ *   Σ insumos (preco_por_kg do insumo) + Σ sub-receitas (custo_por_kg da sub)
+ *   + Σ embalagens (preco_unitario × qtd).
+ * Sub-receitas resolvidas iterando até estabilizar (ordem não importa).
+ *
+ * Receita SEM nenhuma linha fica de fora do resultado (custo digitado à mão —
+ * não há de onde recalcular). Entradas: arrays crus das tabelas.
+ * Retorna Map(id → { custo_total, custo_por_kg }).
+ */
+export function calcCustosPreparos({
+  preparos = [], ingredientes = [], materias = [],
+  subpreparos = [], embalagensLinhas = [], embalagens = [],
+} = {}) {
+  const mpMap = new Map((materias || []).map(m => [m.id, m]));
+  const embMap = new Map((embalagens || []).map(e => [e.id, e]));
+  const prepMap = new Map((preparos || []).map(p => [p.id, p]));
+  const group = (rows) => {
+    const g = new Map();
+    (rows || []).forEach(r => {
+      if (!g.has(r.preparo_id)) g.set(r.preparo_id, []);
+      g.get(r.preparo_id).push(r);
+    });
+    return g;
+  };
+  const ingsBy = group(ingredientes);
+  const subsBy = group(subpreparos);
+  const embsBy = group(embalagensLinhas);
+
+  // Parte que não depende de sub-receita: insumos + embalagens.
+  const base = new Map();
+  for (const p of prepMap.values()) {
+    const ings = ingsBy.get(p.id) || [];
+    const subs = subsBy.get(p.id) || [];
+    const embs = embsBy.get(p.id) || [];
+    if (ings.length + subs.length + embs.length === 0) continue;
+    const custoIng = ings.reduce((a, i) => {
+      const mp = mpMap.get(i.materia_prima_id);
+      return mp ? a + calcCustoIngrediente(mp.preco_por_kg, i.quantidade_utilizada, mp.unidade_medida, mp.unidade_medida) : a;
+    }, 0);
+    const custoEmb = embs.reduce((a, l) => {
+      const em = embMap.get(l.embalagem_id);
+      return em ? a + _safeNum(em.preco_unitario) * _safeNum(l.quantidade_utilizada) : a;
+    }, 0);
+    base.set(p.id, custoIng + custoEmb);
+  }
+
+  // custo_por_kg corrente de cada receita: começa no gravado (vale para as
+  // receitas sem linhas) e é substituído pelo calculado a cada passada.
+  const cpk = new Map([...prepMap.values()].map(p => [p.id, _safeNum(p.custo_por_kg)]));
+  const out = new Map();
+  const maxPasses = Math.min(prepMap.size + 1, 12);
+  for (let pass = 0; pass < maxPasses; pass++) {
+    let mudou = false;
+    for (const [id, custoBase] of base) {
+      const p = prepMap.get(id);
+      const custoSubs = (subsBy.get(id) || []).reduce((a, s) => {
+        const sub = prepMap.get(s.sub_preparo_id);
+        return sub ? a + calcCustoPreparo(cpk.get(sub.id), s.quantidade_utilizada, sub.unidade_medida || 'g') : a;
+      }, 0);
+      const total = custoBase + custoSubs;
+      const rend = _safeNum(p.rendimento_total);
+      const porKg = rend > 0 ? calcCustoPorKgPreparo(total, rend, p.unidade_medida) : total;
+      if (!out.has(id) || Math.abs(porKg - cpk.get(id)) > 1e-9) mudou = true;
+      cpk.set(id, porKg);
+      out.set(id, { custo_total: total, custo_por_kg: porKg });
+    }
+    if (!mudou) break;
+  }
+  return out;
+}
+
+/**
+ * true quando o custo gravado difere do calculado o bastante pra regravar.
+ * As colunas são REAL (float4 no Postgres, ~7 dígitos): comparação exata
+ * regravaria sempre. Tolerância: meio milésimo de real ou 1e-5 relativo.
+ */
+export function custoPreparoDifere(gravado, calculado) {
+  const a = _safeNum(gravado);
+  const b = _safeNum(calculado);
+  return Math.abs(a - b) > Math.max(0.0005, 1e-5 * Math.max(Math.abs(a), Math.abs(b)));
+}
+
+/**
+ * Rendimento de receita base pra exibir: "600 g", "1,5 kg", "400 mL", "2 L",
+ * "30 unidades". Aceita unidades legadas ("Grama(s)", "Mililitro(s)") e
+ * rendimento gravado em kg/L (converte pra base antes de escolher a escala).
+ */
+export function formatRendimentoPreparo(valor, unidade) {
+  const v = _safeNum(valor);
+  const tipo = getTipoUnidade(unidade || 'g');
+  const fmt = (n) => String(Math.round(n * 100) / 100).replace('.', ',');
+  if (tipo === 'unidade') return `${fmt(v)} ${v === 1 ? 'unidade' : 'unidades'}`;
+  const baseVal = converterParaBase(v, unidade || 'g');
+  const [menor, maior] = tipo === 'peso' ? ['g', 'kg'] : ['mL', 'L'];
+  if (baseVal >= 1000) return `${fmt(baseVal / 1000)} ${maior}`;
+  return `${fmt(baseVal)} ${menor}`;
+}
+
 // Normaliza uma string de unidade para um dos valores canônicos
 // ('g','kg','mL','L','un'), reconhecendo variantes comuns digitadas pelo
 // usuário ou vindas de dados legados/corrompidos.

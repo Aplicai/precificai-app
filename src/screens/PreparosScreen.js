@@ -8,7 +8,8 @@ import FAB from '../components/FAB';
 import SearchBar from '../components/SearchBar';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius, radius, numeric } from '../utils/theme';
-import { formatCurrency, getTipoUnidade, normalizeSearch, calcCustoListaPreparo, formatCustoListaPreparo, calcCustoTotalPreparo, reajusteCustoPreparo } from '../utils/calculations';
+import { formatCurrency, getTipoUnidade, normalizeSearch, calcCustoListaPreparo, formatCustoListaPreparo, calcCustoTotalPreparo, reajusteCustoPreparo, formatRendimentoPreparo } from '../utils/calculations';
+import { aplicarCustosPreparos, sincronizarCustosPreparos } from '../services/cascadeRecalc';
 import { subscribeDataChanged } from '../utils/dataSync';
 import EmptyState from '../components/EmptyState';
 import Skeleton from '../components/Skeleton';
@@ -53,18 +54,8 @@ function getUnidadeInfo(unidade) {
   return { label: 'un', color: colors.purple };
 }
 
-function formatRendimento(valor, unidade) {
-  const tipo = getTipoUnidade(unidade);
-  if (tipo === 'peso') {
-    if (valor >= 1000) return `${(valor / 1000).toFixed(valor % 1000 === 0 ? 0 : 1)} kg`;
-    return `${valor} g`;
-  }
-  if (tipo === 'volume') {
-    if (valor >= 1000) return `${(valor / 1000).toFixed(valor % 1000 === 0 ? 0 : 1)} L`;
-    return `${valor} mL`;
-  }
-  return `${valor} ${valor === 1 ? 'unidade' : 'unidades'}`;
-}
+// Rendimento com unidade real (g/kg, mL/L, unidades) — aceita legado "Grama(s)".
+const formatRendimento = formatRendimentoPreparo;
 
 // Área 4 (Preparos) — strip de stats adaptada pro mobile.
 // O ListStatsStrip global usa flex:1 sem minWidth:0, então valores grandes
@@ -326,6 +317,9 @@ export default function PreparosScreen({ navigation }) {
     };
     const orderBy = orderClauses[sortBy] || orderClauses.nome_asc;
     let preparos = rowsOrThrow(await db.getAllAsync(`SELECT * FROM preparos ORDER BY ${orderBy}`));
+    // Custo gravado pode estar velho (Kit antigo, reajuste de insumo sem cascade):
+    // refaz a partir dos preços atuais e regrava o que divergir.
+    preparos = await aplicarCustosPreparos(db, preparos);
     if (sortBy === 'favoritos') {
       preparos = [...preparos].sort((a, b) => {
         const fa = a.favorito ? 1 : 0, fb = b.favorito ? 1 : 0;
@@ -537,10 +531,15 @@ export default function PreparosScreen({ navigation }) {
     const db = await getDatabase();
     const placeholders = ids.map(() => '?').join(',');
     const itens = await db.getAllAsync(`SELECT * FROM preparos WHERE id IN (${placeholders})`, ids);
-    // Preparos: aplica delta no custo total (override manual) e grava custo_por_kg
-    // coerente. ATENÇÃO: editar e salvar o preparo recalcula custo a partir dos
-    // ingredientes, sobrescrevendo este reajuste.
-    await Promise.all(itens.map((item) => {
+    // Receita com ingredientes/sub-receitas/embalagens tem custo CALCULADO dos
+    // preços atuais (aplicarCustosPreparos refaz a cada carga) — reajustar à mão
+    // seria desfeito no próximo load. Só receitas sem linhas (custo digitado)
+    // recebem o reajuste; as demais são avisadas no toast.
+    let calculadas = null;
+    try { calculadas = await sincronizarCustosPreparos(db); } catch (_) { calculadas = null; }
+    const ajustaveis = calculadas ? itens.filter(item => !calculadas.has(item.id)) : itens;
+    const puladas = itens.length - ajustaveis.length;
+    await Promise.all(ajustaveis.map((item) => {
       const novo = reajusteCustoPreparo(item, mode, sign, value);
       return db.runAsync(
         'UPDATE preparos SET custo_total = ?, custo_por_kg = ? WHERE id = ?',
@@ -550,8 +549,15 @@ export default function PreparosScreen({ navigation }) {
     bulk.clear();
     const sigStr = sign === 1 ? '+' : '−';
     const valStr = mode === 'percent' ? `${value}%` : `R$ ${value.toFixed(2).replace('.', ',')}`;
+    const n = ajustaveis.length;
+    const msgAjuste = n > 0
+      ? `${n} ${n === 1 ? 'receita base reajustada' : 'receitas base reajustadas'} (${sigStr}${valStr})`
+      : 'Nenhuma receita base reajustada';
+    const msgPuladas = puladas > 0
+      ? `. ${puladas} ${puladas === 1 ? 'tem' : 'têm'} ingredientes: o custo segue o preço deles — reajuste os ingredientes.`
+      : '';
     setInfoToast({
-      message: `${ids.length} ${ids.length === 1 ? 'receita base reajustada' : 'receitas base reajustadas'} (${sigStr}${valStr})`,
+      message: msgAjuste + msgPuladas,
       icon: 'trending-up',
     });
     loadData();
@@ -1033,7 +1039,7 @@ export default function PreparosScreen({ navigation }) {
       <BulkPriceAdjustModal
         visible={showPriceModal}
         title="Reajustar custo de receita base"
-        subtitle={`${bulk.count} ${bulk.count === 1 ? 'item selecionado' : 'itens selecionados'} · custo será sobrescrito`}
+        subtitle={`${bulk.count} ${bulk.count === 1 ? 'item selecionado' : 'itens selecionados'} · só receitas sem ingredientes`}
         currentLabel="custos de receita base"
         onConfirm={reajustarEmMassa}
         onCancel={() => setShowPriceModal(false)}

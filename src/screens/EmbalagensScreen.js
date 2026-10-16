@@ -448,6 +448,17 @@ export default function EmbalagensScreen({ navigation }) {
         [novoPreco, novoUnit, item.id]
       );
     }));
+    // Receitas base que usam essas embalagens têm o custo refeito (antes só a tela de
+    // edição individual/Atualizar Preços faziam o cascade). Em segundo plano.
+    (async () => {
+      try {
+        const { sincronizarCustosPreparos } = await import('../services/cascadeRecalc');
+        await sincronizarCustosPreparos(db);
+        const { notifyDataChanged } = await import('../utils/dataSync');
+        notifyDataChanged('preparos');
+        notifyDataChanged('produtos');
+      } catch (e) { console.warn('[Embalagens.reajuste.cascade]', e); }
+    })();
     bulk.clear();
     const sigStr = sign === 1 ? '+' : '−';
     const valStr = mode === 'percent' ? `${value}%` : `R$ ${value.toFixed(2).replace('.', ',')}`;

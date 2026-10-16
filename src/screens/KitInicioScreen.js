@@ -749,6 +749,14 @@ export default function KitInicioScreen({ navigation, route }) {
       setProgressStep('finalizando');
       setProgressMsg('Atualizando o app...');
       try { clearQueryCache(); } catch (e) { /* defensivo */ }
+      // Custo das receitas base pela fórmula canônica (unidade do INSUMO, sub-receitas,
+      // embalagens) — o cálculo inline acima usa a unidade do template.
+      if (prepsCriados > 0) {
+        try {
+          const { sincronizarCustosPreparos } = await import('../services/cascadeRecalc');
+          await sincronizarCustosPreparos(await getDatabase());
+        } catch (e) { console.warn('[KitInicio.sincronizarCustos]', e); }
+      }
 
       setProgressStep('sucesso');
       const partes = [];
