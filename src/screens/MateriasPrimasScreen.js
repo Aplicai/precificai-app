@@ -506,7 +506,7 @@ export default function MateriasPrimasScreen({ navigation }) {
     })();
     bulk.clear();
     const sigStr = sign === 1 ? '+' : '−';
-    const valStr = mode === 'percent' ? `${value}%` : `R$ ${value.toFixed(2).replace('.', ',')}`;
+    const valStr = mode === 'percent' ? `${String(value).replace('.', ',')}%` : formatCurrency(value);
     setInfoToast({
       message: `${ids.length} ${ids.length === 1 ? 'ingrediente reajustado' : 'ingredientes reajustados'} (${sigStr}${valStr})`,
       icon: 'trending-up',

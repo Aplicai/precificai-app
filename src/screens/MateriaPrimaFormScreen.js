@@ -20,7 +20,7 @@ import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useListDensity from '../hooks/useListDensity';
 import { t } from '../i18n/pt-BR';
-import { UNIDADES_MEDIDA, calcPrecoBase, calcFatorCorrecao, formatCurrency, converterParaBase, calcCustoIngrediente, calcCustoPreparo, calcMargem, parseDecimalBR, calcCustoPorKgPreparo } from '../utils/calculations';
+import { UNIDADES_MEDIDA, calcPrecoBase, calcFatorCorrecao, formatCurrency, converterParaBase, calcCustoIngrediente, calcCustoPreparo, calcMargem, parseDecimalBR, calcCustoPorKgPreparo, formatNumberBR, formatPercentBR } from '../utils/calculations';
 import { resolveCategoriaId } from '../utils/categoriaValida';
 // Sprint 2 S5 — checagem de dependências antes de DELETE (evita órfãos em preparo_ingredientes / produto_ingredientes).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
@@ -572,7 +572,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
               // Sessão 28.9 — Auditoria P0-02: usar calcMargem (alerta de margem baixa do produto)
               const margem = calcMargem(prod.preco_venda, custoTotal);
               if (margem < 0.10) {
-                warnings.push(`${prod.nome}: margem ${(margem * 100).toFixed(1)}%`);
+                warnings.push(`${prod.nome}: margem ${formatPercentBR(margem * 100, 1)}`);
               }
             }
             if (warnings.length > 0) {
@@ -1092,7 +1092,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
           <Text style={sentenceWordStyle}>por R$</Text>
           <InputField
             value={form.valor_pago}
-            onChangeText={(v) => { setForm(p => ({ ...p, valor_pago: v })); setErrors(p => ({ ...p, valor_pago: undefined })); }}
+            onChangeText={(v) => { setForm(p => ({ ...p, valor_pago: v })); setErrors(p => ({ ...p, valor_pago: undefined })); setEhValorEstimado(false); }}
             keyboardType="decimal-pad"
             inputMode="decimal"
             placeholder="25,00"
@@ -1219,7 +1219,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             )}
             {perdaPercent > 0 && (
               <Text style={styles.perdaHint}>
-                Perda estimada: {perdaPercent.toFixed(0)}%. O custo real é {fatorCorrecao > 0 ? (1 / fatorCorrecao).toFixed(1) : '-'}x o preço pago
+                Perda estimada: {perdaPercent.toFixed(0)}%. O custo real é {fatorCorrecao > 0 ? formatNumberBR(1 / fatorCorrecao, 1) : '-'}x o preço pago
               </Text>
             )}
             {/* APP-17: nota sobre origem dos fatores de perda pré-preenchidos pelo kit */}
@@ -1320,7 +1320,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
                       <Text style={[styles.historicoInfoText, {
                         color: variacao > 0 ? colors.error : variacao < 0 ? colors.success : colors.textSecondary
                       }]}>
-                        {variacao > 0 ? '▲ Subiu' : variacao < 0 ? '▼ Caiu' : '= Estável'} {Math.abs(variacao).toFixed(1)}%
+                        {variacao > 0 ? '▲ Subiu' : variacao < 0 ? '▼ Caiu' : '= Estável'} {formatPercentBR(Math.abs(variacao), 1)}
                       </Text>
                     </View>
                   </>

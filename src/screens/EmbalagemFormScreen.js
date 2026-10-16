@@ -11,7 +11,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { useIsFocused, useFocusEffect } from '@react-navigation/native';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useListDensity from '../hooks/useListDensity';
-import { calcPrecoUnitarioEmbalagem, formatCurrency, parseDecimalBR } from '../utils/calculations';
+import { calcPrecoUnitarioEmbalagem, formatCurrency, formatPercentBR, parseDecimalBR } from '../utils/calculations';
 import { resolveCategoriaId } from '../utils/categoriaValida';
 // Walkthrough 2026-09: mesmo bug do MateriaPrimaForm ("5.9" em vez de "5,90"
 // ao editar) — helper compartilhado (ver docstring de insumoFormHelpers.js).
@@ -463,7 +463,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
       const db = await getDatabase();
       const deps = await contarDependencias(db, 'embalagem', editId);
       if (deps.total > 0) {
-        mensagemExtra = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'embalagem' });
+        mensagemExtra = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'embalagem', artigo: 'esta' });
       }
     } catch (e) {
       console.error('[EmbalagemForm.solicitarExclusao.deps]', e);
@@ -732,7 +732,7 @@ export default function EmbalagemFormScreen({ route, navigation }) {
                     })}
                   </View>
                   <Text style={{ fontSize: 11, color: variacao > 0 ? colors.error : variacao < 0 ? colors.success : colors.textSecondary, fontFamily: fontFamily.semiBold, marginTop: 8 }}>
-                    {variacao > 0 ? '▲ Subiu' : variacao < 0 ? '▼ Caiu' : '= Estável'} {Math.abs(variacao).toFixed(1)}%
+                    {variacao > 0 ? '▲ Subiu' : variacao < 0 ? '▼ Caiu' : '= Estável'} {formatPercentBR(Math.abs(variacao), 1)}
                   </Text>
                 </>
               );

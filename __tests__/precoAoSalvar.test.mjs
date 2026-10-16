@@ -25,3 +25,12 @@ test('aviso só quando o preço não foi digitado', () => {
   assert.match(avisoPrecoAoSalvar({ preco: 16.5, origem: 'sugerido' }, brl), /R\$ 16,50/);
   assert.match(avisoPrecoAoSalvar({ preco: 0, origem: 'sem_preco' }, brl), /sem preço/);
 });
+
+test('"0" digitado ou preço apagado na edição vale como escolha (sem trocar pelo sugerido)', () => {
+  assert.deepEqual(resolverPrecoAoSalvar(0, 16.5, { texto: '0' }), { preco: 0, origem: 'zerado' });
+  assert.deepEqual(resolverPrecoAoSalvar(0, 16.5, { texto: '0,00' }), { preco: 0, origem: 'zerado' });
+  assert.deepEqual(resolverPrecoAoSalvar(NaN, 16.5, { texto: '', editando: true }), { preco: 0, origem: 'zerado' });
+  // Criação com campo vazio continua usando o sugerido
+  assert.deepEqual(resolverPrecoAoSalvar(NaN, 16.5, { texto: '', editando: false }), { preco: 16.5, origem: 'sugerido' });
+  assert.equal(avisoPrecoAoSalvar({ preco: 0, origem: 'zerado' }, brl), null);
+});

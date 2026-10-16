@@ -25,7 +25,7 @@ import useListDensity from '../hooks/useListDensity';
 import { t } from '../i18n/pt-BR';
 // Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
-import { UNIDADES_MEDIDA, formatCurrency, formatPercent, calcMarkup, calcDespesasFixasPercentual, converterParaBase, getTipoUnidade, calcCustoIngrediente, calcCustoPreparo, getLabelPrecoBase, normalizeSearch, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, parseDecimalBR, safeNum, formatCustoListaPreparo, calcCustoTotalPreparo } from '../utils/calculations';
+import { UNIDADES_MEDIDA, formatCurrency, formatPercent, calcMarkup, calcDespesasFixasPercentual, converterParaBase, getTipoUnidade, calcCustoIngrediente, calcCustoPreparo, getLabelPrecoBase, normalizeSearch, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, parseDecimalBR, safeNum, formatCustoListaPreparo, calcCustoTotalPreparo, formatNumberBR, formatPercentBR } from '../utils/calculations';
 import { aplicarCustosPreparos } from '../services/cascadeRecalc';
 // APP-19/24b: engine unificada + modal de transparência do cálculo
 import { calcularPrecoBalcao } from '../utils/precificacao';
@@ -527,13 +527,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
       }
       setForm({
         nome: p.nome, categoria_id: p.categoria_id || null,
-        rendimento_total: String(p.rendimento_total || ''),
-        unidade_rendimento: p.unidade_rendimento || 'g', rendimento_unidades: String(p.rendimento_unidades || '1'),
+        rendimento_total: String(p.rendimento_total || '').replace('.', ','),
+        unidade_rendimento: p.unidade_rendimento || 'g', rendimento_unidades: String(p.rendimento_unidades || '1').replace('.', ','),
         tempo_preparo: String(p.tempo_preparo || ''), unidade_tempo: p.unidade_tempo || 'Minutos',
         // Fix walkthrough #4 — carregava "25" em vez de "25,00" (String() cru
         // do número). Formata com 2 decimais PT-BR igual ao restante do app.
         preco_venda: p.preco_venda != null && p.preco_venda !== '' ? Number(p.preco_venda).toFixed(2).replace('.', ',') : '',
-        margem_lucro_produto: p.margem_lucro_produto != null ? String((p.margem_lucro_produto * 100).toFixed(1)) : '',
+        margem_lucro_produto: p.margem_lucro_produto != null ? formatNumberBR(p.margem_lucro_produto * 100, 1) : '',
         validade_dias: String(p.validade_dias || ''), modo_preparo: p.modo_preparo || '',
         observacoes: p.observacoes || '',
         conserv_congelado: !!(p.temp_congelado || p.tempo_congelado),
@@ -998,7 +998,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
       const margemRaw = parseNum(form.margem_lucro_produto);
       const margemSalvar = form.margem_lucro_produto.trim() !== '' && Number.isFinite(margemRaw) ? margemRaw / 100 : null;
       const pvRaw = parseDecimalBR(form.preco_venda);
-      const precoResolvido = resolverPrecoAoSalvar(Number.isFinite(pvRaw) ? pvRaw : 0, precoSugerido);
+      const precoResolvido = resolverPrecoAoSalvar(Number.isFinite(pvRaw) ? pvRaw : 0, precoSugerido, { texto: form.preco_venda, editando: !!editId });
       const pv = precoResolvido.preco;
       const avisoPreco = avisoPrecoAoSalvar(precoResolvido, formatCurrency);
       if (avisoPreco) { try { showToast(avisoPreco, 'info', 5000); } catch (_) {} }
@@ -1249,7 +1249,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                         value={form.preco_venda}
                         onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
                         keyboardType="decimal-pad"
-                        placeholder={precoSugerido > 0 ? precoSugerido.toFixed(2) : '0,00'}
+                        placeholder={precoSugerido > 0 ? formatNumberBR(precoSugerido, 2) : '0,00'}
                         error={errors.preco_venda}
                         errorText="Informe o preço de venda"
                       />
@@ -1272,7 +1272,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                         value={form.preco_venda}
                         onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
                         keyboardType="decimal-pad"
-                        placeholder={precoSugerido > 0 ? precoSugerido.toFixed(2) : '0,00'}
+                        placeholder={precoSugerido > 0 ? formatNumberBR(precoSugerido, 2) : '0,00'}
                         error={errors.preco_venda}
                         errorText="Informe o preço de venda"
                       />
@@ -1298,7 +1298,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
             </View>
             <View style={styles.costsGrid}>
               <View style={styles.costsItem}>
-                <Text style={styles.costsItemLabel}>Custo dos ingredientes{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : '/un'}</Text>
+                <Text style={styles.costsItemLabel}>Custo dos itens{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : '/un'}</Text>
                 <Text style={styles.costsItemValue}>{formatCurrency(custoUnitario)}</Text>
               </View>
               <TouchableOpacity
@@ -1884,7 +1884,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 value={form.margem_lucro_produto}
                 onChangeText={(v) => setForm(p => ({ ...p, margem_lucro_produto: v }))}
                 keyboardType="numeric"
-                placeholder={`${(config.lucroDesejado * 100).toFixed(1)} (padrão)`}
+                placeholder={`${formatNumberBR(config.lucroDesejado * 100, 1)} (padrão)`}
                 rightLabel={
                   <InfoTooltip
                     title="Margem Individual"
@@ -1899,7 +1899,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               />
 
               <View style={styles.precoSugeridoBox}>
-                <Text style={styles.precoSugeridoLabel}>Preço Sugerido (Markup {markupEfetivo.toFixed(2)}x)</Text>
+                <Text style={styles.precoSugeridoLabel}>Preço Sugerido (Markup {formatNumberBR(markupEfetivo, 2)}x)</Text>
                 <Text style={styles.precoSugeridoValor}>{formatCurrency(precoSugerido)}</Text>
               </View>
 
@@ -1928,7 +1928,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 value={form.preco_venda}
                 onChangeText={(v) => { setForm(p => ({ ...p, preco_venda: v })); setErrors(p => ({ ...p, preco_venda: undefined })); }}
                 keyboardType="numeric"
-                placeholder={precoSugerido.toFixed(2)}
+                placeholder={formatNumberBR(precoSugerido, 2)}
                 error={errors.preco_venda}
                 errorText="Informe o preço de venda"
               />
@@ -1943,7 +1943,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               <View style={styles.separator} />
 
               {/* Análise final */}
-              <View style={styles.custoRow}><Text style={styles.custoLabel}>Custo dos ingredientes (CMV)</Text><Text style={styles.custoValue}>{formatPercent(cmvPerc)}</Text></View>
+              <View style={styles.custoRow}><Text style={styles.custoLabel}>Custo dos itens (CMV)</Text><Text style={styles.custoValue}>{formatPercent(cmvPerc)}</Text></View>
               <View style={styles.custoRow}><Text style={styles.custoLabel}>Custos do mês</Text><Text style={styles.custoValue}>{formatCurrency(despFixasValor)} ({formatPercent(config.despFixasPerc)})</Text></View>
               <View style={styles.custoRow}><Text style={styles.custoLabel}>Custos por venda</Text><Text style={styles.custoValue}>{formatCurrency(despVarValor)} ({formatPercent(config.despVarPerc)})</Text></View>
               <View style={[styles.custoRow, styles.custoTotal]}>
@@ -2042,10 +2042,15 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 }
               }
               try {
+                // Lê a composição ANTES de criar a cópia: o wrapper devolve [] em
+                // erro de leitura e a cópia saía vazia. rowsOrThrow aborta sem criar nada.
+                const ings = rowsOrThrow(await db.getAllAsync('SELECT * FROM produto_ingredientes WHERE produto_id = ?', [editId]));
+                const preps = rowsOrThrow(await db.getAllAsync('SELECT * FROM produto_preparos WHERE produto_id = ?', [editId]));
+                const embs = rowsOrThrow(await db.getAllAsync('SELECT * FROM produto_embalagens WHERE produto_id = ?', [editId]));
                 // F2-J2-02: guards Number.isFinite + `?? 0` para preservar 0 quando vazio/inválido
                 const margemDupRaw = parseDecimalBR(f.margem_lucro_produto);
                 const margemVal = f.margem_lucro_produto && f.margem_lucro_produto.trim() !== '' && Number.isFinite(margemDupRaw) ? margemDupRaw / 100 : null;
-                const pvDupRaw = parseFloat(String(f.preco_venda).replace(',','.'));
+                const pvDupRaw = parseDecimalBR(f.preco_venda);
                 const pvDup = Number.isFinite(pvDupRaw) ? pvDupRaw : 0;
                 const result = await db.runAsync(
                   `INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades, tempo_preparo, preco_venda, margem_lucro_produto, validade_dias, temp_congelado, tempo_congelado, temp_refrigerado, tempo_refrigerado, temp_ambiente, tempo_ambiente, modo_preparo, observacoes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -2056,18 +2061,17 @@ export default function ProdutoFormScreen({ route, navigation }) {
                    f.modo_preparo || '', f.observacoes || '']);
                 const newId = result?.lastInsertRowId;
                 if (newId) {
-                  const ings = await db.getAllAsync('SELECT * FROM produto_ingredientes WHERE produto_id = ?', [editId]);
                   for (const i of ings) await db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)', [newId, i.materia_prima_id, i.quantidade_utilizada]);
-                  const preps = await db.getAllAsync('SELECT * FROM produto_preparos WHERE produto_id = ?', [editId]);
                   for (const p of preps) await db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)', [newId, p.preparo_id, p.quantidade_utilizada]);
-                  const embs = await db.getAllAsync('SELECT * FROM produto_embalagens WHERE produto_id = ?', [editId]);
                   for (const e of embs) await db.runAsync('INSERT INTO produto_embalagens (produto_id, embalagem_id, quantidade_utilizada) VALUES (?,?,?)', [newId, e.embalagem_id, e.quantidade_utilizada]);
                   allowExit.current = true;
                   navigation.replace('ProdutoForm', { id: newId });
                 }
               } catch (e) {
                 if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.duplicar]', e);
-                Alert.alert('Não foi possível duplicar', mensagemErroSalvar(e, 'Tente novamente em instantes.'));
+                Alert.alert('Não foi possível duplicar', e?.isDbReadError
+                  ? 'Não conseguimos ler os itens deste produto, então nada foi duplicado. Verifique a conexão e tente de novo.'
+                  : mensagemErroSalvar(e, 'Tente novamente em instantes.'));
               }
             }}>
               <Feather name="copy" size={13} color={colors.primary} style={{ marginRight: 5 }} />
@@ -2099,7 +2103,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </View>
               <View style={[styles.costsGrid, { flexWrap: 'wrap' }]}>
                 <View style={[styles.costsItem, { minWidth: '45%' }]}>
-                  <Text style={styles.costsItemLabel}>Custo dos ingredientes{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : '/un'}</Text>
+                  <Text style={styles.costsItemLabel}>Custo dos itens{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : '/un'}</Text>
                   <Text style={styles.costsItemValue}>{formatCurrency(custoUnitario)}</Text>
                 </View>
                 <View style={[styles.costsItem, { minWidth: '45%' }]}>
@@ -2154,7 +2158,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                       <Text style={styles.custoValue}>{formatCurrency(custoEmbalagens / divisor)} {pv > 0 ? `(${formatPercent(percEmbalagens)})` : ''}</Text>
                     </View>
                     <View style={[styles.custoRow, styles.custoTotal]}>
-                      <Text style={[styles.custoLabel, styles.custoTotalText]}>Custo dos ingredientes{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : ' por unidade'}</Text>
+                      <Text style={[styles.custoLabel, styles.custoTotalText]}>Custo dos itens{tipoVenda === 'kg' ? '/kg' : tipoVenda === 'litro' ? '/L' : ' por unidade'}</Text>
                       <Text style={[styles.custoValue, styles.custoTotalText]}>{formatCurrency(custoUnitario)} {pv > 0 ? `(${formatPercent(cmvPerc)})` : ''}</Text>
                     </View>
                     <View style={styles.separator} />
@@ -2277,7 +2281,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                         })}
                       </View>
                       <Text style={{ fontSize: 11, color: variacao > 0 ? colors.error : variacao < 0 ? colors.success : colors.textSecondary, fontFamily: fontFamily.semiBold, marginTop: 8 }}>
-                        {variacao > 0 ? '▲ Subiu' : variacao < 0 ? '▼ Caiu' : '= Estável'} {Math.abs(variacao).toFixed(1)}%
+                        {variacao > 0 ? '▲ Subiu' : variacao < 0 ? '▼ Caiu' : '= Estável'} {formatPercentBR(Math.abs(variacao), 1)}
                       </Text>
                     </>
                   );

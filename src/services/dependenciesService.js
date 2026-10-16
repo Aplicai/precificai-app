@@ -32,50 +32,50 @@
  */
 const DEPENDENCY_QUERIES = Object.freeze({
   materia_prima: [
-    { tabela: 'preparo_ingredientes', label: 'preparos', sql: 'SELECT COUNT(*) AS n FROM preparo_ingredientes WHERE materia_prima_id = ?' },
-    { tabela: 'produto_ingredientes', label: 'produtos (uso direto)', sql: 'SELECT COUNT(*) AS n FROM produto_ingredientes WHERE materia_prima_id = ?' },
+    { tabela: 'preparo_ingredientes', label: 'receitas base', um: 'receita base', sql: 'SELECT COUNT(*) AS n FROM preparo_ingredientes WHERE materia_prima_id = ?' },
+    { tabela: 'produto_ingredientes', label: 'produtos (uso direto)', um: 'produto (uso direto)', sql: 'SELECT COUNT(*) AS n FROM produto_ingredientes WHERE materia_prima_id = ?' },
     { tabela: 'historico_precos',     label: 'histórico de preços', sql: 'SELECT COUNT(*) AS n FROM historico_precos WHERE materia_prima_id = ?' },
   ],
   preparo: [
-    { tabela: 'produto_preparos', label: 'produtos', sql: 'SELECT COUNT(*) AS n FROM produto_preparos WHERE preparo_id = ?' },
+    { tabela: 'produto_preparos', label: 'produtos', um: 'produto', sql: 'SELECT COUNT(*) AS n FROM produto_preparos WHERE preparo_id = ?' },
     // Conta quantas vezes ESTE preparo é usado COMO sub-preparo dentro de OUTROS
     // preparos. A coluna correta é sub_preparo_id em preparo_subpreparos.
     // (Antes: usava preparo_ingredientes WHERE preparo_id = ? — isso contava os
     //  próprios ingredientes internos do preparo, gerando falso positivo de "uso".)
-    { tabela: 'preparo_subpreparos', label: 'preparos que o usam como sub-preparo', sql: 'SELECT COUNT(*) AS n FROM preparo_subpreparos WHERE sub_preparo_id = ?' },
+    { tabela: 'preparo_subpreparos', label: 'receitas base que a usam', um: 'receita base que a usa', sql: 'SELECT COUNT(*) AS n FROM preparo_subpreparos WHERE sub_preparo_id = ?' },
   ],
   embalagem: [
-    { tabela: 'produto_embalagens', label: 'produtos', sql: 'SELECT COUNT(*) AS n FROM produto_embalagens WHERE embalagem_id = ?' },
+    { tabela: 'produto_embalagens', label: 'produtos', um: 'produto', sql: 'SELECT COUNT(*) AS n FROM produto_embalagens WHERE embalagem_id = ?' },
   ],
   produto: [
-    { tabela: 'produto_ingredientes', label: 'ingredientes (linhas)', sql: 'SELECT COUNT(*) AS n FROM produto_ingredientes WHERE produto_id = ?' },
-    { tabela: 'produto_preparos',     label: 'preparos (linhas)',     sql: 'SELECT COUNT(*) AS n FROM produto_preparos WHERE produto_id = ?' },
-    { tabela: 'produto_embalagens',   label: 'embalagens (linhas)',   sql: 'SELECT COUNT(*) AS n FROM produto_embalagens WHERE produto_id = ?' },
+    // Walkthrough 2026-10: a composição do PRÓPRIO produto (produto_ingredientes /
+    // produto_preparos / produto_embalagens) não é dependência: sai junto com ele.
+    // Contá-la gerava "1 preparos (linhas)" no aviso de exclusão.
     // FIX (Sentry "query falhou"): delivery_produto_itens NÃO tem coluna produto_id
     // (colunas: id, user_id, delivery_produto_id, tipo, item_id, quantidade). Um
     // produto base é referenciado como ITEM via tipo='produto' + item_id. A query
     // antiga (WHERE produto_id) dava HTTP 400 no Supabase em TODA checagem de
     // dependência de produto → ~dezenas de eventos no Sentry.
-    { tabela: 'delivery_produto_itens', label: 'configurações delivery', sql: "SELECT COUNT(*) AS n FROM delivery_produto_itens WHERE item_id = ? AND tipo = 'produto'" },
-    { tabela: 'vendas',               label: 'vendas registradas',     sql: 'SELECT COUNT(*) AS n FROM vendas WHERE produto_id = ?' },
+    { tabela: 'delivery_produto_itens', label: 'produtos de delivery', um: 'produto de delivery', sql: "SELECT COUNT(*) AS n FROM delivery_produto_itens WHERE item_id = ? AND tipo = 'produto'" },
+    { tabela: 'vendas',               label: 'vendas registradas', um: 'venda registrada', sql: 'SELECT COUNT(*) AS n FROM vendas WHERE produto_id = ?' },
   ],
   delivery_combo: [
-    { tabela: 'delivery_combo_itens', label: 'itens (linhas)', sql: 'SELECT COUNT(*) AS n FROM delivery_combo_itens WHERE combo_id = ?' },
+    { tabela: 'delivery_combo_itens', label: 'itens', um: 'item', sql: 'SELECT COUNT(*) AS n FROM delivery_combo_itens WHERE combo_id = ?' },
   ],
   delivery_produto: [
-    { tabela: 'delivery_combo_itens', label: 'combos delivery', sql: 'SELECT COUNT(*) AS n FROM delivery_combo_itens WHERE delivery_produto_id = ?' },
+    { tabela: 'delivery_combo_itens', label: 'combos delivery', um: 'combo delivery', sql: 'SELECT COUNT(*) AS n FROM delivery_combo_itens WHERE delivery_produto_id = ?' },
   ],
   categoria_insumo: [
-    { tabela: 'materias_primas', label: 'insumos', sql: 'SELECT COUNT(*) AS n FROM materias_primas WHERE categoria_id = ?' },
+    { tabela: 'materias_primas', label: 'insumos', um: 'insumo', sql: 'SELECT COUNT(*) AS n FROM materias_primas WHERE categoria_id = ?' },
   ],
   categoria_preparo: [
-    { tabela: 'preparos', label: 'preparos', sql: 'SELECT COUNT(*) AS n FROM preparos WHERE categoria_id = ?' },
+    { tabela: 'preparos', label: 'receitas base', um: 'receita base', sql: 'SELECT COUNT(*) AS n FROM preparos WHERE categoria_id = ?' },
   ],
   categoria_embalagem: [
-    { tabela: 'categorias_embalagens', label: 'embalagens', sql: 'SELECT COUNT(*) AS n FROM embalagens WHERE categoria_id = ?' },
+    { tabela: 'categorias_embalagens', label: 'embalagens', um: 'embalagem', sql: 'SELECT COUNT(*) AS n FROM embalagens WHERE categoria_id = ?' },
   ],
   categoria_produto: [
-    { tabela: 'categorias_produtos', label: 'produtos', sql: 'SELECT COUNT(*) AS n FROM produtos WHERE categoria_id = ?' },
+    { tabela: 'categorias_produtos', label: 'produtos', um: 'produto', sql: 'SELECT COUNT(*) AS n FROM produtos WHERE categoria_id = ?' },
   ],
 });
 
@@ -104,7 +104,7 @@ export async function contarDependencias(db, tipo, id) {
       const rows = await db.getAllAsync(q.sql, [id]);
       const n = rows?.[0]?.n || 0;
       if (n > 0) {
-        porTabela.push({ label: q.label, n });
+        porTabela.push({ label: n === 1 && q.um ? q.um : q.label, n });
         total += n;
         if (q.tabela === 'vendas') temBloqueio = true;
       }

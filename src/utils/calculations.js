@@ -548,16 +548,51 @@ export function normalizeSearch(str) {
     .trim();
 }
 
+/**
+ * Arredonda pra centavos (meio pra cima, longe do zero) limpando o ruído de
+ * ponto flutuante: 29.9 / 20 = 1.4949999999999999 → 1.5 (o banco devolve
+ * 1.495, que toFixed(2) já levava a 1,50). Sem isso o form mostrava R$ 1,49
+ * e o card R$ 1,50 para a mesma embalagem.
+ */
+export function roundMoney(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  const r = Math.sign(n) * Math.round(Number((Math.abs(n) * 100).toFixed(6))) / 100;
+  return r === 0 ? 0 : r;
+}
+
 // Formata valor em R$
 export function formatCurrency(value) {
   if (value === null || value === undefined || isNaN(value)) return 'R$ 0,00';
-  return 'R$ ' + Number(value).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const n = Number(value);
+  return 'R$ ' + (Number.isFinite(n) ? roundMoney(n) : n).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
 // Formata percentual
 export function formatPercent(value) {
   if (value === null || value === undefined || isNaN(value)) return '0,00%';
   return (Number(value) * 100).toFixed(2).replace('.', ',') + '%';
+}
+
+/**
+ * Número pra EXIBIÇÃO em PT-BR com casas fixas: 47.7 → "47,7", 1234.5 → "1.234,5".
+ * Não-finito → "0" (com as casas pedidas). Só pra texto na tela, nunca pra
+ * valor que volta pro cálculo ou pro banco.
+ */
+export function formatNumberBR(value, decimals = 1) {
+  const n = Number(value);
+  const safe = Number.isFinite(n) ? n : 0;
+  const [int, frac] = safe.toFixed(decimals).split('.');
+  const intFmt = int.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return frac ? `${intFmt},${frac}` : intFmt;
+}
+
+/**
+ * Percentual pra EXIBIÇÃO quando o valor JÁ está em pontos percentuais
+ * (47.7 → "47,7%"). Pra fração (0.477) use formatPercent.
+ */
+export function formatPercentBR(valuePct, decimals = 1) {
+  return `${formatNumberBR(valuePct, decimals)}%`;
 }
 
 // Sessão 28.44: helpers numéricos centralizados pra remover duplicação

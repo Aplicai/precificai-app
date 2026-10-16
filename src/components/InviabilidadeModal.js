@@ -38,7 +38,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, safeNum } from '../utils/calculations';
+import { formatCurrency, formatPercentBR, safeNum } from '../utils/calculations';
 
 /**
  * Calcula o preço delivery mínimo viável (lucro >= 0):
@@ -99,7 +99,7 @@ export default function InviabilidadeModal({ visible, onClose, info }) {
     : 'Venda com prejuízo';
 
   const textoDiagnostico = inviavel
-    ? `A taxa de ${plataformaNome} (${safeNum(taxaPct).toFixed(1)}%) somada ao desconto promocional cobre o preço de balcão — a venda nunca cobriria os custos.`
+    ? `A taxa de ${plataformaNome} (${formatPercentBR(safeNum(taxaPct), 1)}) somada ao desconto promocional cobre o preço de balcão — a venda nunca cobriria os custos.`
     : `Com o preço atual e os custos da plataforma, cada venda gera prejuízo de ${formatCurrency(Math.abs(safeNum(lucro)))}.`;
 
   return (
@@ -153,7 +153,7 @@ export default function InviabilidadeModal({ visible, onClose, info }) {
               <View style={styles.row}>
                 <Text style={styles.rowLabel}>Taxa da plataforma</Text>
                 <Text style={[styles.rowValue, { color: colors.error }]}>
-                  {safeNum(taxaPct).toFixed(1)}%
+                  {formatPercentBR(safeNum(taxaPct), 1)}
                 </Text>
               </View>
               {safeNum(comissaoApp) > 0 && (
@@ -165,7 +165,7 @@ export default function InviabilidadeModal({ visible, onClose, info }) {
               {safeNum(descontoPct) > 0 && (
                 <View style={styles.row}>
                   <Text style={styles.rowLabel}>Desconto promocional</Text>
-                  <Text style={styles.rowValue}>{safeNum(descontoPct).toFixed(1)}%</Text>
+                  <Text style={styles.rowValue}>{formatPercentBR(safeNum(descontoPct), 1)}</Text>
                 </View>
               )}
               {!inviavel && safeNum(precoDelivery) > 0 && (
@@ -200,7 +200,7 @@ export default function InviabilidadeModal({ visible, onClose, info }) {
                   <Text style={styles.dicaText}>
                     Peça uma comissão menor à {plataformaNome}
                     {taxaMax !== null && taxaMax < safeNum(taxaPct)
-                      ? ` (atual ${safeNum(taxaPct).toFixed(1)}%, alvo até ${taxaMax.toFixed(1)}%)`
+                      ? ` (atual ${formatPercentBR(safeNum(taxaPct), 1)}, alvo até ${formatPercentBR(taxaMax, 1)})`
                       : ''}.
                   </Text>
                 </View>

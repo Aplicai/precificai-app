@@ -12,9 +12,19 @@
  *
  * @returns {{ preco: number, origem: 'digitado'|'sugerido'|'sem_preco' }}
  */
-export function resolverPrecoAoSalvar(precoDigitado, precoSugerido) {
+export function resolverPrecoAoSalvar(precoDigitado, precoSugerido, { texto, editando = false } = {}) {
   const dig = Number(precoDigitado);
   if (Number.isFinite(dig) && dig > 0) return { preco: dig, origem: 'digitado' };
+  // Walkthrough 2026-10: o usuário não conseguia voltar o preço pra 0/vazio
+  // (salvar trocava pelo sugerido). Agora "0" digitado, ou apagar o preço de um
+  // produto que já existe, vale como escolha: salva sem preço, sem aviso.
+  // `texto` = conteúdo cru do campo; sem ele mantém o comportamento antigo.
+  if (texto != null) {
+    const t = String(texto).trim();
+    if ((t !== '' && Number.isFinite(dig) && dig === 0) || (t === '' && editando)) {
+      return { preco: 0, origem: 'zerado' };
+    }
+  }
   const sug = Number(precoSugerido);
   if (Number.isFinite(sug) && sug > 0) return { preco: Math.round(sug * 100) / 100, origem: 'sugerido' };
   return { preco: 0, origem: 'sem_preco' };
