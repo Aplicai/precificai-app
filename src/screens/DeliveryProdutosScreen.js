@@ -15,7 +15,7 @@ import { Feather } from '@expo/vector-icons';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum, parseDecimalBR } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum, parseDecimalBR, formatPercentBR } from '../utils/calculations';
 // Auditoria 2026-09-09 [B2]: custo de 1 unidade NATIVA do item (kg/L/un/g) —
 // mesma função do modal de combos, em vez de fixar 'g' na quantidade.
 import { resolveCustoUnitarioItemCombo } from '../utils/comboPricing';
@@ -422,7 +422,7 @@ export default function DeliveryProdutosScreen() {
                       <View
                         style={[styles.margemBadge, { backgroundColor: (lucro >= 0 ? colors.success : colors.error) + '12' }]}
                         accessibilityLabel={precoVenda > 0
-                          ? `Margem ${margem.toFixed(1)}%`
+                          ? `Margem ${formatPercentBR(margem, 1)}`
                           : 'Sem preço de venda definido'}
                       >
                         <Text style={[styles.margemText, { color: lucro >= 0 ? colors.success : colors.error }]}>

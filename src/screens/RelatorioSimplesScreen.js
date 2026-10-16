@@ -196,10 +196,10 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
         const percLucro = 1 - percIng - percFixas - percVar;
 
         resumo = {
-          ingredientes: (percIng * 10).toFixed(2).replace('.', ','),
-          fixas: (percFixas * 10).toFixed(2).replace('.', ','),
-          variaveis: (percVar * 10).toFixed(2).replace('.', ','),
-          lucro: (Math.abs(percLucro) * 10).toFixed(2).replace('.', ','),
+          ingredientes: formatNumberBR(percIng * 10, 2),
+          fixas: formatNumberBR(percFixas * 10, 2),
+          variaveis: formatNumberBR(percVar * 10, 2),
+          lucro: formatNumberBR(Math.abs(percLucro) * 10, 2),
           lucroPositivo: percLucro > 0,
           percIng, percFixas, percVar, percLucro,
           fatMedio,
@@ -467,7 +467,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
 
     // Sessão 28.17: HTML enriquecido pra ficar mais próximo visualmente do que aparece na tela
     // (KPIs em destaque, cards coloridos, melhores/atenção em listas, etc).
-    const formatBR = (v) => typeof v === 'number' ? v.toFixed(2).replace('.', ',') : v;
+    const formatBR = (v) => typeof v === 'number' ? formatNumberBR(v, 2) : v;
     const topLista = (data.topProdutos || []).slice(0, 5);
     const melhoresHtml = topLista.map((p, i) => `
       <li style="margin: 6px 0; padding: 8px 12px; background: #ecfdf5; border-left: 3px solid #16a34a; border-radius: 4px;">
@@ -804,7 +804,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
               cumAngle += s.pct * 360;
               const rad = (midAngle - 90) * Math.PI / 180;
               const r = 55; // radius for label placement
-              return { x: 90 + r * Math.cos(rad), y: 90 + r * Math.sin(rad), pctStr: (s.pct * 100).toFixed(1) };
+              return { x: 90 + r * Math.cos(rad), y: 90 + r * Math.sin(rad), pctStr: formatNumberBR(s.pct * 100, 1) };
             });
             return (
               <View style={styles.chartContainer}>
@@ -825,10 +825,10 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
                 </View>
                 <View style={styles.chartLegend}>
                   {[
-                    { label: 'Custo dos ingredientes (CMV)', color: colors.coral, pct: (data.resumo.percIng * 100).toFixed(1) },
-                    { label: 'Custos do mês', color: colors.accent, pct: (data.resumo.percFixas * 100).toFixed(1) },
-                    { label: 'Custos por venda', color: colors.purple, pct: (data.resumo.percVar * 100).toFixed(1) },
-                    { label: data.resumo.lucroPositivo ? 'Lucro' : 'Prejuízo', color: data.resumo.lucroPositivo ? colors.success : colors.error, pct: (Math.abs(data.resumo.percLucro) * 100).toFixed(1) },
+                    { label: 'Custo dos ingredientes (CMV)', color: colors.coral, pct: formatNumberBR(data.resumo.percIng * 100, 1) },
+                    { label: 'Custos do mês', color: colors.accent, pct: formatNumberBR(data.resumo.percFixas * 100, 1) },
+                    { label: 'Custos por venda', color: colors.purple, pct: formatNumberBR(data.resumo.percVar * 100, 1) },
+                    { label: data.resumo.lucroPositivo ? 'Lucro' : 'Prejuízo', color: data.resumo.lucroPositivo ? colors.success : colors.error, pct: formatNumberBR(Math.abs(data.resumo.percLucro) * 100, 1) },
                   ].map(item => (
                     <View key={item.label} style={styles.chartLegendItem}>
                       <View style={[styles.chartLegendDot, { backgroundColor: item.color }]} />
@@ -938,7 +938,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
                   </View>
                   <View style={styles.precCardItem}>
                     <Text style={styles.precCardItemLabel}>Markup</Text>
-                    <Text style={styles.precCardItemValue}>{p.markup ? p.markup.toFixed(2) + '×' : '—'}</Text>
+                    <Text style={styles.precCardItemValue}>{p.markup ? formatNumberBR(p.markup, 2) + '×' : '—'}</Text>
                   </View>
                 </View>
               </TouchableOpacity>

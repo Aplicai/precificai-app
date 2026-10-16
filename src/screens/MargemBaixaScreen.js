@@ -4,7 +4,7 @@ import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, safeNum } from '../utils/calculations';
+import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, safeNum, formatPercentBR } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
 import { resolverMargemMeta, isMargemBaixa } from '../utils/margemMeta';
 
@@ -299,7 +299,7 @@ export default function MargemBaixaScreen({ navigation }) {
                       {formatCurrency(item.preco)} → {formatCurrency(item.precoNovo)}
                     </Text>
                     <Text style={[styles.previewDelta, { color: item.delta >= 0 ? colors.success : colors.error }]}>
-                      {item.delta >= 0 ? '+' : ''}{formatCurrency(item.delta)} ({(item.deltaPerc * 100).toFixed(1)}%)
+                      {item.delta >= 0 ? '+' : ''}{formatCurrency(item.delta)} ({formatPercentBR(item.deltaPerc * 100, 1)})
                     </Text>
                   </View>
                 </View>

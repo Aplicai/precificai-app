@@ -20,7 +20,7 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import {
   formatCurrency, calcCustoIngrediente, calcCustoPreparo,
-  getDivisorRendimento, safeNum,
+  getDivisorRendimento, safeNum, formatPercentBR,
 } from '../utils/calculations';
 import { calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
 import { calcularPrecoBalcao } from '../utils/precificacao';
@@ -381,7 +381,7 @@ export default function SimuladorLoteScreen() {
                     <Text style={{ fontSize: 11, color: colors.textSecondary }}>% do preço em ingredientes</Text>
                     <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>
                       {linha.prod.precoVendaBalcao > 0
-                        ? ((linha.prod.cmv / linha.prod.precoVendaBalcao) * 100).toFixed(1) + '%'
+                        ? formatPercentBR((linha.prod.cmv / linha.prod.precoVendaBalcao) * 100, 1)
                         : '—'}
                     </Text>
                   </View>
@@ -393,7 +393,7 @@ export default function SimuladorLoteScreen() {
                   </View>
                   <View>
                     <Text style={{ fontSize: 11, color: colors.textSecondary }}>Margem atual</Text>
-                    <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>{(linha.margemBrutaBalcao * 100).toFixed(1)}%</Text>
+                    <Text style={{ fontSize: 13, color: colors.text, fontFamily: fontFamily.medium }}>{formatPercentBR(linha.margemBrutaBalcao * 100, 1)}</Text>
                   </View>
                 </View>
                 {/* Cada plataforma: 1 linha com 3 colunas */}
@@ -506,7 +506,7 @@ export default function SimuladorLoteScreen() {
                 <View style={[styles.cellNumeric, styles.stickyCol, { left: 354, borderRightWidth: 1, borderRightColor: colors.border }]}>
                   <Text style={styles.cellValueDim}>
                     {linha.prod.precoVendaBalcao > 0
-                      ? ((linha.prod.cmv / linha.prod.precoVendaBalcao) * 100).toFixed(1) + '%'
+                      ? formatPercentBR((linha.prod.cmv / linha.prod.precoVendaBalcao) * 100, 1)
                       : '—'}
                   </Text>
                 </View>

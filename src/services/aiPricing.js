@@ -15,6 +15,7 @@
  * Mantém a mesma assinatura do antigo wrapper IA pra UI não precisar mudar.
  */
 import { resolverMargemMeta, isMargemBaixa } from '../utils/margemMeta';
+import { formatPercentBR } from '../utils/calculations';
 
 /**
  * Coleta contexto financeiro do usuário (despesas, lucro alvo).
@@ -241,7 +242,7 @@ function clamp(n, lo, hi) {
 }
 
 function pct(n) {
-  return `${(Number(n) * 100).toFixed(1)}%`;
+  return formatPercentBR(Number(n) * 100, 1);
 }
 
 function formatBRL(n) {

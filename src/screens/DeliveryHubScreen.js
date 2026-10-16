@@ -851,7 +851,7 @@ export default function DeliveryHubScreen({ navigation }) {
                         <>
                           <View style={[styles.suggestedRow, { borderTopWidth: 0, alignItems: 'center' }]}>
                             <View style={{ flex: 1 }}>
-                              <Text style={styles.suggestedLabel}>Pra atingir {((contextoFin.lucroPerc || 0) * 100).toFixed(1)}% de lucro</Text>
+                              <Text style={styles.suggestedLabel}>Pra atingir {formatPercentBR((contextoFin.lucroPerc || 0) * 100, 1)} de lucro</Text>
                               <Text style={styles.suggestedSub}>Cobre todos os custos + a margem que você definiu</Text>
                             </View>
                             <Text style={[styles.suggestedPrice, { color: colors.success, fontSize: 20 }]}>
@@ -865,10 +865,10 @@ export default function DeliveryHubScreen({ navigation }) {
                             </Text>
                             {[
                               { label: simResult.embDeliveryCusto > 0 ? 'Custo no delivery (ingredientes + embalagem de delivery)' : 'Custo dos ingredientes e embalagem (CMV)', value: simResult.sugCompleta.cmv },
-                              { label: `Lucro desejado (${((contextoFin.lucroPerc || 0) * 100).toFixed(1)}%)`, value: simResult.sugCompleta.preco * (contextoFin.lucroPerc || 0) },
-                              { label: `Custos fixos (${((contextoFin.fixoPerc || 0) * 100).toFixed(1)}% do faturamento)`, value: simResult.sugCompleta.preco * (contextoFin.fixoPerc || 0) },
-                              { label: `Imposto (${((contextoFin.impostoPerc || 0) * 100).toFixed(1)}%)`, value: simResult.sugCompleta.preco * (contextoFin.impostoPerc || 0) },
-                              { label: `Comissão plataforma (${simResult.comissaoPct.toFixed(1)}%)`, value: simResult.sugCompleta.preco * (simResult.comissaoPct / 100) },
+                              { label: `Lucro desejado (${formatPercentBR((contextoFin.lucroPerc || 0) * 100, 1)})`, value: simResult.sugCompleta.preco * (contextoFin.lucroPerc || 0) },
+                              { label: `Custos fixos (${formatPercentBR((contextoFin.fixoPerc || 0) * 100, 1)} do faturamento)`, value: simResult.sugCompleta.preco * (contextoFin.fixoPerc || 0) },
+                              { label: `Imposto (${formatPercentBR((contextoFin.impostoPerc || 0) * 100, 1)})`, value: simResult.sugCompleta.preco * (contextoFin.impostoPerc || 0) },
+                              { label: `Comissão plataforma (${formatPercentBR(simResult.comissaoPct, 1)})`, value: simResult.sugCompleta.preco * (simResult.comissaoPct / 100) },
                               ...(simResult.cupomReais > 0 ? [{ label: 'Cupom recorrente', value: simResult.cupomReais }] : []),
                               ...(simResult.taxaEntrega > 0 ? [{ label: 'Frete subsidiado', value: simResult.taxaEntrega }] : []),
                             ].map((row, i) => (
@@ -931,7 +931,7 @@ export default function DeliveryHubScreen({ navigation }) {
                                 value={precoCustom}
                                 onChangeText={setPrecoCustom}
                                 keyboardType="numeric"
-                                placeholder={simResult.precoSugerido ? simResult.precoSugerido.toFixed(2) : '0,00'}
+                                placeholder={simResult.precoSugerido ? formatNumberBR(simResult.precoSugerido, 2) : '0,00'}
                                 placeholderTextColor={colors.placeholder}
                                 accessibilityLabel="Preço mínimo do produto em reais"
                               />
@@ -964,9 +964,9 @@ export default function DeliveryHubScreen({ navigation }) {
                             {[
                               { label: 'Preço cobrado na plataforma', value: custom.preco, bold: true, color: colors.text },
                               { label: simResult.embDeliveryCusto > 0 ? 'Custo no delivery (ingredientes + embalagem de delivery)' : 'Custo dos ingredientes e embalagem (CMV)', value: -simResult.custoUnit, color: colors.error },
-                              { label: `Custos fixos (${((contextoFin.fixoPerc || 0) * 100).toFixed(1)}% do faturamento)`, value: -valFixos, color: colors.error },
-                              { label: `Imposto (${((contextoFin.impostoPerc || 0) * 100).toFixed(1)}%)`, value: -valImposto, color: colors.error },
-                              { label: `Comissão plataforma (${simResult.comissaoPct.toFixed(1)}%)`, value: -valComissao, color: colors.error },
+                              { label: `Custos fixos (${formatPercentBR((contextoFin.fixoPerc || 0) * 100, 1)} do faturamento)`, value: -valFixos, color: colors.error },
+                              { label: `Imposto (${formatPercentBR((contextoFin.impostoPerc || 0) * 100, 1)})`, value: -valImposto, color: colors.error },
+                              { label: `Comissão plataforma (${formatPercentBR(simResult.comissaoPct, 1)})`, value: -valComissao, color: colors.error },
                               ...(simResult.cupomReais > 0 ? [{ label: 'Cupom recorrente', value: -simResult.cupomReais, color: colors.error }] : []),
                               ...(simResult.taxaEntrega > 0 ? [{ label: 'Frete subsidiado', value: -simResult.taxaEntrega, color: colors.error }] : []),
                             ].map((row, i) => (
@@ -988,7 +988,7 @@ export default function DeliveryHubScreen({ navigation }) {
                               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
                                 <Text style={{ fontSize: 12, color: colors.textSecondary }}>Margem líquida</Text>
                                 <Text style={{ fontSize: 14, fontFamily: fontFamily.bold, color: !isMargemBaixa(lucroLiquidoPerc, contextoFin.lucroPerc) ? colors.success : lucroLiquidoPerc >= 0 ? colors.warning : colors.error }}>
-                                  {(lucroLiquidoPerc * 100).toFixed(1)}%
+                                  {formatPercentBR(lucroLiquidoPerc * 100, 1)}
                                 </Text>
                               </View>
                               {lucroLiquidoReais < 0 && (
@@ -1087,7 +1087,7 @@ export default function DeliveryHubScreen({ navigation }) {
                           <View
                             key={prod._key}
                             style={[styles.overviewCardMobile, { borderLeftColor: margemColor }]}
-                            accessibilityLabel={`${prod._label}, balcão ${formatCurrency(prod.preco_venda)}, sugerido ${precoSug > 0 ? formatCurrency(precoSug) : 'indisponível'}, margem ${(margemDel * 100).toFixed(1)}%`}
+                            accessibilityLabel={`${prod._label}, balcão ${formatCurrency(prod.preco_venda)}, sugerido ${precoSug > 0 ? formatCurrency(precoSug) : 'indisponível'}, margem ${formatPercentBR(margemDel * 100, 1)}`}
                           >
                             <View style={styles.overviewCardHeader}>
                               {prod.isCombo && <Feather name="layers" size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />}
@@ -1106,7 +1106,7 @@ export default function DeliveryHubScreen({ navigation }) {
                             <View style={styles.overviewCardRow}>
                               <Text style={styles.overviewCardLabel}>Margem:</Text>
                               <Text style={[styles.overviewCardValue, { color: margemColor }]}>
-                                {(margemDel * 100).toFixed(1)}%
+                                {formatPercentBR(margemDel * 100, 1)}
                               </Text>
                             </View>
                           </View>
@@ -1124,7 +1124,7 @@ export default function DeliveryHubScreen({ navigation }) {
                             {precoSug > 0 ? formatCurrency(precoSug) : '—'}
                           </Text>
                           <Text style={[styles.overviewTd, { flex: 1, textAlign: 'center', color: margemColor, fontFamily: fontFamily.semiBold }]}>
-                            {(margemDel * 100).toFixed(1)}%
+                            {formatPercentBR(margemDel * 100, 1)}
                           </Text>
                         </View>
                       );
@@ -1232,7 +1232,7 @@ export default function DeliveryHubScreen({ navigation }) {
                         )}
                       </View>
                       <Text style={{ width: 80, fontSize: fonts.small, color: colors.textSecondary, textAlign: 'right' }}>
-                        R$ {balcao.toFixed(2).replace('.', ',')}
+                        R$ {formatNumberBR(balcao, 2)}
                       </Text>
                       <Text style={{ width: 90, fontSize: fonts.small, color: colors.textSecondary, textAlign: 'right' }}>
                         {mesmoLucro != null ? formatCurrency(mesmoLucro) : '—'}

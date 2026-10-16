@@ -12,7 +12,7 @@ import Chip from '../components/Chip';
 import { Feather } from '@expo/vector-icons';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import { colors, spacing, fonts, fontFamily, borderRadius, radius } from '../utils/theme';
-import { formatCurrency, formatPercent, calcDespesasFixasPercentual, calcMarkup, parseDecimalBR } from '../utils/calculations';
+import { formatCurrency, formatPercent, calcDespesasFixasPercentual, calcMarkup, parseDecimalBR, formatNumberBR, formatPercentBR } from '../utils/calculations';
 import { getFinanceiroStatus, textoPendenciaFinanceiro } from '../utils/financeiroStatus';
 // UX audit 09/09 (Fase B) — wizard guiado de primeiro uso: helpers puros + copy dos passos
 import {
@@ -210,9 +210,9 @@ export default function FinanceiroConfigScreen() {
       setConfigId(config.id);
       const lucro = config.lucro_desejado;
       if (lucro && lucro > 0) {
-        setLucroDesejado(String((lucro * 100).toFixed(1)));
+        setLucroDesejado(formatNumberBR(lucro * 100, 1));
       }
-      setMargemSeguranca(String(((config.margem_seguranca || 0) * 100).toFixed(1)));
+      setMargemSeguranca(formatNumberBR((config.margem_seguranca || 0) * 100, 1));
       // APP-43 — vendas por canal
       setVendasBalcao(config.vendas_mes_balcao > 0 ? String(config.vendas_mes_balcao) : '');
       setVendasDelivery(config.vendas_mes_delivery > 0 ? String(config.vendas_mes_delivery) : '');
@@ -323,7 +323,7 @@ export default function FinanceiroConfigScreen() {
 
   async function salvarMargemSeguranca() {
     const db = await getDatabase();
-    const valor = parseFloat(margemSeguranca.replace(',', '.'));
+    const valor = parseDecimalBR(margemSeguranca);
     // APP-30 — só bloqueia valores realmente inválidos (negativo/NaN). >30% vira warning, não bloqueia.
     if (isNaN(valor) || valor < 0) {
       return Alert.alert('Valor inválido', 'A margem de segurança não pode ser negativa.');
@@ -727,7 +727,7 @@ export default function FinanceiroConfigScreen() {
               <View style={[s.saudeBoxRow, { marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: colors.border }]}>
                 <Text style={[s.saudeBoxLabel, { fontFamily: fontFamily.bold }]}>% do faturamento:</Text>
                 <Text style={[s.saudeBoxValue, { color: corValor, fontSize: fonts.body, fontFamily: fontFamily.bold }]}>
-                  {(despFixasPerc * 100).toFixed(1)}%
+                  {formatPercentBR(despFixasPerc * 100, 1)}
                 </Text>
               </View>
               <Text style={[s.saudeBoxStatus, { color: corValor }]}>
@@ -774,7 +774,7 @@ export default function FinanceiroConfigScreen() {
                 <View key={i} style={s.legendItem}>
                   <View style={[s.legendDot, { backgroundColor: sl.color }]} />
                   <Text style={s.legendLabel}>{sl.label}</Text>
-                  <Text style={[s.legendValue, { color: sl.color }]}>{(sl.value * 100).toFixed(1)}%</Text>
+                  <Text style={[s.legendValue, { color: sl.color }]}>{formatPercentBR(sl.value * 100, 1)}</Text>
                 </View>
               ))}
             </View>
@@ -1448,7 +1448,7 @@ export default function FinanceiroConfigScreen() {
                       },
                     })}
                   >
-                    <Text style={[s.inlineValueText, parseFloat(margemSeguranca) > 0 && s.inlineValueTextFilled]}>
+                    <Text style={[s.inlineValueText, parseDecimalBR(margemSeguranca) > 0 && s.inlineValueTextFilled]}>
                       {margemSeguranca}%
                     </Text>
                     <Feather name="edit-2" size={12} color={colors.textSecondary} />

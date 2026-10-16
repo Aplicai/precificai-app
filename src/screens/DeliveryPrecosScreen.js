@@ -11,7 +11,7 @@ import Chip from '../components/Chip';
 import EmptyState from '../components/EmptyState';
 import InviabilidadeModal from '../components/InviabilidadeModal';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum, parseDecimalBR, formatNumberBR, formatPercentBR } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum, parseDecimalBR, formatPercentBR } from '../utils/calculations';
 // Sprint 2 S3 — fórmula canônica única em src/utils/deliveryPricing.js
 import { calcResultadoDelivery, calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
 // Auditoria 2026-09-09 [B2]: custo de 1 unidade NATIVA (kg/L/un/g) de item de
@@ -644,7 +644,7 @@ export default function DeliveryPrecosScreen() {
                 </Text>
                 <View style={[styles.margemChip, { backgroundColor: isPositive ? colors.success + '14' : colors.error + '14' }]}>
                   <Text style={[styles.margemChipText, { color: isPositive ? colors.success : colors.error }]}>
-                    {inviavel ? '—' : `${margem.toFixed(1)}%`}
+                    {inviavel ? '—' : formatPercentBR(margem, 1)}
                   </Text>
                 </View>
               </View>
@@ -692,7 +692,7 @@ export default function DeliveryPrecosScreen() {
               </Text>
               <View style={[styles.margemChip, { backgroundColor: isPositive ? colors.success + '14' : colors.error + '14' }]}>
                 <Text style={[styles.margemChipText, { color: isPositive ? colors.success : colors.error }]}>
-                  {inviavel ? '—' : `${margem.toFixed(1)}%`}
+                  {inviavel ? '—' : formatPercentBR(margem, 1)}
                 </Text>
               </View>
             </View>
@@ -924,7 +924,7 @@ export default function DeliveryPrecosScreen() {
                               )}
                               <Chip
                                 label={`${margem.toFixed(0)}%`}
-                                tooltip={`Margem de lucro: ${margem.toFixed(1)}%`}
+                                tooltip={`Margem de lucro: ${formatPercentBR(margem, 1)}`}
                                 color={margem >= 30 ? colors.success : colors.warning}
                                 style={styles.margemBadge}
                                 textStyle={styles.margemBadgeText}

@@ -13,7 +13,7 @@ import {
   normalizeSearch,
   getDivisorRendimento,
   calcCustoIngrediente,
-  calcCustoPreparo,
+  calcCustoPreparo, formatPercentBR,
 } from '../utils/calculations';
 import usePersistedState from '../hooks/usePersistedState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -411,7 +411,7 @@ export default function ComparativoCanaisScreen() {
                               <View
                                 key={c.key}
                                 style={[styles.canalCard, { borderLeftColor: cardBorder }]}
-                                accessibilityLabel={`${c.nome}, preço ${c.inviavel ? 'indisponível' : formatCurrency(c.preco)}, lucro ${c.inviavel ? 'indisponível' : formatCurrency(c.lucro)}, margem ${c.inviavel ? 'indisponível' : c.margem.toFixed(1) + '%'}`}
+                                accessibilityLabel={`${c.nome}, preço ${c.inviavel ? 'indisponível' : formatCurrency(c.preco)}, lucro ${c.inviavel ? 'indisponível' : formatCurrency(c.lucro)}, margem ${c.inviavel ? 'indisponível' : formatPercentBR(c.margem, 1)}`}
                               >
                                 <View style={styles.canalCardHeader}>
                                   <Feather name={c.icon} size={14} color={colors.textSecondary} style={{ marginRight: 6 }} />
@@ -450,7 +450,7 @@ export default function ComparativoCanaisScreen() {
                                 <View style={styles.canalCardRow}>
                                   <Text style={styles.canalCardLabel}>Margem:</Text>
                                   <Text style={[styles.canalCardValue, { color: lucroColor }]}>
-                                    {c.inviavel ? '—' : `${c.margem.toFixed(1)}%`}
+                                    {c.inviavel ? '—' : formatPercentBR(c.margem, 1)}
                                   </Text>
                                 </View>
                               </View>
@@ -488,7 +488,7 @@ export default function ComparativoCanaisScreen() {
                                 {c.inviavel ? '—' : formatCurrency(c.lucro)}
                               </Text>
                               <Text style={[styles.canalCol, styles.canalValue, { color: lucroColor }]}>
-                                {c.inviavel ? '—' : `${c.margem.toFixed(1)}%`}
+                                {c.inviavel ? '—' : formatPercentBR(c.margem, 1)}
                               </Text>
                             </View>
                           );

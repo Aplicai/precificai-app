@@ -194,6 +194,7 @@ export function calcPrecoBreakEven(precoVenda, plat) {
 // Mantém o legado pra não quebrar telas existentes; novas telas devem usar este.
 
 import { calcularPrecoDelivery as _engCalcDelivery, compararDeliveryVsBalcao as _engCompara } from './precificacao';
+import { formatPercentBR } from './calculations';
 
 /**
  * Preço sugerido delivery completo (APP-25).
@@ -286,7 +287,7 @@ export function calcPrecoMesmoLucroReais({ cmv, lucroAlvoReais, plat, contexto }
       validacao: {
         ok: false,
         nivel: 'inviavel',
-        mensagem: `Custos fixos + variáveis (${((1 - divisor) * 100).toFixed(1)}%) já consomem 100% ou mais do preço.`,
+        mensagem: `Custos fixos + variáveis (${formatPercentBR((1 - divisor) * 100, 1)}) já consomem 100% ou mais do preço.`,
       },
     };
   }

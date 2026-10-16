@@ -17,7 +17,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency } from '../utils/calculations';
+import { formatCurrency, formatPercentBR } from '../utils/calculations';
 import { isMarcaEstimada, formatInsumoNome } from '../utils/insumoDisplay';
 import { semPrecoDoDono, classificarIdadePrecos, statsPorCategoria } from '../utils/relatorios';
 import usePlan from '../hooks/usePlan';
@@ -525,7 +525,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                       <View style={[styles.deltaBadge, { backgroundColor: tintColor + '15' }]}>
                         <Feather name={subiu ? 'trending-up' : 'trending-down'} size={12} color={tintColor} />
                         <Text style={[styles.deltaBadgeText, { color: tintColor }]}>
-                          {subiu ? '+' : ''}{(v.delta * 100).toFixed(1).replace('.', ',')}%
+                          {subiu ? '+' : ''}{formatPercentBR(v.delta * 100, 1)}
                         </Text>
                       </View>
                     </TouchableOpacity>

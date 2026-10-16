@@ -5,7 +5,7 @@
  * A ordem dos passos e a regra de "concluído" seguem `getFinanceiroStatus`
  * (src/utils/financeiroStatus.js) — chaves `lucro`, `faturamento`, `fixas`, `variaveis`.
  */
-import { parseDecimalBR } from '../../utils/calculations';
+import { parseDecimalBR, formatNumberBR } from '../../utils/calculations';
 
 // Ordem em que o wizard pergunta (Margem → Faturamento → Custos do mês → Custos por venda).
 // Copy em reais e palavras do dia a dia (dono de negócio de comida, não contador).
@@ -49,7 +49,7 @@ export function exemploMargemEmReais(str) {
   const r = validarLucroInput(str);
   if (!r.ok || !(r.valor > 0)) return '';
   const sobra = Math.round(r.valor * 100 * 100) / 100;
-  const txt = Number.isInteger(sobra) ? String(sobra) : sobra.toFixed(2).replace('.', ',');
+  const txt = Number.isInteger(sobra) ? String(sobra) : formatNumberBR(sobra, 2);
   return `Em R$ 100 vendidos, sobram R$ ${txt}`;
 }
 
@@ -127,7 +127,7 @@ export const MARKUP_NAO_FECHA = 'Não fecha: custos + lucro passam de 100% do pr
 
 export function formatMarkup(markup) {
   if (!Number.isFinite(markup) || markup <= 0) return '∞';
-  return `${markup.toFixed(2).replace('.', ',')}x`;
+  return `${formatNumberBR(markup, 2)}x`;
 }
 
 /** Fração → texto PT-BR pro input (0.2 → "20", 0.125 → "12,5"). */

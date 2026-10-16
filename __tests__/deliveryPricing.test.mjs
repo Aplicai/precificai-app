@@ -207,5 +207,5 @@ test('calcPrecoMesmoLucroReais — custos ≥ 100% do preço é inviável com me
   assert.equal(r.inviavel, true);
   assert.equal(r.preco, 0);
   assert.equal(r.validacao.nivel, 'inviavel');
-  assert.match(r.validacao.mensagem, /110\.0%/);
+  assert.match(r.validacao.mensagem, /110,0%/); // PT-BR: vírgula decimal
 });

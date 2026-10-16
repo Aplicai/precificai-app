@@ -16,7 +16,7 @@ import InputField from '../components/InputField';
 import SaveStatus from '../components/SaveStatus';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, safeNum, parseDecimalBR, formatNumberBR, formatPercentBR } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, safeNum, parseDecimalBR, formatPercentBR } from '../utils/calculations';
 import { classificarMargem } from '../utils/margemMeta';
 import { buildContextoFinanceiro, embalagemDeliveryDoProduto, parseEmbalagensDelivery, normalizarEmbalagensDelivery } from '../utils/deliveryAdapter';
 import ScreenInModal from '../components/ScreenInModal';
@@ -1054,7 +1054,7 @@ export default function DeliveryCombosScreen() {
             <Text style={styles.comboCardV2MetricLabel}>Margem Líq.</Text>
             <View style={[styles.comboCardV2Badge, { backgroundColor: margemColor + '15' }]}>
               <Text style={[styles.comboCardV2BadgeText, { color: margemColor }]}>
-                {precoV > 0 ? `${margem.toFixed(1)}%` : '—'}
+                {precoV > 0 ? formatPercentBR(margem, 1) : '—'}
               </Text>
             </View>
           </View>
@@ -1130,7 +1130,7 @@ export default function DeliveryCombosScreen() {
             <Text style={styles.comboCardV2MetricLabel}>Margem</Text>
             <View style={[styles.comboCardV2Badge, { backgroundColor: margemColor + '15' }]}>
               <Text style={[styles.comboCardV2BadgeText, { color: margemColor }]}>
-                {precoV > 0 ? `${margem.toFixed(1)}%` : '—'}
+                {precoV > 0 ? formatPercentBR(margem, 1) : '—'}
               </Text>
             </View>
           </View>
@@ -1426,7 +1426,7 @@ export default function DeliveryCombosScreen() {
                       <Text style={[styles.comboResumoCellValue, {
                         color: corMargemCombo(margemModal, contextoFin.lucroPerc)
                       }]}>
-                        {precoVendaModal > 0 ? `${margemModal.toFixed(1)}%` : '\u2014'}
+                        {precoVendaModal > 0 ? formatPercentBR(margemModal, 1) : '\u2014'}
                       </Text>
                     </View>
                   </View>

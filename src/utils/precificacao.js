@@ -27,7 +27,7 @@
  *
  * ─────────────────────────────────────────────────────────────────────────
  */
-import { parseDecimalBR } from './calculations';
+import { parseDecimalBR, formatNumberBR, formatPercentBR } from './calculations';
 
 /** Soma defensiva: ignora NaN/null/undefined. */
 function safe(n) {
@@ -50,21 +50,21 @@ export function validarSomaPercentual(somaPerc) {
     return {
       ok: false,
       nivel: 'inviavel',
-      mensagem: `Seus percentuais somam ${(s * 100).toFixed(1)}% do preço, ou seja, é impossível ter lucro com esses parâmetros. Reveja seus custos fixos, variáveis ou margem desejada.`,
+      mensagem: `Seus percentuais somam ${formatPercentBR(s * 100, 1)} do preço, ou seja, é impossível ter lucro com esses parâmetros. Reveja seus custos fixos, variáveis ou margem desejada.`,
     };
   }
   if (s >= 0.85) {
     return {
       ok: true,
       nivel: 'critico',
-      mensagem: `Seus custos somados (${(s * 100).toFixed(1)}%) deixam apenas ${((1 - s) * 100).toFixed(1)}% para CMV. Margem extremamente apertada — só funciona com produtos de CMV muito baixo.`,
+      mensagem: `Seus custos somados (${formatPercentBR(s * 100, 1)}) deixam apenas ${formatPercentBR((1 - s) * 100, 1)} para CMV. Margem extremamente apertada — só funciona com produtos de CMV muito baixo.`,
     };
   }
   if (s >= 0.7) {
     return {
       ok: true,
       nivel: 'aviso',
-      mensagem: `Seus custos + lucro consomem ${(s * 100).toFixed(1)}% do preço. Margem para CMV apertada (${((1 - s) * 100).toFixed(1)}%).`,
+      mensagem: `Seus custos + lucro consomem ${formatPercentBR(s * 100, 1)} do preço. Margem para CMV apertada (${formatPercentBR((1 - s) * 100, 1)}).`,
     };
   }
   return { ok: true, nivel: 'ok', mensagem: '' };
@@ -279,7 +279,7 @@ export function compararDeliveryVsBalcao(precoDelivery, precoBalcao) {
     return {
       ok: false,
       nivel: 'critico',
-      mensagem: `Erro de cálculo detectado. Preço delivery (R$ ${d.toFixed(2)}) não pode ser menor que balcão (R$ ${b.toFixed(2)}). Reveja os custos da plataforma — provavelmente está faltando comissão, imposto ou taxa de pagamento online.`,
+      mensagem: `Erro de cálculo detectado. Preço delivery (R$ ${formatNumberBR(d, 2)}) não pode ser menor que balcão (R$ ${formatNumberBR(b, 2)}). Reveja os custos da plataforma — provavelmente está faltando comissão, imposto ou taxa de pagamento online.`,
     };
   }
   if (Math.abs(d - b) < 0.01) {

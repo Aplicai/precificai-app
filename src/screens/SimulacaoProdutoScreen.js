@@ -20,7 +20,7 @@ import { Feather } from '@expo/vector-icons';
 import { Alert } from 'react-native';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, calcCustoIngrediente, calcCustoPreparo, getDivisorRendimento, parseDecimalBR, formatNumberBR, formatPercentBR } from '../utils/calculations';
+import { formatCurrency, calcCustoIngrediente, calcCustoPreparo, getDivisorRendimento, parseDecimalBR, formatPercentBR } from '../utils/calculations';
 import { isMargemBaixa } from '../utils/margemMeta';
 import { calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
 import { buildContextoFinanceiro, normalizePlataforma, custoDelivery, embalagemDeliveryDoProduto } from '../utils/deliveryAdapter';
@@ -285,7 +285,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
             <Text style={styles.kpiValue}>{formatCurrency(safe(prod.preco_venda))}</Text>
             {/* Sessão 28.27: clareza — mostra lucro LÍQUIDO em R$ + % (não margem bruta) */}
             <Text style={styles.kpiSub}>
-              Lucro líq.: {formatCurrency(lucroLiqBalcaoR)} ({(lucroPercBalcaoReal * 100).toFixed(1)}%)
+              Lucro líq.: {formatCurrency(lucroLiqBalcaoR)} ({formatPercentBR(lucroPercBalcaoReal * 100, 1)})
             </Text>
           </View>
           {precoSalvo && (
@@ -323,7 +323,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
             disabled={!sugFinanceiro?.preco}
           >
             <Text style={[styles.sugLabel, { color: colors.success }]}>MARGEM DO FINANCEIRO</Text>
-            <Text style={styles.sugSub}>Pra atingir o lucro {((contexto.lucroPerc || 0) * 100).toFixed(1)}% que você definiu nas configurações</Text>
+            <Text style={styles.sugSub}>Pra atingir o lucro {formatPercentBR((contexto.lucroPerc || 0) * 100, 1)} que você definiu nas configurações</Text>
             <Text style={[styles.sugPrice, { color: colors.success }]}>
               {sugFinanceiro?.validacao?.ok ? formatCurrency(sugFinanceiro.preco) : '—'}
             </Text>
@@ -351,11 +351,11 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
             {[
               { label: 'Preço cobrado', val: numEscolhido, color: colors.text, bold: true },
               { label: embDeliveryCusto > 0 ? 'Custo no delivery (ingredientes + embalagem de delivery)' : 'Custo dos ingredientes e embalagem (CMV)', val: -cmvDelivery, color: colors.error },
-              { label: `Custos fixos (${((contexto.fixoPerc || 0) * 100).toFixed(1)}%)`, val: -valFixos, color: colors.error },
-              { label: `Imposto (${((contexto.impostoPerc || 0) * 100).toFixed(1)}%)`, val: -valImposto, color: colors.error },
-              { label: `Comissão plataforma (${(comissaoPct * 100).toFixed(1)}%)`, val: -valComissao, color: colors.error },
-              ...(taxaOnlinePct > 0 ? [{ label: `Taxa pagamento online (${(taxaOnlinePct * 100).toFixed(1)}%)`, val: -valTaxaOnline, color: colors.error }] : []),
-              ...(outrosPct > 0 ? [{ label: `Outras taxas embutidas (${(outrosPct * 100).toFixed(1)}%)`, val: -valOutros, color: colors.error }] : []),
+              { label: `Custos fixos (${formatPercentBR((contexto.fixoPerc || 0) * 100, 1)})`, val: -valFixos, color: colors.error },
+              { label: `Imposto (${formatPercentBR((contexto.impostoPerc || 0) * 100, 1)})`, val: -valImposto, color: colors.error },
+              { label: `Comissão plataforma (${formatPercentBR(comissaoPct * 100, 1)})`, val: -valComissao, color: colors.error },
+              ...(taxaOnlinePct > 0 ? [{ label: `Taxa pagamento online (${formatPercentBR(taxaOnlinePct * 100, 1)})`, val: -valTaxaOnline, color: colors.error }] : []),
+              ...(outrosPct > 0 ? [{ label: `Outras taxas embutidas (${formatPercentBR(outrosPct * 100, 1)})`, val: -valOutros, color: colors.error }] : []),
               ...(cupomR > 0 ? [{ label: 'Cupom recorrente', val: -cupomR, color: colors.error }] : []),
               ...(freteR > 0 ? [{ label: 'Frete subsidiado', val: -freteR, color: colors.error }] : []),
             ].map((row, i) => (
@@ -375,7 +375,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
             <View style={styles.compRow}>
               <Text style={styles.compLabel}>Margem líquida</Text>
               <Text style={[styles.compVal, { fontFamily: fontFamily.bold, color: !isMargemBaixa(margemLiquida, contexto.lucroPerc) ? colors.success : margemLiquida >= 0 ? colors.warning : colors.error }]}>
-                {(margemLiquida * 100).toFixed(1)}%
+                {formatPercentBR(margemLiquida * 100, 1)}
               </Text>
             </View>
             {/* Sessão 28.27: comparação direta com balcão pra dar evidência ao user */}
@@ -383,7 +383,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
               <View style={[styles.compRow, { paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border, marginTop: 4 }]}>
                 <Text style={[styles.compLabel, { fontStyle: 'italic' }]}>vs balcão (lucro líq.)</Text>
                 <Text style={[styles.compVal, { fontStyle: 'italic', color: colors.textSecondary }]}>
-                  {formatCurrency(lucroLiqBalcaoR)} ({(lucroPercBalcaoReal * 100).toFixed(1)}%)
+                  {formatCurrency(lucroLiqBalcaoR)} ({formatPercentBR(lucroPercBalcaoReal * 100, 1)})
                 </Text>
               </View>
             )}

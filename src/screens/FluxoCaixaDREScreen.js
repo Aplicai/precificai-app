@@ -27,7 +27,7 @@ import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, parseDecimalBROrZero } from '../utils/calculations';
+import { formatCurrency, parseDecimalBROrZero, formatNumberBR, formatPercentBR } from '../utils/calculations';
 import InputField from '../components/InputField';
 import PickerSelect from '../components/PickerSelect';
 import EmptyState from '../components/EmptyState';
@@ -59,7 +59,7 @@ function isValidDateStr(s) {
 // "1234.56" / 1234.56 → "1.234,56"
 function formatBRNumber(n) {
   const num = safeNum(n);
-  return num.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return formatNumberBR(num, 2);
 }
 
 // Sanitiza input de moeda enquanto o user digita: aceita só dígitos,
@@ -943,7 +943,7 @@ function DRETab({
   function pctText(valor) {
     if (receita <= 0) return '';
     const p = (safeNum(valor) / receita) * 100;
-    return `${p.toFixed(1).replace('.', ',')}%`;
+    return formatPercentBR(p, 1);
   }
 
   return (
