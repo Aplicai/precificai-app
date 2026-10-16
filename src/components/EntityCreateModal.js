@@ -22,7 +22,7 @@
  */
 
 import React, { useEffect, useLayoutEffect, useState, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Platform, Switch, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Platform, Switch, Alert, ActivityIndicator } from 'react-native';
 import usePushPermissions from '../hooks/usePushPermissions';
 // Sessão 28.29: styles extraídos pra arquivo dedicado (eram 611 linhas inline)
 import { entityCreateModalStyles as styles } from './styles/entityCreateModal.styles';
@@ -36,7 +36,7 @@ import SearchBar from './SearchBar';
 import EmptyState from './EmptyState';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import {
-  formatCurrency, formatPercent,
+  formatCurrency, formatPercent, formatPercentBR,
   calcMarkup, calcPrecoSugerido, buildPricingConfig,
   calcCustoIngrediente, calcCustoPreparo, calcCustoEmbalagem,
   calcLucroLiquido, calcCMVPercentual, calcMargem, calcMargemLiquida,
@@ -750,8 +750,8 @@ export default function EntityCreateModal({
         setPrecoVenda(p.preco_venda != null ? Number(p.preco_venda).toFixed(2).replace('.', ',') : '');
         setMargemProdutoSalva(p.margem_lucro_produto != null ? Number(p.margem_lucro_produto) : null);
         setTipoVenda(TIPO_VENDA_MAP_FROM_DB(p.unidade_rendimento));
-        setRendimentoUnidades(p.rendimento_unidades != null ? String(p.rendimento_unidades) : '1');
-        setRendimentoTotalProd(p.rendimento_total != null ? String(p.rendimento_total) : '');
+        setRendimentoUnidades(p.rendimento_unidades != null ? String(p.rendimento_unidades).replace('.', ',') : '1');
+        setRendimentoTotalProd(p.rendimento_total != null ? String(p.rendimento_total).replace('.', ',') : '');
         // Design embalagem-delivery-no-produto (2026-09-09)
         // Lista nova (embalagens_delivery) ou, em produto salvo antes dela, o par legado.
         const embsDeliverySalvas = embalagensDeliveryDoProduto(p);
@@ -812,7 +812,7 @@ export default function EntityCreateModal({
         }
         setNome(p.nome || '');
         setCategoriaId(p.categoria_id || null);
-        setRendimentoTotalPrep(p.rendimento_total != null ? String(p.rendimento_total) : '');
+        setRendimentoTotalPrep(p.rendimento_total != null ? String(p.rendimento_total).replace('.', ',') : '');
         setUnidadeMedidaPrep(shortUnidade(p.unidade_medida, 'preparo'));
         const ings = rowsOrThrow(await db.getAllAsync(
           `SELECT pi.*, mp.nome as mp_nome, mp.preco_por_kg, mp.unidade_medida as mp_unidade
@@ -1061,6 +1061,16 @@ export default function EntityCreateModal({
   // renderizado depois da coluna "Adicionar" pra ordem ficar:
   // form → adicionar → lista de itens → resumo.
   function renderItensEResumoBlock() {
+    // Walkthrough 2026-10: na edição, a composição leva alguns segundos pra
+    // chegar e o modal mostrava "Ingredientes (0)" + "Sem ingredientes".
+    if (loading && isEditing) {
+      return (
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16 }} accessibilityLiveRegion="polite">
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={[styles.itensHint, { marginLeft: 8 }]}>{isProduto ? 'Carregando itens...' : 'Carregando ingredientes...'}</Text>
+        </View>
+      );
+    }
     return (
       <View>
         <View style={styles.itensHeader}>
@@ -1314,7 +1324,7 @@ export default function EntityCreateModal({
                   <View style={styles.resumoCell}>
                     <Text style={styles.resumoLabel}>Margem bruta</Text>
                     <Text style={[styles.resumoValue, { color: colors.textSecondary }]}>
-                      {pricingPronto && precoEfetivo > 0 ? `${margem.toFixed(1).replace('.', ',')}%` : '—'}
+                      {pricingPronto && precoEfetivo > 0 ? formatPercentBR(margem, 1) : '—'}
                     </Text>
                   </View>
                 </View>
@@ -1364,7 +1374,7 @@ export default function EntityCreateModal({
                   <View style={styles.analiseBox}>
                     <Text style={styles.analiseTitulo}>Composição por unidade vendida</Text>
                     <View style={styles.analiseLinha}>
-                      <Text style={styles.analiseLabel}>Custo dos ingredientes (CMV)</Text>
+                      <Text style={styles.analiseLabel}>Custo dos itens (CMV)</Text>
                       <Text style={styles.analiseValor}>{formatCurrency(cmvUnitario)} <Text style={styles.analisePerc}>({formatPercent(cmvPerc)})</Text></Text>
                     </View>
                     {pc.despFixasPerc > 0 && (
@@ -1700,7 +1710,7 @@ export default function EntityCreateModal({
       }
       // Preço vazio não bloqueia mais: salva o sugerido, ou sem preço (ver precoAoSalvar).
     }
-    const precoResolvido = isProduto ? resolverPrecoAoSalvar(precoVendaNum, precoSugerido) : null;
+    const precoResolvido = isProduto ? resolverPrecoAoSalvar(precoVendaNum, precoSugerido, { texto: precoVenda, editando: !!editId }) : null;
     const precoParaSalvar = precoResolvido ? precoResolvido.preco : precoVendaNum;
     setSaving(true);
     setErro(null);
@@ -2134,6 +2144,32 @@ export default function EntityCreateModal({
       return false;
     }
   })();
+  // Walkthrough 2026-10: modo de preparo, validade, conservação e observações
+  // da ficha técnica só existem no form completo (ProdutoForm / PreparoForm),
+  // que ficava escondido. Atalho no modal de edição: fecha e abre o form.
+  const abrirFichaCompleta = () => {
+    const ir = () => {
+      try { onClose && onClose(); } catch {}
+      setTimeout(() => {
+        try {
+          navigation.navigate(isProduto ? 'ProdutoForm' : 'PreparoForm', { id: editId });
+        } catch (e) {
+          if (typeof console !== 'undefined') console.warn('[EntityCreateModal.abrirFichaCompleta]', e);
+        }
+      }, 0);
+    };
+    if (!hasUnsavedDraft) { ir(); return; }
+    const msg = 'Você tem mudanças não salvas neste formulário. Descartar e abrir a ficha técnica completa?';
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(msg)) ir();
+    } else {
+      Alert.alert('Mudanças não salvas', msg, [
+        { text: 'Continuar editando', style: 'cancel' },
+        { text: 'Descartar e abrir', style: 'destructive', onPress: ir },
+      ]);
+    }
+  };
+
   const handleBackdropPress = () => {
     if (!hasUnsavedDraft) { onClose && onClose(); return; }
     const msg = 'Você tem mudanças não salvas. Deseja descartar?';
@@ -2485,6 +2521,24 @@ export default function EntityCreateModal({
                 seguir ordem: form → adicionar → lista. */}
             {isMobile && renderItensEResumoBlock()}
           </ScrollView>
+
+          {isEditing && editId && navigation && (
+            <TouchableOpacity
+              onPress={abrirFichaCompleta}
+              disabled={saving}
+              accessibilityRole="link"
+              accessibilityLabel="Editar informações da ficha técnica"
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2 }}
+            >
+              <Feather name="file-text" size={14} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontFamily: fontFamily.semiBold, fontWeight: '600', fontSize: fonts.small }}>
+                Editar informações da ficha técnica
+              </Text>
+              <Text style={{ color: colors.textSecondary, fontSize: fonts.tiny || 11 }} numberOfLines={1}>
+                (preparo, validade, conservação)
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {/* Footer */}
           {erro && (

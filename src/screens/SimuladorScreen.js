@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum } from '../utils/calculations';
+import { formatCurrency, formatPercent, formatPercentBR, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum } from '../utils/calculations';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import InfoTooltip from '../components/InfoTooltip';
@@ -371,7 +371,7 @@ export default function SimuladorScreen({ navigation }) {
                 // Audit A4: Simulador vive no MaisStack — 'ProdutoForm' só existe no ProdutosStack.
                 const navigateToProduto = () => navigation.navigate('Produtos', { screen: 'ProdutoForm', params: { id: r.id, sugerirNovoPreco: margemRisco } });
                 if (margemNegativa) {
-                  const msg = `Margem negativa: ${(r.margemNova * 100).toFixed(1)}%. O preço atual não cobre o custo deste produto. Quer abrir o produto para ajustar?`;
+                  const msg = `Margem negativa: ${formatPercentBR(r.margemNova * 100, 1)}. O preço atual não cobre o custo deste produto. Quer abrir o produto para ajustar?`;
                   if (Platform.OS === 'web') {
                     if (typeof window !== 'undefined' && window.confirm(msg)) navigateToProduto();
                   } else {

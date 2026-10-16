@@ -324,7 +324,7 @@ export default function EmbalagensScreen({ navigation }) {
       const db = await getDatabase();
       const deps = await contarDependencias(db, 'embalagem', id);
       if (deps.total > 0) {
-        mensagemExtra = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'embalagem' });
+        mensagemExtra = formatarMensagemDeps(deps, { acao: 'excluir', entidade: 'embalagem', artigo: 'esta' });
       }
     } catch (e) {
       console.error('[EmbalagensScreen.solicitarExclusao.deps]', e);
@@ -461,7 +461,7 @@ export default function EmbalagensScreen({ navigation }) {
     })();
     bulk.clear();
     const sigStr = sign === 1 ? '+' : '−';
-    const valStr = mode === 'percent' ? `${value}%` : `R$ ${value.toFixed(2).replace('.', ',')}`;
+    const valStr = mode === 'percent' ? `${String(value).replace('.', ',')}%` : formatCurrency(value);
     setInfoToast({
       message: `${ids.length} ${ids.length === 1 ? 'embalagem reajustada' : 'embalagens reajustadas'} (${sigStr}${valStr})`,
       icon: 'trending-up',

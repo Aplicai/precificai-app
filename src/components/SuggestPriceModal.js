@@ -28,6 +28,7 @@ import {
   Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { formatPercentBR } from '../utils/calculations';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 
 function formatBRL(v) {
@@ -129,7 +130,7 @@ export default function SuggestPriceModal({
                 <View style={styles.statBox}>
                   <Text style={styles.statLabel}>Margem</Text>
                   <Text style={[styles.statValue, { color: marginColor(result.margem_resultante) }]}>
-                    {((result.margem_resultante || 0) * 100).toFixed(1)}%
+                    {formatPercentBR((result.margem_resultante || 0) * 100, 1)}
                   </Text>
                 </View>
               </View>
@@ -145,19 +146,19 @@ export default function SuggestPriceModal({
                   {Number(result.despesas_variaveis_pct) > 0 && (
                     <View style={styles.breakdownRow}>
                       <Text style={styles.breakdownLabel}>Despesas variáveis</Text>
-                      <Text style={styles.breakdownValue}>{(Number(result.despesas_variaveis_pct) * 100).toFixed(1)}%</Text>
+                      <Text style={styles.breakdownValue}>{formatPercentBR(Number(result.despesas_variaveis_pct) * 100, 1)}</Text>
                     </View>
                   )}
                   {Number(result.despesas_fixas_pct) > 0 && (
                     <View style={styles.breakdownRow}>
                       <Text style={styles.breakdownLabel}>Despesas fixas</Text>
-                      <Text style={styles.breakdownValue}>{(Number(result.despesas_fixas_pct) * 100).toFixed(1)}%</Text>
+                      <Text style={styles.breakdownValue}>{formatPercentBR(Number(result.despesas_fixas_pct) * 100, 1)}</Text>
                     </View>
                   )}
                   {Number(result.margem_alvo_pct) > 0 && (
                     <View style={styles.breakdownRow}>
                       <Text style={styles.breakdownLabel}>Margem alvo</Text>
-                      <Text style={styles.breakdownValue}>{(Number(result.margem_alvo_pct) * 100).toFixed(1)}%</Text>
+                      <Text style={styles.breakdownValue}>{formatPercentBR(Number(result.margem_alvo_pct) * 100, 1)}</Text>
                     </View>
                   )}
                 </View>
@@ -246,7 +247,7 @@ function PriceDelta({ atual, sugerido }) {
   return (
     <Text style={[styles.precoPsico, { marginTop: 6 }]}>
       vs preço atual: <Text style={{ color, fontFamily: fontFamily.bold, fontWeight: '700' }}>
-        {arrow} {sign}{pct.toFixed(1)}% ({sign}{((diff).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))})
+        {arrow} {sign}{formatPercentBR(pct, 1)} ({sign}{((diff).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }))})
       </Text>
     </Text>
   );

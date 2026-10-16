@@ -37,7 +37,7 @@ test('materia_prima — soma preparos + produtos + histórico; só lista tabelas
   const deps = await contarDependencias(db, 'materia_prima', 42);
   assert.equal(deps.total, 10);
   assert.deepEqual(deps.porTabela, [
-    { label: 'preparos', n: 3 },
+    { label: 'receitas base', n: 3 },
     { label: 'histórico de preços', n: 7 },
   ]);
   assert.equal(deps.temBloqueio, false);
@@ -48,7 +48,7 @@ test('materia_prima — soma preparos + produtos + histórico; só lista tabelas
 test('produto — vendas registradas ativam temBloqueio; delivery_produto_itens consulta por item_id + tipo', async () => {
   const db = mockDb({ produto_ingredientes: 2, produto_preparos: 0, produto_embalagens: 1, delivery_produto_itens: 1, vendas: 5 });
   const deps = await contarDependencias(db, 'produto', 9);
-  assert.equal(deps.total, 9);
+  assert.equal(deps.total, 6);
   assert.equal(deps.temBloqueio, true);
   const dpi = db.calls.find((c) => c.sql.includes('delivery_produto_itens'));
   assert.match(dpi.sql, /item_id = \? AND tipo = 'produto'/);
@@ -103,4 +103,25 @@ test('softDelete — whitelist de tabelas; UPDATE deleted_at com ISO; false se a
 
   const dbFail = mockDb({ __runError: new Error('no such column: deleted_at') });
   assert.equal(await silenceWarn(() => softDelete(dbFail, 'preparos', 1)), false);
+});
+
+test('produto — a composição do próprio produto não conta como dependência (era "1 preparos (linhas)")', async () => {
+  const db = mockDb({ produto_ingredientes: 3, produto_preparos: 1, produto_embalagens: 2 });
+  const deps = await contarDependencias(db, 'produto', 1);
+  assert.equal(deps.total, 0);
+  assert.ok(!db.calls.some((c) => /FROM produto_(ingredientes|preparos|embalagens)/.test(c.sql)));
+});
+
+test('labels no singular quando n === 1', async () => {
+  const db = mockDb({ produto_embalagens: 1 });
+  const deps = await contarDependencias(db, 'embalagem', 1);
+  assert.deepEqual(deps.porTabela, [{ label: 'produto', n: 1 }]);
+  const db2 = mockDb({ delivery_produto_itens: 1, vendas: 1 });
+  const deps2 = await contarDependencias(db2, 'produto', 1);
+  assert.deepEqual(deps2.porTabela, [{ label: 'produto de delivery', n: 1 }, { label: 'venda registrada', n: 1 }]);
+});
+
+test('formatarMensagemDeps — artigo "esta" pra entidade feminina (embalagem)', () => {
+  const msg = formatarMensagemDeps({ total: 1, porTabela: [{ label: 'produto', n: 1 }], temBloqueio: false }, { entidade: 'embalagem', artigo: 'esta' });
+  assert.match(msg, /^Esta embalagem está em uso em:\n• 1 produto\n/);
 });

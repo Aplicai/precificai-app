@@ -398,3 +398,21 @@ test('MateriaPrimaFormScreen:1263 (botão Salvar) — preco_por_kg do histórico
   assert.equal(pbHist(6, 1000), 6);                 // só bate para g/mL
   assert.equal(calcPrecoBase(6, 1000, 'g'), 6);
 });
+
+test('formatNumberBR / formatPercentBR / roundMoney (walkthrough 2026-10: "20.0%", "1.1 kg", R$ 1,49 x 1,50)', () => {
+  const { formatNumberBR, formatPercentBR, roundMoney } = calc;
+  assert.equal(formatPercentBR(47.7), '47,7%');
+  assert.equal(formatPercentBR(20, 1), '20,0%');
+  assert.equal(formatPercentBR(-3.25, 1), '-3,3%');
+  assert.equal(formatPercentBR(NaN), '0,0%');
+  assert.equal(formatNumberBR(1.1, 1), '1,1');
+  assert.equal(formatNumberBR(1234.5, 2), '1.234,50');
+  assert.equal(formatNumberBR(12, 0), '12');
+  // 29,90 / 20 = 1.4949999999999999 em ponto flutuante: o form mostrava 1,49
+  // e o card (valor que volta do banco = 1.495) mostrava 1,50.
+  assert.equal(roundMoney(29.9 / 20), 1.5);
+  assert.equal(formatCurrency(29.9 / 20), formatCurrency(1.495));
+  assert.equal(formatCurrency(1.005), 'R$ 1,01');
+  assert.equal(formatCurrency(-1.495), 'R$ -1,50');
+  assert.equal(roundMoney(-0.001), 0);
+});

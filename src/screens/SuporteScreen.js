@@ -521,7 +521,7 @@ export default function SuporteScreen({ navigation, route }) {
             <View style={styles.suggestionSuccess} accessibilityLiveRegion="polite">
               <Feather name="check-circle" size={14} color={colors.success || colors.primary} />
               <Text style={styles.suggestionSuccessText}>
-                Sugestão enviada! Nossa equipe lê todas e responde em até 24h.
+                Sugestão enviada! Nossa equipe lê todas e responde em até 1 dia útil.
               </Text>
             </View>
           )}
@@ -531,7 +531,7 @@ export default function SuporteScreen({ navigation, route }) {
 
         <View style={styles.responseTimeRow}>
           <Feather name="clock" size={16} color={colors.success || colors.primary} />
-          <Text style={styles.responseTimeText}>Responderemos em até 24 horas úteis</Text>
+          <Text style={styles.responseTimeText}>Responderemos em até 1 dia útil</Text>
         </View>
       </View>
 

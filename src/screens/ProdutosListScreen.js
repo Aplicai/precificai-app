@@ -8,7 +8,7 @@ import FAB from '../components/FAB';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { aplicarCustosPreparos } from '../services/cascadeRecalc';
-import { formatCurrency, formatPercent, calcDespesasFixasPercentual, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual } from '../utils/calculations';
+import { formatCurrency, formatPercent, formatPercentBR, calcDespesasFixasPercentual, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual } from '../utils/calculations';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
 import Skeleton from '../components/Skeleton';
@@ -85,6 +85,42 @@ function avisarLimiteProximo(total) {
   if (!Number.isFinite(limite) || total !== limite - 1) return;
   _avisoLimiteMostrado = true;
   showToast('Mais 1 e o plano Grátis enche. No Pro é ilimitado.', 'info', 4000);
+}
+
+// Ordenação da lista (P1-22). Module-level pra rodar também na renderização:
+// trocar pra "Menor margem" reordena na hora, sem esperar o loadData (que é
+// throttled e podia nem rodar de novo).
+const cmpNome = (a, b) => (a || '').localeCompare(b || '', 'pt-BR', { sensitivity: 'base' });
+const PRODUTO_SORT_FNS = {
+  nome_asc: (a, b) => cmpNome(a.nome, b.nome),
+  nome_desc: (a, b) => cmpNome(b.nome, a.nome),
+  recentes: (a, b) => (b.id || 0) - (a.id || 0),
+  modificados: (a, b) => {
+    // P3-I — updated_at DESC (mais recentes primeiro). Strings ISO comparam corretamente
+    const au = a.updated_at || '';
+    const bu = b.updated_at || '';
+    if (au === bu) return cmpNome(a.nome, b.nome);
+    return bu.localeCompare(au);
+  },
+  favoritos: (a, b) => {
+    // P3-H — favoritos primeiro, depois nome ASC
+    const fa = a.favorito ? 1 : 0, fb = b.favorito ? 1 : 0;
+    if (fa !== fb) return fb - fa;
+    return cmpNome(a.nome, b.nome);
+  },
+  preco_desc: (a, b) => (b.precoVenda || 0) - (a.precoVenda || 0),
+  preco_asc: (a, b) => (a.precoVenda || 0) - (b.precoVenda || 0),
+  lucro_desc: (a, b) => (b.lucro || 0) - (a.lucro || 0),
+  margem_asc: (a, b) => {
+    // Margem -1 (sem preço) vai para o fim
+    const am = a.margem === -1 ? Infinity : a.margem;
+    const bm = b.margem === -1 ? Infinity : b.margem;
+    if (am === bm) return cmpNome(a.nome, b.nome);
+    return am - bm;
+  },
+};
+function getProdutoSortFn(sortBy) {
+  return PRODUTO_SORT_FNS[sortBy] || PRODUTO_SORT_FNS.nome_asc;
 }
 
 export default function ProdutosListScreen({ navigation }) {
@@ -171,11 +207,15 @@ export default function ProdutosListScreen({ navigation }) {
   // estavam chamando loadData 3x sequenciais a cada focus (12 queries × 3 = 36
   // queries em milissegundos). Throttle 500ms reduz a apenas 1 carga.
   const lastLoadRef = useRef(0);
+  // Ref pro loadData da renderização atual: o useCallback([]) prendia o
+  // loadData do 1º render (sortBy/filtro/busca antigos).
+  const loadDataRef = useRef(null);
+  loadDataRef.current = loadData;
   const loadDataThrottled = useCallback(async (force = false) => {
     const now = Date.now();
     if (!force && now - lastLoadRef.current < 500) return;
     lastLoadRef.current = now;
-    return loadData();
+    return loadDataRef.current && loadDataRef.current();
   }, []);
 
   // Sessão 28.46: extraído pra rodar via useFocusEffect E via focus listener
@@ -391,36 +431,7 @@ export default function ProdutosListScreen({ navigation }) {
     checkActivation(supabase);
 
     // Aplicar ordenação P1-22
-    const cmpStr = (a, b) => (a || '').localeCompare(b || '', 'pt-BR', { sensitivity: 'base' });
-    const sortFns = {
-      nome_asc: (a, b) => cmpStr(a.nome, b.nome),
-      nome_desc: (a, b) => cmpStr(b.nome, a.nome),
-      recentes: (a, b) => (b.id || 0) - (a.id || 0),
-      modificados: (a, b) => {
-        // P3-I — updated_at DESC (mais recentes primeiro). Strings ISO comparam corretamente
-        const au = a.updated_at || '';
-        const bu = b.updated_at || '';
-        if (au === bu) return cmpStr(a.nome, b.nome);
-        return bu.localeCompare(au);
-      },
-      favoritos: (a, b) => {
-        // P3-H — favoritos primeiro, depois nome ASC
-        const fa = a.favorito ? 1 : 0, fb = b.favorito ? 1 : 0;
-        if (fa !== fb) return fb - fa;
-        return cmpStr(a.nome, b.nome);
-      },
-      preco_desc: (a, b) => (b.precoVenda || 0) - (a.precoVenda || 0),
-      preco_asc: (a, b) => (a.precoVenda || 0) - (b.precoVenda || 0),
-      lucro_desc: (a, b) => (b.lucro || 0) - (a.lucro || 0),
-      margem_asc: (a, b) => {
-        // Margem -1 (sem preço) vai para o fim
-        const am = a.margem === -1 ? Infinity : a.margem;
-        const bm = b.margem === -1 ? Infinity : b.margem;
-        return am - bm;
-      },
-    };
-    const sortFn = sortFns[sortBy] || sortFns.nome_asc;
-    result.sort(sortFn);
+    result.sort(getProdutoSortFn(sortBy));
 
     const grouped = {};
     const semCategoria = { id: null, nome: 'Sem categoria' };
@@ -588,18 +599,18 @@ export default function ProdutosListScreen({ navigation }) {
       const itens = await db.getAllAsync(
         `SELECT * FROM produtos WHERE id IN (${placeholders})`, ids
       );
-      for (const produto of itens) {
+      for (const produto of rowsOrThrow(itens)) {
+        const [ings, preps, embs] = (await Promise.all([
+          db.getAllAsync('SELECT * FROM produto_ingredientes WHERE produto_id = ?', [produto.id]),
+          db.getAllAsync('SELECT * FROM produto_preparos WHERE produto_id = ?', [produto.id]),
+          db.getAllAsync('SELECT * FROM produto_embalagens WHERE produto_id = ?', [produto.id]),
+        ])).map(rowsOrThrow);
         const result = await db.runAsync(
           'INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades, preco_venda, margem_lucro_produto) VALUES (?,?,?,?,?,?,?)',
           [produto.nome + ' (cópia)', produto.categoria_id, produto.rendimento_total, produto.unidade_rendimento, produto.rendimento_unidades, produto.preco_venda, produto.margem_lucro_produto]
         );
         const newId = result?.lastInsertRowId;
         if (!newId) continue;
-        const [ings, preps, embs] = await Promise.all([
-          db.getAllAsync('SELECT * FROM produto_ingredientes WHERE produto_id = ?', [produto.id]),
-          db.getAllAsync('SELECT * FROM produto_preparos WHERE produto_id = ?', [produto.id]),
-          db.getAllAsync('SELECT * FROM produto_embalagens WHERE produto_id = ?', [produto.id]),
-        ]);
         await Promise.all([
           ...ings.map(ing => db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)', [newId, ing.materia_prima_id, ing.quantidade_utilizada])),
           ...preps.map(pr => db.runAsync('INSERT INTO produto_preparos (produto_id, preparo_id, quantidade_utilizada) VALUES (?,?,?)', [newId, pr.preparo_id, pr.quantidade_utilizada])),
@@ -610,7 +621,7 @@ export default function ProdutosListScreen({ navigation }) {
       setInfoToast({ message: `${ids.length} ${ids.length === 1 ? 'produto duplicado' : 'produtos duplicados'}`, icon: 'copy' });
     } catch (e) {
       if (typeof console !== 'undefined' && console.error) console.error('[ProdutosListScreen.duplicarEmMassa]', e);
-      setInfoToast({ message: mensagemErroSalvar(e, 'Não foi possível duplicar os produtos.'), icon: 'alert-triangle' });
+      setInfoToast({ message: e?.isDbReadError ? 'Não conseguimos ler os itens de um produto. A duplicação parou; confira a lista e tente de novo.' : mensagemErroSalvar(e, 'Não foi possível duplicar os produtos.'), icon: 'alert-triangle' });
     }
     loadData();
   }
@@ -643,7 +654,7 @@ export default function ProdutosListScreen({ navigation }) {
       }));
       bulk.clear();
       const sigStr = sign === 1 ? '+' : '−';
-      const valStr = mode === 'percent' ? `${value}%` : `R$ ${value.toFixed(2).replace('.', ',')}`;
+      const valStr = mode === 'percent' ? `${String(value).replace('.', ',')}%` : formatCurrency(value);
       if (abaixoDoCusto > 0) {
         setInfoToast({
           message: `${ids.length} reajustado (${sigStr}${valStr}) — ${abaixoDoCusto} ficou abaixo do custo`,
@@ -732,18 +743,19 @@ export default function ProdutosListScreen({ navigation }) {
     if (bloqueiaPeloLimite(1)) return;
     try {
       const db = await getDatabase();
+      // Composição lida ANTES de criar a cópia (rowsOrThrow): erro de leitura
+      // vinha como [] e a cópia saía vazia.
+      const [ings, preps, embs] = (await Promise.all([
+        db.getAllAsync('SELECT * FROM produto_ingredientes WHERE produto_id = ?', [produto.id]),
+        db.getAllAsync('SELECT * FROM produto_preparos WHERE produto_id = ?', [produto.id]),
+        db.getAllAsync('SELECT * FROM produto_embalagens WHERE produto_id = ?', [produto.id]),
+      ])).map(rowsOrThrow);
       const result = await db.runAsync(
         'INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades, preco_venda, margem_lucro_produto) VALUES (?,?,?,?,?,?,?)',
         [produto.nome + ' (cópia)', produto.categoria_id, produto.rendimento_total, produto.unidade_rendimento, produto.rendimento_unidades, produto.preco_venda, produto.margem_lucro_produto]
       );
       const newId = result?.lastInsertRowId;
       if (!newId) return;
-      // Load all related data in parallel
-      const [ings, preps, embs] = await Promise.all([
-        db.getAllAsync('SELECT * FROM produto_ingredientes WHERE produto_id = ?', [produto.id]),
-        db.getAllAsync('SELECT * FROM produto_preparos WHERE produto_id = ?', [produto.id]),
-        db.getAllAsync('SELECT * FROM produto_embalagens WHERE produto_id = ?', [produto.id]),
-      ]);
       // Insert all related data in parallel
       await Promise.all([
         ...ings.map(ing => db.runAsync('INSERT INTO produto_ingredientes (produto_id, materia_prima_id, quantidade_utilizada) VALUES (?,?,?)', [newId, ing.materia_prima_id, ing.quantidade_utilizada])),
@@ -753,7 +765,7 @@ export default function ProdutosListScreen({ navigation }) {
       abrirEdicao(newId);
     } catch (e) {
       if (typeof console !== 'undefined' && console.error) console.error('[ProdutosListScreen.duplicarProduto]', e);
-      setInfoToast({ message: mensagemErroSalvar(e, 'Não foi possível duplicar o produto.'), icon: 'alert-triangle' });
+      setInfoToast({ message: e?.isDbReadError ? 'Não conseguimos ler os itens do produto, então nada foi duplicado. Tente de novo.' : mensagemErroSalvar(e, 'Não foi possível duplicar o produto.'), icon: 'alert-triangle' });
       loadData();
     }
   }
@@ -901,7 +913,7 @@ export default function ProdutosListScreen({ navigation }) {
         // renderização também — imediato e independente do banco.
         if (busca.trim() && !normalizeSearch(it.nome).includes(normalizeSearch(busca))) return false;
         return true;
-      }),
+      }).sort(getProdutoSortFn(sortBy)),
     }))
     .filter((s) => s.data.length > 0 || (filtroCategoria !== null && filtroCategoria === s.catId));
 
@@ -936,7 +948,7 @@ export default function ProdutosListScreen({ navigation }) {
   const avgMargin = margens.length ? margens.reduce((a, b) => a + b, 0) / margens.length : 0;
   const statsList = visCount > 0 ? [
     { icon: 'shopping-bag', label: 'Produtos', value: String(visCount), color: colors.primary },
-    { icon: 'percent', label: 'Margem média', value: `${avgMargin.toFixed(1)}%`, color: colors.accent || '#FFD37A' },
+    { icon: 'percent', label: 'Margem média', value: formatPercentBR(avgMargin, 1), color: colors.accent || '#FFD37A' },
     { icon: 'trending-up', label: 'Lucro/un. total', value: formatCurrency(totalLucro), color: colors.success || '#1a8a4f' },
   ] : [];
 
@@ -1323,7 +1335,7 @@ export default function ProdutosListScreen({ navigation }) {
         fields={previewItem ? [
           { label: 'Categoria', value: previewItem.categoria_nome || previewItem.categoria || 'Sem categoria' },
           { label: 'Preço de venda', value: formatCurrency(previewItem.preco_venda) },
-          { label: 'Custo dos ingredientes (CMV)', value: formatCurrency(previewItem.custoTotal) },
+          { label: 'Custo dos itens (CMV)', value: formatCurrency(previewItem.custoTotal) },
           { label: 'Lucro/un.', value: formatCurrency(previewItem.lucro) },
           { label: 'Margem', value: typeof previewItem.margem === 'number' ? formatPercent(previewItem.margem) : '—', accent: true },
         ] : []}

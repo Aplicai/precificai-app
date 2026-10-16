@@ -14,15 +14,16 @@ import usePersistedState from '../hooks/usePersistedState';
 import { useAuth } from '../contexts/AuthContext';
 // Sessão 28.63: botão de instalar PWA (reentrada manual depois de desinstalar).
 import InstallAppButton from '../components/InstallAppButton';
+import appJson from '../../app.json';
 
 // Versão dinâmica via expoConfig (em vez de hardcoded — evita desync após release).
-const APP_VERSION = Constants?.expoConfig?.version || Constants?.manifest?.version || '1.0.0';
+const APP_VERSION = Constants?.expoConfig?.version || Constants?.manifest?.version || appJson?.expo?.version || '';
 
 // Sessão 28.48: removido mapBackupError (helper só do JSON backup, agora extinto).
 
 const OPCOES = [
   { key: 'perfil', icon: 'user', label: 'Perfil do Negócio', desc: 'Nome, segmento e telefone', screen: 'Perfil', color: colors.primary },
-  { key: 'conta', icon: 'lock', label: 'Conta e Segurança', desc: 'Alterar e-mail e senha', screen: 'ContaSeguranca', color: colors.blue },
+  { key: 'conta', icon: 'lock', label: 'Conta e Segurança', desc: 'Alterar senha', screen: 'ContaSeguranca', color: colors.blue },
   { key: 'kitinicio', icon: 'gift', label: 'Carregar kit de início rápido', desc: 'Ingredientes, embalagens e produtos de exemplo do seu segmento (opcional)', screen: 'KitInicio', color: colors.coral },
   { key: 'sobre', icon: 'info', label: 'Sobre o App', desc: 'Versão e informações', screen: 'Sobre', color: colors.accent },
   { key: 'termos', icon: 'file-text', label: 'Termos de Uso', desc: 'Condições de uso do aplicativo', screen: 'Termos', color: colors.primary },
@@ -486,7 +487,7 @@ export default function ConfiguracoesScreen({ navigation }) {
         <Text style={styles.loggedAs}>Conectado como {user.email}</Text>
       ) : null}
 
-      <Text style={styles.version}>PrecificaApp v{APP_VERSION}</Text>
+      <Text style={styles.version}>Precificaí{APP_VERSION ? ` v${APP_VERSION}` : ''}</Text>
 
     </ScrollView>
   );

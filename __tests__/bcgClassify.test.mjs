@@ -11,7 +11,7 @@
  */
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { classificarMatrizBCG, median } from '../src/utils/bcgClassify.js';
+import { classificarMatrizBCG, median, medianaMargemBCG, nivelMargemBCG } from '../src/utils/bcgClassify.js';
 
 const byName = (arr) => Object.fromEntries(arr.map((p) => [p.nome, p.classificacao]));
 
@@ -86,4 +86,21 @@ test('median: pares e ímpares', () => {
   assert.equal(median([2, 2, 2, 8]), 2);
   assert.equal(median([1, 3, 5]), 3);
   assert.equal(median([]), 0);
+});
+
+test('cor da margem segue a mesma régua da classificação (mediana), não um limite absoluto', () => {
+  const items = [
+    { nome: 'A', precoVenda: 10, margemPerc: 48, qtdVendida: 30 },
+    { nome: 'B', precoVenda: 10, margemPerc: 56, qtdVendida: 30 },
+    { nome: 'C', precoVenda: 10, margemPerc: 70, qtdVendida: 1 },
+    { nome: 'Sem preço', precoVenda: 0, margemPerc: -100, qtdVendida: 0 },
+  ];
+  const med = medianaMargemBCG(items);
+  assert.equal(med, 56);
+  const cls = byName(classificarMatrizBCG(items));
+  // 48% abaixo da mediana → classe de margem baixa E nível 'baixa' (antes: selo verde)
+  assert.equal(cls.A, 'Abacaxi');
+  assert.equal(nivelMargemBCG(48, med), 'baixa');
+  assert.equal(nivelMargemBCG(56, med), 'alta');
+  assert.equal(nivelMargemBCG(-5, med), 'negativa');
 });

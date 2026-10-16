@@ -57,3 +57,18 @@ export function classificarMatrizBCG(items) {
     return { ...p, classificacao };
   });
 }
+
+// Mediana de margem usada na classificação (só itens com preço). Exposta pra
+// tela colorir a margem pela MESMA régua do texto/quadrante: antes o selo era
+// verde por regra absoluta (>= 40%) ao lado de "a margem de 48% é baixa".
+export function medianaMargemBCG(items) {
+  const validItems = (items || []).filter((p) => p.precoVenda > 0);
+  return median(validItems.map((p) => p.margemPerc));
+}
+
+// 'negativa' (< 0), 'alta' (>= mediana, igual à classificação) ou 'baixa'.
+export function nivelMargemBCG(margemPerc, medianaMargem) {
+  const m = Number(margemPerc);
+  if (!Number.isFinite(m) || m < 0) return 'negativa';
+  return m >= medianaMargem ? 'alta' : 'baixa';
+}

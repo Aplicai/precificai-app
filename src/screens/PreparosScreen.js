@@ -548,7 +548,7 @@ export default function PreparosScreen({ navigation }) {
     }));
     bulk.clear();
     const sigStr = sign === 1 ? '+' : '−';
-    const valStr = mode === 'percent' ? `${value}%` : `R$ ${value.toFixed(2).replace('.', ',')}`;
+    const valStr = mode === 'percent' ? `${String(value).replace('.', ',')}%` : formatCurrency(value);
     const n = ajustaveis.length;
     const msgAjuste = n > 0
       ? `${n} ${n === 1 ? 'receita base reajustada' : 'receitas base reajustadas'} (${sigStr}${valStr})`

@@ -48,3 +48,13 @@ export function textoPrazo(dias) {
   if (dias === 1) return 'vence amanhã';
   return `vence em ${dias} dias`;
 }
+
+/**
+ * Linha de validade do card "Meu Plano". Só o mensal (cartão) renova sozinho;
+ * o anual (Pix) não tem débito automático, então "Renova em" prometia algo
+ * que não acontece. `venc` já formatado (dd/mm/aaaa) ou vazio = vitalício.
+ */
+export function textoValidadePlano({ ciclo, venc } = {}) {
+  if (!venc) return 'Acesso vitalício';
+  return ciclo === 'mensal' ? `Renova em ${venc}` : `Válido até ${venc}`;
+}

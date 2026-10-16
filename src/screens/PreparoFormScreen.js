@@ -295,7 +295,7 @@ export default function PreparoFormScreen({ route, navigation }) {
     // fica vazio e gravar sobrescreveria a receita.
     if (!item) carga.erro = piorErroCarga(carga.erro, 'registro');
     if (item) {
-      setForm({ nome: item.nome, rendimento_total: String(item.rendimento_total || ''), unidade_medida: item.unidade_medida || 'g', categoria_id: item.categoria_id || null, modo_preparo: item.modo_preparo || '', observacoes: item.observacoes || '', validade_dias: String(item.validade_dias || ''), temp_congelado: item.temp_congelado || '', tempo_congelado: item.tempo_congelado || '', temp_refrigerado: item.temp_refrigerado || '', tempo_refrigerado: item.tempo_refrigerado || '', temp_ambiente: item.temp_ambiente || '', tempo_ambiente: item.tempo_ambiente || '' });
+      setForm({ nome: item.nome, rendimento_total: String(item.rendimento_total || '').replace('.', ','), unidade_medida: item.unidade_medida || 'g', categoria_id: item.categoria_id || null, modo_preparo: item.modo_preparo || '', observacoes: item.observacoes || '', validade_dias: String(item.validade_dias || ''), temp_congelado: item.temp_congelado || '', tempo_congelado: item.tempo_congelado || '', temp_refrigerado: item.temp_refrigerado || '', tempo_refrigerado: item.tempo_refrigerado || '', temp_ambiente: item.temp_ambiente || '', tempo_ambiente: item.tempo_ambiente || '' });
       if (item.modo_preparo || item.observacoes || item.validade_dias) setShowInfoAdicional(true);
       const ings = await db.getAllAsync(
         `SELECT pi.*, mp.nome as mp_nome, mp.marca as mp_marca, mp.preco_por_kg, mp.unidade_medida as mp_unidade FROM preparo_ingredientes pi

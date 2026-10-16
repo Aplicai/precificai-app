@@ -7,7 +7,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { getDatabase } from '../database/database';
-import { converterParaBase, formatCurrency, formatPercent, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, calcMarkup, calcPrecoSugerido, calcCustoPorKgPreparo, formatRendimentoPreparo, normalizarUnidade, calcCustoListaPreparo, getTipoUnidade } from '../utils/calculations';
+import { converterParaBase, formatCurrency, formatPercent, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, calcMarkup, calcPrecoSugerido, calcCustoPorKgPreparo, formatRendimentoPreparo, normalizarUnidade, roundMoney, calcCustoListaPreparo, getTipoUnidade } from '../utils/calculations';
 import { aplicarCustosPreparos } from '../services/cascadeRecalc';
 import { margemDoProduto } from '../utils/margemMeta';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -644,7 +644,9 @@ export default function ExportPDFScreen({ navigation }) {
                           {isSelected && <Feather name="check" size={isDesktop ? 10 : 14} color="#fff" />}
                         </View>
                         {Platform.OS === 'web' ? (
-                          <div title={p.nome} style={{ flex: 1, overflow: 'hidden' }}>
+                          // minWidth 0 + marginRight: nome longo vira "..." em vez de
+                          // encostar no preço ("Brigadeiro Gourmet caixa 1R$ 2,50").
+                          <div title={p.nome} style={{ flex: 1, minWidth: 0, overflow: 'hidden', marginRight: 8 }}>
                             <Text style={isDesktop ? styles.gridCardName : styles.productName} numberOfLines={1}>{p.nome}</Text>
                           </div>
                         ) : (
@@ -759,9 +761,22 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// Mesmo arredondamento do app (roundMoney) pra linha e total baterem.
 function fmtCur(v) {
-  if (v === null || v === undefined || isNaN(v)) return 'R$ 0,00';
-  return 'R$ ' + Number(v).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return formatCurrency(v);
+}
+
+// Quantidade/rendimento em PT-BR: 1.1 → "1,1" (até 3 casas, sem zeros à direita).
+function fmtNum(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '0';
+  return String(Math.round(n * 1000) / 1000).replace('.', ',');
+}
+
+// O form sugere "-18°C"; o PDF acrescenta "°C". Remove o sufixo digitado
+// antes de acrescentar, senão saía "-18°C°C".
+function fmtTemp(t) {
+  return String(t).trim().replace(/\s*[°º]?\s*C\s*$/i, '') + '°C';
 }
 
 function fmtPct(v) {
@@ -774,31 +789,41 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
   const nomeNegocio = perfil.nome_negocio || '';
 
   const fichaCards = fichas.map((f, idx) => {
-    const { produto, ings, preps, embs, custoIng, custoPrep, custoEmb, cmv, precoSugerido, lucroVal, margemVal, cmvPerc, despFixasPerc, despVarPerc } = f;
+    const { produto, ings, preps, embs, cmv, precoSugerido, lucroVal, margemVal, cmvPerc, despFixasPerc, despVarPerc } = f;
+
+    // Walkthrough 2026-10: linhas somavam R$ 12,03 e o Total dizia R$ 12,04
+    // (total arredondado da soma crua). Agora cada linha é arredondada pra
+    // centavos e o total da seção é a soma do que está impresso.
+    const custoLinhaIng = (i) => roundMoney(calcCustoIngrediente(i.preco_por_kg || 0, i.quantidade_utilizada, i.unidade_medida || 'g', i.unidade_medida || 'g'));
+    const custoLinhaPrep = (p) => roundMoney(calcCustoPreparo(p.custo_por_kg || 0, p.quantidade_utilizada, p.unidade_medida || 'g'));
+    const custoLinhaEmb = (e) => roundMoney((e.preco_unitario || 0) * (e.quantidade_utilizada || e.quantidade || 1));
+    const custoIng = ings.reduce((a, i) => a + custoLinhaIng(i), 0);
+    const custoPrep = preps.reduce((a, p) => a + custoLinhaPrep(p), 0);
+    const custoEmb = embs.reduce((a, e) => a + custoLinhaEmb(e), 0);
 
     const ingRows = ings.map(i => `
       <tr>
         <td>${escapeHtml(i.mp_nome || '')}</td>
-        <td style="text-align:center">${i.quantidade_utilizada || 0}</td>
+        <td style="text-align:center">${fmtNum(i.quantidade_utilizada || 0)}</td>
         <td style="text-align:center">${escapeHtml(normalizarUnidade(i.unidade_medida) || i.unidade_medida || 'g')}</td>
-        <td style="text-align:right">${fmtCur(calcCustoIngrediente(i.preco_por_kg || 0, i.quantidade_utilizada, i.unidade_medida || 'g', i.unidade_medida || 'g'))}</td>
+        <td style="text-align:right">${fmtCur(custoLinhaIng(i))}</td>
       </tr>
     `).join('');
 
     const prepRows = preps.map(p => `
       <tr>
         <td>${escapeHtml(p.pr_nome || '')}</td>
-        <td style="text-align:center">${p.quantidade_utilizada || 0}</td>
+        <td style="text-align:center">${fmtNum(p.quantidade_utilizada || 0)}</td>
         <td style="text-align:center">${escapeHtml(normalizarUnidade(p.unidade_medida) || p.unidade_medida || 'g')}</td>
-        <td style="text-align:right">${fmtCur(calcCustoPreparo(p.custo_por_kg || 0, p.quantidade_utilizada, p.unidade_medida || 'g'))}</td>
+        <td style="text-align:right">${fmtCur(custoLinhaPrep(p))}</td>
       </tr>
     `).join('');
 
     const embRows = embs.map(e => `
       <tr>
         <td>${escapeHtml(e.emb_nome || '')}</td>
-        <td style="text-align:center">${e.quantidade_utilizada || e.quantidade || 1}</td>
-        <td style="text-align:right">${fmtCur((e.preco_unitario || 0) * (e.quantidade_utilizada || e.quantidade || 1))}</td>
+        <td style="text-align:center">${fmtNum(e.quantidade_utilizada || e.quantidade || 1)}</td>
+        <td style="text-align:right">${fmtCur(custoLinhaEmb(e))}</td>
       </tr>
     `).join('');
 
@@ -812,17 +837,17 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
 
     const labelTipoVenda = tipoVenda === 'kg' ? 'por Kg' : tipoVenda === 'litro' ? 'por Litro' : 'por Unidade';
     const labelRendimento = tipoVenda === 'kg'
-      ? `${rendTotal} kg`
+      ? `${fmtNum(rendTotal)} kg`
       : tipoVenda === 'litro'
-        ? `${rendTotal} L`
-        : `${rendUn} un`;
+        ? `${fmtNum(rendTotal)} L`
+        : `${fmtNum(rendUn)} un`;
 
     return `
       <div class="ficha" ${idx > 0 ? 'style="page-break-before:always;"' : ''}>
         <div class="ficha-header">
           <h2>${escapeHtml(produto.nome || 'Sem nome')}</h2>
           <div class="ficha-meta">
-            ${produto.categoria ? `<span class="badge">${escapeHtml(produto.categoria)}</span>` : ''}
+            ${(produto.categoria_nome || produto.categoria) ? `<span class="badge">${escapeHtml(produto.categoria_nome || produto.categoria)}</span>` : ''}
             <span class="preco">${fmtCur(precoVenda)}</span>
           </div>
         </div>
@@ -840,13 +865,13 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
           ${pesoUnitario > 0 ? `
           <div class="rendimento-item">
             <span class="rendimento-label">Peso Unitário</span>
-            <span class="rendimento-value">${pesoUnitario}g</span>
+            <span class="rendimento-value">${fmtNum(pesoUnitario)} g</span>
           </div>
           ` : ''}
           ${tipoVenda !== 'unidade' && rendUn > 0 ? `
           <div class="rendimento-item">
             <span class="rendimento-label">Unidades</span>
-            <span class="rendimento-value">${rendUn} un</span>
+            <span class="rendimento-value">${fmtNum(rendUn)} un</span>
           </div>
           ` : ''}
         </div>
@@ -855,7 +880,7 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
         <div class="section-title">Resumo de Custos</div>
         <div class="resumo-grid">
           <div class="resumo-item">
-            <span class="resumo-label">Custo dos ingredientes (CMV)</span>
+            <span class="resumo-label">Custo dos itens (CMV)</span>
             <span class="resumo-value">${fmtCur(cmv)}</span>
           </div>
           <div class="resumo-item">
@@ -919,7 +944,7 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
         <div class="composicao-grid">
           <div class="comp-item">
             <div class="comp-bar" style="width:${Math.min(cmvPerc * 100, 100)}%; background-color:#e3704d;"></div>
-            <span class="comp-label">Custo dos ingredientes (CMV)</span>
+            <span class="comp-label">Custo dos itens (CMV)</span>
             <span class="comp-value">${fmtPct(cmvPerc)}</span>
           </div>
           <div class="comp-item">
@@ -947,9 +972,9 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
             <tbody>
               ${produto.modo_preparo ? `<tr><td style="font-weight:600; width:150px; vertical-align:top; padding:8px;">Modo de Preparo</td><td style="padding:8px; white-space:pre-wrap;">${escapeHtml(produto.modo_preparo)}</td></tr>` : ''}
               ${produto.validade_dias ? `<tr><td style="font-weight:600; width:150px; padding:8px;">Validade</td><td style="padding:8px;">${escapeHtml(String(produto.validade_dias))} dias</td></tr>` : ''}
-              ${produto.temp_congelado && produto.tempo_congelado ? `<tr><td style="font-weight:600; width:150px; padding:8px;">Congelado</td><td style="padding:8px;">${escapeHtml(String(produto.temp_congelado))}°C por ${escapeHtml(String(produto.tempo_congelado))}</td></tr>` : ''}
-              ${produto.temp_refrigerado && produto.tempo_refrigerado ? `<tr><td style="font-weight:600; width:150px; padding:8px;">Refrigerado</td><td style="padding:8px;">${escapeHtml(String(produto.temp_refrigerado))}°C por ${escapeHtml(String(produto.tempo_refrigerado))}</td></tr>` : ''}
-              ${produto.temp_ambiente && produto.tempo_ambiente ? `<tr><td style="font-weight:600; width:150px; padding:8px;">Ambiente</td><td style="padding:8px;">${escapeHtml(String(produto.temp_ambiente))}°C por ${escapeHtml(String(produto.tempo_ambiente))}</td></tr>` : ''}
+              ${produto.temp_congelado && produto.tempo_congelado ? `<tr><td style="font-weight:600; width:150px; padding:8px;">Congelado</td><td style="padding:8px;">${escapeHtml(fmtTemp(produto.temp_congelado))} por ${escapeHtml(String(produto.tempo_congelado))}</td></tr>` : ''}
+              ${produto.temp_refrigerado && produto.tempo_refrigerado ? `<tr><td style="font-weight:600; width:150px; padding:8px;">Refrigerado</td><td style="padding:8px;">${escapeHtml(fmtTemp(produto.temp_refrigerado))} por ${escapeHtml(String(produto.tempo_refrigerado))}</td></tr>` : ''}
+              ${produto.temp_ambiente && produto.tempo_ambiente ? `<tr><td style="font-weight:600; width:150px; padding:8px;">Ambiente</td><td style="padding:8px;">${escapeHtml(fmtTemp(produto.temp_ambiente))} por ${escapeHtml(String(produto.tempo_ambiente))}</td></tr>` : ''}
               ${produto.observacoes ? `<tr><td style="font-weight:600; width:150px; vertical-align:top; padding:8px;">Observações</td><td style="padding:8px; white-space:pre-wrap;">${escapeHtml(produto.observacoes)}</td></tr>` : ''}
             </tbody>
           </table>
@@ -1221,12 +1246,21 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
   const fichaCards = fichas.map((f, idx) => {
     const { preparo, ings, custoTotal, rendimento, custoPorKg } = f;
 
+    // Linhas arredondadas pra centavos; Total = soma do que está impresso
+    // (antes: linhas somavam R$ 12,03 e o Total dizia R$ 12,04). Se a diferença
+    // pro custo total passa do arredondamento, o custo inclui sub-receitas/
+    // embalagens fora da tabela: aí a linha vira "Total ingredientes".
+    const custoLinhaIng = (i) => roundMoney(calcCustoIngrediente(i.preco_por_kg || 0, i.quantidade_utilizada, i.unidade_medida || 'g', i.unidade_medida || 'g'));
+    const totalLinhas = ings.reduce((a, i) => a + custoLinhaIng(i), 0);
+    const soArredondamento = Math.abs(totalLinhas - (Number(custoTotal) || 0)) <= 0.005 * Math.max(1, ings.length) + 1e-9;
+    const custoTotalExib = soArredondamento ? totalLinhas : custoTotal;
+
     const ingRows = ings.map(i => `
       <tr>
         <td>${escapeHtml(i.mp_nome || '')}</td>
-        <td style="text-align:center">${i.quantidade_utilizada || 0}</td>
+        <td style="text-align:center">${fmtNum(i.quantidade_utilizada || 0)}</td>
         <td style="text-align:center">${escapeHtml(normalizarUnidade(i.unidade_medida) || i.unidade_medida || 'g')}</td>
-        <td style="text-align:right">${fmtCur(calcCustoIngrediente(i.preco_por_kg || 0, i.quantidade_utilizada, i.unidade_medida || 'g', i.unidade_medida || 'g'))}</td>
+        <td style="text-align:right">${fmtCur(custoLinhaIng(i))}</td>
       </tr>
     `).join('');
 
@@ -1245,7 +1279,7 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
         <div class="resumo-grid" style="grid-template-columns: repeat(3, 1fr);">
           <div class="resumo-item">
             <span class="resumo-label">Custo Total</span>
-            <span class="resumo-value">${fmtCur(custoTotal)}</span>
+            <span class="resumo-value">${fmtCur(custoTotalExib)}</span>
           </div>
           <div class="resumo-item">
             <span class="resumo-label">Custo/${({ peso: 'kg', volume: 'L' })[getTipoUnidade(preparo.unidade_medida || 'g')] || 'un'}</span>
@@ -1266,7 +1300,7 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
           </thead>
           <tbody>
             ${ingRows}
-            <tr class="total-row"><td colspan="3"><strong>Total</strong></td><td style="text-align:right"><strong>${fmtCur(custoTotal)}</strong></td></tr>
+            <tr class="total-row"><td colspan="3"><strong>${soArredondamento ? 'Total' : 'Total ingredientes'}</strong></td><td style="text-align:right"><strong>${fmtCur(totalLinhas)}</strong></td></tr>
           </tbody>
         </table>
         ` : ''}
@@ -1279,9 +1313,9 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
             <tbody>
               ${preparo.modo_preparo ? `<tr><td style="font-weight:600; width:150px; vertical-align:top; padding:8px;">Modo de Preparo</td><td style="padding:8px; white-space:pre-wrap;">${escapeHtml(preparo.modo_preparo)}</td></tr>` : ''}
               ${preparo.validade_dias ? `<tr><td style="font-weight:600; width:150px; padding:8px;">Validade</td><td style="padding:8px;">${escapeHtml(String(preparo.validade_dias))} dias</td></tr>` : ''}
-              ${preparo.temp_congelado && preparo.tempo_congelado ? `<tr><td style="font-weight:600; width:150px; padding:8px;">Congelado</td><td style="padding:8px;">${escapeHtml(String(preparo.temp_congelado))}°C por ${escapeHtml(String(preparo.tempo_congelado))}</td></tr>` : ''}
-              ${preparo.temp_refrigerado && preparo.tempo_refrigerado ? `<tr><td style="font-weight:600; width:150px; padding:8px;">Refrigerado</td><td style="padding:8px;">${escapeHtml(String(preparo.temp_refrigerado))}°C por ${escapeHtml(String(preparo.tempo_refrigerado))}</td></tr>` : ''}
-              ${preparo.temp_ambiente && preparo.tempo_ambiente ? `<tr><td style="font-weight:600; width:150px; padding:8px;">Ambiente</td><td style="padding:8px;">${escapeHtml(String(preparo.temp_ambiente))}°C por ${escapeHtml(String(preparo.tempo_ambiente))}</td></tr>` : ''}
+              ${preparo.temp_congelado && preparo.tempo_congelado ? `<tr><td style="font-weight:600; width:150px; padding:8px;">Congelado</td><td style="padding:8px;">${escapeHtml(fmtTemp(preparo.temp_congelado))} por ${escapeHtml(String(preparo.tempo_congelado))}</td></tr>` : ''}
+              ${preparo.temp_refrigerado && preparo.tempo_refrigerado ? `<tr><td style="font-weight:600; width:150px; padding:8px;">Refrigerado</td><td style="padding:8px;">${escapeHtml(fmtTemp(preparo.temp_refrigerado))} por ${escapeHtml(String(preparo.tempo_refrigerado))}</td></tr>` : ''}
+              ${preparo.temp_ambiente && preparo.tempo_ambiente ? `<tr><td style="font-weight:600; width:150px; padding:8px;">Ambiente</td><td style="padding:8px;">${escapeHtml(fmtTemp(preparo.temp_ambiente))} por ${escapeHtml(String(preparo.tempo_ambiente))}</td></tr>` : ''}
               ${preparo.observacoes ? `<tr><td style="font-weight:600; width:150px; vertical-align:top; padding:8px;">Observações</td><td style="padding:8px; white-space:pre-wrap;">${escapeHtml(preparo.observacoes)}</td></tr>` : ''}
             </tbody>
           </table>
@@ -1577,6 +1611,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   productPrice: {
+    flexShrink: 0,
+    marginLeft: spacing.sm,
     fontSize: fonts.small,
     fontFamily: fontFamily.bold,
     fontWeight: '700',
