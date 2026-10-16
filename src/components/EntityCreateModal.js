@@ -305,6 +305,13 @@ export default function EntityCreateModal({
   }, [visible, isProduto, isEditing, categoriaId, deliveryOn, embalagemDeliveryOrigem]);
 
   const [saving, setSaving] = useState(false);
+  // Guard síncrono: `saving` (state) só desabilita o botão no próximo render —
+  // toque duplo antes disso rodava duas regravações em paralelo (as duas liam
+  // os mesmos ids antigos → composição dobrada na edição).
+  const salvandoRef = useRef(false);
+  // true enquanto a carga da edição não terminou bem (ver loadForEdit): itens
+  // vazios por ERRO de leitura não podem virar "composição vazia" no salvar.
+  const cargaEdicaoFalhouRef = useRef(false);
   const [erro, setErro] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -641,6 +648,7 @@ export default function EntityCreateModal({
     const seq = loadSeqRef.current;
     const isStale = () => seq !== loadSeqRef.current;
     setLoading(true);
+    cargaEdicaoFalhouRef.current = true; // liberado só quando a carga termina bem
     try {
       // Sessão 28.20: ANTES de carregar do DB, checa se tem draft em memória
       // de uma navegação anterior pra editar item (insumo/preparo/embalagem).
@@ -712,11 +720,14 @@ export default function EntityCreateModal({
               setEmbalagensDelivery(embalagensDeliveryDoDraft(d));
               setEmbalagemDeliveryOrigem(d.embalagemDeliveryOrigem || 'padrao');
             }
+            cargaEdicaoFalhouRef.current = false; // rascunho é o estado do usuário, não leitura falha
             setLoading(false);
             return;
           }
         }
       } catch {}
+      // Até a carga do banco terminar BEM, salvar a edição fica bloqueado: leitura
+      // que falha vinha como `[]` e o salvar regravava a composição vazia.
       const db = await getDatabase();
       if (isProduto) {
         const rows = await db.getAllAsync('SELECT * FROM produtos WHERE id = ?', [editId]);
@@ -743,18 +754,18 @@ export default function EntityCreateModal({
         // Produto já salvo com embalagem de delivery = escolha do usuário (não sobrescreve com padrão da categoria).
         setEmbalagemDeliveryOrigem(embsDeliverySalvas.length > 0 ? 'manual' : 'padrao');
         // Carregar itens — uso pi.* + aliases nas joins (compat com supabaseDb wrapper)
-        const ings = await db.getAllAsync(
+        const ings = rowsOrThrow(await db.getAllAsync(
           `SELECT pi.*, mp.nome as mp_nome, mp.preco_por_kg, mp.unidade_medida as mp_unidade
            FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id
-           WHERE pi.produto_id = ?`, [editId]);
-        const preps = await db.getAllAsync(
+           WHERE pi.produto_id = ?`, [editId]));
+        const preps = rowsOrThrow(await db.getAllAsync(
           `SELECT pp.*, pr.nome as pr_nome, pr.custo_por_kg, pr.custo_total, pr.unidade_medida as pr_unidade
            FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id
-           WHERE pp.produto_id = ?`, [editId]);
-        const embs = await db.getAllAsync(
+           WHERE pp.produto_id = ?`, [editId]));
+        const embs = rowsOrThrow(await db.getAllAsync(
           `SELECT pe.*, e.nome as e_nome, e.preco_unitario, e.unidade_medida as e_unidade
            FROM produto_embalagens pe JOIN embalagens e ON e.id = pe.embalagem_id
-           WHERE pe.produto_id = ?`, [editId]);
+           WHERE pe.produto_id = ?`, [editId]));
         if (isStale()) return;
         const next = [];
         (ings || []).forEach(i => next.push({
@@ -783,6 +794,7 @@ export default function EntityCreateModal({
           unidade: shortUnidade(e.e_unidade, 'embalagem') || 'un',
         }));
         setItens(next);
+        cargaEdicaoFalhouRef.current = false;
       } else {
         const rows = await db.getAllAsync('SELECT * FROM preparos WHERE id = ?', [editId]);
         if (isStale()) return;
@@ -796,18 +808,22 @@ export default function EntityCreateModal({
         setCategoriaId(p.categoria_id || null);
         setRendimentoTotalPrep(p.rendimento_total != null ? String(p.rendimento_total) : '');
         setUnidadeMedidaPrep(shortUnidade(p.unidade_medida, 'preparo'));
-        const ings = await db.getAllAsync(
+        const ings = rowsOrThrow(await db.getAllAsync(
           `SELECT pi.*, mp.nome as mp_nome, mp.preco_por_kg, mp.unidade_medida as mp_unidade
            FROM preparo_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id
-           WHERE pi.preparo_id = ?`, [editId]);
-        // D-20 (sessão 28.13): também carrega embalagens (silencioso se schema não existir)
+           WHERE pi.preparo_id = ?`, [editId]));
+        // Embalagens/sub-preparos: falha de leitura não derruba a tela, mas
+        // mantém o salvar bloqueado (o salvar regrava essas tabelas também).
+        let composicaoIncompleta = false;
+        // D-20 (sessão 28.13): também carrega embalagens
         let embsPrep = [];
         try {
-          embsPrep = await db.getAllAsync(
+          embsPrep = rowsOrThrow(await db.getAllAsync(
             `SELECT pe.*, em.nome as em_nome, em.preco_unitario, em.unidade_medida as em_unidade
              FROM preparo_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id
-             WHERE pe.preparo_id = ?`, [editId]) || [];
+             WHERE pe.preparo_id = ?`, [editId]));
         } catch (e) {
+          composicaoIncompleta = true;
           if (typeof console !== 'undefined') console.warn('[EntityCreateModal preparo_embalagens load]', e?.message || e);
         }
         const nextPrep = (ings || []).map(i => ({
@@ -829,11 +845,11 @@ export default function EntityCreateModal({
         // Sessão 28.37: carrega sub-preparos (preparo dentro de preparo).
         // Silencioso se a tabela não existir (DB legado).
         try {
-          const subs = await db.getAllAsync(
+          const subs = rowsOrThrow(await db.getAllAsync(
             `SELECT ps.sub_preparo_id, ps.quantidade_utilizada,
                     pr.nome AS sub_nome, pr.custo_por_kg AS sub_custo, pr.unidade_medida AS sub_un
              FROM preparo_subpreparos ps JOIN preparos pr ON pr.id = ps.sub_preparo_id
-             WHERE ps.preparo_id = ?`, [editId]) || [];
+             WHERE ps.preparo_id = ?`, [editId]));
           subs.forEach(s => nextPrep.push({
             tipo: 'preparo',
             id: s.sub_preparo_id,
@@ -845,10 +861,13 @@ export default function EntityCreateModal({
             unidade: shortUnidade(s.sub_un, 'preparo'),
           }));
         } catch (e) {
+          composicaoIncompleta = true;
           if (typeof console !== 'undefined') console.warn('[EntityCreateModal preparo_subpreparos load]', e?.message || e);
         }
         if (isStale()) return;
         setItens(nextPrep);
+        cargaEdicaoFalhouRef.current = composicaoIncompleta;
+        if (composicaoIncompleta) setErro('Erro ao carregar parte da receita. Feche e abra de novo antes de salvar.');
       }
     } catch (e) {
       if (isStale()) return;
@@ -1619,6 +1638,20 @@ export default function EntityCreateModal({
 
   // Salvar
   async function salvar() {
+    if (salvandoRef.current) return;
+    salvandoRef.current = true;
+    try {
+      await salvarImpl();
+    } finally {
+      salvandoRef.current = false;
+    }
+  }
+
+  async function salvarImpl() {
+    if (isEditing && cargaEdicaoFalhouRef.current) {
+      setErro('Não conseguimos carregar esta ficha — nada foi salvo nem apagado. Feche e abra de novo.');
+      return;
+    }
     if (!nome.trim()) {
       setErro('Nome é obrigatório');
       return;
@@ -1681,10 +1714,12 @@ export default function EntityCreateModal({
             [nome.trim(), categoriaId, rendTotal, unidadeRendimentoDb, rendUn, precoParaSalvar, embDeliveryIdToSave, embDeliveryQtdToSave, embsDeliveryToSave, editId]
           );
           savedId = editId;
-          // Captura ids das linhas ANTIGAS (NÃO deleta ainda). getAllAsync retorna [] em erro.
-          oldIngIds = await db.getAllAsync('SELECT id FROM produto_ingredientes WHERE produto_id = ?', [editId]);
-          oldPrepIds = await db.getAllAsync('SELECT id FROM produto_preparos WHERE produto_id = ?', [editId]);
-          oldEmbIds = await db.getAllAsync('SELECT id FROM produto_embalagens WHERE produto_id = ?', [editId]);
+          // Captura ids das linhas ANTIGAS (NÃO deleta ainda). getAllAsync devolve
+          // [] em erro — tratar isso como "sem linhas antigas" inseria a composição
+          // nova sem apagar a antiga (dobrava). rowsOrThrow aborta antes dos INSERTs.
+          oldIngIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM produto_ingredientes WHERE produto_id = ?', [editId]));
+          oldPrepIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM produto_preparos WHERE produto_id = ?', [editId]));
+          oldEmbIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM produto_embalagens WHERE produto_id = ?', [editId]));
         } else {
           const result = await db.runAsync(
             `INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades,
@@ -1756,10 +1791,11 @@ export default function EntityCreateModal({
             [nome.trim(), categoriaId, rend, unidadeMedidaPrep, custoTotal, custoPorKg, editId]
           );
           savedId = editId;
-          // Captura ids das linhas ANTIGAS (NÃO deleta ainda). getAllAsync retorna [] em erro.
-          oldIngIds = await db.getAllAsync('SELECT id FROM preparo_ingredientes WHERE preparo_id = ?', [editId]);
-          oldEmbIds = await db.getAllAsync('SELECT id FROM preparo_embalagens WHERE preparo_id = ?', [editId]);
-          oldSubIds = await db.getAllAsync('SELECT id FROM preparo_subpreparos WHERE preparo_id = ?', [editId]);
+          // Captura ids das linhas ANTIGAS (NÃO deleta ainda). Erro de leitura
+          // aborta antes dos INSERTs (ver produto acima).
+          oldIngIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM preparo_ingredientes WHERE preparo_id = ?', [editId]));
+          oldEmbIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM preparo_embalagens WHERE preparo_id = ?', [editId]));
+          oldSubIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM preparo_subpreparos WHERE preparo_id = ?', [editId]));
         } else {
           // Bug tutorial 05 (defesa): só grava categoria que existe em
           // categorias_preparos — senão a FK recusa o INSERT inteiro.
@@ -1891,7 +1927,9 @@ export default function EntityCreateModal({
       onClose && onClose();
     } catch (e) {
       setSaving(false);
-      const msg = (e && e.message) ? e.message : 'Erro ao salvar';
+      const msg = e?.isDbReadError
+        ? 'Não foi possível salvar. Sua receita anterior foi mantida — verifique a conexão e tente de novo.'
+        : ((e && e.message) ? e.message : 'Erro ao salvar');
       setErro(msg);
       if (typeof console !== 'undefined' && console.error) console.error('[EntityCreateModal.salvar]', e);
     }
