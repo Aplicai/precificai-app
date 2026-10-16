@@ -18,7 +18,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CommonActions } from '@react-navigation/native';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { trackEvent } from '../utils/marketing';
-import { CHAVE_COMO_FUNCIONA } from '../utils/initialRoute';
 
 const VIDEO_SRC = '/videos/como-funciona.mp4';
 const POSTER_SRC = '/videos/como-funciona.jpg';
@@ -32,10 +31,8 @@ export default function ComoFuncionaScreen({ navigation }) {
     navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'MainTabs', params: { initialTab: 'Início' } }] }));
   }
 
-  // Uma vez só (a rota de entrada não traz de novo). Nativo não tem o player
-  // web: segue para a Home.
+  // Nativo não tem o player web: segue para a Home.
   useEffect(() => {
-    AsyncStorage.setItem(CHAVE_COMO_FUNCIONA, 'true').catch(() => {});
     if (!ehWeb) irParaApp();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

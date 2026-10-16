@@ -1,16 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSetupStatus } from './setupStatus';
-
-/** Marcado pela ComoFuncionaScreen: o vídeo de 1 min só aparece uma vez. */
-export const CHAVE_COMO_FUNCIONA = 'como_funciona_visto';
-
-// Perfil pronto e nenhum ingrediente (16/10/2026): vídeo uma vez, depois Home.
-// Nunca mais a tela "Configure seu app" com o Financeiro na frente, onde quem
-// caía não cadastrava nada.
-async function rotaSemIngrediente() {
-  const visto = await AsyncStorage.getItem(CHAVE_COMO_FUNCIONA);
-  return visto === 'true' ? 'MainTabs' : 'ComoFunciona';
-}
 import { isDbErrorResult } from '../database/supabaseDb';
 
 /**
@@ -74,7 +63,8 @@ export async function determineInitialRoute({ skipWelcomeTour = false } = {}) {
     // Roteamos para 'Onboarding' como passo guiado (não-bloqueante: a tela tem
     // saída para a Home sempre disponível e etapas desbloqueadas). Quem já tem
     // financeiro completo pula direto pro app. A robustez de erro abaixo permanece.
-    return await rotaSemIngrediente();
+    const status = await getSetupStatus();
+    return status.financeiroCompleto ? 'MainTabs' : 'Onboarding';
   } catch (err) {
     // Audit P1: silent catch original lançava o usuário direto em MainTabs em
     // qualquer falha (DB não montada, perfil corrompido, etc.) — pior UX possível
@@ -158,7 +148,10 @@ export async function determineInitialRouteSafe({ skipWelcomeTour = false } = {}
     try {
       // Continua lendo o status: falha de leitura vira routeError (abaixo).
       await getSetupStatus();
-      return { route: await rotaSemIngrediente(), routeError: null };
+      // Primeiro preço antes do Financeiro (15/10/2026): a tela "Configure seu
+      // app" abria com o Financeiro obrigatório na frente e quem caía nela não
+      // cadastrava nada. Agora a Home (passo principal: primeiro produto).
+      return { route: 'MainTabs', routeError: null };
     } catch (statusErr) {
       console.error('[determineInitialRouteSafe.getSetupStatus]', statusErr);
       return { route: 'ProfileSetup', routeError: statusErr };
