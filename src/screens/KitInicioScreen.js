@@ -367,7 +367,7 @@ export default function KitInicioScreen({ navigation, route }) {
       // Sessão 28.9 (revisão Kit): erros das fases agora são LOGADOS em vez de
       // engolidos silenciosamente. Antes, qualquer falha de RLS/FK quebrava o
       // kit sem feedback. Agora aparecem no console pra debug se necessário.
-      if (resetar) {
+      if (resetar || isSetup) {
         setProgressStep('limpando');
         setProgressMsg('Limpando dados anteriores...');
         const collectErrors = async (phaseName, tables) => {
