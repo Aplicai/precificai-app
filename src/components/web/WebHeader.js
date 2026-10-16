@@ -9,6 +9,7 @@ import useListDensity from '../../hooks/useListDensity';
 // Exportado: AppNavigator usa o mesmo mapa no `documentTitle` do NavigationContainer
 // (senão a aba do browser mostrava o nome cru da rota, ex.: "HomeMain").
 export const ROUTE_TITLES = {
+  'ComoFunciona': 'Como funciona',
   'Início': 'Painel Geral',
   'HomeMain': 'Painel Geral',
   'Insumos': 'Ingredientes',
