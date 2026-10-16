@@ -2117,6 +2117,32 @@ export default function EntityCreateModal({
       return false;
     }
   })();
+  // Walkthrough 2026-10: modo de preparo, validade, conservação e observações
+  // da ficha técnica só existem no form completo (ProdutoForm / PreparoForm),
+  // que ficava escondido. Atalho no modal de edição: fecha e abre o form.
+  const abrirFichaCompleta = () => {
+    const ir = () => {
+      try { onClose && onClose(); } catch {}
+      setTimeout(() => {
+        try {
+          navigation.navigate(isProduto ? 'ProdutoForm' : 'PreparoForm', { id: editId });
+        } catch (e) {
+          if (typeof console !== 'undefined') console.warn('[EntityCreateModal.abrirFichaCompleta]', e);
+        }
+      }, 0);
+    };
+    if (!hasUnsavedDraft) { ir(); return; }
+    const msg = 'Você tem mudanças não salvas neste formulário. Descartar e abrir a ficha técnica completa?';
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm(msg)) ir();
+    } else {
+      Alert.alert('Mudanças não salvas', msg, [
+        { text: 'Continuar editando', style: 'cancel' },
+        { text: 'Descartar e abrir', style: 'destructive', onPress: ir },
+      ]);
+    }
+  };
+
   const handleBackdropPress = () => {
     if (!hasUnsavedDraft) { onClose && onClose(); return; }
     const msg = 'Você tem mudanças não salvas. Deseja descartar?';
@@ -2468,6 +2494,24 @@ export default function EntityCreateModal({
                 seguir ordem: form → adicionar → lista. */}
             {isMobile && renderItensEResumoBlock()}
           </ScrollView>
+
+          {isEditing && editId && navigation && (
+            <TouchableOpacity
+              onPress={abrirFichaCompleta}
+              disabled={saving}
+              accessibilityRole="link"
+              accessibilityLabel="Editar informações da ficha técnica"
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: spacing.md, paddingVertical: spacing.xs + 2 }}
+            >
+              <Feather name="file-text" size={14} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontFamily: fontFamily.semiBold, fontWeight: '600', fontSize: fonts.small }}>
+                Editar informações da ficha técnica
+              </Text>
+              <Text style={{ color: colors.textSecondary, fontSize: fonts.tiny || 11 }} numberOfLines={1}>
+                (preparo, validade, conservação)
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {/* Footer */}
           {erro && (

@@ -16,6 +16,7 @@ import { PLAN_LABELS } from '../config/plans';
 import UpgradeModal from '../components/UpgradeModal';
 import { validatePassword } from '../utils/passwordPolicy';
 import { captureException } from '../utils/errorReporter';
+import { textoValidadePlano } from '../utils/avisoVencimento';
 
 // Mapeia mensagens cruas do Supabase auth para textos amigáveis (sem expor stack/tokens)
 function mapAuthError(rawMsg) {
@@ -386,7 +387,7 @@ export default function ContaSegurancaScreen({ navigation }) {
               <View style={styles.planNoticeRow}>
                 <Feather name="calendar" size={14} color={colors.textSecondary} />
                 <Text style={styles.planNoticeText}>
-                  {venc ? `Renova em ${venc}` : 'Acesso vitalício'}
+                  {textoValidadePlano({ ciclo: planCiclo, venc })}
                 </Text>
               </View>
             )}

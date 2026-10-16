@@ -641,7 +641,9 @@ export default function ExportPDFScreen({ navigation }) {
                           {isSelected && <Feather name="check" size={isDesktop ? 10 : 14} color="#fff" />}
                         </View>
                         {Platform.OS === 'web' ? (
-                          <div title={p.nome} style={{ flex: 1, overflow: 'hidden' }}>
+                          // minWidth 0 + marginRight: nome longo vira "..." em vez de
+                          // encostar no preço ("Brigadeiro Gourmet caixa 1R$ 2,50").
+                          <div title={p.nome} style={{ flex: 1, minWidth: 0, overflow: 'hidden', marginRight: 8 }}>
                             <Text style={isDesktop ? styles.gridCardName : styles.productName} numberOfLines={1}>{p.nome}</Text>
                           </div>
                         ) : (
@@ -1607,6 +1609,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   productPrice: {
+    flexShrink: 0,
+    marginLeft: spacing.sm,
     fontSize: fonts.small,
     fontFamily: fontFamily.bold,
     fontWeight: '700',

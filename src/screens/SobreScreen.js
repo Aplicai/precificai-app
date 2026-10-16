@@ -5,8 +5,10 @@ import Constants from 'expo-constants';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { useNavigation } from '@react-navigation/native';
 import BackToSettings from '../components/BackToSettings';
+import appJson from '../../app.json';
 
-const VERSION = Constants?.expoConfig?.version || '2.0.0';
+// Mesma fonte do rodapé de Configurações (app.json). Antes o fallback era '2.0.0'.
+const VERSION = Constants?.expoConfig?.version || Constants?.manifest?.version || appJson?.expo?.version || '';
 
 async function openExternal(url, onError) {
   try {
@@ -30,25 +32,25 @@ const FEATURES_ESSENCIAIS = [
   { icon: 'file-text', label: 'Cadastro completo', desc: 'Ingredientes, receitas base, embalagens e produtos' },
   { icon: 'dollar-sign', label: 'Custo dos ingredientes (CMV) automático', desc: 'CMV e preço sugerido com markup e margem' },
   { icon: 'sliders', label: 'Configuração financeira completa', desc: 'Margem, custos do mês e por venda, faturamento' },
-  { icon: 'shopping-cart', label: 'Lista de Compras automática', desc: 'Consolidação de ingredientes por produção' },
-  { icon: 'printer', label: 'Exportar Fichas Técnicas em PDF', desc: 'Produtos e receitas base para impressão' },
+  { icon: 'shopping-cart', label: 'Lista de Compras automática', desc: 'Consolidação de ingredientes por produção (plano Pro)' },
+  { icon: 'printer', label: 'Exportar Fichas Técnicas em PDF', desc: 'Produtos e receitas base para impressão (plano Pro)' },
   { icon: 'book-open', label: 'Relatório', desc: 'Seus números em linguagem simples' },
   { icon: 'trending-up', label: 'Histórico de preços com gráfico', desc: 'Acompanhe a evolução dos custos' },
   { icon: 'alert-triangle', label: 'Alerta de erosão de margem', desc: 'Notificação quando margens caem' },
   { icon: 'activity', label: 'Semáforo de saúde por produto', desc: 'Visual rápido da saúde financeira' },
   { icon: 'zap', label: 'Simulador de Impacto', desc: 'Disponível direto na Ficha Técnica do produto' },
   { icon: 'copy', label: 'Duplicar receitas e produtos', desc: 'Clone e adapte rapidamente' },
-  { icon: 'database', label: 'Backup e restauração de dados', desc: 'Segurança dos seus cadastros' },
+  { icon: 'download', label: 'Exportar listas em CSV', desc: 'Baixe seus cadastros em planilha' },
   { icon: 'package', label: 'Kit de Início por segmento', desc: 'Modelos prontos para seu tipo de negócio' },
   { icon: 'cpu', label: 'Insights automáticos no Painel', desc: 'Dicas inteligentes baseadas nos seus dados' },
 ];
 
 const FEATURES_AVANCADAS = [
-  { icon: 'truck', label: 'Precificação para Delivery', desc: 'iFood, Rappi e outras plataformas (ative em Onboarding ou Configurações)' },
-  { icon: 'layers', label: 'Gestão de combos', desc: 'Monte e precifique combos para delivery' },
-  { icon: 'bar-chart-2', label: 'Engenharia do Cardápio', desc: 'Análise de portfólio (ative o modo análise avançada)' },
-  { icon: 'users', label: 'Comparador de Fornecedores', desc: 'Encontre economia nos ingredientes (modo análise avançada)' },
-  { icon: 'archive', label: 'Controle de Estoque', desc: 'Entradas, ajustes e saldo por ingrediente (ative o modo estoque avançado)' },
+  { icon: 'truck', label: 'Precificação para Delivery', desc: 'iFood, Rappi e outras plataformas (plano Pro)' },
+  { icon: 'layers', label: 'Gestão de combos', desc: 'Monte e precifique combos para delivery (plano Pro)' },
+  { icon: 'bar-chart-2', label: 'Ranking de Produtos', desc: 'Engenharia do Cardápio: margem × vendas (plano Pro)' },
+  { icon: 'users', label: 'Comparador de Fornecedores', desc: 'Encontre economia nos ingredientes' },
+  { icon: 'archive', label: 'Controle de Estoque', desc: 'Entradas, ajustes e saldo por ingrediente' },
 ];
 
 export default function SobreScreen() {
@@ -113,10 +115,10 @@ export default function SobreScreen() {
 
       {/* Features avançadas / opcionais */}
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Funcionalidades avançadas (opcionais)</Text>
+        <Text style={styles.cardTitle}>Funcionalidades avançadas</Text>
         <Text style={styles.cardText}>
-          Estas funcionalidades ficam ocultas por padrão para deixar o app mais simples.
-          Ative apenas as que fazem sentido para o seu negócio em Configurações ou no Onboarding.
+          Delivery, combos e Ranking de Produtos fazem parte do plano Pro. Você vê e assina
+          os planos em Configurações, na opção Conta e Segurança.
         </Text>
         {FEATURES_AVANCADAS.map((f, i) => (
           <View key={`adv-${i}`} style={styles.featureRow}>

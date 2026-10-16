@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { calcAvisoVencimento, textoPrazo, DIAS_DE_AVISO } from '../src/utils/avisoVencimento.js';
+import { calcAvisoVencimento, textoPrazo, textoValidadePlano, DIAS_DE_AVISO } from '../src/utils/avisoVencimento.js';
 import { aguardarAtivacao } from '../src/utils/aguardarAtivacao.js';
 
 const AGORA = new Date('2027-10-01T12:00:00Z');
@@ -89,4 +89,11 @@ test('para quando é cancelada e não confunde plano igual ao anterior com ativa
     planoAntes: 'pro', consultar: async () => 'pro', ...r2, intervaloMs: 1000, tempoMaximoMs: 3000,
   });
   assert.equal(igual.ativou, false);
+});
+
+test('textoValidadePlano: só o mensal "renova"; anual (Pix) mostra "Válido até"', () => {
+  assert.equal(textoValidadePlano({ ciclo: 'mensal', venc: '23/10/2026' }), 'Renova em 23/10/2026');
+  assert.equal(textoValidadePlano({ ciclo: 'anual', venc: '23/10/2026' }), 'Válido até 23/10/2026');
+  assert.equal(textoValidadePlano({ ciclo: null, venc: '23/10/2026' }), 'Válido até 23/10/2026');
+  assert.equal(textoValidadePlano({ ciclo: 'anual', venc: null }), 'Acesso vitalício');
 });

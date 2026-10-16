@@ -6,6 +6,10 @@
  *   - estrela    → alta margem + alta vendagem
  *   - vaca       → alta margem + baixa vendagem (Quebra-Cabeça/Aposta)
  *   - interrogacao → baixa margem + alta vendagem (Cavalo de Batalha/Mina)
+ *
+ * Títulos = os MESMOS rótulos dos cards do Ranking (Estrelas, Apostas, Mina de
+ * Ouro, Repensar). Antes mostrava os nomes BCG clássicos (Vaca Leiteira,
+ * Interrogação, Abacaxi) e o usuário abria "Mina de Ouro" e lia "Interrogação".
  *   - abacaxi    → baixa margem + baixa vendagem
  *
  * Estrutura inspirada em InviabilidadeModal:
@@ -34,7 +38,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 // CLASSIFICATIONS de MatrizBCGScreen — mantém consistência visual.
 const QUADRANTES = {
   estrela: {
-    titulo: 'Estrela',
+    titulo: 'Estrelas',
     emoji: '',
     icon: 'star',
     color: '#D4A017',
@@ -43,23 +47,23 @@ const QUADRANTES = {
     significado:
       'Vendem muito E dão margem alta. São seus campeões: o cliente já gosta e cada venda gera bom lucro.',
     dicas: [
-      'Mantenha a qualidade e o padrão — nunca quebre a expectativa do cliente.',
+      'Mantenha a qualidade e o padrão: nunca quebre a expectativa do cliente.',
       'Não baixe o preço para "vender mais": o item já vende, foque em proteger a margem.',
       'Destaque no cardápio (foto, posição, descrição) e treine a equipe para sugerir.',
       'Acompanhe a concorrência para garantir que continua competitivo.',
     ],
     exemplo:
-      'Ex.: o X-Bacon que sempre sai e tem boa margem — o "carro-chefe" da casa.',
+      'Ex.: o X-Bacon que sempre sai e tem boa margem, o "carro-chefe" da casa.',
   },
   vaca: {
-    titulo: 'Vaca Leiteira',
+    titulo: 'Apostas',
     emoji: '',
     icon: 'help-circle',
     color: '#1565C0',
     bg: '#E3F2FD',
     border: '#2196F3',
     significado:
-      'Lucram bem por unidade, mas vendem pouco. Tem potencial não explorado — o cliente ainda não descobriu.',
+      'Lucram bem por unidade, mas vendem pouco. Tem potencial não explorado: o cliente ainda não descobriu.',
     dicas: [
       'Crie combos juntando esses itens com produtos populares.',
       'Reposicione no cardápio (topo da seção, foto destacada, "sugestão do chef").',
@@ -70,7 +74,7 @@ const QUADRANTES = {
       'Ex.: aquela sobremesa caseira que dá ótima margem mas quase ninguém pede.',
   },
   interrogacao: {
-    titulo: 'Interrogação',
+    titulo: 'Mina de Ouro',
     emoji: '',
     icon: 'trending-up',
     color: '#388E3C',
@@ -79,16 +83,16 @@ const QUADRANTES = {
     significado:
       'Vendem muito mas a margem está apertada. Atenção ao custo: pequenos aumentos no CMV podem zerar o lucro.',
     dicas: [
-      'Revise o CMV: pese ingredientes e confira se a ficha técnica está real.',
-      'Renegocie com fornecedor — volume alto dá poder de barganha.',
+      'Revise o custo: pese ingredientes e confira se a ficha técnica está real.',
+      'Renegocie com fornecedor: volume alto dá poder de barganha.',
       'Avalie ajustar a porção (gramatura) sem comprometer a percepção do cliente.',
-      'Considere aumento gradual de preço (5% costuma passar despercebido e dobra o lucro).',
+      'Teste um aumento gradual de preço e acompanhe se as vendas se mantêm.',
     ],
     exemplo:
       'Ex.: o combo promocional que sai muito mas cada venda quase não sobra dinheiro.',
   },
   abacaxi: {
-    titulo: 'Abacaxi',
+    titulo: 'Repensar',
     emoji: '',
     icon: 'alert-triangle',
     color: '#C62828',
@@ -97,7 +101,7 @@ const QUADRANTES = {
     significado:
       'Vendem pouco e dão pouco lucro. Ocupam espaço no cardápio, no estoque e na operação sem retorno proporcional.',
     dicas: [
-      'Considere descontinuar — cardápio enxuto vende mais e simplifica a cozinha.',
+      'Considere descontinuar: cardápio enxuto vende mais e simplifica a cozinha.',
       'OU reformule a receita para reduzir custo e aumentar margem.',
       'OU aproveite como item de combo/kit, agregando valor a outro produto.',
       'Avalie se ao menos cobre o custo fixo antes de manter por hábito.',

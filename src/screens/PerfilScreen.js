@@ -227,7 +227,9 @@ export default function PerfilScreen({ navigation, route }) {
     navigation.replace('PrecoRapido');
   }
 
-  const inicial = (perfil.nome_negocio || 'N').charAt(0).toUpperCase();
+  // Sem nome do negócio: ícone neutro (antes aparecia um "N" ao lado de "Seu Negócio").
+  const nomeNegocio = String(perfil.nome_negocio || '').trim();
+  const inicial = nomeNegocio ? nomeNegocio.charAt(0).toUpperCase() : null;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -268,9 +270,11 @@ export default function PerfilScreen({ navigation, route }) {
         ) : (
           <View
             style={[styles.avatar, styles.avatarInitial]}
-            accessibilityLabel={`Avatar com inicial ${inicial}`}
+            accessibilityLabel={inicial ? `Avatar com inicial ${inicial}` : 'Avatar sem foto'}
           >
-            <Text style={styles.avatarInitialText}>{inicial}</Text>
+            {inicial
+              ? <Text style={styles.avatarInitialText}>{inicial}</Text>
+              : <Feather name="briefcase" size={30} color={colors.primary} />}
           </View>
         )}
         <Text style={styles.avatarName}>{perfil.nome_negocio || 'Seu Negócio'}</Text>

@@ -10,7 +10,7 @@ import usePersistedState from '../hooks/usePersistedState';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, safeNum } from '../utils/calculations';
-import { classificarMatrizBCG } from '../utils/bcgClassify';
+import { classificarMatrizBCG, medianaMargemBCG, nivelMargemBCG } from '../utils/bcgClassify';
 // Auditoria 2026-09-09 [B3]: custo unitário de item de combo por TIPO (unidade
 // nativa) — mesma função das telas de Delivery/Combos.
 import { resolveCustoUnitarioItemCombo } from '../utils/comboPricing';
@@ -25,21 +25,21 @@ const CLASSIFICATIONS = {
   'Estrela': {
     icon: 'star', label: 'Estrelas', emoji: '',
     bg: '#FFFFFF', border: '#D4A017', color: '#B8860B',
-    desc: 'Vendem muito E dão lucro alto. São seus campeões — mantenha sempre disponíveis e destaque no cardápio.',
+    desc: 'Vendem muito E dão lucro alto. São seus campeões: mantenha sempre disponíveis e destaque no cardápio.',
     acao: 'Promover e manter',
     short: 'Estrela',
   },
   'Cavalo de Batalha': {
     icon: 'trending-up', label: 'Mina de Ouro', emoji: '',
     bg: '#FFFFFF', border: '#388E3C', color: '#2E7D32',
-    desc: 'Vendem muito mas a margem está apertada. Renegocie ingredientes ou suba o preço aos poucos — uma alta de 5% pode dobrar o lucro.',
+    desc: 'Vendem muito mas a margem está apertada. Renegocie ingredientes ou suba o preço aos poucos.',
     acao: 'Otimizar custos',
     short: 'Mina',
   },
   'Quebra-Cabeça': {
     icon: 'help-circle', label: 'Apostas', emoji: '',
     bg: '#FFFFFF', border: '#1565C0', color: '#1565C0',
-    desc: 'Margem alta mas vendem pouco. Vale divulgar mais, fazer combo ou colocar em destaque — o potencial está aí.',
+    desc: 'Margem alta mas vendem pouco. Vale divulgar mais, fazer combo ou colocar em destaque: o potencial está aí.',
     acao: 'Divulgar mais',
     short: 'Aposta',
   },
@@ -68,9 +68,12 @@ const CLASSIFICATION_TO_QUADRANTE = {
   'Abacaxi': 'abacaxi',
 };
 
-function getMarginColor(margin) {
-  if (margin >= 40) return colors.success;
-  if (margin >= 20) return '#D4A017';
+// Cor da margem pela MESMA régua da classificação e do texto (mediana dos seus
+// produtos). Antes: verde fixo a partir de 40% ao lado de "a margem de 48% é baixa".
+function getMarginColor(margin, medianaMargem) {
+  const nivel = nivelMargemBCG(margin, medianaMargem);
+  if (nivel === 'alta') return colors.success;
+  if (nivel === 'baixa') return '#D4A017';
   return colors.error;
 }
 
@@ -400,16 +403,21 @@ export default function MatrizBCGScreen({ navigation }) {
     const vendas = item.qtdVendida;
     const cls = item.classificacao;
 
+    // Margem "alta/baixa" é RELATIVA aos seus produtos (mediana), igual à
+    // classificação e à cor do selo.
+    const tipica = `${medianaMargem.toFixed(0)}%`;
     if (cls === 'Estrela') {
-      return `Margem de ${margem.toFixed(0)}% é alta e vendeu bem (${vendas} un no mês anterior). Continue investindo nele!`;
+      return `Margem de ${margem.toFixed(0)}% está entre as maiores dos seus produtos (típica: ${tipica}) e vendeu bem (${vendas} un no mês anterior). Continue investindo nele!`;
     } else if (cls === 'Cavalo de Batalha') {
-      return `Vendeu bem (${vendas} un no mês anterior), mas a margem de ${margem.toFixed(0)}% é baixa. Tente reduzir custos ou aumentar o preço.`;
+      return `Vendeu bem (${vendas} un no mês anterior), mas a margem de ${margem.toFixed(0)}% está abaixo da típica dos seus produtos (${tipica}). Tente reduzir custos ou aumentar o preço.`;
     } else if (cls === 'Quebra-Cabeça') {
-      return `Margem de ${margem.toFixed(0)}% é boa, mas vendeu pouco (${vendas} un no mês anterior). Divulgue mais ou crie combos com ele.`;
+      return `Margem de ${margem.toFixed(0)}% está entre as maiores dos seus produtos (típica: ${tipica}), mas vendeu pouco (${vendas} un no mês anterior). Divulgue mais ou crie combos com ele.`;
     } else {
-      return `Margem baixa (${margem.toFixed(0)}%) e poucas vendas (${vendas} un no mês anterior). Considere reformular, aumentar o preço ou retirar do cardápio.`;
+      return `Margem de ${margem.toFixed(0)}% abaixo da típica dos seus produtos (${tipica}) e poucas vendas (${vendas} un no mês anterior). Considere reformular, aumentar o preço ou retirar do cardápio.`;
     }
   }
+
+  const medianaMargem = useMemo(() => medianaMargemBCG(produtos), [produtos]);
 
   // Sort & filter logic
   const sortedProducts = useMemo(() => {
@@ -529,7 +537,7 @@ export default function MatrizBCGScreen({ navigation }) {
           <Text style={styles.title}>Ranking de Produtos</Text>
           <InfoTooltip
             title="Como funciona?"
-            text="Classifica cada produto pela margem de contribuição × popularidade (vendas do MÊS ANTERIOR — mais estável que o mês corrente, que ainda não fechou). A mediana divide os produtos em 4 quadrantes (também conhecido como Engenharia do Cardápio).\n\nA margem mostrada aqui é a BRUTA = (preço − custo do produto) ÷ preço, ou seja, só o que sobra depois dos ingredientes/embalagem, SEM descontar suas despesas fixas (aluguel, contas) nem taxas. Por isso ela costuma ser maior do que a margem líquida do Painel."
+            text={'Classifica cada produto pela margem de contribuição × popularidade (vendas do MÊS ANTERIOR, mais estável que o mês corrente, que ainda não fechou). A mediana divide os produtos em 4 quadrantes (também conhecido como Engenharia do Cardápio). Margem "alta" ou "baixa" é sempre comparada com a típica dos seus produtos.\n\nA margem mostrada aqui é a BRUTA = (preço − custo do produto) ÷ preço, ou seja, só o que sobra depois dos ingredientes/embalagem, SEM descontar suas despesas fixas (aluguel, contas) nem taxas. Por isso ela costuma ser maior do que a margem líquida do Painel.'}
           />
         </View>
         {/* Área 9 — texto compactado pra caber em 1 linha no mobile. Detalhe completo
@@ -776,7 +784,7 @@ export default function MatrizBCGScreen({ navigation }) {
               <View style={styles.cardList}>
                 {sortedProducts.map((p) => {
                   const cfg = CLASSIFICATIONS[p.classificacao] || CLASSIFICATIONS['Abacaxi'];
-                  const marginColor = getMarginColor(p.margemPerc);
+                  const marginColor = getMarginColor(p.margemPerc, medianaMargem);
                   return (
                     <TouchableOpacity
                       key={p.id}
@@ -836,7 +844,7 @@ export default function MatrizBCGScreen({ navigation }) {
             ) : (
               sortedProducts.map((p, idx) => {
                 const cfg = CLASSIFICATIONS[p.classificacao] || CLASSIFICATIONS['Abacaxi'];
-                const marginColor = getMarginColor(p.margemPerc);
+                const marginColor = getMarginColor(p.margemPerc, medianaMargem);
                 return (
                   <TouchableOpacity
                     key={p.id}
