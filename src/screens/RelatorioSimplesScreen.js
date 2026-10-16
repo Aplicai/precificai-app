@@ -745,6 +745,16 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
       )}
 
       {/* Resumo Geral */}
+      {!data.resumo && (
+        <EmptyState
+          icon="file-text"
+          title={data.produtosComPreco === 0 ? 'Seus produtos ainda estão sem preço' : 'Falta o faturamento do mês'}
+          description={data.produtosComPreco === 0
+            ? 'Coloque o preço de venda em pelo menos um produto para ver o relatório.'
+            : 'Preencha quanto você vende por mês no Financeiro para ver o relatório.'}
+        />
+      )}
+
       {data.resumo && (
         <View style={[styles.card, styles.cardResumo]}>
           <View style={styles.cardHeader}>
