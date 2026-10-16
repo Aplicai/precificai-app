@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Pressable, Alert, Modal, TextInput, Platform, KeyboardAvoidingView, Switch } from 'react-native';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
+import { rowsOrThrow } from '../database/dbResult';
+import { serializarSalvamento } from '../utils/gravacaoSegura';
 import InputField from '../components/InputField';
 import Card from '../components/Card';
 import PickerSelect from '../components/PickerSelect';
@@ -842,7 +844,19 @@ export default function ProdutoFormScreen({ route, navigation }) {
     return { lista, primeiroId: lista ? lista[0].id : null, primeiraQtd: lista ? lista[0].qtd : null };
   }
 
+  // Autosave e "Salvar e Voltar" passam pela MESMA fila do produto
+  // (utils/gravacaoSegura): antes o UPDATE do autosave corria em paralelo com a
+  // regravação da composição do salvarImpl. Com o salvar já pedido, o autosave
+  // é dispensável (o salvar grava os mesmos campos) e não entra na fila — senão
+  // tomaria o lugar do salvar agendado.
   async function autoSave() {
+    if (savingRef.current) return;
+    if (!formRef.current.nome.trim()) return; // não salva sem nome
+    return serializarSalvamento(`produto:${editId}`, autoSaveImpl);
+  }
+
+  async function autoSaveImpl() {
+    if (savingRef.current) return;
     const f = formRef.current;
     if (!f.nome.trim()) return; // não salva sem nome
 
@@ -892,8 +906,14 @@ export default function ProdutoFormScreen({ route, navigation }) {
     if (savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
+    // Autosave agendado (debounce) é coberto por este salvar.
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     try {
-      await salvarImpl();
+      // Bug das gravações (receita base e caixa dobradas, CMV 0,54 → 1,01):
+      // "Salvar e Voltar" logo depois do autosave rodava os dois em paralelo.
+      // Na edição, espera a gravação em andamento do mesmo produto terminar.
+      if (editId) await serializarSalvamento(`produto:${editId}`, salvarImpl);
+      else await salvarImpl();
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -948,12 +968,12 @@ export default function ProdutoFormScreen({ route, navigation }) {
         //  2) insere todas as linhas NOVAS (guardando os lastInsertRowId)
         //  3) só se TODOS os inserts derem certo, apaga as ANTIGAS uma a uma
         //  4) se QUALQUER insert falhar, apaga só as NOVAS (rollback) e mantém as ANTIGAS.
-        const oldIngRows = await db.getAllAsync('SELECT id FROM produto_ingredientes WHERE produto_id = ?', [editId]);
-        const oldPrepRows = await db.getAllAsync('SELECT id FROM produto_preparos WHERE produto_id = ?', [editId]);
-        const oldEmbRows = await db.getAllAsync('SELECT id FROM produto_embalagens WHERE produto_id = ?', [editId]);
-        const oldIngIds = (oldIngRows || []).map(r => r.id);
-        const oldPrepIds = (oldPrepRows || []).map(r => r.id);
-        const oldEmbIds = (oldEmbRows || []).map(r => r.id);
+        // rowsOrThrow: leitura que falha vinha como `[]` ("nenhuma linha antiga")
+        // → inseria a composição nova SEM apagar a antiga = composição dobrada.
+        // Agora a falha cai no catch externo ANTES de qualquer INSERT.
+        const oldIngIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM produto_ingredientes WHERE produto_id = ?', [editId])).map(r => r.id);
+        const oldPrepIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM produto_preparos WHERE produto_id = ?', [editId])).map(r => r.id);
+        const oldEmbIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM produto_embalagens WHERE produto_id = ?', [editId])).map(r => r.id);
 
         const newIngIds = [];
         const newPrepIds = [];

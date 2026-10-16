@@ -5,6 +5,7 @@ import UndoToast from '../components/UndoToast';
 import useUndoableDelete from '../hooks/useUndoableDelete';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
+import { excluirPaiPrimeiro } from '../utils/gravacaoSegura';
 import Card from '../components/Card';
 import InputField from '../components/InputField';
 import InfoTooltip from '../components/InfoTooltip';
@@ -284,8 +285,12 @@ export default function DeliveryProdutosScreen() {
           message: `Produto "${nome}" excluído`,
           commit: async () => {
             const db = await getDatabase();
-            await db.runAsync('DELETE FROM delivery_produto_itens WHERE delivery_produto_id = ?', [id]);
-            await db.runAsync('DELETE FROM delivery_produtos WHERE id = ?', [id]);
+            // Pai primeiro (itens têm ON DELETE CASCADE): o commit roda no
+            // pagehide; com 2 requests a aba podia fechar entre eles e deixar o
+            // produto vazio (ver utils/gravacaoSegura).
+            await excluirPaiPrimeiro(db, { tabela: 'delivery_produtos', id }, [
+              { tabela: 'delivery_produto_itens', coluna: 'delivery_produto_id' },
+            ]);
           },
           onCommitted: () => loadData(),
         });

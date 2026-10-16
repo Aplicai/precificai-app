@@ -7,6 +7,7 @@ import useUndoableDelete from '../hooks/useUndoableDelete';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import { rowsOrThrow } from '../database/dbResult';
+import { serializarSalvamento, aguardarSalvamento, excluirPaiPrimeiro } from '../utils/gravacaoSegura';
 import FAB from '../components/FAB';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
@@ -492,37 +493,58 @@ export default function DeliveryCombosScreen() {
     const data = novoComboRef.current;
     if (!combo) return;
     if (!data.nome.trim()) return; // don't save without name
+    return salvarComboEditado(combo, data, 'autoSave');
+  }
 
-    setSaveStatus('saving');
-    try {
-      const db = await getDatabase();
-      await db.runAsync(
-        'UPDATE delivery_combos SET nome = ?, preco_venda = ?, embalagens_delivery = ? WHERE id = ?',
-        [data.nome.trim(), parseInputValue(data.preco_venda), embsDeliveryParaSalvar(data), combo.id]
-      );
-      // P1 — perda de dados no WEB: sem transação, DELETE-then-INSERT podia esvaziar o
-      // combo se um INSERT falhasse. Padrão "insere primeiro, apaga depois, com rollback".
-      const ok = await reinsertComboItens(db, combo.id, data.itens);
-      if (!ok) {
+  // Bug das gravações (combo com itens duplicados, custo dobrado): autosave
+  // (debounce), autoSaveImmediate (cada item mexido) e "Salvar e voltar"
+  // rodavam a regravação dos itens EM PARALELO. Cada execução lia os mesmos
+  // ids antigos, inseria o seu conjunto e apagava só os antigos → sobravam dois
+  // conjuntos novos. Agora todas passam pela fila do combo: nunca duas ao mesmo
+  // tempo, e um pedido feito durante uma gravação roda UMA vez depois, com o
+  // estado mais recente (ver utils/gravacaoSegura).
+  function salvarComboEditado(combo, data, origem) {
+    return serializarSalvamento(`combo:${combo.id}`, async () => {
+      setSaveStatus('saving');
+      try {
+        const db = await getDatabase();
+        await db.runAsync(
+          'UPDATE delivery_combos SET nome = ?, preco_venda = ?, embalagens_delivery = ? WHERE id = ?',
+          [data.nome.trim(), parseInputValue(data.preco_venda), embsDeliveryParaSalvar(data), combo.id]
+        );
+        // P1 — perda de dados no WEB: sem transação, DELETE-then-INSERT podia esvaziar o
+        // combo se um INSERT falhasse. Padrão "insere primeiro, apaga depois, com rollback".
+        const ok = await reinsertComboItens(db, combo.id, data.itens);
+        if (!ok) {
+          setSaveStatus(null);
+          showSaveError('Não foi possível salvar. O combo anterior foi mantido — tente de novo.');
+          return;
+        }
+        setSaveStatus('saved');
+      } catch (e) {
+        console.error(`[DeliveryCombosScreen.${origem}]`, e);
         setSaveStatus(null);
-        showSaveError('Não foi possível salvar. O combo anterior foi mantido — tente de novo.');
-        return;
+        showSaveError('Falha ao salvar combo. Tente novamente.');
       }
-      setSaveStatus('saved');
-    } catch (e) {
-      console.error('[DeliveryCombosScreen.autoSave]', e);
-      setSaveStatus(null);
-      showSaveError('Falha ao salvar combo. Tente novamente.');
-    }
+    });
   }
 
   // P1 — re-grava os itens do combo de forma segura no WEB (sem transação):
   //  1) captura ids ANTIGOS; 2) insere NOVOS guardando lastInsertRowId;
   //  3) se TODOS ok, apaga ANTIGOS um a um e retorna true;
   //  4) se algum falhar, apaga só os NOVOS (rollback), mantém ANTIGOS, retorna false.
+  // Só deve rodar dentro de salvarComboEditado (fila do combo).
   async function reinsertComboItens(db, comboId, itens) {
-    const oldRows = await db.getAllAsync('SELECT id FROM delivery_combo_itens WHERE combo_id = ?', [comboId]);
-    const oldIds = (oldRows || []).map(r => r.id);
+    // Leitura que falha vira `[]` no wrapper: sem o rowsOrThrow, "nenhum id
+    // antigo" fazia inserir os novos SEM apagar os antigos (itens duplicados).
+    // Aqui a falha aborta antes de inserir qualquer coisa — combo fica como estava.
+    let oldIds;
+    try {
+      oldIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM delivery_combo_itens WHERE combo_id = ?', [comboId])).map(r => r.id);
+    } catch (readErr) {
+      console.error('[DeliveryCombosScreen.reinsertComboItens.read]', readErr);
+      return false;
+    }
     const newIds = [];
     try {
       for (const item of itens) {
@@ -550,27 +572,7 @@ export default function DeliveryCombosScreen() {
     const data = overrideData || novoComboRef.current;
     if (!combo || !loaded) return;
     if (!data.nome.trim()) return;
-
-    setSaveStatus('saving');
-    try {
-      const db = await getDatabase();
-      await db.runAsync(
-        'UPDATE delivery_combos SET nome = ?, preco_venda = ?, embalagens_delivery = ? WHERE id = ?',
-        [data.nome.trim(), parseInputValue(data.preco_venda), embsDeliveryParaSalvar(data), combo.id]
-      );
-      // P1 — insere primeiro, apaga depois, com rollback (sem transação no WEB).
-      const ok = await reinsertComboItens(db, combo.id, data.itens);
-      if (!ok) {
-        setSaveStatus(null);
-        showSaveError('Não foi possível salvar. O combo anterior foi mantido — tente de novo.');
-        return;
-      }
-      setSaveStatus('saved');
-    } catch (e) {
-      console.error('[DeliveryCombosScreen.autoSaveImmediate]', e);
-      setSaveStatus(null);
-      showSaveError('Falha ao salvar combo. Tente novamente.');
-    }
+    return salvarComboEditado(combo, data, 'autoSaveImmediate');
   }
 
   // Save for NEW combos only
@@ -627,11 +629,15 @@ export default function DeliveryCombosScreen() {
         return;
       }
       // All good, just close and reload
+      const comboId = editingCombo.id;
       setShowComboModal(false);
       setEditingCombo(null);
       setNovoCombo({ nome: '', preco_venda: '', itens: [] });
       setLoaded(false);
-      loadData();
+      // Recarrega só depois da gravação em andamento (se houver): no meio da
+      // regravação os itens novos e antigos coexistem e a lista mostraria o
+      // custo dobrado até o próximo reload.
+      aguardarSalvamento(`combo:${comboId}`).then(() => loadData());
     } else {
       // Sessão 28.51: proteção contra perda — se tem nome/itens preenchidos,
       // pergunta confirmação. Antes fechava direto.
@@ -678,9 +684,9 @@ export default function DeliveryCombosScreen() {
     const isEditing = editingCombo !== null;
     try {
       if (isEditing && editingCombo.id) {
+        await aguardarSalvamento(`combo:${editingCombo.id}`);
         const db = await getDatabase();
-        await db.runAsync('DELETE FROM delivery_combo_itens WHERE combo_id = ?', [editingCombo.id]);
-        await db.runAsync('DELETE FROM delivery_combos WHERE id = ?', [editingCombo.id]);
+        await excluirComboDoBanco(db, editingCombo.id);
       }
       setShowComboModal(false);
       setEditingCombo(null);
@@ -708,10 +714,14 @@ export default function DeliveryCombosScreen() {
     }
     try {
       const db = await getDatabase();
+      // Lê os itens ANTES de criar a cópia e depois da gravação em andamento
+      // (no meio dela itens novos e antigos coexistem → a cópia sairia dobrada).
+      // Leitura com erro aborta — antes virava `[]` e criava uma cópia vazia.
+      await aguardarSalvamento(`combo:${combo.id}`);
+      const itens = rowsOrThrow(await db.getAllAsync('SELECT * FROM delivery_combo_itens WHERE combo_id = ?', [combo.id]));
       const result = await db.runAsync('INSERT INTO delivery_combos (nome, preco_venda, embalagens_delivery) VALUES (?,?,?)', [combo.nome + ' (cópia)', combo.preco_venda, parseEmbalagensDelivery(combo.embalagens_delivery)]);
       const newId = result?.lastInsertRowId;
       if (newId) {
-        const itens = await db.getAllAsync('SELECT * FROM delivery_combo_itens WHERE combo_id = ?', [combo.id]);
         await Promise.all(itens.map(item =>
           db.runAsync('INSERT INTO delivery_combo_itens (combo_id, tipo, item_id, quantidade) VALUES (?,?,?,?)', [newId, item.tipo, item.item_id, item.quantidade])
         ));
@@ -735,13 +745,21 @@ export default function DeliveryCombosScreen() {
           message: `Combo "${nome}" excluído`,
           commit: async () => {
             const db = await getDatabase();
-            await db.runAsync('DELETE FROM delivery_combo_itens WHERE combo_id = ?', [id]);
-            await db.runAsync('DELETE FROM delivery_combos WHERE id = ?', [id]);
+            await excluirComboDoBanco(db, id);
           },
           onCommitted: () => loadData(),
         });
       },
     });
+  }
+
+  // Excluir combo e fechar a aba logo em seguida (o commit do "desfazer" roda no
+  // pagehide) deixava um combo VAZIO no banco: eram dois requests — itens, depois
+  // o combo — e a aba morria entre eles. delivery_combo_itens.combo_id tem
+  // ON DELETE CASCADE, então apagar o COMBO primeiro leva os itens no mesmo
+  // statement: ou some tudo, ou nada muda (ver utils/gravacaoSegura).
+  function excluirComboDoBanco(db, id) {
+    return excluirPaiPrimeiro(db, { tabela: 'delivery_combos', id }, [{ tabela: 'delivery_combo_itens', coluna: 'combo_id' }]);
   }
 
   // Sessão 28.51 — bug crítico do combo: custo era calculado SEMPRE em 'g',

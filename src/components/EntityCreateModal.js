@@ -304,6 +304,10 @@ export default function EntityCreateModal({
   }, [visible, isProduto, isEditing, categoriaId, deliveryOn, embalagemDeliveryOrigem]);
 
   const [saving, setSaving] = useState(false);
+  // Guard síncrono: `saving` (state) só desabilita o botão no próximo render —
+  // toque duplo antes disso rodava duas regravações em paralelo (as duas liam
+  // os mesmos ids antigos → composição dobrada na edição).
+  const salvandoRef = useRef(false);
   const [erro, setErro] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -1613,6 +1617,16 @@ export default function EntityCreateModal({
 
   // Salvar
   async function salvar() {
+    if (salvandoRef.current) return;
+    salvandoRef.current = true;
+    try {
+      await salvarImpl();
+    } finally {
+      salvandoRef.current = false;
+    }
+  }
+
+  async function salvarImpl() {
     if (!nome.trim()) {
       setErro('Nome é obrigatório');
       return;
@@ -1675,10 +1689,12 @@ export default function EntityCreateModal({
             [nome.trim(), categoriaId, rendTotal, unidadeRendimentoDb, rendUn, precoParaSalvar, embDeliveryIdToSave, embDeliveryQtdToSave, embsDeliveryToSave, editId]
           );
           savedId = editId;
-          // Captura ids das linhas ANTIGAS (NÃO deleta ainda). getAllAsync retorna [] em erro.
-          oldIngIds = await db.getAllAsync('SELECT id FROM produto_ingredientes WHERE produto_id = ?', [editId]);
-          oldPrepIds = await db.getAllAsync('SELECT id FROM produto_preparos WHERE produto_id = ?', [editId]);
-          oldEmbIds = await db.getAllAsync('SELECT id FROM produto_embalagens WHERE produto_id = ?', [editId]);
+          // Captura ids das linhas ANTIGAS (NÃO deleta ainda). getAllAsync devolve
+          // [] em erro — tratar isso como "sem linhas antigas" inseria a composição
+          // nova sem apagar a antiga (dobrava). rowsOrThrow aborta antes dos INSERTs.
+          oldIngIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM produto_ingredientes WHERE produto_id = ?', [editId]));
+          oldPrepIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM produto_preparos WHERE produto_id = ?', [editId]));
+          oldEmbIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM produto_embalagens WHERE produto_id = ?', [editId]));
         } else {
           const result = await db.runAsync(
             `INSERT INTO produtos (nome, categoria_id, rendimento_total, unidade_rendimento, rendimento_unidades,
@@ -1750,10 +1766,11 @@ export default function EntityCreateModal({
             [nome.trim(), categoriaId, rend, unidadeMedidaPrep, custoTotal, custoPorKg, editId]
           );
           savedId = editId;
-          // Captura ids das linhas ANTIGAS (NÃO deleta ainda). getAllAsync retorna [] em erro.
-          oldIngIds = await db.getAllAsync('SELECT id FROM preparo_ingredientes WHERE preparo_id = ?', [editId]);
-          oldEmbIds = await db.getAllAsync('SELECT id FROM preparo_embalagens WHERE preparo_id = ?', [editId]);
-          oldSubIds = await db.getAllAsync('SELECT id FROM preparo_subpreparos WHERE preparo_id = ?', [editId]);
+          // Captura ids das linhas ANTIGAS (NÃO deleta ainda). Erro de leitura
+          // aborta antes dos INSERTs (ver produto acima).
+          oldIngIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM preparo_ingredientes WHERE preparo_id = ?', [editId]));
+          oldEmbIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM preparo_embalagens WHERE preparo_id = ?', [editId]));
+          oldSubIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM preparo_subpreparos WHERE preparo_id = ?', [editId]));
         } else {
           // Bug tutorial 05 (defesa): só grava categoria que existe em
           // categorias_preparos — senão a FK recusa o INSERT inteiro.
@@ -1885,7 +1902,9 @@ export default function EntityCreateModal({
       onClose && onClose();
     } catch (e) {
       setSaving(false);
-      const msg = (e && e.message) ? e.message : 'Erro ao salvar';
+      const msg = e?.isDbReadError
+        ? 'Não foi possível salvar. Sua receita anterior foi mantida — verifique a conexão e tente de novo.'
+        : ((e && e.message) ? e.message : 'Erro ao salvar');
       setErro(msg);
       if (typeof console !== 'undefined' && console.error) console.error('[EntityCreateModal.salvar]', e);
     }

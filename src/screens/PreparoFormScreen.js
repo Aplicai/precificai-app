@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Alert, Modal, TextInput } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
+import { rowsOrThrow } from '../database/dbResult';
+import { serializarSalvamento } from '../utils/gravacaoSegura';
 import InputField from '../components/InputField';
 import Card from '../components/Card';
 import PickerSelect from '../components/PickerSelect';
@@ -425,7 +427,18 @@ export default function PreparoFormScreen({ route, navigation }) {
   }
 
   // Auto-save para modo edição
-  async function autoSave() {
+  // Bug das gravações: o autosave (debounce 600ms) e "Salvar e voltar" (que
+  // chama autoSave de novo) regravavam a composição EM PARALELO — as duas
+  // execuções liam os mesmos ids antigos e cada uma inseria o seu conjunto →
+  // ingredientes duplicados. Agora passam pela fila da receita base
+  // (utils/gravacaoSegura): nunca em paralelo, e o pedido feito durante uma
+  // gravação roda uma vez depois, lendo o estado mais recente dos refs.
+  function autoSave() {
+    if (!formRef.current.nome.trim()) return Promise.resolve(); // não salva sem nome
+    return serializarSalvamento(`preparo:${editId}`, autoSaveImpl);
+  }
+
+  async function autoSaveImpl() {
     const f = formRef.current;
     if (!f.nome.trim()) return; // não salva sem nome
 
@@ -467,8 +480,10 @@ export default function PreparoFormScreen({ route, navigation }) {
       // Sessão 28.36: INSERT single-row em loop (bulk VALUES quebra no wrapper Supabase).
 
       // --- preparo_ingredientes (crítico) ---
-      const oldIngRows = await db.getAllAsync('SELECT id FROM preparo_ingredientes WHERE preparo_id = ?', [editId]);
-      const oldIngIds = (oldIngRows || []).map(r => r.id);
+      // rowsOrThrow: leitura com erro vinha como `[]` → inseria as linhas novas
+      // sem apagar as antigas (duplicava). Falha aqui cai no catch externo
+      // ANTES de qualquer INSERT.
+      const oldIngIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM preparo_ingredientes WHERE preparo_id = ?', [editId])).map(r => r.id);
       const newIngIds = [];
       try {
         for (const ing of ings) {
@@ -493,8 +508,8 @@ export default function PreparoFormScreen({ route, navigation }) {
 
       // --- preparo_embalagens (opcional — schema pode não existir) ---
       try {
-        const oldEmbRows = await db.getAllAsync('SELECT id FROM preparo_embalagens WHERE preparo_id = ?', [editId]);
-        const oldEmbIds = (oldEmbRows || []).map(r => r.id);
+        // Erro de leitura → pula o bloco (mantém as antigas, não duplica).
+        const oldEmbIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM preparo_embalagens WHERE preparo_id = ?', [editId])).map(r => r.id);
         const embs = preparoEmbalagensRef.current || [];
         const newEmbIds = [];
         try {
@@ -516,8 +531,8 @@ export default function PreparoFormScreen({ route, navigation }) {
 
       // --- preparo_subpreparos (opcional — schema pode não existir) ---
       try {
-        const oldSubRows = await db.getAllAsync('SELECT id FROM preparo_subpreparos WHERE preparo_id = ?', [editId]);
-        const oldSubIds = (oldSubRows || []).map(r => r.id);
+        // Erro de leitura → pula o bloco (mantém as antigas, não duplica).
+        const oldSubIds = rowsOrThrow(await db.getAllAsync('SELECT id FROM preparo_subpreparos WHERE preparo_id = ?', [editId])).map(r => r.id);
         const newSubIds = [];
         try {
           for (const sp of subs) {

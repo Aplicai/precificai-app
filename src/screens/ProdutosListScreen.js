@@ -3,6 +3,7 @@ import { View, Text, SectionList, ScrollView, StyleSheet, TouchableOpacity, Aler
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
+import { excluirPaiPrimeiro } from '../utils/gravacaoSegura';
 import FAB from '../components/FAB';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
@@ -489,10 +490,14 @@ export default function ProdutosListScreen({ navigation }) {
           message: `Produto "${nome}" excluído`,
           commit: async () => {
             const db = await getDatabase();
-            await db.runAsync('DELETE FROM produto_ingredientes WHERE produto_id = ?', [id]);
-            await db.runAsync('DELETE FROM produto_preparos WHERE produto_id = ?', [id]);
-            await db.runAsync('DELETE FROM produto_embalagens WHERE produto_id = ?', [id]);
-            await db.runAsync('DELETE FROM produtos WHERE id = ?', [id]);
+            // Pai primeiro (junctions têm ON DELETE CASCADE): o commit roda no
+            // pagehide, e com 4 requests a aba podia fechar no meio deixando um
+            // produto sem composição na lista (ver utils/gravacaoSegura).
+            await excluirPaiPrimeiro(db, { tabela: 'produtos', id }, [
+              { tabela: 'produto_ingredientes', coluna: 'produto_id' },
+              { tabela: 'produto_preparos', coluna: 'produto_id' },
+              { tabela: 'produto_embalagens', coluna: 'produto_id' },
+            ]);
           },
           onCommitted: () => loadData(),
         });
