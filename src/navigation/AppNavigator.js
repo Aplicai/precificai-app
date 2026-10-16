@@ -84,7 +84,6 @@ function ScreenFallback() {
 const RelatoriosHubScreen = lazyScreen(() => import('../screens/RelatoriosHubScreen'));
 const RegisterScreen = lazyScreen(() => import('../screens/RegisterScreen'));
 const KitInicioScreen = lazyScreen(() => import('../screens/KitInicioScreen'));
-const ComoFuncionaScreen = lazyScreen(() => import('../screens/ComoFuncionaScreen'));
 const SimuladorScreen = lazyScreen(() => import('../screens/SimuladorScreen'));
 const SimuladorLoteScreen = lazyScreen(() => import('../screens/SimuladorLoteScreen'));
 const FluxoCaixaDREScreen = lazyScreen(() => import('../screens/FluxoCaixaDREScreen'));
@@ -734,10 +733,6 @@ function AppContent() {
         <RootStack.Screen name="Onboarding" component={OnboardingScreen} options={{
           ...screenOptions, headerShown: true, title: 'Configuração Inicial',
         }} />
-      )}
-      {/* 16/10/2026: vídeo de 1 min depois do perfil (substitui o Kit no setup). */}
-      {(initialRoute === 'WelcomeTour' || initialRoute === 'ProfileSetup') && (
-        <RootStack.Screen name="ComoFunciona" component={ComoFuncionaScreen} options={{ headerShown: false, title: 'Como funciona' }} />
       )}
       <RootStack.Screen name="MainTabs" component={MainTabs} initialParams={{ initialTab: savedTab }} />
       {initialRoute === 'MainTabs' && (
