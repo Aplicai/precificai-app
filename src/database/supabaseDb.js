@@ -6,8 +6,19 @@
 import { supabase } from '../config/supabase';
 import { parseWhereSimple, parseValue, applyWhere, matchesConditions, parseOrderBy, parseSelectColumns } from './sqlParse';
 import { markErrorResult, isErrorResult, getErrorInfo, unwrapErrorResult } from './dbResult';
+import { isPlanRejection, planRejectionError } from '../utils/planGate';
 
 let currentUserId = null;
+
+// Servidor recusou a gravação por causa do plano (RLS/gatilho, migration
+// 20261016120000). Troca o texto técnico pela mensagem amigável e relê o plano
+// real: se o app estava com um "Pro" vencido em cache, os cadeados voltam na hora.
+function recusaDoPlano(table) {
+  import('../hooks/usePlan')
+    .then((m) => m.syncPlanFromServer && m.syncPlanFromServer())
+    .catch(() => {});
+  return planRejectionError(table);
+}
 
 // Sessão 28.xx — defense-in-depth (security P2): allowlist EXPLÍCITA das tabelas
 // que têm coluna `user_id NOT NULL` e são por-usuário, derivada do schema do
@@ -317,6 +328,7 @@ async function executeRun(sql, params = []) {
       } else {
         console.error('[SupabaseDb] Insert error:', error.message, table);
       }
+      if (isPlanRejection(error)) throw recusaDoPlano(table);
       throw new Error(`Erro ao salvar em ${table}: ${error.message}`);
     }
     return { lastInsertRowId: data?.id, changes: 1 };
@@ -361,6 +373,7 @@ async function executeRun(sql, params = []) {
       } else {
         console.error('[SupabaseDb] Update error:', error.message, table);
       }
+      if (isPlanRejection(error)) throw recusaDoPlano(table);
       throw new Error(`Erro ao atualizar ${table}: ${error.message}`);
     }
     return { changes: 1 };

@@ -139,6 +139,17 @@ export function planAllowsCount(plano, entity, currentCount) {
   return currentCount < limitFor(plano, entity);
 }
 
+/**
+ * Quantos itens ainda cabem no plano (Infinity = sem teto, nunca negativo).
+ * Pra quem cria VÁRIOS de uma vez (duplicar em massa): `canAdd` só responde
+ * sobre o próximo item.
+ */
+export function vagasRestantes(plano, entity, currentCount) {
+  const lim = limitFor(plano, entity);
+  if (!Number.isFinite(lim)) return Infinity;
+  return Math.max(0, lim - (Number(currentCount) || 0));
+}
+
 /** Próximo plano acima (pra CTA "fazer upgrade"). null se já é o topo. */
 export function nextPlan(plano) {
   // Só existe um plano pago. De 'free' sobe pra 'pro'; de 'pro' (ou do

@@ -23,6 +23,7 @@ import { buildContextoFinanceiro, custoDelivery, embalagemDeliveryDoProduto, emb
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
 import usePersistedState from '../hooks/usePersistedState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import { mensagemErroSalvar } from '../utils/planGate';
 
 // Numeric helpers (defesa contra NaN/Infinity em precificação)
 function parseInputNumber(raw) {
@@ -384,7 +385,7 @@ export default function DeliveryPrecosScreen() {
       setCustomPrices(prev => { const n = { ...prev }; delete n[`${itemId}-${platId}`]; return n; });
     } catch (e) {
       console.error('[DeliveryPrecosScreen.salvarPrecoDelivery]', e);
-      Alert.alert('Erro', 'Não foi possível salvar o preço. Verifique se a migration foi aplicada.');
+      Alert.alert('Erro', mensagemErroSalvar(e, 'Não foi possível salvar o preço. Tente novamente.'));
     }
   }
 

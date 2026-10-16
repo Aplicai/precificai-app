@@ -12,6 +12,7 @@ import { safeNum } from '../utils/calculations';
 import usePlan from '../hooks/usePlan';
 import UpgradeModal from '../components/UpgradeModal';
 import ProPreviewBanner from '../components/ProPreviewBanner';
+import { isPlanRejection, mensagemErroSalvar } from '../utils/planGate';
 
 // ─── Numeric helpers (audit P0) ─────────────
 function parseInputNumber(raw) {
@@ -124,13 +125,22 @@ export default function DeliveryPlataformasScreen() {
       const db = await getDatabase();
       let plats = await db.getAllAsync('SELECT * FROM delivery_config ORDER BY id');
       if (plats.length === 0) {
-        for (const p of DEFAULT_PLATFORMS) {
-          await db.runAsync(
-            'INSERT INTO delivery_config (plataforma, taxa_plataforma, taxa_entrega, comissao_app, desconto_promocao, ativo) VALUES (?, ?, ?, ?, ?, ?)',
-            [p.plataforma, p.taxa_plataforma, p.taxa_entrega, p.comissao_app, p.desconto_promocao, p.ativo]
-          );
+        try {
+          for (const p of DEFAULT_PLATFORMS) {
+            await db.runAsync(
+              'INSERT INTO delivery_config (plataforma, taxa_plataforma, taxa_entrega, comissao_app, desconto_promocao, ativo) VALUES (?, ?, ?, ?, ?, ?)',
+              [p.plataforma, p.taxa_plataforma, p.taxa_entrega, p.comissao_app, p.desconto_promocao, p.ativo]
+            );
+          }
+        } catch (seedErr) {
+          // Grátis: o servidor não deixa gravar plataformas (Delivery é Pro).
+          // Ver é livre — mostra as plataformas padrão só na tela, sem salvar.
+          if (!isPlanRejection(seedErr)) throw seedErr;
         }
         plats = await db.getAllAsync('SELECT * FROM delivery_config ORDER BY id');
+        if (plats.length === 0) {
+          plats = DEFAULT_PLATFORMS.map((p, i) => ({ ...p, id: -(i + 1) }));
+        }
       }
       setPlataformas(plats);
     } catch (e) {
@@ -163,7 +173,7 @@ export default function DeliveryPlataformasScreen() {
       setPlataformas(prev => prev.map(p => (p.id === id ? { ...p, [field]: numValue } : p)));
     } catch (e) {
       console.error('[DeliveryPlataformasScreen.updatePlatform]', e);
-      showSaveError('Falha ao salvar alteração. Tente novamente.');
+      showSaveError(mensagemErroSalvar(e, 'Falha ao salvar alteração. Tente novamente.'));
     }
   }
 
@@ -199,7 +209,7 @@ export default function DeliveryPlataformasScreen() {
       }
     } catch (e) {
       console.error('[DeliveryPlataformasScreen.adicionarPlataforma]', e);
-      showSaveError('Falha ao adicionar plataforma. Tente novamente.');
+      showSaveError(mensagemErroSalvar(e, 'Falha ao adicionar plataforma. Tente novamente.'));
     }
   }
 

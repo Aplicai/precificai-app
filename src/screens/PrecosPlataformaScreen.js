@@ -12,7 +12,7 @@
  * sistema sugere (Visão Geral / Lote já mostra ambos lado a lado).
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
@@ -67,7 +67,8 @@ export default function PrecosPlataformaScreen({ route, navigation }) {
       // Bonus fix: a versão antiga aqui dependia de `res?.changes` (nem sempre
       // confiável no wrapper supabaseDb) — service usa SELECT-first.
       const db = await getDatabase();
-      await upsertPrecoDelivery(db, { produtoId, plataformaId, precoVenda: valor });
+      const r = await upsertPrecoDelivery(db, { produtoId, plataformaId, precoVenda: valor });
+      if (r?.planRejected) Alert.alert('Delivery é um recurso Pro', r.error);
     } finally {
       setTimeout(() => setSavingId((x) => (x === produtoId ? null : x)), 600);
     }

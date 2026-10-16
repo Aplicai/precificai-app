@@ -75,7 +75,11 @@ export async function upsertPrecoDelivery(db, { produtoId, plataformaId, precoVe
     if (typeof console !== 'undefined') {
       console.warn('[precoDeliveryService.upsert]', e?.message || e);
     }
-    return { ok: false, action: 'noop', error: e?.message || String(e) };
+    const r = { ok: false, action: 'noop', error: e?.message || String(e) };
+    // Servidor recusou pelo plano (migration 20261016120000): a tela mostra
+    // `error` (já amigável) em vez de falhar calada.
+    if (e?.planRejected) r.planRejected = true;
+    return r;
   }
 }
 
