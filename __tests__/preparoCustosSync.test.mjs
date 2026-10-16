@@ -145,12 +145,14 @@ test('sincronizarCustosPreparos: regrava só as receitas divergentes; 2ª passad
   assert.ok(custos);
   const ids = db.updates.map(u => u[2]).sort();
   assert.deepEqual(ids, [10, 11, 12, 14]); // 13 (manual) intocado
+  assert.equal(custos.alterados, 4); // a Home recarrega só quando > 0
   assert.equal(st.preparos.find(p => p.id === 13).custo_total, 30);
   assert.ok(close(st.preparos.find(p => p.id === 10).custo_total, 7.505));
 
   const db2 = fakeDb(st);
-  await cascade.sincronizarCustosPreparos(db2);
+  const custos2 = await cascade.sincronizarCustosPreparos(db2);
   assert.equal(db2.updates.length, 0);
+  assert.equal(custos2.alterados, 0);
 });
 
 test('sincronizarCustosPreparos: leitura com erro ou cortada em 1000 linhas → não grava', async () => {

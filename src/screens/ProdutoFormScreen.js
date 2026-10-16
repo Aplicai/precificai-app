@@ -29,6 +29,7 @@ import { UNIDADES_MEDIDA, formatCurrency, formatPercent, calcMarkup, calcDespesa
 import { aplicarCustosPreparos } from '../services/cascadeRecalc';
 // APP-19/24b: engine unificada + modal de transparência do cálculo
 import { calcularPrecoBalcao } from '../utils/precificacao';
+import { margemDoProduto } from '../utils/margemMeta';
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
 // Design embalagem-delivery-no-produto (2026-09-09)
 import { custoDelivery, embalagensDeliveryDoProduto, normalizarEmbalagensDelivery } from '../utils/deliveryAdapter';
@@ -533,7 +534,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
         // Fix walkthrough #4 — carregava "25" em vez de "25,00" (String() cru
         // do número). Formata com 2 decimais PT-BR igual ao restante do app.
         preco_venda: p.preco_venda != null && p.preco_venda !== '' ? Number(p.preco_venda).toFixed(2).replace('.', ',') : '',
-        margem_lucro_produto: p.margem_lucro_produto != null ? String((p.margem_lucro_produto * 100).toFixed(1)) : '',
+        // 0 gravado pelo Kit/cadastro rápido = "usar a margem do Financeiro"
+        // (margemMeta.js): campo vazio, não "0.0" (que dava sugerido sem lucro).
+        margem_lucro_produto: p.margem_lucro_produto > 0 ? String((p.margem_lucro_produto * 100).toFixed(1)) : '',
         validade_dias: String(p.validade_dias || ''), modo_preparo: p.modo_preparo || '',
         observacoes: p.observacoes || '',
         conserv_congelado: !!(p.temp_congelado || p.tempo_congelado),
@@ -655,8 +658,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
     if (navigation?.setParams) navigation.setParams({ sugerirNovoPreco: undefined });
   }, [route.params?.sugerirNovoPreco, custoUnitario]);
 
-  const margemProduto = form.margem_lucro_produto.trim() !== ''
+  // Margem própria só quando > 0; vazio ou 0 = margem do Financeiro (mesma
+  // regra do cadastro rápido e da ficha em PDF — ver utils/margemMeta.js).
+  const margemProdutoDigitada = form.margem_lucro_produto.trim() !== ''
     ? parseNum(form.margem_lucro_produto) / 100
+    : null;
+  const margemProduto = margemProdutoDigitada > 0
+    ? margemDoProduto(margemProdutoDigitada, config.lucroDesejado)
     : null;
   const lucroEfetivo = margemProduto !== null ? margemProduto : config.lucroDesejado;
   const markupEfetivo = margemProduto !== null
@@ -665,6 +673,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
   const precoSugerido = markupEfetivo > 0 ? custoUnitario * (1 + (config.margemSeguranca || 0)) * markupEfetivo : 0;
   const precoVenda = parseNum(form.preco_venda) || precoSugerido;
+  // Sem preço digitado, lucro e margem saem do sugerido: o rótulo diz isso.
+  const noSugerido = !(parseNum(form.preco_venda) > 0) && precoSugerido > 0 ? ' no sugerido' : '';
 
   const despFixasValor = precoVenda * config.despFixasPerc;
   const despVarValor = precoVenda * config.despVarPerc;
@@ -698,10 +708,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
       const precoMedioCat = await getCategoriaMedia(db, form.categoria_id, editId);
       const historico = editId ? await getHistoricoVendas(db, editId) : [];
       const precoAtualNum = parseNum(form.preco_venda);
-      const margemProdutoUser = form.margem_lucro_produto.trim() !== ''
-        ? parseNum(form.margem_lucro_produto) / 100
-        : null;
-      const margem_alvo = margemProdutoUser != null ? margemProdutoUser : ctx.margem_alvo;
+      const margem_alvo = margemProduto != null ? margemProduto : ctx.margem_alvo;
 
       const result = await suggestPrice({
         produto_nome: form.nome || 'Produto sem nome',
@@ -1313,13 +1320,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </TouchableOpacity>
               <View style={styles.costsItem}>
                 {/* APP-21: nomenclatura padronizada — "Lucro Líquido" deixa explícito que é após custos fixos+variáveis */}
-                <Text style={styles.costsItemLabel}>Lucro Líquido</Text>
+                <Text style={styles.costsItemLabel}>Lucro Líquido{noSugerido}</Text>
                 <Text style={[styles.costsItemValue, { color: lucroLiquido >= 0 ? colors.success : colors.error }]}>
                   {formatCurrency(lucroLiquido)}
                 </Text>
               </View>
               <View style={styles.costsItem}>
-                <Text style={styles.costsItemLabel}>Margem Líq.</Text>
+                <Text style={styles.costsItemLabel}>Margem Líq.{noSugerido}</Text>
                 <Text style={[styles.costsItemValue, { color: lucroPerc >= config.lucroDesejado ? colors.success : lucroPerc >= (config.lucroDesejado - 0.10) ? '#E6A800' : colors.error }]}>
                   {formatPercent(lucroPerc)}
                 </Text>
@@ -1892,7 +1899,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     examples={[
                       'Produto caro: reduza para 8-10%',
                       'Produto premium: aumente para 20-25%',
-                      'Vazio = margem padrão',
+                      'Vazio ou 0 = margem padrão do Financeiro',
                     ]}
                   />
                 }
@@ -1947,7 +1954,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               <View style={styles.custoRow}><Text style={styles.custoLabel}>Custos do mês</Text><Text style={styles.custoValue}>{formatCurrency(despFixasValor)} ({formatPercent(config.despFixasPerc)})</Text></View>
               <View style={styles.custoRow}><Text style={styles.custoLabel}>Custos por venda</Text><Text style={styles.custoValue}>{formatCurrency(despVarValor)} ({formatPercent(config.despVarPerc)})</Text></View>
               <View style={[styles.custoRow, styles.custoTotal]}>
-                <Text style={[styles.custoLabel, styles.custoTotalText]}>Lucro Líquido</Text>
+                <Text style={[styles.custoLabel, styles.custoTotalText]}>Lucro Líquido{noSugerido}</Text>
                 <Text style={[styles.custoValue, { color: lucroLiquido >= 0 ? colors.success : colors.error, fontWeight: '700' }]}>
                   {formatCurrency(lucroLiquido)} ({formatPercent(lucroPerc)})
                 </Text>
@@ -2107,13 +2114,13 @@ export default function ProdutoFormScreen({ route, navigation }) {
                   <Text style={[styles.costsItemValue, { color: colors.primary }]}>{formatCurrency(precoSugerido)}</Text>
                 </View>
                 <View style={[styles.costsItem, { minWidth: '45%' }]}>
-                  <Text style={styles.costsItemLabel}>Lucro</Text>
+                  <Text style={styles.costsItemLabel}>Lucro{noSugerido}</Text>
                   <Text style={[styles.costsItemValue, { color: lucroLiquido >= 0 ? colors.success : colors.error }]}>
                     {formatCurrency(lucroLiquido)}
                   </Text>
                 </View>
                 <View style={[styles.costsItem, { minWidth: '45%' }]}>
-                  <Text style={styles.costsItemLabel}>Margem</Text>
+                  <Text style={styles.costsItemLabel}>Margem{noSugerido}</Text>
                   <Text style={[styles.costsItemValue, { color: lucroPerc >= config.lucroDesejado ? colors.success : lucroPerc >= (config.lucroDesejado - 0.10) ? '#E6A800' : colors.error }]}>
                     {formatPercent(lucroPerc)}
                   </Text>
@@ -2161,7 +2168,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     <View style={styles.custoRow}><Text style={styles.custoLabel}>Custos do mês</Text><Text style={styles.custoValue}>{formatCurrency(despFixasValor)} ({formatPercent(config.despFixasPerc)})</Text></View>
                     <View style={styles.custoRow}><Text style={styles.custoLabel}>Custos por venda</Text><Text style={styles.custoValue}>{formatCurrency(despVarValor)} ({formatPercent(config.despVarPerc)})</Text></View>
                     <View style={[styles.custoRow, styles.custoTotal]}>
-                      <Text style={[styles.custoLabel, styles.custoTotalText]}>Lucro Líquido</Text>
+                      <Text style={[styles.custoLabel, styles.custoTotalText]}>Lucro Líquido{noSugerido}</Text>
                       <Text style={[styles.custoValue, { color: lucroLiquido >= 0 ? colors.success : colors.error, fontWeight: '700' }]}>
                         {formatCurrency(lucroLiquido)} ({formatPercent(lucroPerc)})
                       </Text>

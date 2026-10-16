@@ -44,6 +44,7 @@ import { t } from '../i18n/pt-BR';
 import { subscribeDataChanged } from '../utils/dataSync';
 import { supabase } from '../config/supabase';
 import { checkActivation } from '../utils/marketing';
+import { resolverMargemMeta, classificarMargem, FAIXA_ATENCAO_MARGEM } from '../utils/margemMeta';
 
 // Cores para categorias
 const CATEGORY_COLORS = [
@@ -58,36 +59,23 @@ function getCategoryColor(index) {
 
 const YELLOW = '#E6A800';
 
-function getHealthColor(margem, meta = 0.15) {
-  if (margem === -1) return colors.disabled;
-  if (margem >= meta) return colors.success;
-  if (margem >= meta - 0.10) return YELLOW;
-  return colors.error;
-}
-
-function getHealthBgColor(margem, meta = 0.15) {
-  if (margem === -1) return colors.disabled + '0C';
-  if (margem >= meta) return colors.success + '12';
-  if (margem >= meta - 0.10) return YELLOW + '18';
-  return colors.error + '12';
-}
-
-function getHealthBorderColor(margem, meta = 0.15) {
-  if (margem === -1) return colors.disabled + '40';
-  if (margem >= meta) return colors.success + '50';
-  if (margem >= meta - 0.10) return YELLOW + '60';
-  return colors.error + '50';
-}
-
-// Classifica a margem do produto em uma das faixas do filtro de lucro.
-// Mesmas thresholds do semáforo visual: acima da meta (verde), faixa amarela
-// (meta-10 a meta), abaixo (vermelho) e -1 (sem preço cadastrado).
-function getMargemClass(margem, meta = 0.15) {
+// Faixas da meta de margem: regra única em utils/margemMeta.js (a mesma do
+// Painel e de "Margem Baixa"). -1 = sem preço cadastrado.
+function getMargemClass(margem, meta) {
   if (margem === -1) return 'sem_preco';
-  if (margem >= meta) return 'acima';
-  if (margem >= meta - 0.10) return 'medio';
-  return 'abaixo';
+  return classificarMargem(margem, meta) || 'sem_preco';
 }
+
+const HEALTH = {
+  acima: { cor: colors.success, bg: colors.success + '12', borda: colors.success + '50' },
+  medio: { cor: YELLOW, bg: YELLOW + '18', borda: YELLOW + '60' },
+  abaixo: { cor: colors.error, bg: colors.error + '12', borda: colors.error + '50' },
+  sem_preco: { cor: colors.disabled, bg: colors.disabled + '0C', borda: colors.disabled + '40' },
+};
+
+function getHealthColor(margem, meta) { return HEALTH[getMargemClass(margem, meta)].cor; }
+function getHealthBgColor(margem, meta) { return HEALTH[getMargemClass(margem, meta)].bg; }
+function getHealthBorderColor(margem, meta) { return HEALTH[getMargemClass(margem, meta)].borda; }
 
 // Planos: aviso "falta 1 pro teto" aparece UMA vez por sessão.
 let _avisoLimiteMostrado = false;
@@ -108,7 +96,9 @@ export default function ProdutosListScreen({ navigation }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [novaCategoria, setNovaCategoria] = useState('');
   const [busca, setBusca] = useState('');
-  const [config, setConfig] = useState({ despFixasPerc: 0, despVarPerc: 0, margemMeta: 0.15 });
+  // margemMeta null até a config chegar: os chips de filtro não mostram um
+  // "Lucro ≥15%" provisório que depois vira 20%.
+  const [config, setConfig] = useState({ despFixasPerc: 0, despVarPerc: 0, margemMeta: null });
   const [confirmDelete, setConfirmDelete] = useState(null);
   const undoDelete = useUndoableDelete();
   const [sortBy, setSortBy] = usePersistedState('produtos.sortBy', 'nome_asc');
@@ -328,7 +318,7 @@ export default function ProdutosListScreen({ navigation }) {
     const mesesComFat = fat.filter(f => f.valor > 0);
     const fatMedio = mesesComFat.length > 0 ? mesesComFat.reduce((a, f) => a + f.valor, 0) / mesesComFat.length : 0;
     const dfPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
-    const margemMeta = (configRows && configRows.length > 0 && configRows[0].lucro_desejado) ? configRows[0].lucro_desejado : 0.15;
+    const margemMeta = resolverMargemMeta(configRows?.[0]?.lucro_desejado);
     setConfig({ despFixasPerc: dfPerc, despVarPerc: totalVar, margemMeta });
 
     setCategorias(cats);
@@ -1023,9 +1013,9 @@ export default function ProdutosListScreen({ navigation }) {
         </View>
         {/* Chips clicáveis de filtro por faixa de lucro (substituem a legenda passiva).
             Toggle: tocar no chip ativo limpa o filtro. "Todos" também limpa. */}
-        {(() => {
+        {config.margemMeta != null && (() => {
           const metaPct = Math.round(config.margemMeta * 100);
-          const limiteInf = Math.max(0, metaPct - 10);
+          const limiteInf = Math.max(0, metaPct - Math.round(FAIXA_ATENCAO_MARGEM * 100));
           const items = [
             { key: 'acima', label: `Lucro ≥${metaPct}%`, bg: colors.success + '12', border: colors.success + '50', active: colors.success },
             { key: 'medio', label: `Lucro ${limiteInf}-${metaPct}%`, bg: YELLOW + '18', border: YELLOW + '60', active: YELLOW },

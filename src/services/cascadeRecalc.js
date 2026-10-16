@@ -288,7 +288,8 @@ let _syncEmVoo = null;
  * de leitura → não grava nada e devolve null. Chamadas simultâneas compartilham
  * a mesma execução.
  *
- * Retorna Map(id → { custo_total, custo_por_kg }) ou null.
+ * Retorna Map(id → { custo_total, custo_por_kg }) ou null. O Map leva
+ * `alterados` = quantas receitas foram regravadas (a Home recarrega se > 0).
  */
 export function sincronizarCustosPreparos(db) {
   if (_syncEmVoo) return _syncEmVoo;
@@ -313,12 +314,15 @@ async function _sincronizarCustosPreparos(db) {
     const c = custos.get(p.id);
     return c && (custoPreparoDifere(p.custo_por_kg, c.custo_por_kg) || custoPreparoDifere(p.custo_total, c.custo_total));
   });
+  let alterados = 0;
   for (const p of divergentes) {
     const c = custos.get(p.id);
     try {
       await db.runAsync('UPDATE preparos SET custo_por_kg = ?, custo_total = ? WHERE id = ?', [c.custo_por_kg, c.custo_total, p.id]);
+      alterados++;
     } catch (e) { console.warn('[cascadeRecalc.sincronizar]', p.id, e); }
   }
+  custos.alterados = alterados;
   return custos;
 }
 

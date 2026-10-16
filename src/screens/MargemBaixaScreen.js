@@ -6,6 +6,7 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, safeNum } from '../utils/calculations';
 import { getFinanceiroStatus } from '../utils/financeiroStatus';
+import { resolverMargemMeta, isMargemBaixa } from '../utils/margemMeta';
 
 // Calcula preço sugerido para atingir meta de margem.
 // Fórmula: novoPreco = CMV / (1 - meta - dfPerc - varPerc)
@@ -54,7 +55,8 @@ export default function MargemBaixaScreen({ navigation }) {
         db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
         db.getAllAsync('SELECT lucro_desejado FROM configuracao LIMIT 1'),
       ]);
-      const meta = cfgs?.[0]?.lucro_desejado || 0.15;
+      // Mesma meta do Painel e da lista de Produtos (utils/margemMeta.js).
+      const meta = resolverMargemMeta(cfgs?.[0]?.lucro_desejado);
       setMargemMeta(meta);
       const totalFixas = fixas.reduce((a, x) => a + (x.valor || 0), 0);
       const totalVar = variaveis.reduce((a, x) => a + (x.percentual || 0), 0);
@@ -98,7 +100,7 @@ export default function MargemBaixaScreen({ navigation }) {
           const lucro = calcLucroLiquido(preco, custoUnit, despFixasVal, despVarVal);
           const margem = calcMargemLiquida(preco, custoUnit, despFixasVal, despVarVal);
 
-          if (margem < meta) {
+          if (isMargemBaixa(margem, meta)) {
             result.push({
               id: p.id,
               nome: p.nome,

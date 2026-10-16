@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Image, Platform, TextInput, RefreshControl } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,7 +8,10 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius, typography, numeric, radius } from '../utils/theme';
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual } from '../utils/calculations';
 import { calcSobraMes } from '../utils/breakeven';
-import { getFinanceiroStatus, montarStatusFinanceiro, textoPendenciaFinanceiro, publicarStatusFinanceiro } from '../utils/financeiroStatus';
+import { getFinanceiroStatus, montarStatusFinanceiro, textoPendenciaFinanceiro, publicarStatusFinanceiro, assinarStatusFinanceiro } from '../utils/financeiroStatus';
+import { resolverMargemMeta, isMargemBaixa, classificarMargem } from '../utils/margemMeta';
+import { avaliarIndicadores, indicadorEmAlerta, CMV_META_PADRAO } from '../utils/painelSaude';
+import { sincronizarCustosPreparos } from '../services/cascadeRecalc';
 import { getSetupStatus, soFaltamEtapasOpcionais } from '../utils/setupStatus';
 import { rowsOrThrow, countOrThrow } from '../database/dbResult';
 import InfoTooltip from '../components/InfoTooltip';
@@ -51,6 +54,24 @@ function getGreeting() {
   if (h < 12) return 'Bom dia';
   if (h < 18) return 'Boa tarde';
   return 'Boa noite';
+}
+
+/** 0.2 → "20%", 0.175 → "17,5%" (metas, sem os ",00" do formatPercent). */
+function pctMeta(frac) {
+  const v = Math.round((Number(frac) || 0) * 1000) / 10;
+  return `${String(v).replace('.', ',')}%`;
+}
+
+/** Resumo das etapas de configuração (banner "Configuração do app"). */
+function montarSetup(etapas) {
+  const concluidas = etapas.filter(e => e.done).length;
+  return {
+    etapas, concluidas, total: etapas.length,
+    completo: concluidas === etapas.length, progresso: concluidas / etapas.length,
+    proximaEtapa: etapas.find(e => !e.done) || null,
+    financeiroCompleto: !!etapas.find(e => e.key === 'financeiro')?.done,
+    soFaltamOpcionais: soFaltamEtapasOpcionais(etapas),
+  };
 }
 
 const PASSOS_COMECO = ['Ingrediente', 'Produto', 'Preço'];
@@ -152,9 +173,11 @@ export default function HomeScreen({ navigation }) {
   const [d, setD] = useState({
     totalInsumos: 0, totalEmbalagens: 0, totalPreparos: 0, totalProdutos: 0,
     margemMedia: 0, custoTotal: 0, impactoDelivery: 0, resultadoFinanceiro: 0, sobraSoFixas: true,
-    produtosMargBaixa: [], produtosSemPreco: [],
+    produtosMargBaixa: [], produtosSemPreco: [], prodsComPreco: 0,
+    // Meta de margem = lucro_desejado do Financeiro (src/utils/margemMeta.js).
+    margemMeta: resolverMargemMeta(null),
     cmvPercent: 0, pontoEquilibrio: 0, fatMedio: 0,
-    insights: [], featuredInsight: null,
+    insights: [],
     // APP-43 — vendas por canal (vem da configuracao)
     vendasMesBalcao: 0, vendasMesDelivery: 0,
     // APP-44 — modo compacto dos gráficos (default ON)
@@ -178,21 +201,45 @@ export default function HomeScreen({ navigation }) {
   const [usaDelivery] = useFeatureFlag('usa_delivery');
   const [analiseAvancada] = useFeatureFlag('modo_avancado_analise');
 
-  // Hidrata metas persistidas (P1: antes o "Aplicar" do CMV era no-op).
+  // Hidrata a meta de CMV persistida (P1: antes o "Aplicar" do CMV era no-op).
+  // A meta de margem NÃO vem mais daqui: a fonte é `configuracao.lucro_desejado`
+  // (loadAll). O AsyncStorage dela podia ficar em 15% com o Financeiro em 20%.
   useEffect(() => {
     (async () => {
       try {
-        const [cmv, marg] = await Promise.all([
-          AsyncStorage.getItem(PREF_CMV_META),
-          AsyncStorage.getItem(PREF_MARGEM_META),
-        ]);
+        const cmv = await AsyncStorage.getItem(PREF_CMV_META);
         if (cmv) setCmvMetaValue(cmv);
-        if (marg) setMargemMetaValue(marg);
       } catch {}
     })();
   }, []);
 
-  useFocusEffect(useCallback(() => { loadAll(); }, []));
+  // Status do Financeiro salvo em outra tela chega aqui na hora: antes a Home
+  // mostrava o card antigo "Configuração pendente" por alguns segundos, até o
+  // loadAll (pesado) terminar.
+  useEffect(() => assinarStatusFinanceiro((s) => {
+    setFinStatus(s);
+    setSetupStatus(prev => (prev ? montarSetup(prev.etapas.map(e => (
+      e.key === 'financeiro' ? { ...e, done: !!s.completo, progresso: s.progresso } : e
+    ))) : prev));
+  }), []);
+
+  // Receitas base: Home, Delivery, Ranking, simuladores e relatórios leem o
+  // custo GRAVADO em `preparos`. Uma vez por montagem, em segundo plano,
+  // regrava os que divergem dos preços atuais e recarrega se algo mudou.
+  const syncPreparosFeitoRef = useRef(false);
+
+  useFocusEffect(useCallback(() => {
+    // 4 COUNTs rápidos: publica o status (assinatura acima) antes do loadAll.
+    getFinanceiroStatus().catch(() => {});
+    loadAll();
+    if (!syncPreparosFeitoRef.current) {
+      syncPreparosFeitoRef.current = true;
+      (async () => {
+        const custos = await sincronizarCustosPreparos(await getDatabase());
+        if (custos && custos.alterados > 0) loadAll();
+      })().catch(() => { /* custo gravado continua valendo */ });
+    }
+  }, []));
 
   // Nome do negócio para a saudação da Home simples (início).
   const [nomeNegocio, setNomeNegocio] = useState('');
@@ -263,14 +310,7 @@ export default function HomeScreen({ navigation }) {
         // Sessão 26 — etapa de Delivery só aparece se user marcou que faz delivery
         ...(usaDelivery ? [{ key: 'delivery', label: 'Delivery', icon: 'truck', desc: 'Configure delivery', done: deliveryOk, opcional: true, tab: 'Delivery', count: delProdsN + combosN }] : []),
       ];
-      const setupConcluidas = setupEtapas.filter(e => e.done).length;
-      const setup = {
-        etapas: setupEtapas, concluidas: setupConcluidas, total: setupEtapas.length,
-        completo: setupConcluidas === setupEtapas.length, progresso: setupConcluidas / setupEtapas.length,
-        proximaEtapa: setupEtapas.find(e => !e.done) || null, financeiroCompleto: finCompleto,
-        soFaltamOpcionais: soFaltamEtapasOpcionais(setupEtapas),
-      };
-      setSetupStatus(setup);
+      setSetupStatus(montarSetup(setupEtapas));
 
       const totalInsumos = insumosN;
       const totalEmbalagens = embsN;
@@ -283,6 +323,10 @@ export default function HomeScreen({ navigation }) {
       const mesesComFat = fat.filter(f => f.valor > 0);
       const fatMedio = mesesComFat.length > 0 ? mesesComFat.reduce((a, f) => a + f.valor, 0) / mesesComFat.length : 0;
       const dfPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
+      // Meta única de margem (src/utils/margemMeta.js): "margem baixa", "Carteira
+      // saudável" e o card "Quanto sobra por venda" usam o mesmo corte.
+      const margemMeta = resolverMargemMeta(config?.lucro_desejado);
+      const metaTxt = pctMeta(margemMeta);
 
       // Build lookup maps for O(1) access
       const ingsByProd = {};
@@ -323,7 +367,7 @@ export default function HomeScreen({ navigation }) {
           const margem = calcMargemLiquida(p.preco_venda, custoUnit, despFixasVal, despVarVal);
           somaMargens += margem;
           prodsComPreco++;
-          if (margem < 0.10) produtosMargBaixa.push({ id: p.id, nome: p.nome, margem });
+          if (isMargemBaixa(margem, margemMeta)) produtosMargBaixa.push({ id: p.id, nome: p.nome, margem });
         } else {
           produtosSemPreco.push(p.nome);
           if (!primeiroSemPreco) primeiroSemPreco = { id: p.id, nome: p.nome };
@@ -404,7 +448,7 @@ export default function HomeScreen({ navigation }) {
           texto: p.nome,
           descricao: isNeg
             ? `Margem ${formatPercent(p.margem)}. Preço não cobre custos + despesas. Aumente o preço ou reduza custos.`
-            : `Margem ${formatPercent(p.margem)}. Abaixo do ideal (10%). Considere ajustar o preço.`,
+            : `Margem ${formatPercent(p.margem)}. Abaixo da sua meta (${metaTxt}). Considere ajustar o preço.`,
           produtoId: p.id,
         });
       });
@@ -437,7 +481,7 @@ export default function HomeScreen({ navigation }) {
           const marg = (p.preco_venda - custoU - p.preco_venda * dfPerc - p.preco_venda * totalVar) / p.preco_venda;
           if (marg > bestMargem) { bestMargem = marg; bestProd = p; }
           if (marg < worstMargem) { worstMargem = marg; worstProd = p; }
-          if (marg >= 0.15) healthyCount++;
+          if (!isMargemBaixa(marg, margemMeta)) healthyCount++;
         }
 
         // Priority: 1 = critical (color coral/red, push for action), 2 = warning, 3 = positive/info
@@ -445,32 +489,28 @@ export default function HomeScreen({ navigation }) {
         // O "como calculo" vai pro `hint` (tooltip no card), não pro texto.
         const hintMargem = { title: 'Como calculamos', text: 'Sobra por venda = preço menos ingredientes, embalagem, custos do mês e taxas por venda. É a margem real, não a de balcão.' };
         if (worstProd && worstMargem < 0) {
-          insights.push({ priority: 1, icon: 'alert-triangle', color: colors.error, title: 'Você paga pra vender', text: `${worstProd.nome} · prejuízo de ${formatPercent(Math.abs(worstMargem))} por venda`, hint: hintMargem, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ajustar preço' } });
-        } else if (worstProd && worstMargem < 0.10) {
-          insights.push({ priority: 1, icon: 'alert-triangle', color: colors.coral, title: 'Sobra quase nada', text: `${worstProd.nome} · sobra só ${formatPercent(worstMargem)} por venda`, hint: hintMargem, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ajustar preço' } });
-        } else if (worstProd && worstMargem < 0.15) {
-          insights.push({ priority: 2, icon: 'alert-triangle', color: colors.coral, title: 'Sobra pouco', text: `${worstProd.nome} · sobra ${formatPercent(worstMargem)}, ideal é mais de 15%`, hint: hintMargem, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ver produto' } });
+          insights.push({ key: 'pior_produto', priority: 1, icon: 'alert-triangle', color: colors.error, title: 'Você paga pra vender', text: `${worstProd.nome} · prejuízo de ${formatPercent(Math.abs(worstMargem))} por venda`, hint: hintMargem, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ajustar preço' } });
+        } else if (worstProd && classificarMargem(worstMargem, margemMeta) === 'abaixo') {
+          insights.push({ key: 'pior_produto', priority: 1, icon: 'alert-triangle', color: colors.coral, title: 'Sobra quase nada', text: `${worstProd.nome} · sobra só ${formatPercent(worstMargem)} por venda`, hint: hintMargem, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ajustar preço' } });
+        } else if (worstProd && isMargemBaixa(worstMargem, margemMeta)) {
+          insights.push({ key: 'pior_produto', priority: 2, icon: 'alert-triangle', color: colors.coral, title: 'Sobra pouco', text: `${worstProd.nome} · sobra ${formatPercent(worstMargem)}, sua meta é ${metaTxt}`, hint: hintMargem, action: { tab: 'ProdutoFormHome', id: worstProd.id, label: 'Ver produto' } });
         }
         // Audit P1 (Fase 2 - Fix #5): TODO insight precisa de action navegável.
-        if (bestProd) insights.push({ priority: 3, icon: 'award', color: colors.success, title: 'Produto campeão', text: `${bestProd.nome} · sobra ${formatPercent(bestMargem)} por venda`, hint: hintMargem, action: { tab: 'ProdutoFormHome', id: bestProd.id, label: 'Ver produto' } });
-        insights.push({ priority: 3, icon: 'pie-chart', color: colors.accent, title: 'Carteira saudável', text: `${healthyCount} de ${prodsComPreco} produtos com sobra acima de 15%`, action: { tab: 'Produtos', label: 'Ver produtos' } });
+        if (bestProd) insights.push({ key: 'campeao', priority: 3, icon: 'award', color: colors.success, title: 'Produto campeão', text: `${bestProd.nome} · sobra ${formatPercent(bestMargem)} por venda`, hint: hintMargem, action: { tab: 'ProdutoFormHome', id: bestProd.id, label: 'Ver produto' } });
+        insights.push({ key: 'carteira', priority: 3, icon: 'pie-chart', color: colors.accent, title: 'Carteira saudável', text: `${healthyCount} de ${prodsComPreco} produtos com sobra de ${metaTxt} ou mais`, action: { tab: 'Produtos', label: 'Ver produtos' } });
       }
       if (produtosSemPreco.length > 0) {
         const nSem = produtosSemPreco.length;
-        insights.push({ priority: 1, icon: 'tag', color: colors.warning, title: nSem === 1 ? '1 produto sem preço' : `${nSem} produtos sem preço`, text: 'Defina o preço pra ver quanto sobra por venda', action: { tab: 'Produtos', label: 'Definir preços' } });
+        insights.push({ key: 'sem_preco', priority: 1, icon: 'tag', color: colors.warning, title: nSem === 1 ? '1 produto sem preço' : `${nSem} produtos sem preço`, text: 'Defina o preço pra ver quanto sobra por venda', action: { tab: 'Produtos', label: 'Definir preços' } });
       }
-      if (pontoEquilibrio > 0 && fatMedio > 0 && fatMedio < pontoEquilibrio) {
-        insights.push({ priority: 1, icon: 'target', color: colors.coral, title: 'Faturamento abaixo do mínimo', text: `Faltam ${formatCurrency(pontoEquilibrio - fatMedio)} por mês pra pagar as contas`, hint: { title: 'Mínimo pra pagar as contas', text: `Você precisa faturar ${formatCurrency(pontoEquilibrio / 30)} por dia. Conta: custos do mês divididos pelo que sobra de cada venda depois dos ingredientes e taxas.` }, action: { tab: 'Financeiro', label: 'Abrir financeiro' } });
-      } else if (pontoEquilibrio > 0) {
-        insights.push({ priority: 3, icon: 'target', color: colors.purple, title: 'Mínimo pra pagar as contas', text: `${formatCurrency(pontoEquilibrio / 30)} por dia`, hint: { title: 'Mínimo pra pagar as contas', text: 'Faturamento mínimo pra cobrir os custos do mês. Conta: custos do mês divididos pelo que sobra de cada venda depois dos ingredientes e taxas.' }, action: { tab: 'Financeiro', label: 'Ver financeiro' } });
+      // Sem produto com preço o CMV fica de fora e o "mínimo" sai baixo demais.
+      if (prodsComPreco > 0 && pontoEquilibrio > 0 && fatMedio > 0 && fatMedio < pontoEquilibrio) {
+        insights.push({ key: 'minimo', priority: 1, icon: 'target', color: colors.coral, title: 'Faturamento abaixo do mínimo', text: `Faltam ${formatCurrency(pontoEquilibrio - fatMedio)} por mês pra pagar as contas`, hint: { title: 'Mínimo pra pagar as contas', text: `Você precisa faturar ${formatCurrency(pontoEquilibrio / 30)} por dia. Conta: custos do mês divididos pelo que sobra de cada venda depois dos ingredientes e taxas.` }, action: { tab: 'Financeiro', label: 'Abrir financeiro' } });
+      } else if (prodsComPreco > 0 && pontoEquilibrio > 0) {
+        insights.push({ key: 'minimo', priority: 3, icon: 'target', color: colors.purple, title: 'Mínimo pra pagar as contas', text: `${formatCurrency(pontoEquilibrio / 30)} por dia`, hint: { title: 'Mínimo pra pagar as contas', text: 'Faturamento mínimo pra cobrir os custos do mês. Conta: custos do mês divididos pelo que sobra de cada venda depois dos ingredientes e taxas.' }, action: { tab: 'Financeiro', label: 'Ver financeiro' } });
       }
-      if (cmvPercent > 0.35) {
-        insights.push({ priority: 2, icon: 'trending-up', color: colors.coral, title: 'Ingredientes pesando no preço', text: `Custo em ${formatPercent(cmvPercent)} · setor fica entre 30% e 35%`, action: { tab: 'Insumos', label: 'Revisar ingredientes' } });
-      }
-
-      // Sort by priority (1 = most critical first)
-      insights.sort((a, b) => (a.priority || 3) - (b.priority || 3));
-      const featuredInsight = insights[0] || null;
+      // "Ingredientes pesando no preço" é montado no render, a partir da MESMA
+      // cor do card de CMV (meta editável no card; ver painelSaude.js).
 
       // APP-43 — busca volumes por canal
       let vendasMesBalcao = 0, vendasMesDelivery = 0;
@@ -479,7 +519,8 @@ export default function HomeScreen({ navigation }) {
         vendasMesBalcao = Number(cfgRow?.vendas_mes_balcao) || 0;
         vendasMesDelivery = Number(cfgRow?.vendas_mes_delivery) || 0;
       } catch (_) { /* coluna pode não existir em build antigo */ }
-      setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, sobraSoFixas, produtosMargBaixa: uniqueProds, produtosSemPreco, primeiroSemPreco, cmvPercent, pontoEquilibrio, fatMedio, insights, featuredInsight, vendasMesBalcao, vendasMesDelivery });
+      setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, sobraSoFixas, produtosMargBaixa: uniqueProds, produtosSemPreco, primeiroSemPreco, prodsComPreco, margemMeta, cmvPercent, pontoEquilibrio, fatMedio, insights, vendasMesBalcao, vendasMesDelivery });
+      setMargemMetaValue(String(Math.round(margemMeta * 100)));
       setAlertas(pendencias);
     } catch (e) {
       // Antes: catch silencioso → usuário via tudo zerado sem entender por quê.
@@ -543,25 +584,32 @@ export default function HomeScreen({ navigation }) {
   // nova: nenhum estado de "comece aqui" é mostrado enquanto houver loadError.
   const dadosOk = !loading && !loadError;
   const mostrarComoComecar = (d.totalProdutos === 0 || d.totalInsumos === 0) && dadosOk;
-  // UX walkthrough: o insight em destaque (banner) NÃO repete em "Análises Rápidas"
-  // ("Produto campeão" aparecia duas vezes na mesma tela).
-  const featuredShown = !!(d.featuredInsight && !pendente && !baseIncompleta);
-  const insightsLista = featuredShown
-    ? (d.insights || []).filter(i => i !== d.featuredInsight)
-    : (d.insights || []);
+  // Saúde da Precificação: cards, veredito e insights leem as MESMAS cores
+  // (src/utils/painelSaude.js). Antes dava "Operação saudável" com o CMV vermelho.
+  const cmvParsed = parseFloat(cmvMetaValue);
+  const cmvMeta = Number.isFinite(cmvParsed) && cmvParsed > 0 ? cmvParsed / 100 : CMV_META_PADRAO;
+  const ind = avaliarIndicadores({
+    pendente: !!pendente, prodsComPreco: d.prodsComPreco, custoComPreco: d.custoTotal,
+    cmvPercent: d.cmvPercent, cmvMeta, margemMedia: d.margemMedia, margemMeta: d.margemMeta,
+    sobraMes: d.resultadoFinanceiro, fatMedio: d.fatMedio, pontoEquilibrio: d.pontoEquilibrio,
+  });
+  const alertaIndicador = indicadorEmAlerta(ind);
 
-  // Status
-  let StatusIcon, statusColor, statusText, statusBg, statusOnPress;
+  // Status (o que aparece aqui não se repete como insight logo abaixo)
+  let StatusIcon, statusColor, statusText, statusBg, statusOnPress, statusKey;
   if (financeiroNaFrente) {
+    statusKey = 'financeiro';
     StatusIcon = () => <Feather name="settings" size={20} color="#fff" />;
     statusColor = colors.coral; statusText = 'Configuração pendente'; statusBg = colors.coral;
     statusOnPress = () => nav('Financeiro');
   } else if (baseIncompleta) {
+    statusKey = 'base';
     StatusIcon = () => <Feather name="clipboard" size={20} color="#fff" />;
     statusColor = colors.yellow; statusText = 'Base incompleta'; statusBg = colors.yellow;
     // Leva pro que realmente falta: só produtos faltando → Produtos.
     statusOnPress = () => nav(d.totalInsumos === 0 ? 'Insumos' : 'Produtos');
   } else if (d.produtosMargBaixa.length > 0) {
+    statusKey = 'margem_baixa';
     StatusIcon = () => <Feather name="alert-triangle" size={20} color="#fff" />;
     statusColor = colors.coral;
     statusText = `${d.produtosMargBaixa.length} produto${d.produtosMargBaixa.length > 1 ? 's' : ''} com margem baixa`;
@@ -569,6 +617,7 @@ export default function HomeScreen({ navigation }) {
     // Navigate to dedicated MargemBaixa screen within HomeStack
     statusOnPress = () => navToMargemBaixa();
   } else if (d.produtosSemPreco.length > 0) {
+    statusKey = 'sem_preco';
     // AUDITORIA QA: operação não é "saudável" enquanto houver produtos sem preço
     // (não dá pra saber a margem deles). Antes caía direto no else "saudável".
     StatusIcon = () => <Feather name="tag" size={20} color="#fff" />;
@@ -576,11 +625,43 @@ export default function HomeScreen({ navigation }) {
     statusText = `${d.produtosSemPreco.length} produto${d.produtosSemPreco.length > 1 ? 's' : ''} sem preço`;
     statusBg = colors.yellow;
     statusOnPress = () => nav('Produtos');
+  } else if (alertaIndicador) {
+    // Algum card de "Saúde da Precificação" está vermelho: nunca "saudável".
+    const ALERTAS = {
+      sobra: { texto: 'Receita abaixo dos custos', tab: 'Financeiro', icon: 'trending-down' },
+      minimo: { texto: 'Faturamento abaixo do mínimo', tab: 'Financeiro', icon: 'target' },
+      cmv: { texto: 'Ingredientes pesando no preço', tab: 'Insumos', icon: 'trending-up' },
+      margem: { texto: 'Sobra pouco por venda', tab: 'MargemBaixa', icon: 'alert-triangle' },
+    };
+    const a = ALERTAS[alertaIndicador];
+    statusKey = alertaIndicador;
+    StatusIcon = () => <Feather name={a.icon} size={20} color="#fff" />;
+    statusColor = colors.coral; statusText = a.texto; statusBg = colors.coral;
+    statusOnPress = () => nav(a.tab);
   } else {
+    statusKey = 'ok';
     StatusIcon = () => <Feather name="check-circle" size={20} color="#fff" />;
     statusColor = colors.success; statusText = 'Operação saudável'; statusBg = colors.success;
     statusOnPress = null;
   }
+
+  // Insights: o de CMV nasce da mesma cor do card (meta editável no card).
+  const cmvInsight = ind.cmv === 'red'
+    ? { key: 'cmv', priority: 2, icon: 'trending-up', color: colors.coral, title: 'Ingredientes pesando no preço', text: `Custo em ${formatPercent(d.cmvPercent)} · sua meta é até ${pctMeta(cmvMeta)}`, action: { tab: 'Insumos', label: 'Revisar ingredientes' } }
+    : null;
+  // Com o Financeiro pendente as análises ficam travadas ("Análises
+  // indisponíveis"): nada de "Análises Rápidas" calculadas sem os custos.
+  // Sobra negativa e faturamento abaixo do mínimo são o mesmo recado.
+  const chavesDoStatus = statusKey === 'sobra' ? ['sobra', 'minimo'] : [statusKey];
+  const insightsTodos = pendente ? [] : [...(d.insights || []), cmvInsight]
+    .filter(Boolean)
+    .filter(i => !chavesDoStatus.includes(i.key)) // "5 produtos sem preço" aparecia 2x
+    .sort((a, b) => (a.priority || 3) - (b.priority || 3));
+  const featuredInsight = insightsTodos[0] || null;
+  // UX walkthrough: o insight em destaque (banner) NÃO repete em "Análises Rápidas"
+  // ("Produto campeão" aparecia duas vezes na mesma tela).
+  const featuredShown = !!(featuredInsight && !pendente && !baseIncompleta);
+  const insightsLista = featuredShown ? insightsTodos.slice(1) : insightsTodos;
 
   // CTA
   let ctaLabel = null, ctaAction = null;
@@ -762,7 +843,10 @@ export default function HomeScreen({ navigation }) {
           quando os 4 passos estão completos, ou se o usuário ocultar.
           Reusa os dados já carregados por loadAll (zero queries extras).
           Não renderiza junto com "Como começar a precificar" (item 5 da auditoria). */}
-      {dadosOk && !mostrarComoComecar && (
+      {/* Financeiro pendente: o card de status abaixo é o ÚNICO aviso (antes
+          checklist, "Configuração do app", status e a faixa global empilhavam
+          4 avisos com contagens diferentes). */}
+      {dadosOk && !mostrarComoComecar && !financeiroNaFrente && (
         <OnboardingChecklist
           financeiroCompleto={!!(finStatus && finStatus.completo)}
           totalInsumos={d.totalInsumos}
@@ -839,7 +923,7 @@ export default function HomeScreen({ navigation }) {
 
       {/* Setup progress banner */}
       {/* Não empilha com o checklist "Como começar" (mesma informação). */}
-      {emSetup && setupStatus && dadosOk && !mostrarComoComecar && (
+      {emSetup && setupStatus && dadosOk && !mostrarComoComecar && !financeiroNaFrente && (
         <TouchableOpacity style={styles.setupBanner} activeOpacity={0.7} onPress={() => nav('Onboarding')}>
           <View style={styles.setupBannerTop}>
             <View style={styles.setupBannerLeft}>
@@ -870,7 +954,8 @@ export default function HomeScreen({ navigation }) {
         </TouchableOpacity>
       )}
 
-      {/* Status card */}
+      {/* Status card — só com dados carregados (nada de card velho piscando). */}
+      {dadosOk && (
       <TouchableOpacity
         style={[styles.statusCard, isMobile && styles.statusCardMobile]}
         activeOpacity={statusOnPress ? 0.7 : 1}
@@ -882,8 +967,9 @@ export default function HomeScreen({ navigation }) {
           </View>
           <View style={styles.statusBody}>
             <Text style={styles.statusText}>{statusText}</Text>
+            {/* Mesmo texto do aviso global ("Falta: ..."), da mesma fonte. */}
             {financeiroNaFrente && finStatus && (
-              <Text style={styles.statusDetail}>{finStatus.concluidas} de {finStatus.total} etapas do Financeiro</Text>
+              <Text style={styles.statusDetail}>{textoPendenciaFinanceiro(finStatus)}</Text>
             )}
             {/* UX walkthrough: copy reflete SÓ o que falta (antes dizia "ingredientes
                 e produtos" mesmo com 94 ingredientes cadastrados). */}
@@ -896,8 +982,8 @@ export default function HomeScreen({ navigation }) {
                     : 'Monte seu primeiro produto'}
               </Text>
             )}
-            {!financeiroNaFrente && !baseIncompleta && d.produtosMargBaixa.length > 0 && (
-              <Text style={styles.statusDetail}>Ver produtos afetados</Text>
+            {statusKey === 'margem_baixa' && (
+              <Text style={styles.statusDetail}>Abaixo da sua meta de {pctMeta(d.margemMeta)} · ver produtos</Text>
             )}
           </View>
           {statusOnPress && <Feather name="chevron-right" size={18} color={colors.disabled} />}
@@ -914,6 +1000,7 @@ export default function HomeScreen({ navigation }) {
           </TouchableOpacity>
         )}
       </TouchableOpacity>
+      )}
 
       {/* Featured Insight Banner (audit P1-12) — destaca o insight mais acionável
           do momento (margem negativa, produtos sem preço, CMV alto, etc.).
@@ -921,29 +1008,29 @@ export default function HomeScreen({ navigation }) {
           antes de explorar os KPIs e a base de cadastro. */}
       {featuredShown && (
         <TouchableOpacity
-          style={[styles.featuredInsight, { borderLeftColor: d.featuredInsight.color, backgroundColor: d.featuredInsight.color + '0C' }, isMobile && styles.featuredInsightMobile]}
-          activeOpacity={d.featuredInsight.action ? 0.7 : 1}
-          accessibilityRole={d.featuredInsight.action ? 'button' : undefined}
-          accessibilityLabel={`${d.featuredInsight.title}. ${d.featuredInsight.text}`}
+          style={[styles.featuredInsight, { borderLeftColor: featuredInsight.color, backgroundColor: featuredInsight.color + '0C' }, isMobile && styles.featuredInsightMobile]}
+          activeOpacity={featuredInsight.action ? 0.7 : 1}
+          accessibilityRole={featuredInsight.action ? 'button' : undefined}
+          accessibilityLabel={`${featuredInsight.title}. ${featuredInsight.text}`}
           onPress={() => {
-            const a = d.featuredInsight.action;
+            const a = featuredInsight.action;
             if (!a) return;
             if (a.id) navToProduto(a.id);
             else nav(a.tab);
           }}
         >
-          <View style={[styles.featuredInsightIcon, { backgroundColor: d.featuredInsight.color + '22' }]}>
-            <Feather name={d.featuredInsight.icon} size={18} color={d.featuredInsight.color} />
+          <View style={[styles.featuredInsightIcon, { backgroundColor: featuredInsight.color + '22' }]}>
+            <Feather name={featuredInsight.icon} size={18} color={featuredInsight.color} />
           </View>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={styles.featuredInsightTitle}>{d.featuredInsight.title}</Text>
-              {d.featuredInsight.hint && <InfoTooltip {...d.featuredInsight.hint} />}
+              <Text style={styles.featuredInsightTitle}>{featuredInsight.title}</Text>
+              {featuredInsight.hint && <InfoTooltip {...featuredInsight.hint} />}
             </View>
-            <Text style={styles.featuredInsightText}>{d.featuredInsight.text}</Text>
-            {d.featuredInsight.action && (
-              <Text style={[styles.featuredInsightCta, { color: d.featuredInsight.color }]}>
-                {d.featuredInsight.action.label} →
+            <Text style={styles.featuredInsightText}>{featuredInsight.text}</Text>
+            {featuredInsight.action && (
+              <Text style={[styles.featuredInsightCta, { color: featuredInsight.color }]}>
+                {featuredInsight.action.label} →
               </Text>
             )}
           </View>
@@ -961,42 +1048,43 @@ export default function HomeScreen({ navigation }) {
       </View>
       <View style={[styles.kpiRow, isDesktop && styles.kpiRowDesktop, isMobile && styles.kpiRowMobile]}>
         {(() => {
-          // Sessão 28.44 — bug #9: usa Number.isFinite ao invés de `||` pra
-          // distinguir "valor 0 válido" (user desligou o benchmark) de "input
-          // inválido" (string vazia, NaN, etc). Antes: meta=0 caía pra default.
-          const cmvParsed = parseFloat(cmvMetaValue);
-          const cmvTarget = Number.isFinite(cmvParsed) ? cmvParsed / 100 : 0.35;
-          const cmvBench = d.cmvPercent < cmvTarget ? 'green' : d.cmvPercent <= (cmvTarget + 0.05) ? 'yellow' : 'red';
-          const resBench = d.resultadoFinanceiro > 0
-            ? (d.fatMedio > 0 && d.resultadoFinanceiro / d.fatMedio < 0.10 ? 'yellow' : 'green')
-            : 'red';
-          const margParsed = parseFloat(margemMetaValue);
-          const margTarget = Number.isFinite(margParsed) ? margParsed / 100 : 0.15;
-          const margBench = d.margemMedia >= margTarget ? 'green' : d.margemMedia >= (margTarget - 0.10) ? 'yellow' : 'red';
+          // Cores dos cards = `ind` (painelSaude.js), as mesmas do veredito acima.
           const benchColors = { green: '#22C55E', yellow: '#F59E0B', red: '#EF4444' };
-          // UX walkthrough: sem produto cadastrado, CMV e "sobra por venda" não
-          // existem — "0,00%" com barra verde/vermelha enganava. Mostra "—" sem barra.
-          const semProdutos = d.totalProdutos === 0;
-          const SEM_PRODUTOS_META = 'Cadastre um produto pra ver';
+          // UX walkthrough: sem produto COM PREÇO, CMV, sobra por venda e mínimo
+          // não existem: "0,00%" e "276% acima" (mínimo sem os ingredientes)
+          // enganavam. Mostra "--" sem barra e diz o que falta.
+          const semPreco = !(d.prodsComPreco > 0);
+          const semCusto = !semPreco && !(d.custoTotal > 0);
+          const SEM_PRECO_META = d.totalProdutos === 0 ? 'Cadastre um produto pra ver' : 'Coloque o preço dos produtos';
+          const PENDENTE_META = 'Complete o Financeiro';
+          const metaMargemTxt = pctMeta(d.margemMeta);
+          const cmvMetaTxt = pctMeta(cmvMeta);
           return [
           // UX audit 09/09 (Fase B, item 10): rótulos em português de balcão;
           // tooltip fica só onde há fórmula. `caption` = termo técnico pequeno.
-          { label: 'Custo dos ingredientes', caption: '(CMV)', value: semProdutos ? '—' : formatPercent(d.cmvPercent), icon: 'tag', color: semProdutos ? colors.disabled : colors.primary,
-            tip: { title: 'Custo dos ingredientes (CMV)', text: 'Quanto do preço de venda vai pra ingredientes e embalagem. Toque no card pra mudar a meta.', examples: ['Regra 30-30-30-10: ingredientes 30%, mão de obra 30%, despesas 30%, lucro 10%', 'Restaurantes: 28-35%', 'Pizzarias: 25-32%', 'Confeitarias: 20-30%', 'Fast food: 25-35%', `Sua meta: < ${cmvMetaValue}%`] },
-            meta: semProdutos ? SEM_PRODUTOS_META : `Atual: ${formatPercent(d.cmvPercent)} · Meta: < ${cmvMetaValue}%`, bench: (pendente || semProdutos) ? null : cmvBench, onPress: () => setShowCmvMeta(true) },
+          { label: 'Custo dos ingredientes', caption: '(CMV)', value: (semPreco || semCusto) ? '--' : formatPercent(d.cmvPercent), icon: 'tag', color: (semPreco || semCusto) ? colors.disabled : colors.primary,
+            tip: { title: 'Custo dos ingredientes (CMV)', text: 'Quanto do preço de venda vai pra ingredientes e embalagem. Toque no card pra mudar a meta.', examples: ['Regra 30-30-30-10: ingredientes 30%, mão de obra 30%, despesas 30%, lucro 10%', 'Restaurantes: 28-35%', 'Pizzarias: 25-32%', 'Confeitarias: 20-30%', 'Fast food: 25-35%', `Sua meta: até ${cmvMetaTxt}`] },
+            meta: semPreco ? SEM_PRECO_META : semCusto ? 'Ingredientes sem preço' : `Atual: ${formatPercent(d.cmvPercent)} · Meta: até ${cmvMetaTxt}`, bench: pendente ? null : ind.cmv, onPress: () => setShowCmvMeta(true) },
           { label: 'Sobra do mês', value: pendente ? '--' : formatCurrency(d.resultadoFinanceiro), icon: 'dollar-sign', color: pendente ? colors.disabled : (d.resultadoFinanceiro >= 0 ? colors.success : colors.error),
             // Audit 09/09 [B10]: conta agora desconta CMV e taxas por venda — coerente com "Mínimo pra pagar as contas".
             tip: { title: 'Sobra do mês', text: 'Faturamento médio do mês menos os custos do mês, os ingredientes e as taxas por venda. Pra mudar, ajuste faturamento ou custos no Financeiro.', examples: ['Conta: faturamento − custos do mês − faturamento × (taxas por venda % + ingredientes %)', 'Sem produtos com preço: só desconta os custos do mês', 'Positivo: as vendas pagam todas as contas', 'Negativo: falta dinheiro depois de pagar tudo'] },
-            meta: d.sobraSoFixas ? 'Sem produtos: só custos fixos' : (d.resultadoFinanceiro >= 0 ? 'Receita cobre custos' : 'Receita abaixo dos custos'), bench: pendente ? null : resBench },
-          { label: 'Mínimo pra pagar as contas', value: pendente ? '--' : formatCurrency(d.pontoEquilibrio), icon: 'target', color: pendente ? colors.disabled : colors.primary,
+            meta: pendente ? PENDENTE_META
+              : d.sobraSoFixas ? (d.totalProdutos > 0 ? 'Produtos sem preço: só custos fixos' : 'Sem produtos: só custos fixos')
+              : (d.resultadoFinanceiro >= 0 ? 'Receita cobre custos' : 'Receita abaixo dos custos'),
+            bench: ind.sobra },
+          { label: 'Mínimo pra pagar as contas', value: (pendente || semPreco) ? '--' : formatCurrency(d.pontoEquilibrio), icon: 'target', color: (pendente || semPreco) ? colors.disabled : colors.primary,
             tip: { title: 'Mínimo pra pagar as contas', text: 'Quanto você precisa faturar no mês só pra cobrir os custos. Pra mudar, ajuste custos e meta de ingredientes no Financeiro.', examples: ['Conta: custos do mês divididos pelo que sobra de cada venda depois dos ingredientes e taxas', 'Compare com seu faturamento médio'] },
-            meta: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0
-              ? (d.fatMedio >= d.pontoEquilibrio ? `Faturamento ${formatPercent(d.fatMedio / d.pontoEquilibrio - 1)} acima` : `Falta ${formatCurrency(d.pontoEquilibrio - d.fatMedio)}`)
-              : 'Configure o financeiro', bench: !pendente && d.fatMedio > 0 && d.pontoEquilibrio > 0
-              ? (d.fatMedio >= d.pontoEquilibrio * 1.2 ? 'green' : d.fatMedio >= d.pontoEquilibrio ? 'yellow' : 'red') : null },
-          { label: 'Quanto sobra por venda', value: pendente ? '--' : semProdutos ? '—' : formatPercent(d.margemMedia), icon: 'trending-up', color: (pendente || semProdutos) ? colors.disabled : (d.margemMedia >= parseFloat(margemMetaValue)/100 ? colors.success : colors.coral),
-            tip: { title: 'Quanto sobra por venda', text: 'Média do que sobra de cada venda depois de pagar ingredientes, custos do mês e taxas por venda. Toque no card pra mudar a meta.', examples: ['Conta: preço menos ingredientes, custos do mês e taxas, dividido pelo preço', 'Acima de 15%: saudável', '5-15%: atenção', `Meta atual: > ${margemMetaValue}%`] },
-            meta: semProdutos ? SEM_PRODUTOS_META : d.margemMedia >= parseFloat(margemMetaValue)/100 ? `Meta: > ${margemMetaValue}%  ✓` : `Meta: > ${margemMetaValue}%`, bench: (pendente || semProdutos) ? null : margBench, onPress: () => setShowMargemMeta(true) },
+            // Antes: "Faturamento 276,40% acima" (faturamento ÷ mínimo − 1). Agora
+            // a diferença em reais, simétrica ao "Falta R$ …".
+            meta: pendente ? PENDENTE_META
+              : semPreco ? SEM_PRECO_META
+              : d.fatMedio > 0 && d.pontoEquilibrio > 0
+                ? (d.fatMedio >= d.pontoEquilibrio ? `Folga de ${formatCurrency(d.fatMedio - d.pontoEquilibrio)}` : `Falta ${formatCurrency(d.pontoEquilibrio - d.fatMedio)}`)
+                : 'Configure o financeiro',
+            bench: ind.minimo },
+          { label: 'Quanto sobra por venda', value: (pendente || semPreco) ? '--' : formatPercent(d.margemMedia), icon: 'trending-up', color: (pendente || semPreco) ? colors.disabled : (ind.margem === 'green' ? colors.success : colors.coral),
+            tip: { title: 'Quanto sobra por venda', text: 'Média do que sobra de cada venda depois de pagar ingredientes, custos do mês e taxas por venda. A meta é a margem de lucro do Financeiro; toque no card pra mudar.', examples: ['Conta: preço menos ingredientes, custos do mês e taxas, dividido pelo preço', `A partir de ${metaMargemTxt}: na meta`, `Até 10 pontos abaixo: atenção`, `Meta atual: ${metaMargemTxt}`] },
+            meta: pendente ? PENDENTE_META : semPreco ? SEM_PRECO_META : ind.margem === 'green' ? `Meta: ${metaMargemTxt} ✓` : `Meta: ${metaMargemTxt}`, bench: ind.margem, onPress: () => setShowMargemMeta(true) },
         ].map(k => {
           const Wrapper = k.onPress ? TouchableOpacity : View;
           // a11y: cards tocáveis viram "button" com rótulo completo (label + valor + meta).
@@ -1257,7 +1345,7 @@ export default function HomeScreen({ navigation }) {
             ))}
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.sm }}>
-            <TouchableOpacity onPress={() => setShowMargemMeta(false)} style={{ paddingVertical: 8, paddingHorizontal: 24, backgroundColor: colors.background, borderRadius: borderRadius.md }}>
+            <TouchableOpacity onPress={() => { setMargemMetaValue(String(Math.round(d.margemMeta * 100))); setShowMargemMeta(false); }} style={{ paddingVertical: 8, paddingHorizontal: 24, backgroundColor: colors.background, borderRadius: borderRadius.md }}>
               <Text style={{ color: colors.textSecondary, fontFamily: fontFamily.semiBold, fontSize: 14 }}>Fechar</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={async () => {
