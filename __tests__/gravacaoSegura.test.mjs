@@ -1,6 +1,21 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { criarSerializador, excluirPaiPrimeiro } from '../src/utils/gravacaoSegura.js';
+import {
+  criarSerializador, excluirPaiPrimeiro, piorErroCarga, podeGravarRegistro, podeGravarComposicao,
+} from '../src/utils/gravacaoSegura.js';
+
+test('erro de carga: registro bloqueia tudo, composição bloqueia só a composição', () => {
+  assert.equal(piorErroCarga(null, 'composicao'), 'composicao');
+  assert.equal(piorErroCarga('composicao', 'registro'), 'registro');
+  assert.equal(piorErroCarga('registro', 'composicao'), 'registro');
+  assert.equal(piorErroCarga(null, null), null);
+  assert.equal(podeGravarRegistro(null), true);
+  assert.equal(podeGravarRegistro('composicao'), true);
+  assert.equal(podeGravarRegistro('registro'), false);
+  assert.equal(podeGravarComposicao(null), true);
+  assert.equal(podeGravarComposicao('composicao'), false);
+  assert.equal(podeGravarComposicao('registro'), false);
+});
 
 const tick = () => new Promise(r => setTimeout(r, 0));
 

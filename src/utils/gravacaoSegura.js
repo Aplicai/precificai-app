@@ -113,3 +113,25 @@ export async function excluirPaiPrimeiro(db, pai, filhos = []) {
     try { await db.runAsync(`DELETE FROM ${f.tabela} WHERE ${f.coluna} = ?`, [pai.id]); } catch (_) {}
   }
 }
+
+/**
+ * Erro na CARGA de um formulário de edição. O wrapper devolve `[]`/null quando
+ * a leitura falha; a tela mostrava a composição vazia e o próximo salvar
+ * apagava a de verdade. Níveis:
+ *  - 'registro'   → a linha principal (produto/receita) não veio: nada grava;
+ *  - 'composicao' → só a composição falhou: a linha principal pode ser salva
+ *                   (autosave de nome/preço), a composição NÃO é regravada.
+ */
+const ORDEM_ERRO_CARGA = { composicao: 1, registro: 2 };
+
+export function piorErroCarga(atual, novo) {
+  return (ORDEM_ERRO_CARGA[novo] || 0) > (ORDEM_ERRO_CARGA[atual] || 0) ? novo : (atual || null);
+}
+
+export function podeGravarRegistro(erroCarga) {
+  return erroCarga !== 'registro';
+}
+
+export function podeGravarComposicao(erroCarga) {
+  return !erroCarga;
+}

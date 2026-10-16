@@ -3,7 +3,8 @@ import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Pressable, Alert,
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import { rowsOrThrow } from '../database/dbResult';
-import { serializarSalvamento } from '../utils/gravacaoSegura';
+import { serializarSalvamento, piorErroCarga, podeGravarRegistro, podeGravarComposicao } from '../utils/gravacaoSegura';
+import CargaErroBanner from '../components/CargaErroBanner';
 import InputField from '../components/InputField';
 import Card from '../components/Card';
 import PickerSelect from '../components/PickerSelect';
@@ -314,6 +315,15 @@ export default function ProdutoFormScreen({ route, navigation }) {
   formRef.current = form;
   const allowExit = useRef(false);
   const pendingNavAction = useRef(null);
+  // Falha ao CARREGAR (null | 'composicao' | 'registro', ver utils/gravacaoSegura).
+  // Antes a falha virava composição vazia na tela e o "Salvar e Voltar" apagava
+  // a composição de verdade. Ref espelhada para autosave/salvar em closures.
+  const [erroCarga, setErroCarga] = useState(null);
+  const erroCargaRef = useRef(null);
+  function definirErroCarga(nivel) {
+    erroCargaRef.current = nivel;
+    setErroCarga(nivel);
+  }
   // Fix walkthrough #1 — foco automático (com texto selecionado via
   // selectTextOnFocus) no input de quantidade do item recém-adicionado.
   // Mapa de refs por chave `tipo-id` + chave do último item adicionado.
@@ -473,7 +483,18 @@ export default function ProdutoFormScreen({ route, navigation }) {
     setConfig({ despFixasPerc: dfPerc, despVarPerc: totalVar, lucroDesejado: lucro, markup: mk, margemSeguranca: cfg?.margem_seguranca || 0 });
   }
 
+  // O erro de carga só é trocado no FIM da carga: num "Tentar novamente", limpar
+  // antes liberaria um autosave pendente com o estado vazio de antes.
   async function loadProduto() {
+    const carga = { erro: null };
+    try {
+      await loadProdutoImpl(carga);
+    } finally {
+      definirErroCarga(carga.erro);
+    }
+  }
+
+  async function loadProdutoImpl(carga) {
     // BUGFIX (Sessão 24): toda a função embrulhada em try/catch.
     // Antes, se QUALQUER query falhasse (ex.: JOIN com materia_prima_id órfão,
     // tabela inexistente em build antigo, dado corrompido) o setLoaded(true) nunca
@@ -482,6 +503,9 @@ export default function ProdutoFormScreen({ route, navigation }) {
       const db = await getDatabase();
       const p = await db.getFirstAsync('SELECT * FROM produtos WHERE id = ?', [editId]);
       if (!p) {
+        // getFirstAsync devolve null tanto em erro quanto em "não existe": em
+        // ambos o form fica vazio e salvar sobrescreveria o produto → bloqueia.
+        carga.erro = piorErroCarga(carga.erro, 'registro');
         setLoaded(true);
         return;
       }
@@ -510,35 +534,40 @@ export default function ProdutoFormScreen({ route, navigation }) {
       setEmbalagensDelivery(embsDeliverySalvas.map(e => ({ id: e.id, quantidade: String(e.qtd).replace('.', ',') })));
       setEmbalagemDeliveryOrigem(embsDeliverySalvas.length > 0 ? 'manual' : 'padrao');
 
-      // Cada bloco de relacionamento isolado para que falha em um não derrube o resto
+      // Cada bloco de relacionamento isolado para que falha em um não derrube o resto.
+      // rowsOrThrow: falha de leitura NÃO é "sem itens" — marca erroCarga, que
+      // bloqueia regravar a composição (senão o salvar apagaria a verdadeira).
       try {
-        const ings = await db.getAllAsync(
+        const ings = rowsOrThrow(await db.getAllAsync(
           `SELECT pi.*, mp.nome as mp_nome, mp.marca as mp_marca, mp.preco_por_kg, mp.unidade_medida as mp_unidade FROM produto_ingredientes pi
-           JOIN materias_primas mp ON mp.id = pi.materia_prima_id WHERE pi.produto_id = ?`, [editId]);
+           JOIN materias_primas mp ON mp.id = pi.materia_prima_id WHERE pi.produto_id = ?`, [editId]));
         setIngredientes((ings || []).map(i => ({ materia_prima_id: i.materia_prima_id, mp_nome: i.mp_nome || i.nome, mp_marca: i.mp_marca || '', preco_por_kg: i.preco_por_kg, quantidade_utilizada: i.quantidade_utilizada, unidade: i.mp_unidade || i.unidade_medida || 'g' })));
       } catch (e) {
         if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.loadIngredientes]', e);
         setIngredientes([]);
+        carga.erro = piorErroCarga(carga.erro, 'composicao');
       }
 
       try {
-        const preps = await db.getAllAsync(
+        const preps = rowsOrThrow(await db.getAllAsync(
           `SELECT pp.*, pr.nome as pr_nome, pr.custo_por_kg, pr.unidade_medida as pr_unidade FROM produto_preparos pp
-           JOIN preparos pr ON pr.id = pp.preparo_id WHERE pp.produto_id = ?`, [editId]);
+           JOIN preparos pr ON pr.id = pp.preparo_id WHERE pp.produto_id = ?`, [editId]));
         setProdutoPreparos((preps || []).map(p => ({ preparo_id: p.preparo_id, pr_nome: p.pr_nome || p.nome, custo_por_kg: p.custo_por_kg, quantidade_utilizada: p.quantidade_utilizada, unidade: p.pr_unidade || p.unidade_medida || 'g' })));
       } catch (e) {
         if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.loadPreparos]', e);
         setProdutoPreparos([]);
+        carga.erro = piorErroCarga(carga.erro, 'composicao');
       }
 
       try {
-        const embs = await db.getAllAsync(
+        const embs = rowsOrThrow(await db.getAllAsync(
           `SELECT pe.*, em.nome as em_nome, em.preco_unitario, em.unidade_medida as em_unidade FROM produto_embalagens pe
-           JOIN embalagens em ON em.id = pe.embalagem_id WHERE pe.produto_id = ?`, [editId]);
+           JOIN embalagens em ON em.id = pe.embalagem_id WHERE pe.produto_id = ?`, [editId]));
         setProdutoEmbalagens((embs || []).map(e => ({ embalagem_id: e.embalagem_id, em_nome: e.em_nome || e.nome, preco_unitario: e.preco_unitario, quantidade_utilizada: e.quantidade_utilizada, unidade: e.em_unidade || 'un' })));
       } catch (e) {
         if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.loadEmbalagens]', e);
         setProdutoEmbalagens([]);
+        carga.erro = piorErroCarga(carga.erro, 'composicao');
       }
 
       // Load price history for product (use offset ID to avoid collision with insumos)
@@ -556,6 +585,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
     } catch (e) {
       if (typeof console !== 'undefined' && console.error) console.error('[ProdutoForm.loadProduto]', e);
       // Garantia absoluta: mesmo em erro, libera a tela para o usuário ver o estado vazio em vez de tela branca
+      // — mas bloqueia gravar (o estado vazio não é o produto de verdade).
+      carga.erro = piorErroCarga(carga.erro, 'registro');
       setLoaded(true);
     }
   }
@@ -851,12 +882,16 @@ export default function ProdutoFormScreen({ route, navigation }) {
   // tomaria o lugar do salvar agendado.
   async function autoSave() {
     if (savingRef.current) return;
+    // Produto não carregou: o form vazio sobrescreveria o produto. (Só a
+    // composição falhou → segue: o autosave grava apenas a linha de produtos.)
+    if (!podeGravarRegistro(erroCargaRef.current)) return;
     if (!formRef.current.nome.trim()) return; // não salva sem nome
     return serializarSalvamento(`produto:${editId}`, autoSaveImpl);
   }
 
   async function autoSaveImpl() {
     if (savingRef.current) return;
+    if (!podeGravarRegistro(erroCargaRef.current)) return;
     const f = formRef.current;
     if (!f.nome.trim()) return; // não salva sem nome
 
@@ -921,6 +956,15 @@ export default function ProdutoFormScreen({ route, navigation }) {
   }
 
   async function salvarImpl() {
+    // Composição (ou o produto) não carregou: a lista na tela está vazia por
+    // ERRO, não por escolha — regravar apagaria a composição verdadeira.
+    if (editId && !podeGravarComposicao(erroCargaRef.current)) {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+      return Alert.alert(
+        'Não dá pra salvar ainda',
+        'Não conseguimos carregar a ficha deste produto. Toque em "Tentar novamente" no topo da tela — nada foi apagado.'
+      );
+    }
     const errs = validateForm(form);
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
@@ -1124,6 +1168,10 @@ export default function ProdutoFormScreen({ route, navigation }) {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={[styles.content, isDesktop && { maxWidth: 960, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled">
+        <CargaErroBanner
+          mensagem={erroCarga ? 'Não conseguimos carregar a ficha deste produto. Salvar fica bloqueado até carregar — nada foi apagado.' : null}
+          onRetry={loadProduto}
+        />
         <View style={isDesktop ? styles.desktopRow : undefined}>
         <View style={isDesktop ? styles.desktopLeftCol : undefined}>
         {/* Bloco 1: Informações do Produto */}

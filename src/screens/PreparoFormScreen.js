@@ -3,7 +3,8 @@ import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Alert, Modal, Tex
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { rowsOrThrow } from '../database/dbResult';
-import { serializarSalvamento } from '../utils/gravacaoSegura';
+import { serializarSalvamento, piorErroCarga, podeGravarComposicao } from '../utils/gravacaoSegura';
+import CargaErroBanner from '../components/CargaErroBanner';
 import InputField from '../components/InputField';
 import Card from '../components/Card';
 import PickerSelect from '../components/PickerSelect';
@@ -102,6 +103,13 @@ export default function PreparoFormScreen({ route, navigation }) {
   const ingredientesRef = useRef(ingredientes);
   ingredientesRef.current = ingredientes;
   const allowExit = useRef(false);
+  // Falha ao carregar (null | 'composicao' | 'registro') — bloqueia o autosave.
+  const [erroCarga, setErroCarga] = useState(null);
+  const erroCargaRef = useRef(null);
+  function definirErroCarga(nivel) {
+    erroCargaRef.current = nivel;
+    setErroCarga(nivel);
+  }
 
   // Validação dos campos obrigatórios
   function validateForm(f) {
@@ -243,26 +251,49 @@ export default function PreparoFormScreen({ route, navigation }) {
     }
   }
 
+  // Devolve false se a leitura falhou (aí a lista vazia NÃO é a real).
   async function loadPreparoEmbalagens(id) {
-    if (!id) return;
+    if (!id) return true;
     try {
       const db = await getDatabase();
-      const rows = await db.getAllAsync(
+      const rows = rowsOrThrow(await db.getAllAsync(
         `SELECT pe.id, pe.embalagem_id, pe.quantidade_utilizada, e.nome, e.preco_unitario
          FROM preparo_embalagens pe LEFT JOIN embalagens e ON e.id = pe.embalagem_id
          WHERE pe.preparo_id = ?`, [id]
-      );
-      setPreparoEmbalagens(rows || []);
+      ));
+      setPreparoEmbalagens(rows);
+      return true;
     } catch (e) {
-      // migration ainda não rodada — apenas loga
       if (typeof console !== 'undefined') console.warn('[PreparoForm.loadPreparoEmbalagens]', e?.message || e);
       setPreparoEmbalagens([]);
+      return false;
     }
   }
 
+  // Falha ao CARREGAR: antes a composição vinha vazia e o autosave (que roda
+  // logo após a carga) regravava a receita base VAZIA — apagando a de verdade.
+  // Agora qualquer falha marca erroCarga, que bloqueia o autosave inteiro (o
+  // custo_total da linha deriva da composição, então nem ela pode gravar).
+  // O erro só é trocado no FIM da carga (ver ProdutoFormScreen.loadProduto).
   async function loadItem() {
+    const carga = { erro: null };
+    try {
+      await loadItemImpl(carga);
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.error) console.error('[PreparoForm.loadItem]', e);
+      carga.erro = piorErroCarga(carga.erro, 'registro');
+      setLoaded(true);
+    } finally {
+      definirErroCarga(carga.erro);
+    }
+  }
+
+  async function loadItemImpl(carga) {
     const db = await getDatabase();
     const item = await db.getFirstAsync('SELECT * FROM preparos WHERE id = ?', [editId]);
+    // getFirstAsync devolve null em erro E em "não existe" — nos dois o form
+    // fica vazio e gravar sobrescreveria a receita.
+    if (!item) carga.erro = piorErroCarga(carga.erro, 'registro');
     if (item) {
       setForm({ nome: item.nome, rendimento_total: String(item.rendimento_total || ''), unidade_medida: item.unidade_medida || 'g', categoria_id: item.categoria_id || null, modo_preparo: item.modo_preparo || '', observacoes: item.observacoes || '', validade_dias: String(item.validade_dias || ''), temp_congelado: item.temp_congelado || '', tempo_congelado: item.tempo_congelado || '', temp_refrigerado: item.temp_refrigerado || '', tempo_refrigerado: item.tempo_refrigerado || '', temp_ambiente: item.temp_ambiente || '', tempo_ambiente: item.tempo_ambiente || '' });
       if (item.modo_preparo || item.observacoes || item.validade_dias) setShowInfoAdicional(true);
@@ -270,22 +301,29 @@ export default function PreparoFormScreen({ route, navigation }) {
         `SELECT pi.*, mp.nome as mp_nome, mp.marca as mp_marca, mp.preco_por_kg, mp.unidade_medida as mp_unidade FROM preparo_ingredientes pi
          JOIN materias_primas mp ON mp.id = pi.materia_prima_id WHERE pi.preparo_id = ?`, [editId]
       );
-      setIngredientes(ings);
+      try {
+        setIngredientes(rowsOrThrow(ings));
+      } catch (e) {
+        if (typeof console !== 'undefined' && console.error) console.error('[PreparoForm.loadIngredientes]', e);
+        setIngredientes([]);
+        carga.erro = piorErroCarga(carga.erro, 'composicao');
+      }
       // D-20: carrega embalagens deste preparo (se schema existir)
-      await loadPreparoEmbalagens(editId);
+      if (!(await loadPreparoEmbalagens(editId))) carga.erro = piorErroCarga(carga.erro, 'composicao');
       // Sessão 28.37: carrega subpreparos (preparos usados como ingrediente)
       try {
-        const subs = await db.getAllAsync(
+        const subs = rowsOrThrow(await db.getAllAsync(
           `SELECT ps.sub_preparo_id, ps.quantidade_utilizada,
                   p.nome AS sub_nome, p.custo_por_kg AS sub_custo_por_kg, p.unidade_medida AS sub_unidade_medida
            FROM preparo_subpreparos ps
            JOIN preparos p ON p.id = ps.sub_preparo_id
            WHERE ps.preparo_id = ?`, [editId]
-        );
-        setSubpreparos(subs || []);
-      } catch (_) {
-        // Schema legado sem a tabela — vai vazio.
+        ));
+        setSubpreparos(subs);
+      } catch (e) {
+        if (typeof console !== 'undefined') console.warn('[PreparoForm.loadSubpreparos]', e?.message || e);
         setSubpreparos([]);
+        carga.erro = piorErroCarga(carga.erro, 'composicao');
       }
       // Marca como carregado após setar o form para evitar auto-save imediato
       setTimeout(() => setLoaded(true), 100);
@@ -434,11 +472,13 @@ export default function PreparoFormScreen({ route, navigation }) {
   // (utils/gravacaoSegura): nunca em paralelo, e o pedido feito durante uma
   // gravação roda uma vez depois, lendo o estado mais recente dos refs.
   function autoSave() {
+    if (!podeGravarComposicao(erroCargaRef.current)) return Promise.resolve(); // carga falhou (ver loadItem)
     if (!formRef.current.nome.trim()) return Promise.resolve(); // não salva sem nome
     return serializarSalvamento(`preparo:${editId}`, autoSaveImpl);
   }
 
   async function autoSaveImpl() {
+    if (!podeGravarComposicao(erroCargaRef.current)) return;
     const f = formRef.current;
     if (!f.nome.trim()) return; // não salva sem nome
 
@@ -689,6 +729,10 @@ export default function PreparoFormScreen({ route, navigation }) {
   return (
     <ModalFormWrapper title={formTitle} onClose={() => navigation.goBack()}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <CargaErroBanner
+          mensagem={erroCarga ? 'Não conseguimos carregar esta receita base. Salvar fica bloqueado até carregar — nada foi apagado.' : null}
+          onRetry={loadItem}
+        />
 
         {/* Bloco 1 — Dados do Preparo */}
         <Card title="Dados da Receita base">
@@ -1156,7 +1200,12 @@ export default function PreparoFormScreen({ route, navigation }) {
               <SaveStatus status={saveStatus} variant="badge" />
             </View>
           )}
-          <TouchableOpacity style={styles.saveBackBtn} onPress={async () => { allowExit.current = true; try { await autoSave(); try { showToast('Receita base salva', 'check-circle'); } catch (_) {} } catch(e) {
+          <TouchableOpacity style={styles.saveBackBtn} onPress={async () => {
+            if (!podeGravarComposicao(erroCargaRef.current)) {
+              Alert.alert('Não dá pra salvar ainda', 'Não conseguimos carregar esta receita base. Toque em "Tentar novamente" no topo da tela — nada foi apagado.');
+              return;
+            }
+            allowExit.current = true; try { await autoSave(); try { showToast('Receita base salva', 'check-circle'); } catch (_) {} } catch(e) {
             // CR-5: catch antes era silencioso — log + status de erro p/ feedback
             if (typeof console !== 'undefined' && console.error) console.error('[PreparoForm.saveBackBtn]', e);
             setSaveStatus('error');
