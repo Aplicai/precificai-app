@@ -19,6 +19,7 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency } from '../utils/calculations';
 import { isMarcaEstimada, formatInsumoNome } from '../utils/insumoDisplay';
+import { semPrecoDoDono, classificarIdadePrecos, statsPorCategoria } from '../utils/relatorios';
 import usePlan from '../hooks/usePlan';
 import UpgradeModal from '../components/UpgradeModal';
 import ProPreviewBanner from '../components/ProPreviewBanner';
@@ -138,37 +139,21 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
       ]);
       setInsumos(mps || []);
 
-      // Stats por categoria — Sessão 28.47 (bug #9): exclui itens kit-only.
-      // Antes: kit-only entrava no cálculo da categoria mais cara, distorcendo
-      // o resultado quando o user ainda não tinha revisado os preços do kit.
-      const byCat = {};
-      (mps || []).forEach(m => {
-        if (isMarcaEstimada(m.marca)) return; // pula kit-only
-        const cat = m.categoria_nome || 'Sem categoria';
-        if (!byCat[cat]) byCat[cat] = { nome: cat, items: [], total: 0, count: 0 };
-        const preco = safe(m.preco_por_kg);
-        if (preco > 0) {
-          byCat[cat].items.push({ nome: m.nome, marca: m.marca, preco, unidade: m.unidade_medida });
-          byCat[cat].total += preco;
-          byCat[cat].count += 1;
-        }
-      });
-      const statsArr = Object.values(byCat).map(c => ({
-        ...c,
-        media: c.count > 0 ? c.total / c.count : 0,
-        max: c.items.length > 0 ? Math.max(...c.items.map(i => i.preco)) : 0,
-        min: c.items.length > 0 ? Math.min(...c.items.map(i => i.preco)) : 0,
-      })).sort((a, b) => b.count - a.count);
+      // Stats por categoria (sem itens do kit; categoria sem nenhum item com
+      // preço não aparece, antes listava "0 insumos" com R$ 0,00).
+      const statsArr = statsPorCategoria(mps || []);
       setCategoriaStats(statsArr);
 
       // Histórico (defensivo — tabela pode não existir)
       try {
+        // historico_precos tem `data` (não `criado_em`). O wrapper ignorava o
+        // ORDER BY COALESCE(...) e o LIMIT 100 cortava linhas em ordem
+        // arbitrária: itens atualizados apareciam "sem histórico".
         const hist = await db.getAllAsync(`
-          SELECT h.materia_prima_id, h.preco_por_kg, h.criado_em, h.data, mp.nome, mp.marca, mp.unidade_medida
+          SELECT h.materia_prima_id, h.preco_por_kg, h.data, mp.nome, mp.marca, mp.unidade_medida
           FROM historico_precos h
           LEFT JOIN materias_primas mp ON mp.id = h.materia_prima_id
-          ORDER BY COALESCE(h.criado_em, h.data) DESC
-          LIMIT 100
+          ORDER BY h.data DESC
         `);
         setHistorico(hist || []);
       } catch (e) {
@@ -190,38 +175,22 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
   const insights = useMemo(() => {
     const safe = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
     const now = Date.now();
-    const dia = 24 * 60 * 60 * 1000;
 
     // Sessão 28.39: insumos com preço SÓ do kit (marca = __VALOR_ESTIMADO_KIT__)
     // são EXCLUÍDOS dos alertas de variação/desatualizado/top — não foi user
     // que cadastrou esse preço, então tratar como dado autêntico polui o relatório.
     const ehKitOnly = (i) => isMarcaEstimada(i?.marca);
 
-    const semPreco = insumos.filter(i => safe(i.preco_por_kg) <= 0);
+    // "Sem o seu preço": mesmo conceito e nome do aviso da Home/Ingredientes
+    // (valor pago zerado OU ainda o estimado do Kit). Separado em dois painéis.
+    const semSeuPreco = insumos.filter(semPrecoDoDono);
+    const semPreco = semSeuPreco.filter(i => !(safe(i.valor_pago) > 0));
+    const aindaEstimadoKit = semSeuPreco.filter(i => safe(i.valor_pago) > 0 && ehKitOnly(i));
     // "ComPreco" = só items com preço REAL inserido pelo user
     const comPreco = insumos.filter(i => safe(i.preco_por_kg) > 0 && !ehKitOnly(i));
-    // "ComPrecoTotal" inclui kit-only — usado só pra estatística de quantos têm valor
-    const comPrecoTotal = insumos.filter(i => safe(i.preco_por_kg) > 0);
-    const aindaEstimadoKit = insumos.filter(ehKitOnly);
 
-    // Idade do preço (dias desde última atualização registrada em historico_precos)
-    const ultimaAtualizacaoPorInsumo = {};
-    for (const h of historico) {
-      const ts = h.criado_em || h.data;
-      if (!ts) continue;
-      const t = new Date(ts).getTime();
-      if (!Number.isFinite(t)) continue;
-      const cur = ultimaAtualizacaoPorInsumo[h.materia_prima_id];
-      if (!cur || t > cur) ultimaAtualizacaoPorInsumo[h.materia_prima_id] = t;
-    }
-    const desatualizados = comPreco
-      .map(i => {
-        const t = ultimaAtualizacaoPorInsumo[i.id];
-        const idadeDias = t ? (now - t) / dia : null;
-        return { ...i, idadeDias };
-      })
-      .filter(i => i.idadeDias == null || i.idadeDias > 60)
-      .sort((a, b) => (b.idadeDias || 999) - (a.idadeDias || 999));
+    // Idade do preço: desatualizado (>60 dias) separado de "sem data registrada".
+    const { desatualizados, semHistorico } = classificarIdadePrecos(comPreco, historico, now, 60);
 
     // Variação de preço — compara último vs penúltimo histórico por insumo
     const variacoes = [];
@@ -269,10 +238,13 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
       : 0;
 
     return {
+      semSeuPrecoCount: semSeuPreco.length,
       semPrecoCount: semPreco.length,
       semPreco: semPreco.slice(0, 10),
       desatualizadosCount: desatualizados.length,
       desatualizados: desatualizados.slice(0, 10),
+      semHistoricoCount: semHistorico.length,
+      semHistorico: semHistorico.slice(0, 10),
       variacoes,
       variacoesCount: variacoes.length,
       top5Caros,
@@ -280,7 +252,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
       custoMedio,
       catMaisCara,
       totalCadastrados: insumos.length,
-      comPrecoCount: comPrecoTotal.length,
+      comSeuPrecoCount: insumos.length - semSeuPreco.length,
       // 28.39: itens ainda com preço-do-kit (não foram revisados pelo user)
       kitOnlyCount: aindaEstimadoKit.length,
       kitOnly: aindaEstimadoKit.slice(0, 10),
@@ -369,17 +341,21 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                 <View style={styles.kpiTile}>
                   <Text style={styles.kpiTileLabel}>Cadastrados</Text>
                   <Text style={styles.kpiTileValue}>{insights.totalCadastrados}</Text>
-                  <Text style={styles.kpiTileSub}>{insights.comPrecoCount} com preço</Text>
+                  <Text style={styles.kpiTileSub}>{insights.comSeuPrecoCount} com o seu preço</Text>
                 </View>
-                <View style={[styles.kpiTile, insights.semPrecoCount > 0 && styles.kpiTileError]}>
-                  <Text style={styles.kpiTileLabel}>Sem preço</Text>
-                  <Text style={[styles.kpiTileValue, insights.semPrecoCount > 0 && { color: colors.error }]}>{insights.semPrecoCount}</Text>
-                  <Text style={styles.kpiTileSub}>bloqueiam cálculo</Text>
+                <View style={[styles.kpiTile, insights.semSeuPrecoCount > 0 && styles.kpiTileError]}>
+                  <Text style={styles.kpiTileLabel}>Sem o seu preço</Text>
+                  <Text style={[styles.kpiTileValue, insights.semSeuPrecoCount > 0 && { color: colors.error }]}>{insights.semSeuPrecoCount}</Text>
+                  <Text style={styles.kpiTileSub}>de {insights.totalCadastrados} cadastrados</Text>
                 </View>
                 <View style={[styles.kpiTile, insights.desatualizadosCount > 0 && styles.kpiTileWarn]}>
                   <Text style={styles.kpiTileLabel}>Desatualizados</Text>
                   <Text style={[styles.kpiTileValue, insights.desatualizadosCount > 0 && { color: colors.warning }]}>{insights.desatualizadosCount}</Text>
-                  <Text style={styles.kpiTileSub}>>60 dias</Text>
+                  <Text style={styles.kpiTileSub}>
+                    {insights.semHistoricoCount > 0
+                      ? `mais de 60 dias (+${insights.semHistoricoCount} sem data)`
+                      : 'mais de 60 dias'}
+                  </Text>
                 </View>
                 <View style={styles.kpiTile}>
                   <Text style={styles.kpiTileLabel}>Custo médio</Text>
@@ -404,7 +380,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
             </SectionBlock>
 
             {/* ─────────── PRECISA ATENÇÃO ─────────── */}
-            {(insights.semPrecoCount > 0 || insights.desatualizadosCount > 0 || insights.kitOnlyCount > 0) && (
+            {(insights.semPrecoCount > 0 || insights.desatualizadosCount > 0 || insights.semHistoricoCount > 0 || insights.kitOnlyCount > 0) && (
               <SectionBlock
                 icon="zap"
                 color={colors.error}
@@ -444,7 +420,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                     <View style={styles.alertPanelHead}>
                       <Feather name="alert-triangle" size={16} color={colors.error} />
                       <Text style={[styles.alertPanelTitle, { color: colors.error }]}>
-                        Pendentes — sem preço cadastrado
+                        Sem o seu preço ({insights.semPrecoCount})
                       </Text>
                     </View>
                     <Text style={styles.alertPanelDesc}>
@@ -484,14 +460,39 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                         onPress={() => abrirInsumo(i.id)}
                       >
                         <Text style={styles.listRowNome} numberOfLines={1}>{i.nome}</Text>
-                        <Text style={styles.listRowValor}>
-                          {i.idadeDias == null ? 'sem histórico' : `há ${Math.round(i.idadeDias)}d`}
-                        </Text>
+                        <Text style={styles.listRowValor}>{`há ${Math.round(i.idadeDias)}d`}</Text>
                         <Feather name="chevron-right" size={14} color={colors.textSecondary} />
                       </TouchableOpacity>
                     ))}
                     {insights.desatualizadosCount > insights.desatualizados.length && (
                       <Text style={styles.listMore}>+ {insights.desatualizadosCount - insights.desatualizados.length} outros</Text>
+                    )}
+                  </View>
+                )}
+
+                {insights.semHistoricoCount > 0 && (
+                  <View style={[styles.alertPanel, { borderLeftColor: colors.info, backgroundColor: colors.info + '0a' }]}>
+                    <View style={styles.alertPanelHead}>
+                      <Feather name="help-circle" size={16} color={colors.info} />
+                      <Text style={[styles.alertPanelTitle, { color: colors.info }]}>
+                        Sem data de atualização ({insights.semHistoricoCount})
+                      </Text>
+                    </View>
+                    <Text style={styles.alertPanelDesc}>
+                      Não há registro de quando esses preços foram atualizados. Se faz tempo, confirme com seu fornecedor.
+                    </Text>
+                    {insights.semHistorico.map((i, idx) => (
+                      <TouchableOpacity
+                        key={i.id || idx}
+                        style={styles.listRow}
+                        onPress={() => abrirInsumo(i.id)}
+                      >
+                        <Text style={styles.listRowNome} numberOfLines={1}>{i.nome}</Text>
+                        <Feather name="chevron-right" size={14} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    ))}
+                    {insights.semHistoricoCount > insights.semHistorico.length && (
+                      <Text style={styles.listMore}>+ {insights.semHistoricoCount - insights.semHistorico.length} outros</Text>
                     )}
                   </View>
                 )}
@@ -539,7 +540,7 @@ export default function RelatorioInsumosScreen({ embedded = false } = {}) {
                 icon="dollar-sign"
                 color={colors.success}
                 title="Oportunidades de custo"
-                subtitle="Top 5 ingredientes mais caros — vale renegociar ou buscar alternativa"
+                subtitle={`${insights.top5Caros.length === 1 ? 'O ingrediente mais caro' : `Os ${insights.top5Caros.length} ingredientes mais caros`}: vale renegociar ou buscar alternativa`}
               >
                 {insights.top5Caros.map((i, idx) => (
                   <TouchableOpacity

@@ -4,7 +4,12 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, safeNum } from '../utils/calculations';
+import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, safeNum, buildPricingConfig } from '../utils/calculations';
+import {
+  calcTendenciaFaturamento, indiceDoMes, precoSugeridoProduto,
+  selecionarAtencao, vendeNoPrejuizo, deveSugerirAumento, textoAtencao, aplicarCustoAtualPreparos,
+} from '../utils/relatorios';
+import { sincronizarCustosPreparos } from '../services/cascadeRecalc';
 import { calcPontoEquilibrio } from '../utils/breakeven';
 import EmptyState from '../components/EmptyState';
 import Loader from '../components/Loader';
@@ -31,6 +36,14 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+function textoTendencia(t) {
+  const periodo = `De ${t.mesDe} para ${t.mesPara}`;
+  if (t.direcao === 'estavel') {
+    return `${periodo}, seu faturamento ficou estável em ${formatCurrency(t.valorPara)}.`;
+  }
+  return `${periodo}, seu faturamento ${t.direcao} ${t.variacaoTexto}% (de ${formatCurrency(t.valorDe)} para ${formatCurrency(t.valorPara)}).`;
 }
 
 // Sessão 28.40: prop `embedded` — quando true, renderizado dentro do
@@ -84,7 +97,9 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
         setPerfilNome('Meu Negócio');
       }
 
-      const [fixas, variaveis, fat, configRows, prods, allIngs, allEmbs, allPreps, cats] = await Promise.all([
+      // Custo das receitas base refeito dos preços atuais (o gravado pode estar
+      // velho), igual à tela do produto. Falha → null → usa o custo gravado.
+      const [fixas, variaveis, fat, configRows, prods, allIngs, allEmbs, allPrepsGravados, cats, custosPreparos] = await Promise.all([
         db.getAllAsync('SELECT * FROM despesas_fixas'),
         db.getAllAsync('SELECT * FROM despesas_variaveis'),
         db.getAllAsync('SELECT * FROM faturamento_mensal'),
@@ -92,9 +107,11 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
         db.getAllAsync('SELECT * FROM produtos'),
         db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
         db.getAllAsync('SELECT pe.produto_id, pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id'),
-        db.getAllAsync('SELECT pp.produto_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
+        db.getAllAsync('SELECT pp.produto_id, pp.preparo_id, pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id'),
         db.getAllAsync('SELECT * FROM categorias_produtos ORDER BY nome'),
+        sincronizarCustosPreparos(db).catch(() => null),
       ]);
+      const allPreps = aplicarCustoAtualPreparos(allPrepsGravados, custosPreparos);
       setCategorias(cats || []);
       const lucroDesejado = configRows?.[0]?.lucro_desejado || 0;
 
@@ -105,6 +122,8 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
         ? mesesComFat.reduce((a, f) => a + f.valor, 0) / mesesComFat.length
         : 0;
       const dfPerc = calcDespesasFixasPercentual(totalFixas, fatMedio);
+      // Mesma config do "Preço sugerido" da tela do produto (markup do Financeiro).
+      const pricingConfig = buildPricingConfig({ cfgs: configRows, fixas, vars: variaveis, fat });
 
       // Build lookup maps
       const ingsByProd = {};
@@ -141,7 +160,9 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
         const lucro = calcLucroLiquido(precoVenda, custoUn, despFixasVal, despVarVal);
         const margem = calcMargemLiquida(precoVenda, custoUn, despFixasVal, despVarVal);
 
-        return { ...p, custoUn, precoVenda, lucro, margem, margemReais: lucro, despFixasVal, despVarVal };
+        const precoSugerido = precoSugeridoProduto(custoUn, p, pricingConfig);
+
+        return { ...p, custoUn, precoVenda, lucro, margem, margemReais: lucro, despFixasVal, despVarVal, precoSugerido };
       });
 
       // Load delivery data
@@ -173,6 +194,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
           lucroPositivo: percLucro > 0,
           percIng, percFixas, percVar, percLucro,
           fatMedio,
+          totalFixas,
         };
       }
 
@@ -183,7 +205,8 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
         .slice(0, 3);
 
       // --- Atenção: margem < 10% ---
-      const atencao = produtosComPreco.filter(p => p.margem < 0.10 && p.margem >= 0);
+      // Margem < 10%, incluindo prejuízo (margem negativa); pior primeiro.
+      const atencao = selecionarAtencao(produtosComPreco, 0.10);
 
       // --- Ponto de equilíbrio ---
       // Audit 09/09 [B11]: antes dividia as fixas pela margem LÍQUIDA média
@@ -239,46 +262,15 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
         }
       }
 
-      // --- Tendência (simulada com base nos dados disponíveis) ---
-      let tendencia = null;
-      if (fat.length >= 2) {
-        const sorted = [...fat].filter(f => f.valor > 0).sort((a, b) => {
-          const da = `${a.ano}-${String(a.mes).padStart(2, '0')}`;
-          const db2 = `${b.ano}-${String(b.mes).padStart(2, '0')}`;
-          return da.localeCompare(db2);
-        });
-        if (sorted.length >= 2) {
-          const ultimo = sorted[sorted.length - 1].valor;
-          const penultimo = sorted[sorted.length - 2].valor;
-          if (penultimo > 0) {
-            const variacaoFat = ((ultimo - penultimo) / penultimo) * 100;
-            // If costs stayed the same but revenue changed, margin changes
-            const margemAtual = produtosComPreco.length > 0
-              ? produtosComPreco.reduce((a, p) => a + p.margem, 0) / produtosComPreco.length
-              : 0;
-            const margemProjetada = margemAtual + (variacaoFat / 100 * 0.3); // simplified projection
-            tendencia = {
-              variacao: Math.abs(variacaoFat).toFixed(1).replace('.', ','),
-              subiu: variacaoFat > 0,
-              desceu: variacaoFat < 0,
-              margemProjetada: (margemProjetada * 100).toFixed(1).replace('.', ','),
-            };
-          }
-        }
-      }
+      // --- Tendência: dois meses reais mais recentes, sem projeção ---
+      // faturamento_mensal só tem `mes` ('Jan'..'Dez') e `valor` (não há `ano`).
+      const tendencia = calcTendenciaFaturamento(fat);
 
-      // --- Histórico de faturamento (até 12 meses, ordem cronológica) ---
+      // --- Histórico de faturamento (ordem do calendário) ---
       const historicoFaturamento = [...fat]
-        .sort((a, b) => {
-          const da = `${a.ano}-${String(a.mes).padStart(2, '0')}`;
-          const db2 = `${b.ano}-${String(b.mes).padStart(2, '0')}`;
-          return da.localeCompare(db2);
-        })
-        .slice(-12)
-        .map(f => ({
-          label: `${String(f.mes).padStart(2, '0')}/${String(f.ano).slice(-2)}`,
-          valor: safeNum(f.valor),
-        }));
+        .filter(f => indiceDoMes(f.mes) >= 0)
+        .sort((a, b) => indiceDoMes(a.mes) - indiceDoMes(b.mes))
+        .map(f => ({ label: String(f.mes), valor: safeNum(f.valor) }));
 
       // --- Top 5 produtos por lucro absoluto (margemReais) ---
       const topProdutos = [...produtosComPreco]
@@ -378,17 +370,22 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
     }
 
     if (data.melhores && data.melhores.length > 0) {
-      linhas.push('Top 3 produtos (lucro por unidade):');
-      data.melhores.slice(0, 3).forEach((p, i) => {
-        linhas.push(`${i + 1}. ${p.nome} — ${formatCurrency(p.margemReais)}`);
+      linhas.push(`Top ${data.melhores.length} produtos (lucro por unidade):`);
+      data.melhores.forEach((p, i) => {
+        linhas.push(`${i + 1}. ${p.nome}: ${formatCurrency(p.margemReais)}`);
       });
       linhas.push('');
     }
 
     if (data.atencao && data.atencao.length > 0) {
-      linhas.push(`Alertas: ${data.atencao.length} produto(s) com margem abaixo de 10%.`);
+      const noPrejuizo = data.atencao.filter(vendeNoPrejuizo).length;
+      linhas.push(noPrejuizo > 0
+        ? `Alertas: ${data.atencao.length} produto(s) com margem abaixo de 10%, ${noPrejuizo} vendido(s) no prejuízo.`
+        : `Alertas: ${data.atencao.length} produto(s) com margem abaixo de 10%.`);
       data.atencao.slice(0, 3).forEach(p => {
-        linhas.push(`• ${p.nome} (${formatCurrency(p.precoVenda)})`);
+        linhas.push(vendeNoPrejuizo(p)
+          ? `• ${p.nome}: você perde ${formatCurrency(Math.abs(p.lucro))} a cada venda`
+          : `• ${p.nome} (${formatCurrency(p.precoVenda)})`);
       });
       linhas.push('');
     }
@@ -432,10 +429,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
     if (data.atencao && data.atencao.length > 0) {
       sections.push({
         title: 'Atenção',
-        text: data.atencao.slice(0, 5).map(p => {
-          const precoSugerido = p.custoUn > 0 ? p.custoUn / 0.30 : p.precoVenda * 1.15;
-          return `${p.nome} está te custando quase o que você cobra. Considere aumentar de ${formatCurrency(p.precoVenda)} para ${formatCurrency(precoSugerido)}.`;
-        }).join(' '),
+        text: data.atencao.slice(0, 5).map(textoAtencao).join(' '),
       });
     }
 
@@ -457,44 +451,47 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
     if (data.tendencia) {
       sections.push({
         title: 'Tendência',
-        text: `Nos últimos meses, seu faturamento ${data.tendencia.subiu ? 'subiu' : 'desceu'} ${data.tendencia.variacao}%. Se continuar assim, em 3 meses sua margem será de ${data.tendencia.margemProjetada}%.`,
+        text: textoTendencia(data.tendencia),
       });
     }
 
     // Sessão 28.17: HTML enriquecido pra ficar mais próximo visualmente do que aparece na tela
     // (KPIs em destaque, cards coloridos, melhores/atenção em listas, etc).
     const formatBR = (v) => typeof v === 'number' ? v.toFixed(2).replace('.', ',') : v;
-    const melhoresHtml = (data.melhores || []).slice(0, 5).map((p, i) => `
+    const topLista = (data.topProdutos || []).slice(0, 5);
+    const melhoresHtml = topLista.map((p, i) => `
       <li style="margin: 6px 0; padding: 8px 12px; background: #ecfdf5; border-left: 3px solid #16a34a; border-radius: 4px;">
         <strong>${i+1}. ${escapeHtml(p.nome || '')}</strong>
-        <span style="color: #16a34a; float: right;">+${formatCurrency(p.margemReais || 0)}/un</span>
+        <span style="color: #16a34a; float: right;">+${formatCurrency(p.lucro || 0)}/un</span>
       </li>
     `).join('');
     const atencaoHtml = (data.atencao || []).slice(0, 5).map(p => `
       <li style="margin: 6px 0; padding: 8px 12px; background: #fef2f2; border-left: 3px solid #dc2626; border-radius: 4px;">
         <strong>${escapeHtml(p.nome || '')}</strong>
-        <span style="color: #6b7280; float: right;">${formatCurrency(p.precoVenda || 0)} (CMV ${formatCurrency(p.custoUn || 0)})</span>
+        <span style="color: #6b7280; float: right;">${vendeNoPrejuizo(p)
+          ? `<span style="color: #dc2626; font-weight: 700;">perde ${formatCurrency(Math.abs(p.lucro))} por venda</span>`
+          : `${formatCurrency(p.precoVenda || 0)} (custo ${formatCurrency(p.custoUn || 0)})`}</span>
       </li>
     `).join('');
 
     // Sessão 28.39: GRÁFICO DE BARRAS CSS — top 8 produtos por margem.
     // Sem libs externas (CSS puro funciona em window.print). Cada barra é um
     // div com width proporcional ao maior valor.
-    const todosProdutosOrdenados = [...(data.produtosTodos || data.melhores || [])]
-      .filter(p => Number(p.margemReais) > 0)
-      .sort((a, b) => Number(b.margemReais) - Number(a.margemReais))
+    const todosProdutosOrdenados = [...(data.precificacao || [])]
+      .filter(p => Number(p.lucro) > 0)
+      .sort((a, b) => Number(b.lucro) - Number(a.lucro))
       .slice(0, 10);
     const maxMargem = todosProdutosOrdenados.length > 0
-      ? Math.max(...todosProdutosOrdenados.map(p => Number(p.margemReais) || 0))
+      ? Math.max(...todosProdutosOrdenados.map(p => Number(p.lucro) || 0))
       : 1;
     const graficoMargemHtml = todosProdutosOrdenados.length > 0 ? `
       <div class="card">
-        <h3>Margem por produto (top 10)</h3>
+        <h3>Lucro por unidade (top ${todosProdutosOrdenados.length})</h3>
         <p style="color: #6b7280; margin: 0 0 12px 0; font-size: 13px;">
           Visualização do lucro líquido por unidade vendida.
         </p>
         ${todosProdutosOrdenados.map(p => {
-          const valor = Number(p.margemReais) || 0;
+          const valor = Number(p.lucro) || 0;
           const percent = maxMargem > 0 ? (valor / maxMargem) * 100 : 0;
           return `
             <div style="margin: 8px 0;">
@@ -551,13 +548,13 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
     </div>
     ${filtroCatHtml}
     ${data.resumo ? `<div class="kpi-row">
-      <div class="kpi"><div class="kpi-label">Faturamento</div><div class="kpi-value">${formatCurrency(data.resumo.fatMedio || 0)}</div></div>
-      <div class="kpi"><div class="kpi-label">Lucro</div><div class="kpi-value" style="color: ${data.resumo.lucroPositivo ? '#16a34a' : '#dc2626'};">R$ ${formatBR(data.resumo.lucro)}</div></div>
-      <div class="kpi"><div class="kpi-label">Custos do mês</div><div class="kpi-value">R$ ${formatBR(data.resumo.fixas)}</div></div>
+      <div class="kpi"><div class="kpi-label">Faturamento médio por mês</div><div class="kpi-value">${formatCurrency(data.resumo.fatMedio || 0)}</div></div>
+      <div class="kpi"><div class="kpi-label">${data.resumo.lucroPositivo ? 'Lucro' : 'Prejuízo'} a cada R$ 10 vendidos</div><div class="kpi-value" style="color: ${data.resumo.lucroPositivo ? '#16a34a' : '#dc2626'};">R$ ${formatBR(data.resumo.lucro)}</div></div>
+      <div class="kpi"><div class="kpi-label">Custos do mês</div><div class="kpi-value">${formatCurrency(data.resumo.totalFixas || 0)}</div></div>
     </div>` : ''}
     ${sections.map(s => `<div class="card"><h3>${escapeHtml(s.title)}</h3><p>${escapeHtml(s.text)}</p></div>`).join('')}
-    ${melhoresHtml ? `<div class="card"><h3>Top 5 — seus campeões</h3><ul class="list">${melhoresHtml}</ul></div>` : ''}
-    ${atencaoHtml ? `<div class="card"><h3>Atenção — produtos com margem apertada</h3><ul class="list">${atencaoHtml}</ul></div>` : ''}
+    ${melhoresHtml ? `<div class="card"><h3>Top ${topLista.length}: seus campeões</h3><ul class="list">${melhoresHtml}</ul></div>` : ''}
+    ${atencaoHtml ? `<div class="card"><h3>Atenção: prejuízo e margem apertada</h3><ul class="list">${atencaoHtml}</ul></div>` : ''}
     ${graficoMargemHtml}
     <p class="footer">Gerado por Precificaí · www.precificaiapp.com</p>
     </body></html>`;
@@ -977,7 +974,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
 
       {/* Atenção */}
       {data.atencao.length > 0 && (
-        <View style={[styles.card, styles.cardWarning]}>
+        <View style={[styles.card, data.atencao.some(vendeNoPrejuizo) ? styles.cardError : styles.cardWarning]}>
           <View style={styles.cardHeader}>
             <View style={[styles.iconCircle, { backgroundColor: colors.warning + '15' }]}>
               <Feather name="alert-triangle" size={18} color={colors.warning} />
@@ -985,20 +982,32 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
             <Text style={styles.cardTitle}>Atenção!</Text>
           </View>
           {data.atencao.slice(0, 5).map(p => {
-            const precoSugerido = p.custoUn > 0 ? p.custoUn / 0.30 : p.precoVenda * 1.15;
             return (
               <View key={p.id} style={styles.insightRow}>
                 <Feather
                   name="alert-circle"
                   size={16}
-                  color={colors.warning}
+                  color={vendeNoPrejuizo(p) ? colors.error : colors.warning}
                   style={{ marginRight: 8, marginTop: 2 }}
                 />
                 <Text style={styles.cardText}>
-                  <Text style={styles.highlightWarning}>{p.nome}</Text> está te custando quase o que você cobra.
-                  Considere aumentar de{' '}
-                  <Text style={styles.highlightWarning}>{formatCurrency(p.precoVenda)}</Text> para{' '}
-                  <Text style={styles.highlightWarning}>{formatCurrency(precoSugerido)}</Text>
+                  {vendeNoPrejuizo(p) ? (
+                    <>
+                      <Text style={styles.highlightError}>{p.nome}</Text>: você perde{' '}
+                      <Text style={styles.highlightError}>{formatCurrency(Math.abs(p.lucro))}</Text> a cada venda.
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.highlightWarning}>{p.nome}</Text> está te custando quase o que você cobra.
+                    </>
+                  )}
+                  {deveSugerirAumento(p) ? (
+                    <>
+                      {' '}O preço sugerido é{' '}
+                      <Text style={styles.highlightWarning}>{formatCurrency(p.precoSugerido)}</Text>
+                      {' '}(hoje: {formatCurrency(p.precoVenda)}).
+                    </>
+                  ) : ' Revise os custos e o preço desse produto.'}
                 </Text>
               </View>
             );
@@ -1052,40 +1061,42 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
         </View>
       )}
 
-      {/* Tendência */}
-      {data.tendencia && (
-        <View style={[styles.card, data.tendencia.subiu ? styles.cardSuccess : styles.cardError]}>
-          <View style={styles.cardHeader}>
-            <View style={[styles.iconCircle, { backgroundColor: (data.tendencia.subiu ? colors.success : colors.error) + '15' }]}>
-              <Feather
-                name={data.tendencia.subiu ? 'trending-up' : 'trending-down'}
-                size={18}
-                color={data.tendencia.subiu ? colors.success : colors.error}
-              />
+      {/* Tendência: dois meses reais do Financeiro; 0% é neutro, sem projeção */}
+      {data.tendencia && (() => {
+        const t = data.tendencia;
+        const tom = t.direcao === 'subiu'
+          ? { cor: colors.success, card: styles.cardSuccess, destaque: styles.highlightSuccess, icone: 'trending-up' }
+          : t.direcao === 'desceu'
+            ? { cor: colors.error, card: styles.cardError, destaque: styles.highlightError, icone: 'trending-down' }
+            : { cor: colors.primary, card: null, destaque: styles.highlightNeutral, icone: 'minus' };
+        return (
+          <View style={[styles.card, tom.card]}>
+            <View style={styles.cardHeader}>
+              <View style={[styles.iconCircle, { backgroundColor: tom.cor + '15' }]}>
+                <Feather name={tom.icone} size={18} color={tom.cor} />
+              </View>
+              <Text style={styles.cardTitle}>Tendência</Text>
             </View>
-            <Text style={styles.cardTitle}>Tendência</Text>
-          </View>
-          <View style={styles.insightRow}>
-            <Feather
-              name="activity"
-              size={16}
-              color={data.tendencia.subiu ? colors.success : colors.error}
-              style={{ marginRight: 8, marginTop: 2 }}
-            />
-            <Text style={styles.cardText}>
-              Nos últimos meses, seu faturamento{' '}
-              {data.tendencia.subiu ? 'subiu' : 'desceu'}{' '}
-              <Text style={data.tendencia.subiu ? styles.highlightSuccess : styles.highlightError}>
-                {data.tendencia.variacao}%
-              </Text>.
-              {' '}Se continuar assim, em 3 meses sua margem será de{' '}
-              <Text style={data.tendencia.subiu ? styles.highlightSuccess : styles.highlightError}>
-                {data.tendencia.margemProjetada}%
+            <View style={styles.insightRow}>
+              <Feather name="activity" size={16} color={tom.cor} style={{ marginRight: 8, marginTop: 2 }} />
+              <Text style={styles.cardText}>
+                De {t.mesDe} para {t.mesPara}, seu faturamento{' '}
+                {t.direcao === 'estavel' ? (
+                  <>
+                    ficou <Text style={tom.destaque}>estável</Text> em {formatCurrency(t.valorPara)}.
+                  </>
+                ) : (
+                  <>
+                    {t.direcao}{' '}
+                    <Text style={tom.destaque}>{t.variacaoTexto}%</Text>
+                    {' '}(de {formatCurrency(t.valorDe)} para {formatCurrency(t.valorPara)}).
+                  </>
+                )}
               </Text>
-            </Text>
+            </View>
           </View>
-        </View>
-      )}
+        );
+      })()}
 
       {/* Sessão 28.8 — Histórico de Faturamento removido daqui.
           Visualização disponível em Painel/Financeiro (evita duplicação
@@ -1510,6 +1521,11 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bold,
     fontWeight: '700',
     color: colors.error,
+  },
+  highlightNeutral: {
+    fontFamily: fontFamily.bold,
+    fontWeight: '700',
+    color: colors.text,
   },
 
   // Pie chart
