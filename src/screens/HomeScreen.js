@@ -53,6 +53,85 @@ function getGreeting() {
   return 'Boa noite';
 }
 
+const PASSOS_COMECO = ['Ingrediente', 'Produto', 'Preço'];
+
+/** Próximo passo da conta nova: 0 ingrediente, 1 produto, 2 preço. */
+function passoDoComeco(d) {
+  if (d.totalInsumos === 0) return 0;
+  if (d.totalProdutos === 0) return 1;
+  return 2;
+}
+
+function InicioSimples({ nomeNegocio, d, onAcao, onVideo }) {
+  const passo = passoDoComeco(d);
+  const produto = d.primeiroSemPreco?.nome;
+  const conteudo = [
+    {
+      titulo: 'Cadastre seu primeiro ingrediente',
+      texto: 'Do jeito que você compra: "Comprei 5 kg de farinha por R$ 25". O app calcula o preço por kg.',
+      botao: 'Cadastrar ingrediente',
+    },
+    {
+      titulo: 'Monte seu primeiro produto',
+      texto: 'Escolha os ingredientes da receita e diga quanto ela rende. O custo aparece na hora.',
+      botao: 'Montar produto',
+    },
+    {
+      titulo: produto ? `Coloque o preço do ${produto}` : 'Coloque o preço do seu produto',
+      texto: 'O app sugere um preço com base no custo dos ingredientes. Confira se eles estão com o valor que você paga.',
+      botao: 'Colocar o preço',
+    },
+  ][passo];
+  return (
+    <View style={inicioStyles.caixa}>
+      <Text style={inicioStyles.ola}>{nomeNegocio ? `Olá, ${nomeNegocio}!` : 'Olá!'}</Text>
+      <Text style={inicioStyles.sub}>Vamos ao seu primeiro preço.</Text>
+      <View style={inicioStyles.passos}>
+        {PASSOS_COMECO.map((nome, i) => {
+          const feito = i < passo;
+          const atual = i === passo;
+          return (
+            <View key={nome} style={[inicioStyles.passo, feito && inicioStyles.passoFeito, atual && inicioStyles.passoAtual]}>
+              {feito ? <Feather name="check" size={13} color="#fff" style={{ marginRight: 4 }} /> : null}
+              <Text style={[inicioStyles.passoTexto, (feito || atual) && { color: atual ? colors.primary : '#fff' }]}>{i + 1}. {nome}</Text>
+            </View>
+          );
+        })}
+      </View>
+      <View style={inicioStyles.cartao}>
+        <Text style={inicioStyles.cartaoTitulo}>{conteudo.titulo}</Text>
+        <Text style={inicioStyles.cartaoTexto}>{conteudo.texto}</Text>
+        <TouchableOpacity style={inicioStyles.botao} onPress={() => onAcao(passo)} activeOpacity={0.8} accessibilityRole="button">
+          <Text style={inicioStyles.botaoTexto}>{conteudo.botao}</Text>
+          <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
+        </TouchableOpacity>
+      </View>
+      <TouchableOpacity style={inicioStyles.video} onPress={onVideo} accessibilityRole="button">
+        <Feather name="play-circle" size={16} color={colors.primary} style={{ marginRight: 6 }} />
+        <Text style={inicioStyles.videoTexto}>Ver o vídeo de 1 minuto</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const inicioStyles = StyleSheet.create({
+  caixa: { maxWidth: 560, width: '100%', alignSelf: 'center', paddingTop: spacing.md },
+  ola: { fontSize: 24, lineHeight: 30, fontFamily: fontFamily.bold, color: colors.text },
+  sub: { fontSize: fonts.regular, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: 2, marginBottom: spacing.md },
+  passos: { flexDirection: 'row', gap: spacing.xs + 2, marginBottom: spacing.md },
+  passo: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 8, borderRadius: borderRadius.sm, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  passoFeito: { backgroundColor: colors.success, borderColor: colors.success },
+  passoAtual: { borderColor: colors.primary, borderWidth: 2, backgroundColor: colors.surface },
+  passoTexto: { fontSize: fonts.tiny + 1, fontFamily: fontFamily.semiBold, color: colors.textSecondary },
+  cartao: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: borderRadius.lg, padding: spacing.md },
+  cartaoTitulo: { fontSize: fonts.large, fontFamily: fontFamily.bold, color: colors.text, marginBottom: spacing.xs },
+  cartaoTexto: { fontSize: fonts.small + 1, lineHeight: 21, fontFamily: fontFamily.regular, color: colors.textSecondary, marginBottom: spacing.md },
+  botao: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, borderRadius: borderRadius.md, minHeight: 50 },
+  botaoTexto: { color: '#fff', fontSize: fonts.medium, fontFamily: fontFamily.bold },
+  video: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.md },
+  videoTexto: { color: colors.primary, fontSize: fonts.small, fontFamily: fontFamily.semiBold, textDecorationLine: 'underline' },
+});
+
 export default function HomeScreen({ navigation }) {
   const { isDesktop, isMobile, width } = useResponsiveLayout();
   // Sessão polish — KPIs estouravam em 320pt por causa de minWidth: 150.
@@ -106,6 +185,20 @@ export default function HomeScreen({ navigation }) {
   }, []);
 
   useFocusEffect(useCallback(() => { loadAll(); }, []));
+
+  // Nome do negócio para a saudação da Home simples (início).
+  const [nomeNegocio, setNomeNegocio] = useState('');
+  useFocusEffect(useCallback(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const db = await getDatabase();
+        const rows = await db.getAllAsync('SELECT nome_negocio FROM perfil LIMIT 1');
+        if (vivo && Array.isArray(rows)) setNomeNegocio((rows[0]?.nome_negocio || '').trim());
+      } catch (_) { /* saudação genérica */ }
+    })();
+    return () => { vivo = false; };
+  }, []));
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -194,6 +287,7 @@ export default function HomeScreen({ navigation }) {
       let somaMargens = 0, somaCustos = 0, somaPrecos = 0, prodsComPreco = 0;
       const produtosMargBaixa = [];
       const produtosSemPreco = [];
+      let primeiroSemPreco = null;
 
       for (const p of prodsR) {
         const ings = ingsByProd[p.id] || [];
@@ -224,6 +318,7 @@ export default function HomeScreen({ navigation }) {
           if (margem < 0.10) produtosMargBaixa.push({ id: p.id, nome: p.nome, margem });
         } else {
           produtosSemPreco.push(p.nome);
+          if (!primeiroSemPreco) primeiroSemPreco = { id: p.id, nome: p.nome };
         }
       }
 
@@ -376,7 +471,7 @@ export default function HomeScreen({ navigation }) {
         vendasMesBalcao = Number(cfgRow?.vendas_mes_balcao) || 0;
         vendasMesDelivery = Number(cfgRow?.vendas_mes_delivery) || 0;
       } catch (_) { /* coluna pode não existir em build antigo */ }
-      setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, sobraSoFixas, produtosMargBaixa: uniqueProds, produtosSemPreco, cmvPercent, pontoEquilibrio, fatMedio, insights, featuredInsight, vendasMesBalcao, vendasMesDelivery });
+      setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, sobraSoFixas, produtosMargBaixa: uniqueProds, produtosSemPreco, primeiroSemPreco, cmvPercent, pontoEquilibrio, fatMedio, insights, featuredInsight, vendasMesBalcao, vendasMesDelivery });
       setAlertas(pendencias);
     } catch (e) {
       // Antes: catch silencioso → usuário via tudo zerado sem entender por quê.
@@ -428,6 +523,7 @@ export default function HomeScreen({ navigation }) {
   const semPrimeiroPreco = !loading && !loadError
     && (d.totalProdutos === 0 || d.produtosSemPreco.length >= d.totalProdutos);
   const financeiroNaFrente = pendente && !semPrimeiroPreco;
+  const modoComeco = semPrimeiroPreco;
   // UX audit 09/09 (Fase B, item 16): banner "Configuração do app" só quando
   // falta etapa de núcleo. Só opcionais (Delivery, Preparos, Embalagens)
   // pendentes = sem banner, senão ele nunca chega a 100% pra quem não usa delivery.
@@ -587,6 +683,24 @@ export default function HomeScreen({ navigation }) {
       {/* UX audit 09/09: aviso de preços estimados vive aqui (abaixo do header),
           só em Início e Insumos — antes era global e ficava acima do header. */}
       <PlanoVencendoBanner />
+
+      {/* Home simples até o primeiro produto com preço (16/10/2026): no celular
+          a conta nova via 10 blocos, 3 levando ao mesmo lugar e 4 números
+          vazios. Agora: saudação, 3 passos e UM próximo passo. Depois do
+          primeiro preço, a Home completa abaixo. */}
+      {modoComeco ? (
+        <InicioSimples
+          nomeNegocio={nomeNegocio}
+          d={d}
+          onAcao={(passo) => {
+            if (passo === 0) nav('NovoIngrediente');
+            else if (passo === 1) nav('ProdutoFormHome');
+            else if (d.primeiroSemPreco) navigation.getParent()?.navigate('Produtos', { screen: 'ProdutosList', params: { openProductEdit: d.primeiroSemPreco.id } });
+            else nav('Produtos');
+          }}
+          onVideo={() => navigation.navigate('ComoFunciona')}
+        />
+      ) : (<>
       <PrecosZeradosBanner />
 
       {/* HomeInstallBanner: movido pra depois de "Ações Rápidas" (UX walkthrough —
@@ -993,6 +1107,8 @@ export default function HomeScreen({ navigation }) {
           })}
         </>
       )}
+
+      </>)}
 
       <View style={{ height: 20 }} />
     </ScrollView>

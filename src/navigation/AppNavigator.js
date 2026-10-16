@@ -736,9 +736,8 @@ function AppContent() {
         }} />
       )}
       {/* 16/10/2026: vídeo de 1 min depois do perfil (substitui o Kit no setup). */}
-      {(initialRoute === 'WelcomeTour' || initialRoute === 'ProfileSetup' || initialRoute === 'ComoFunciona') && (
-        <RootStack.Screen name="ComoFunciona" component={ComoFuncionaScreen} options={{ headerShown: false, title: 'Como funciona' }} />
-      )}
+      {/* Registrado sempre: a Home simples tem "Ver o vídeo de 1 minuto". */}
+      <RootStack.Screen name="ComoFunciona" component={ComoFuncionaScreen} options={{ headerShown: false, title: 'Como funciona' }} />
       <RootStack.Screen name="MainTabs" component={MainTabs} initialParams={{ initialTab: savedTab }} />
       {initialRoute === 'MainTabs' && (
         <RootStack.Screen name="Onboarding" component={OnboardingScreen} options={{
