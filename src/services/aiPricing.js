@@ -14,9 +14,12 @@
  *
  * Mantém a mesma assinatura do antigo wrapper IA pra UI não precisar mudar.
  */
+import { resolverMargemMeta, isMargemBaixa } from '../utils/margemMeta';
 
 /**
  * Coleta contexto financeiro do usuário (despesas, lucro alvo).
+ * `margem_meta` = meta de margem da conta (utils/margemMeta: lucro_desejado,
+ * 15% se vazio) — usada só pro alerta de "margem baixa".
  */
 export async function gatherFinancialContext(db) {
   if (!db) return { despesas_fixas_pct: 0, despesas_variaveis_pct: 0, margem_alvo: 0.3 };
@@ -48,6 +51,7 @@ export async function gatherFinancialContext(db) {
 
     return {
       margem_alvo: clamp(margem_alvo, 0, 0.95),
+      margem_meta: resolverMargemMeta(config?.lucro_desejado),
       despesas_fixas_pct: clamp(despesas_fixas_pct, 0, 0.95),
       despesas_variaveis_pct: clamp(despesas_variaveis_pct, 0, 0.95),
     };
@@ -110,6 +114,7 @@ export async function getHistoricoVendas(db, produtoId) {
  * @param {number} input.cmv
  * @param {number} [input.preco_atual]
  * @param {number} [input.margem_alvo]            (0..1, ex: 0.3 = 30%)
+ * @param {number} [input.margem_meta]            meta de margem da conta (0..1); vazio → 15%
  * @param {number} [input.despesas_fixas_pct]     (0..1)
  * @param {number} [input.despesas_variaveis_pct] (0..1)
  * @param {number} [input.preco_medio_categoria]
@@ -181,7 +186,8 @@ export async function suggestPrice(input) {
   });
 
   // Alertas adicionais
-  if (margemFinal < 0.15) {
+  // "Margem baixa" = abaixo da meta da conta (fonte única: utils/margemMeta).
+  if (isMargemBaixa(margemFinal, input?.margem_meta)) {
     alertas.push(
       `Margem real de ${pct(margemFinal)} — pouca folga pra imprevistos. ` +
       `Considere subir a margem alvo ou reduzir custos.`,

@@ -11,6 +11,7 @@ import InfoTooltip from '../components/InfoTooltip';
 import EmptyState from '../components/EmptyState';
 import Loader from '../components/Loader';
 import MetaVsRealidadeChart from '../components/MetaVsRealidadeChart';
+import { resolverMargemMeta, classificarMargem, isMargemBaixa } from '../utils/margemMeta';
 
 const TABS = [
   { key: 'ese', label: 'Simulador de Impacto', icon: 'trending-up' },
@@ -49,6 +50,8 @@ export default function SimuladorScreen({ navigation }) {
   // Alimenta o chart "Meta vs Realidade".
   const [faturamentoRealizado, setFaturamentoRealizado] = useState(0);
   const [mesAtual, setMesAtual] = useState(''); // 'YYYY-MM' do mês de referência
+  // Meta de margem da conta (lucro_desejado; 15% se vazio) — fonte única em utils/margemMeta.
+  const [margemMeta, setMargemMeta] = useState(resolverMargemMeta(null));
 
   // Audit P0 (Fase 2 - Fix #7): race-guard contra setState após unmount
   // (loadData/simular podem terminar depois que usuário trocou de tela).
@@ -67,7 +70,7 @@ export default function SimuladorScreen({ navigation }) {
       setLoading(true);
       const db = await getDatabase();
 
-      const [mps, prodsR, fixas, variaveis, allIngs, allPreps, allEmbs, todasVendas] = await Promise.all([
+      const [mps, prodsR, fixas, variaveis, allIngs, allPreps, allEmbs, todasVendas, cfgRows] = await Promise.all([
         db.getAllAsync('SELECT * FROM materias_primas ORDER BY nome'),
         db.getAllAsync('SELECT * FROM produtos WHERE preco_venda > 0'),
         db.getAllAsync('SELECT * FROM despesas_fixas'),
@@ -78,9 +81,11 @@ export default function SimuladorScreen({ navigation }) {
         // Vendas registradas — alimentam o chart "Meta vs Realidade".
         // Filtramos por mês em JS (web DB não suporta funções SQL de data).
         db.getAllAsync('SELECT produto_id, data, quantidade FROM vendas'),
+        db.getAllAsync('SELECT lucro_desejado FROM configuracao LIMIT 1'),
       ]);
 
       setInsumos(mps);
+      setMargemMeta(resolverMargemMeta(cfgRows?.[0]?.lucro_desejado));
 
       const totalFixas = fixas.reduce((a, d) => a + (d.valor || 0), 0);
       const totalVar = variaveis.reduce((a, d) => a + (d.percentual || 0), 0); // percentual already decimal (0.06 = 6%)
@@ -354,15 +359,16 @@ export default function SimuladorScreen({ navigation }) {
               <View style={styles.resumoItem}>
                 <Text style={styles.resumoLabel}>Margens em risco</Text>
                 <Text style={[styles.resumoValue, { color: colors.error }]}>
-                  {resultados.filter(r => r.margemNova < 0.10).length}
+                  {resultados.filter(r => isMargemBaixa(r.margemNova, margemMeta)).length}
                 </Text>
               </View>
             </View>
 
             {/* Lista de produtos (filtrada pelo insumo selecionado) */}
             {(insumoSelecionado ? resultados.filter(r => r.ingredientes.some(ing => ing.materia_prima_id === insumoSelecionado)) : resultados).map(r => {
-              const margemColor = r.margemNova >= 0.15 ? colors.success : r.margemNova >= 0.05 ? colors.warning : colors.error;
-              const margemRisco = r.margemNova < 0.10;
+              const faixaMargem = classificarMargem(r.margemNova, margemMeta);
+              const margemColor = faixaMargem === 'acima' ? colors.success : faixaMargem === 'medio' ? colors.warning : colors.error;
+              const margemRisco = isMargemBaixa(r.margemNova, margemMeta);
               const margemNegativa = r.margemNova < 0;
               // Audit P0 (Fase 2 - Fix #6): se margem negativa, avisar antes de
               // navegar — usuário pode estar prestes a "salvar" um preço que

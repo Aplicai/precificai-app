@@ -17,7 +17,8 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import usePersistedState from '../hooks/usePersistedState';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import SearchBar from '../components/SearchBar';
-import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum, parseDecimalBR } from '../utils/calculations';
+import { formatCurrency, converterParaBase, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum, parseDecimalBR, formatNumberBR, formatPercentBR } from '../utils/calculations';
+import { classificarMargem, isMargemBaixa } from '../utils/margemMeta';
 // Sprint 2 S3 — fonte única da verdade para precificação delivery (substitui fórmula inline duplicada).
 import { calcResultadoDelivery, sugerirPrecoDelivery, calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
 // Sessão 28.12 (D-22b): adapter pra extrair imposto% das despesas variáveis
@@ -986,7 +987,7 @@ export default function DeliveryHubScreen({ navigation }) {
                               </View>
                               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
                                 <Text style={{ fontSize: 12, color: colors.textSecondary }}>Margem líquida</Text>
-                                <Text style={{ fontSize: 14, fontFamily: fontFamily.bold, color: lucroLiquidoPerc >= 0.10 ? colors.success : lucroLiquidoPerc >= 0 ? colors.warning : colors.error }}>
+                                <Text style={{ fontSize: 14, fontFamily: fontFamily.bold, color: !isMargemBaixa(lucroLiquidoPerc, contextoFin.lucroPerc) ? colors.success : lucroLiquidoPerc >= 0 ? colors.warning : colors.error }}>
                                   {(lucroLiquidoPerc * 100).toFixed(1)}%
                                 </Text>
                               </View>
@@ -1076,7 +1077,9 @@ export default function DeliveryHubScreen({ navigation }) {
                       const sugVG = sugerirPrecoDelivery({ custoUnit: prod.custoUnit, plat: platLikeVG, margemAlvo: margemAlvoVG, arredondar: false });
                       const precoSug = sugVG.inviavel ? 0 : (sugVG.precoSugerido || 0);
 
-                      const margemColor = margemDel < 0.05 ? colors.error : margemDel < 0.15 ? colors.warning : colors.success;
+                      // Meta = lucro desejado do delivery (cai no do balcão; 15% se vazio) — utils/margemMeta.
+                      const faixaDel = classificarMargem(margemDel, contextoFin.lucroPerc);
+                      const margemColor = faixaDel === 'acima' ? colors.success : faixaDel === 'medio' ? colors.warning : colors.error;
 
                       // Sessão 28+ — mobile-web: card empilhado em vez de linha de tabela
                       if (isMobile) {

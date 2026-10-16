@@ -16,7 +16,8 @@ import InputField from '../components/InputField';
 import SaveStatus from '../components/SaveStatus';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, safeNum, parseDecimalBR } from '../utils/calculations';
+import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, safeNum, parseDecimalBR, formatNumberBR, formatPercentBR } from '../utils/calculations';
+import { classificarMargem } from '../utils/margemMeta';
 import { buildContextoFinanceiro, embalagemDeliveryDoProduto, parseEmbalagensDelivery, normalizarEmbalagensDelivery } from '../utils/deliveryAdapter';
 import ScreenInModal from '../components/ScreenInModal';
 import EmbalagemFormScreen from './EmbalagemFormScreen';
@@ -66,6 +67,12 @@ const COMBO_COLORS = [
 
 function getComboColor(index) {
   return COMBO_COLORS[index % COMBO_COLORS.length];
+}
+
+// Cor da margem do combo (em pontos %) contra a meta da conta (utils/margemMeta).
+function corMargemCombo(margemPct, meta) {
+  const faixa = classificarMargem(safeNum(margemPct) / 100, meta);
+  return faixa === 'acima' ? colors.success : faixa === 'medio' ? colors.accent : colors.error;
 }
 
 // Type badge colors
@@ -983,7 +990,7 @@ export default function DeliveryCombosScreen() {
     // fórmula líquida do resumo do modal e do preço sugerido.
     const lucro = calcLucroLiquidoCombo(precoV, custoC, contextoFin.fixoPerc, contextoFin.variavelPerc);
     const margem = calcMargemLiquidaCombo(precoV, custoC, contextoFin.fixoPerc, contextoFin.variavelPerc) * 100;
-    const margemColor = margem >= 25 ? colors.success : margem >= 15 ? colors.accent : colors.error;
+    const margemColor = corMargemCombo(margem, contextoFin.lucroPerc);
     const comboColor = getComboColor(index);
     const itens = combo.itens || [];
     const itemCount = itens.length;
@@ -1063,7 +1070,7 @@ export default function DeliveryCombosScreen() {
     // despesas fixas/variáveis), não bruta.
     const lucro = calcLucroLiquidoCombo(precoV, custoC, contextoFin.fixoPerc, contextoFin.variavelPerc);
     const margem = calcMargemLiquidaCombo(precoV, custoC, contextoFin.fixoPerc, contextoFin.variavelPerc) * 100;
-    const margemColor = margem >= 25 ? colors.success : margem >= 15 ? colors.accent : colors.error;
+    const margemColor = corMargemCombo(margem, contextoFin.lucroPerc);
     const comboColor = getComboColor(index);
     const itens = combo.itens || [];
     const itemCount = itens.length;
@@ -1417,7 +1424,7 @@ export default function DeliveryCombosScreen() {
                     <View style={styles.comboResumoCell}>
                       <Text style={styles.comboResumoCellLabel}>Margem líq.</Text>
                       <Text style={[styles.comboResumoCellValue, {
-                        color: margemModal >= 25 ? colors.success : margemModal >= 15 ? colors.accent : colors.error
+                        color: corMargemCombo(margemModal, contextoFin.lucroPerc)
                       }]}>
                         {precoVendaModal > 0 ? `${margemModal.toFixed(1)}%` : '\u2014'}
                       </Text>

@@ -21,6 +21,7 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import useListDensity from '../hooks/useListDensity';
 import { t } from '../i18n/pt-BR';
 import { UNIDADES_MEDIDA, calcPrecoBase, calcFatorCorrecao, formatCurrency, converterParaBase, calcCustoIngrediente, calcCustoPreparo, calcMargem, parseDecimalBR, calcCustoPorKgPreparo, formatNumberBR, formatPercentBR } from '../utils/calculations';
+import { resolverMargemMeta, isMargemBaixa } from '../utils/margemMeta';
 import { resolveCategoriaId } from '../utils/categoriaValida';
 // Sprint 2 S5 — checagem de dependências antes de DELETE (evita órfãos em preparo_ingredientes / produto_ingredientes).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
@@ -557,6 +558,9 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
             .map(r => ({ id: r.produto_id, nome: r.nome, preco_venda: r.preco_venda }));
           if (affected.length > 0) {
             const warnings = [];
+            // "Margem em risco" = abaixo da meta da conta (utils/margemMeta).
+            const cfgMeta = await db.getAllAsync('SELECT lucro_desejado FROM configuracao LIMIT 1').catch(() => null);
+            const margemMeta = resolverMargemMeta(cfgMeta?.[0]?.lucro_desejado);
             for (const prod of affected) {
               const ings = await db.getAllAsync('SELECT pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id WHERE pi.produto_id = ?', [prod.id]);
               const custoIng = ings.reduce((a, ing) => {
@@ -571,7 +575,7 @@ export default function MateriaPrimaFormScreen({ route, navigation }) {
               const custoTotal = custoIng + custoPr + custoEmb;
               // Sessão 28.9 — Auditoria P0-02: usar calcMargem (alerta de margem baixa do produto)
               const margem = calcMargem(prod.preco_venda, custoTotal);
-              if (margem < 0.10) {
+              if (isMargemBaixa(margem, margemMeta)) {
                 warnings.push(`${prod.nome}: margem ${formatPercentBR(margem * 100, 1)}`);
               }
             }

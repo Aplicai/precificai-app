@@ -20,7 +20,8 @@ import { Feather } from '@expo/vector-icons';
 import { Alert } from 'react-native';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, calcCustoIngrediente, calcCustoPreparo, getDivisorRendimento, parseDecimalBR } from '../utils/calculations';
+import { formatCurrency, calcCustoIngrediente, calcCustoPreparo, getDivisorRendimento, parseDecimalBR, formatNumberBR, formatPercentBR } from '../utils/calculations';
+import { isMargemBaixa } from '../utils/margemMeta';
 import { calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
 import { buildContextoFinanceiro, normalizePlataforma, custoDelivery, embalagemDeliveryDoProduto } from '../utils/deliveryAdapter';
 import { selecionarTudoAoFocarProps } from '../utils/selecionarAoFocar';
@@ -373,7 +374,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
             </View>
             <View style={styles.compRow}>
               <Text style={styles.compLabel}>Margem líquida</Text>
-              <Text style={[styles.compVal, { fontFamily: fontFamily.bold, color: margemLiquida >= 0.10 ? colors.success : margemLiquida >= 0 ? colors.warning : colors.error }]}>
+              <Text style={[styles.compVal, { fontFamily: fontFamily.bold, color: !isMargemBaixa(margemLiquida, contexto.lucroPerc) ? colors.success : margemLiquida >= 0 ? colors.warning : colors.error }]}>
                 {(margemLiquida * 100).toFixed(1)}%
               </Text>
             </View>

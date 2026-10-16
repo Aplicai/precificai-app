@@ -4,11 +4,12 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, safeNum, buildPricingConfig } from '../utils/calculations';
+import { formatCurrency, formatPercent, formatPercentBR, formatNumberBR, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, safeNum, buildPricingConfig } from '../utils/calculations';
 import {
   calcTendenciaFaturamento, indiceDoMes, precoSugeridoProduto,
   selecionarAtencao, vendeNoPrejuizo, deveSugerirAumento, textoAtencao, aplicarCustoAtualPreparos,
 } from '../utils/relatorios';
+import { resolverMargemMeta, isMargemBaixa } from '../utils/margemMeta';
 import { sincronizarCustosPreparos } from '../services/cascadeRecalc';
 import { calcPontoEquilibrio } from '../utils/breakeven';
 import EmptyState from '../components/EmptyState';
@@ -23,6 +24,12 @@ const CATEGORY_COLORS = [
   colors.yellow, colors.success, colors.info, colors.red,
   colors.primaryLight, colors.accentLight, colors.coralLight, colors.purpleLight,
 ];
+
+// Meta (fração) → "15%" / "17,5%" pro texto compartilhado.
+function metaTxt(meta) {
+  const pct = Math.round(resolverMargemMeta(meta) * 1000) / 10;
+  return formatPercentBR(pct, Number.isInteger(pct) ? 0 : 1);
+}
 
 function getCategoryColor(index) {
   return CATEGORY_COLORS[index % CATEGORY_COLORS.length];
@@ -114,6 +121,8 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
       const allPreps = aplicarCustoAtualPreparos(allPrepsGravados, custosPreparos);
       setCategorias(cats || []);
       const lucroDesejado = configRows?.[0]?.lucro_desejado || 0;
+      // Meta de margem da conta (lucro_desejado; 15% se vazio) — fonte única.
+      const margemMeta = resolverMargemMeta(configRows?.[0]?.lucro_desejado);
 
       const totalFixas = fixas.reduce((a, d) => a + (d.valor || 0), 0);
       const totalVar = variaveis.reduce((a, d) => a + (d.percentual || 0), 0);
@@ -204,9 +213,9 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
         .sort((a, b) => b.margemReais - a.margemReais)
         .slice(0, 3);
 
-      // --- Atenção: margem < 10% ---
-      // Margem < 10%, incluindo prejuízo (margem negativa); pior primeiro.
-      const atencao = selecionarAtencao(produtosComPreco, 0.10);
+      // --- Atenção: margem abaixo da meta (utils/margemMeta) ---
+      // Inclui prejuízo (margem negativa); pior primeiro.
+      const atencao = selecionarAtencao(produtosComPreco, margemMeta);
 
       // --- Ponto de equilíbrio ---
       // Audit 09/09 [B11]: antes dividia as fixas pela margem LÍQUIDA média
@@ -321,6 +330,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
         precificacao,
         melhores,
         atencao,
+        margemMeta,
         pontoEquilibrio,
         deliveryInsight,
         tendencia,
@@ -380,8 +390,8 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
     if (data.atencao && data.atencao.length > 0) {
       const noPrejuizo = data.atencao.filter(vendeNoPrejuizo).length;
       linhas.push(noPrejuizo > 0
-        ? `Alertas: ${data.atencao.length} produto(s) com margem abaixo de 10%, ${noPrejuizo} vendido(s) no prejuízo.`
-        : `Alertas: ${data.atencao.length} produto(s) com margem abaixo de 10%.`);
+        ? `Alertas: ${data.atencao.length} produto(s) com margem abaixo da meta (${metaTxt(data.margemMeta)}), ${noPrejuizo} vendido(s) no prejuízo.`
+        : `Alertas: ${data.atencao.length} produto(s) com margem abaixo da meta (${metaTxt(data.margemMeta)}).`);
       data.atencao.slice(0, 3).forEach(p => {
         linhas.push(vendeNoPrejuizo(p)
           ? `• ${p.nome}: você perde ${formatCurrency(Math.abs(p.lucro))} a cada venda`
@@ -862,8 +872,8 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
           )}
 
           {data.precificacao.map((p, idx) => {
-            const margemPos = p.margem >= 0.10;
-            const margemAlerta = p.margem < 0.10 && p.margem >= 0;
+            const margemPos = !isMargemBaixa(p.margem, data.margemMeta);
+            const margemAlerta = !margemPos && p.margem >= 0;
             const margemNeg = p.margem < 0;
             const corMargem = margemPos ? colors.success : margemAlerta ? colors.warning : colors.error;
 

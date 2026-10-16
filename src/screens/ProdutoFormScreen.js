@@ -716,6 +716,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
         categoria: cat?.nome || undefined,
         cmv: Number(custoUnitario.toFixed(4)),
         margem_alvo,
+        margem_meta: ctx.margem_meta,
         despesas_fixas_pct: ctx.despesas_fixas_pct,
         despesas_variaveis_pct: ctx.despesas_variaveis_pct,
         preco_atual: precoAtualNum > 0 ? precoAtualNum : undefined,
