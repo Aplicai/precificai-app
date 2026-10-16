@@ -21,7 +21,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { deveOferecerChrome, deveOferecerSafari, ehIPhone, urlAbrirNoChrome, urlAbrirNoSafari, pedeInstalar, semParametroInstalar } from '../utils/navegadorInterno';
+import { deveOferecerChrome, deveOferecerSafari, ehIPhone, urlAbrirNoChrome, urlAbrirNoSafari, pedeInstalar, comParametroInstalar, semParametroInstalar } from '../utils/navegadorInterno';
 import { canInstall, isInstalled, promptInstall, subscribe } from '../utils/pwaInstall';
 import { trackEvent } from '../utils/marketing';
 
@@ -45,8 +45,14 @@ export default function InstalarAppHost() {
     const ua = window.navigator?.userAgent || '';
     if (lerSessao(CHAVE_SESSAO_FECHOU) === '1') return undefined;
 
-    if (deveOferecerChrome(ua)) { setModo('chrome'); return undefined; }
-    if (deveOferecerSafari(ua)) { setModo('safari'); return undefined; }
+    const noChrome = deveOferecerChrome(ua);
+    if (noChrome || deveOferecerSafari(ua)) {
+      // Quem sai pelo menu do Instagram ("Abrir no navegador externo") leva a
+      // URL atual: já deixa o pedido de instalação nela.
+      try { window.history.replaceState(window.history.state, '', comParametroInstalar(window.location.href)); } catch {}
+      setModo(noChrome ? 'chrome' : 'safari');
+      return undefined;
+    }
 
     // Chegou ao navegador pelo botão: guarda o pedido e limpa a URL.
     if (pedeInstalar(window.location.search)) {
@@ -104,7 +110,7 @@ export default function InstalarAppHost() {
   if (modo === 'chrome') {
     acao = abrirNoChrome;
   } else if (modo === 'safari') {
-    if (safariNaoAbriu) texto = 'Toque em ⋯ no canto de cima e em "Abrir no navegador externo". Lá, a gente mostra o resto.';
+    if (safariNaoAbriu) texto = 'Toque em ⋯ no canto de cima e em "Abrir no navegador externo". No Safari, a gente mostra o resto.';
     else acao = abrirNoSafari;
   } else if (modo === 'iphone') {
     texto = 'Toque em Compartilhar (no Safari novo, fica no ⋯) e em "Adicionar à Tela de Início".';

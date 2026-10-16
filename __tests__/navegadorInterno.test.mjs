@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { ehNavegadorInterno, deveOferecerChrome, deveOferecerSafari, ehIPhone, urlAbrirNoSafari, urlAbrirNoChrome, pedeInstalar, semParametroInstalar } from '../src/utils/navegadorInterno.js';
+import { ehNavegadorInterno, deveOferecerChrome, deveOferecerSafari, ehIPhone, urlAbrirNoSafari, urlAbrirNoChrome, comParametroInstalar, pedeInstalar, semParametroInstalar } from '../src/utils/navegadorInterno.js';
 
 const IG_ANDROID = 'Mozilla/5.0 (Linux; Android 13; SM-A135M Build/TP1A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/129.0.6668.81 Mobile Safari/537.36 Instagram 349.0.0.42.115 Android';
 const FB_ANDROID = 'Mozilla/5.0 (Linux; Android 12; moto g22; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/129.0 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/483.0.0.48.86;]';
@@ -46,6 +46,8 @@ test('lê e remove o pedido de instalação da URL', () => {
   assert.equal(pedeInstalar(''), false);
   assert.equal(semParametroInstalar('https://app.precificaiapp.com/register?utm_source=meta&instalar=1'), 'https://app.precificaiapp.com/register?utm_source=meta');
   assert.equal(semParametroInstalar('https://app.precificaiapp.com/?instalar=1'), 'https://app.precificaiapp.com/');
+  assert.equal(comParametroInstalar('https://app.precificaiapp.com/register?utm_source=meta'), 'https://app.precificaiapp.com/register?utm_source=meta&instalar=1');
+  assert.equal(comParametroInstalar('https://app.precificaiapp.com/?instalar=1'), 'https://app.precificaiapp.com/?instalar=1');
 });
 
 test('no iPhone, dentro do Instagram/Facebook, oferece abrir no Safari', () => {

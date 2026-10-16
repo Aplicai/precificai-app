@@ -57,6 +57,15 @@ export function pedeInstalar(search) {
   try { return new URLSearchParams(search || '').get(PARAM_INSTALAR) === '1'; } catch { return false; }
 }
 
+/**
+ * `href` com ?instalar=1. Usado dentro do Instagram/Facebook para a URL da
+ * página já carregar o pedido: quem sai pelo menu "Abrir no navegador
+ * externo" leva a URL atual (e a sessão não vai junto).
+ */
+export function comParametroInstalar(href) {
+  return comInstalar(href).toString();
+}
+
 export function semParametroInstalar(href) {
   const u = new URL(href);
   u.searchParams.delete(PARAM_INSTALAR);
