@@ -66,6 +66,17 @@ export function comParametroInstalar(href) {
   return comInstalar(href).toString();
 }
 
+/**
+ * Veio de anúncio do Meta? O "Abrir no navegador externo" do Instagram leva
+ * o link original (com fbclid/utm), não a URL alterada na página.
+ */
+export function veioDoAnuncio(search) {
+  try {
+    const q = new URLSearchParams(search || '');
+    return !!q.get('fbclid') || /^(meta|facebook|instagram|fb|ig)$/i.test(q.get('utm_source') || '');
+  } catch { return false; }
+}
+
 export function semParametroInstalar(href) {
   const u = new URL(href);
   u.searchParams.delete(PARAM_INSTALAR);

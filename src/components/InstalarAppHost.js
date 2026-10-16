@@ -21,7 +21,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { deveOferecerChrome, deveOferecerSafari, ehIPhone, urlAbrirNoChrome, urlAbrirNoSafari, pedeInstalar, comParametroInstalar, semParametroInstalar } from '../utils/navegadorInterno';
+import { deveOferecerChrome, deveOferecerSafari, ehIPhone, urlAbrirNoChrome, urlAbrirNoSafari, pedeInstalar, veioDoAnuncio, comParametroInstalar, semParametroInstalar } from '../utils/navegadorInterno';
 import { canInstall, isInstalled, promptInstall, subscribe } from '../utils/pwaInstall';
 import { trackEvent } from '../utils/marketing';
 
@@ -55,7 +55,8 @@ export default function InstalarAppHost() {
     }
 
     // Chegou ao navegador pelo botão: guarda o pedido e limpa a URL.
-    if (pedeInstalar(window.location.search)) {
+    const doAnuncio = veioDoAnuncio(window.location.search) && (ehIPhone(ua) || /Android/i.test(ua));
+    if (pedeInstalar(window.location.search) || doAnuncio) {
       gravarSessao(CHAVE_SESSAO_PEDIU, '1');
       try { window.history.replaceState(window.history.state, '', semParametroInstalar(window.location.href)); } catch {}
     }
