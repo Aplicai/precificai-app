@@ -7,7 +7,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { formatCurrency, formatPercent, formatPercentBR, formatNumberBR, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, safeNum, buildPricingConfig } from '../utils/calculations';
 import {
   calcTendenciaFaturamento, indiceDoMes, precoSugeridoProduto,
-  selecionarAtencao, vendeNoPrejuizo, deveSugerirAumento, textoAtencao, aplicarCustoAtualPreparos,
+  selecionarAtencao, vendeNoPrejuizo, deveSugerirAumento, textoAtencao, frasePoucaMargem, aplicarCustoAtualPreparos,
 } from '../utils/relatorios';
 import { resolverMargemMeta, isMargemBaixa } from '../utils/margemMeta';
 import { sincronizarCustosPreparos } from '../services/cascadeRecalc';
@@ -1008,7 +1008,7 @@ export default function RelatorioSimplesScreen({ navigation, embedded = false })
                     </>
                   ) : (
                     <>
-                      <Text style={styles.highlightWarning}>{p.nome}</Text> está te custando quase o que você cobra.
+                      <Text style={styles.highlightWarning}>{p.nome}</Text> {frasePoucaMargem(p)}
                     </>
                   )}
                   {deveSugerirAumento(p) ? (

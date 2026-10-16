@@ -91,6 +91,8 @@ test('preço sugerido respeita a margem própria do produto e a margem de segura
   });
   perto(precoSugeridoProduto(2, { margem_lucro_produto: 0.3 }, pc), 2 * 1.1 * calcMarkup(0.1, 0, 0.3));
   perto(precoSugeridoProduto(2, {}, pc), 2 * 1.1 * pc.markup);
+  // 0 gravado pelo Kit/Preço rápido = margem da conta, não "lucro zero"
+  perto(precoSugeridoProduto(2, { margem_lucro_produto: 0 }, pc), 2 * 1.1 * pc.markup);
 });
 
 test('preço sugerido: markup inviável (custos + lucro ≥ 100%) → 0', () => {
@@ -157,6 +159,11 @@ test('Atenção: margem apertada sem prejuízo mantém o texto; sugerido menor n
   assert.equal(vendeNoPrejuizo(p), false);
   assert.equal(deveSugerirAumento(p), false);
   assert.equal(textoAtencao(p), 'Bolo está te custando quase o que você cobra. Revise os custos e o preço desse produto.');
+});
+
+test('Atenção: perto da meta mostra a margem real, não "quase o que você cobra"', () => {
+  const p = { nome: 'Torta', lucro: 0.9, margem: 0.18, precoVenda: 5, precoSugerido: 4 };
+  assert.equal(textoAtencao(p), 'Torta está com margem de 18,0%, abaixo da sua meta. Revise os custos e o preço desse produto.');
 });
 
 test('custo das receitas base: usa o custo atual sincronizado; sem Map mantém o gravado', () => {

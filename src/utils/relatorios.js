@@ -3,7 +3,7 @@
  * Relatório de ingredientes e o PDF do relatório). Sem React, sem banco:
  * testado em __tests__/relatorios.test.mjs.
  */
-import { calcMarkup, calcPrecoSugerido, formatCurrency } from './calculations';
+import { calcMarkup, calcPrecoSugerido, formatCurrency, formatNumberBR } from './calculations';
 import { isMarcaEstimada } from './insumoDisplay';
 
 const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -85,9 +85,10 @@ export function calcTendenciaFaturamento(fat, hoje = new Date()) {
  */
 export function precoSugeridoProduto(custoUnitario, produto, pricingConfig) {
   const pc = pricingConfig || {};
-  const raw = produto?.margem_lucro_produto;
-  const margemProduto = raw === null || raw === undefined || raw === '' ? null : Number(raw);
-  const markup = margemProduto !== null && Number.isFinite(margemProduto)
+  // Margem própria só quando positiva: 0/vazio (Kit, Preço rápido, modal
+  // rápido) = margem da conta, mesma regra de margemDoProduto (margemMeta.js).
+  const margemProduto = Number(produto?.margem_lucro_produto);
+  const markup = margemProduto > 0 && margemProduto < 1
     ? calcMarkup(pc.despFixasPerc, pc.despVarPerc, margemProduto)
     : num(pc.markup);
   if (!(markup > 0)) return 0;
@@ -178,11 +179,23 @@ export function deveSugerirAumento(p) {
   return num(p?.precoSugerido) > 0 && num(p.precoSugerido) > num(p?.precoVenda) + 0.005;
 }
 
+/**
+ * Frase da margem apertada (sem prejuízo). Margem bem baixa (< 5%): "quase o
+ * que você cobra"; perto da meta, diz a margem real (a lista vai até a meta).
+ */
+export function frasePoucaMargem(p) {
+  const m = Number(p?.margem);
+  if (Number.isFinite(m) && m >= 0.05) {
+    return `está com margem de ${formatNumberBR(m * 100, 1)}%, abaixo da sua meta.`;
+  }
+  return 'está te custando quase o que você cobra.';
+}
+
 /** Frase do "Atenção!" (PDF): prejuízo primeiro, depois margem apertada. */
 export function textoAtencao(p) {
   const base = vendeNoPrejuizo(p)
     ? `${p.nome}: você perde ${formatCurrency(Math.abs(num(p.lucro)))} a cada venda.`
-    : `${p.nome} está te custando quase o que você cobra.`;
+    : `${p.nome} ${frasePoucaMargem(p)}`;
   return deveSugerirAumento(p)
     ? `${base} O preço sugerido é ${formatCurrency(p.precoSugerido)} (hoje: ${formatCurrency(p.precoVenda)}).`
     : `${base} Revise os custos e o preço desse produto.`;

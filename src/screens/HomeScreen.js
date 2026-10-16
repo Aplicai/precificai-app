@@ -6,7 +6,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius, typography, numeric, radius } from '../utils/theme';
-import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual } from '../utils/calculations';
+import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, parseDecimalBR, formatNumberBR } from '../utils/calculations';
 import { calcSobraMes } from '../utils/breakeven';
 import { getFinanceiroStatus, montarStatusFinanceiro, textoPendenciaFinanceiro, publicarStatusFinanceiro, assinarStatusFinanceiro } from '../utils/financeiroStatus';
 import { resolverMargemMeta, isMargemBaixa, classificarMargem } from '../utils/margemMeta';
@@ -41,12 +41,18 @@ const PREF_MARGEM_META = '@pref:margem_meta_pct';
 const META_MIN = 5;
 const META_MAX = 95;
 
+// Meta em % como texto do campo: "15" ou "17,5" (uma casa, vírgula).
+function textoMeta(pct) {
+  const n = Math.round(Number(pct) * 10) / 10;
+  return Number.isInteger(n) ? String(n) : formatNumberBR(n, 1);
+}
+
 function clampMeta(v) {
-  const n = parseFloat(v);
+  const n = parseDecimalBR(v);
   if (!isFinite(n)) return null;
   if (n < META_MIN) return String(META_MIN);
   if (n > META_MAX) return String(META_MAX);
-  return String(Math.round(n));
+  return textoMeta(n);
 }
 
 function getGreeting() {
@@ -193,6 +199,9 @@ export default function HomeScreen({ navigation }) {
   const [showCmvMeta, setShowCmvMeta] = useState(false);
   const [cmvMetaValue, setCmvMetaValue] = useState('35');
   const [showMargemMeta, setShowMargemMeta] = useState(false);
+  const showMargemMetaRef = useRef(false);
+  showMargemMetaRef.current = showMargemMeta;
+  const loadSeqRef = useRef(0);
   const [margemMetaValue, setMargemMetaValue] = useState('15');
   const [loadError, setLoadError] = useState(null);
   const insets = useSafeAreaInsets();
@@ -261,6 +270,9 @@ export default function HomeScreen({ navigation }) {
   }
 
   async function loadAll() {
+    // Foco + recarga pós-sincronização podem rodar juntos: só o load mais
+    // novo aplica resultado (um load antigo terminando depois traria custos velhos).
+    const seq = ++loadSeqRef.current;
     setLoadError(null);
     try {
       const db = await getDatabase();
@@ -519,17 +531,20 @@ export default function HomeScreen({ navigation }) {
         vendasMesBalcao = Number(cfgRow?.vendas_mes_balcao) || 0;
         vendasMesDelivery = Number(cfgRow?.vendas_mes_delivery) || 0;
       } catch (_) { /* coluna pode não existir em build antigo */ }
+      if (seq !== loadSeqRef.current) return;
       setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, sobraSoFixas, produtosMargBaixa: uniqueProds, produtosSemPreco, primeiroSemPreco, prodsComPreco, margemMeta, cmvPercent, pontoEquilibrio, fatMedio, insights, vendasMesBalcao, vendasMesDelivery });
-      setMargemMetaValue(String(Math.round(margemMeta * 100)));
+      // Não sobrescreve o que a pessoa está digitando no modal da meta.
+      if (!showMargemMetaRef.current) setMargemMetaValue(textoMeta(margemMeta * 100));
       setAlertas(pendencias);
     } catch (e) {
       // Antes: catch silencioso → usuário via tudo zerado sem entender por quê.
       // Agora: banner vermelho com mensagem + botão "Tentar de novo".
+      if (seq !== loadSeqRef.current) return;
       const msg = (e && e.message) ? e.message : 'Falha ao carregar indicadores.';
       setLoadError(msg);
       if (typeof console !== 'undefined' && console.error) console.error('[HomeScreen.loadAll]', e);
     }
-    setLoading(false);
+    if (seq === loadSeqRef.current) setLoading(false);
   }
 
   function nav(tab) {
@@ -586,7 +601,7 @@ export default function HomeScreen({ navigation }) {
   const mostrarComoComecar = (d.totalProdutos === 0 || d.totalInsumos === 0) && dadosOk;
   // Saúde da Precificação: cards, veredito e insights leem as MESMAS cores
   // (src/utils/painelSaude.js). Antes dava "Operação saudável" com o CMV vermelho.
-  const cmvParsed = parseFloat(cmvMetaValue);
+  const cmvParsed = parseDecimalBR(cmvMetaValue);
   const cmvMeta = Number.isFinite(cmvParsed) && cmvParsed > 0 ? cmvParsed / 100 : CMV_META_PADRAO;
   const ind = avaliarIndicadores({
     pendente: !!pendente, prodsComPreco: d.prodsComPreco, custoComPreco: d.custoTotal,
@@ -1345,7 +1360,7 @@ export default function HomeScreen({ navigation }) {
             ))}
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.sm }}>
-            <TouchableOpacity onPress={() => { setMargemMetaValue(String(Math.round(d.margemMeta * 100))); setShowMargemMeta(false); }} style={{ paddingVertical: 8, paddingHorizontal: 24, backgroundColor: colors.background, borderRadius: borderRadius.md }}>
+            <TouchableOpacity onPress={() => { setMargemMetaValue(textoMeta(d.margemMeta * 100)); setShowMargemMeta(false); }} style={{ paddingVertical: 8, paddingHorizontal: 24, backgroundColor: colors.background, borderRadius: borderRadius.md }}>
               <Text style={{ color: colors.textSecondary, fontFamily: fontFamily.semiBold, fontSize: 14 }}>Fechar</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={async () => {
@@ -1354,10 +1369,12 @@ export default function HomeScreen({ navigation }) {
               const safe = clampMeta(margemMetaValue);
               if (safe == null) { setShowMargemMeta(false); return; }
               setMargemMetaValue(safe);
-              const val = parseFloat(safe) / 100;
+              const val = parseDecimalBR(safe) / 100;
+              // Sem mudança: não regrava (evita trocar 17,5% por 18% ao só abrir e salvar).
+              const mudou = !(Math.abs(val - (Number(d.margemMeta) || 0)) < 0.0005);
               try {
                 const db = await getDatabase();
-                if (val > 0) await db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [val]);
+                if (val > 0 && mudou) await db.runAsync('UPDATE configuracao SET lucro_desejado = ? WHERE id > 0', [val]);
               } catch (e) {
                 if (typeof console !== 'undefined' && console.error) console.error('[HomeScreen.saveMargemMeta]', e);
               }

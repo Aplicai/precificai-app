@@ -30,7 +30,8 @@ import { UNIDADES_MEDIDA, formatCurrency, formatPercent, calcMarkup, calcDespesa
 import { aplicarCustosPreparos } from '../services/cascadeRecalc';
 // APP-19/24b: engine unificada + modal de transparência do cálculo
 import { calcularPrecoBalcao } from '../utils/precificacao';
-import { margemDoProduto } from '../utils/margemMeta';
+import { margemDoProduto, classificarMargem } from '../utils/margemMeta';
+
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
 // Design embalagem-delivery-no-produto (2026-09-09)
 import { custoDelivery, embalagensDeliveryDoProduto, normalizarEmbalagensDelivery } from '../utils/deliveryAdapter';
@@ -59,6 +60,14 @@ const CONSERVACAO_OPCOES = [
   { key: 'refrigerado', label: 'Refrigerado', icon: 'thermometer', tempDefault: '0 a 5°C' },
   { key: 'ambiente', label: 'Ambiente', icon: 'sun', tempDefault: '20 a 25°C' },
 ];
+
+// Mesmas cores da janela do produto (EntityCreateModal): meta = margem do
+// produto quando ela existe, senão a da conta.
+function corFaixaMargem(faixa) {
+  if (faixa === 'acima') return colors.success;
+  if (faixa === 'medio') return colors.accent;
+  return colors.error;
+}
 
 export default function ProdutoFormScreen({ route, navigation }) {
   const isFocused = useIsFocused();
@@ -1329,7 +1338,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
               </View>
               <View style={styles.costsItem}>
                 <Text style={styles.costsItemLabel}>Margem Líq.{noSugerido}</Text>
-                <Text style={[styles.costsItemValue, { color: lucroPerc >= config.lucroDesejado ? colors.success : lucroPerc >= (config.lucroDesejado - 0.10) ? '#E6A800' : colors.error }]}>
+                <Text style={[styles.costsItemValue, { color: corFaixaMargem(classificarMargem(lucroPerc, lucroEfetivo)) }]}>
                   {formatPercent(lucroPerc)}
                 </Text>
               </View>
@@ -2127,7 +2136,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                 </View>
                 <View style={[styles.costsItem, { minWidth: '45%' }]}>
                   <Text style={styles.costsItemLabel}>Margem{noSugerido}</Text>
-                  <Text style={[styles.costsItemValue, { color: lucroPerc >= config.lucroDesejado ? colors.success : lucroPerc >= (config.lucroDesejado - 0.10) ? '#E6A800' : colors.error }]}>
+                  <Text style={[styles.costsItemValue, { color: corFaixaMargem(classificarMargem(lucroPerc, lucroEfetivo)) }]}>
                     {formatPercent(lucroPerc)}
                   </Text>
                 </View>

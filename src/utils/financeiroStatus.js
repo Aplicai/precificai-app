@@ -73,6 +73,7 @@ export function publicarStatusFinanceiro(status) {
 // nova ("completo") não pode ser publicada, senão o aviso volta e fica.
 let _ultimaLeitura = 0;
 let _ultimaPublicada = 0;
+let _ultimoStatus = null;
 
 export async function getFinanceiroStatus() {
   const leitura = ++_ultimaLeitura;
@@ -100,7 +101,11 @@ export async function getFinanceiroStatus() {
   });
   if (leitura > _ultimaPublicada) {
     _ultimaPublicada = leitura;
+    _ultimoStatus = status;
     publicarStatusFinanceiro(status);
+    return status;
   }
-  return status;
+  // Leitura antiga que terminou depois de uma mais nova: devolve o status
+  // mais recente (senão quem chama reacenderia o aviso com dado velho).
+  return _ultimoStatus || status;
 }
