@@ -14,7 +14,7 @@
  *   4. Botão "Salvar como meu preço delivery" → persiste em produto_preco_delivery
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { Alert } from 'react-native';
@@ -22,7 +22,8 @@ import { getDatabase } from '../database/database';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, calcCustoIngrediente, calcCustoPreparo, getDivisorRendimento, parseDecimalBR } from '../utils/calculations';
 import { calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
-import { buildContextoFinanceiro, normalizePlataforma } from '../utils/deliveryAdapter';
+import { buildContextoFinanceiro, normalizePlataforma, custoDelivery, embalagemDeliveryDoProduto } from '../utils/deliveryAdapter';
+import { selecionarTudoAoFocarProps } from '../utils/selecionarAoFocar';
 // Sessão 28.26: service unificado de upsert do preço delivery
 import { upsertPrecoDelivery } from '../services/precoDeliveryService';
 import usePlan from '../hooks/usePlan';
@@ -80,7 +81,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
     setLoading(true);
     try {
       const db = await getDatabase();
-      const [prods, plats, cfgRows, fixasRows, varsRows, fatRows, ingsRows, prepsRows, embsRows, ppdRows] = await Promise.all([
+      const [prods, plats, cfgRows, fixasRows, varsRows, fatRows, ingsRows, prepsRows, embsRows, ppdRows, embsCatalogo] = await Promise.all([
         db.getAllAsync('SELECT * FROM produtos WHERE id = ?', [produtoId]),
         db.getAllAsync('SELECT * FROM delivery_config WHERE id = ?', [plataformaId]),
         db.getAllAsync('SELECT * FROM configuracao'),
@@ -91,6 +92,9 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
         db.getAllAsync('SELECT pp.quantidade_utilizada, pr.custo_por_kg, pr.unidade_medida FROM produto_preparos pp JOIN preparos pr ON pr.id = pp.preparo_id WHERE pp.produto_id = ?', [produtoId]),
         db.getAllAsync('SELECT pe.quantidade_utilizada, em.preco_unitario FROM produto_embalagens pe JOIN embalagens em ON em.id = pe.embalagem_id WHERE pe.produto_id = ?', [produtoId]),
         db.getAllAsync('SELECT preco_venda FROM produto_preco_delivery WHERE produto_id = ? AND plataforma_id = ?', [produtoId, plataformaId]).catch(() => []),
+        // Embalagem(ns) de delivery do produto — mesma fonte da Visão Geral
+        // (SimuladorLoteScreen). O wrapper SQL só aceita um JOIN: resolve em JS.
+        db.getAllAsync('SELECT id, nome, preco_unitario FROM embalagens').catch(() => []),
       ]);
 
       const prod = prods?.[0];
@@ -105,6 +109,12 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
       const custoPr = (prepsRows || []).reduce((a, pp) => a + calcCustoPreparo(safe(pp.custo_por_kg), pp.quantidade_utilizada, pp.unidade_medida || 'g'), 0);
       const custoEmb = (embsRows || []).reduce((a, e) => a + safe(e.preco_unitario) * safe(e.quantidade_utilizada), 0);
       const cmv = (custoIng + custoPr + custoEmb) / getDivisorRendimento(prod);
+      // Custo no delivery = CMV + embalagem de delivery do produto — o MESMO que a
+      // tabela da Visão Geral usa. Antes o popup usava só o CMV e o "Mesmo lucro"
+      // saía menor que o da tabela (R$ 12,84 x R$ 14,78). O lucro alvo do balcão
+      // continua calculado com o CMV do balcão.
+      const embDelivery = embalagemDeliveryDoProduto(prod, embsCatalogo || []);
+      const cmvDelivery = custoDelivery({ cmv, embalagemDeliveryPreco: embDelivery.preco, embalagemDeliveryQtd: embDelivery.qtd });
 
       // Sessão 28.26: usa builder unificado (substitui ~10 linhas duplicadas)
       const contexto = buildContextoFinanceiro({
@@ -113,7 +123,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
       });
 
       // Sugestão pela margem do financeiro
-      const sugFinanceiro = calcSugestaoDeliveryCompleta({ cmv, plat, contexto });
+      const sugFinanceiro = calcSugestaoDeliveryCompleta({ cmv: cmvDelivery, plat, contexto });
 
       // Sessão 28.34 BUG FIX — "MESMO LUCRO" agora casa o R$ de lucro (não a margem %).
       // Antes (28.26) passávamos o lucro % líquido do balcão como `lucroPerc` alvo do
@@ -135,11 +145,11 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
         ? Math.max(0, precoBalcao - cmv - precoBalcao * (contexto.fixoPerc + contexto.variavelPerc))
         : 0;
       const sugMantemMargem = (precoBalcao > 0 && lucroLiqBalcaoReais > 0)
-        ? calcPrecoMesmoLucroReais({ cmv, lucroAlvoReais: lucroLiqBalcaoReais, plat, contexto })
+        ? calcPrecoMesmoLucroReais({ cmv: cmvDelivery, lucroAlvoReais: lucroLiqBalcaoReais, plat, contexto })
         : null;
 
       setData({
-        prod, plat, cmv, contexto, sugFinanceiro, sugMantemMargem,
+        prod, plat, cmv, cmvDelivery, embDeliveryCusto: embDelivery.custo, contexto, sugFinanceiro, sugMantemMargem,
         margemBrutaBalcao, lucroPercBalcaoReal, lucroLiqBalcaoReais,
         // Mantém `margemAtual` por compat com código de UI a jusante
         margemAtual: margemBrutaBalcao,
@@ -212,7 +222,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
     );
   }
 
-  const { prod, plat, cmv, contexto, sugFinanceiro, sugMantemMargem, margemAtual, lucroPercBalcaoReal, lucroLiqBalcaoReais } = data;
+  const { prod, plat, cmv, cmvDelivery, embDeliveryCusto, contexto, sugFinanceiro, sugMantemMargem, margemAtual, lucroPercBalcaoReal, lucroLiqBalcaoReais } = data;
   // Sessão 28.27/28.34: lucro LÍQUIDO em R$ no balcão (pra dar evidência concreta ao user).
   // Vem pronto do carregar() — é o MESMO R$ que a sugestão "MESMO LUCRO" persegue.
   const precoBalcaoNum = safe(prod.preco_venda);
@@ -237,7 +247,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
   const valComissao = precoValido ? numEscolhido * comissaoPct : 0;
   const valTaxaOnline = precoValido ? numEscolhido * taxaOnlinePct : 0;
   const valOutros = precoValido ? numEscolhido * outrosPct : 0;
-  const totalGastos = cmv + valFixos + valImposto + valComissao + valTaxaOnline + valOutros + cupomR + freteR;
+  const totalGastos = cmvDelivery + valFixos + valImposto + valComissao + valTaxaOnline + valOutros + cupomR + freteR;
   const lucroLiquido = precoValido ? numEscolhido - totalGastos : 0;
   const margemLiquida = precoValido && numEscolhido > 0 ? lucroLiquido / numEscolhido : 0;
 
@@ -263,6 +273,11 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
           <View style={styles.kpiCard}>
             <Text style={styles.kpiLabel}>Custo dos ingredientes</Text>
             <Text style={styles.kpiValue}>{formatCurrency(cmv)}</Text>
+            {embDeliveryCusto > 0 && (
+              <Text style={styles.kpiSub}>
+                No delivery: {formatCurrency(cmvDelivery)} (com embalagem de delivery)
+              </Text>
+            )}
           </View>
           <View style={styles.kpiCard}>
             <Text style={styles.kpiLabel}>Preço balcão</Text>
@@ -324,7 +339,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
             onChangeText={setPrecoEscolhido}
             placeholder="0,00"
             keyboardType="numeric"
-            selectTextOnFocus
+            {...selecionarTudoAoFocarProps(Platform.OS)}
           />
         </View>
 
@@ -334,7 +349,7 @@ export function SimulacaoProdutoContent({ produtoId: pidProp, plataformaId: plat
             <Text style={styles.compTitle}>Composição com este preço:</Text>
             {[
               { label: 'Preço cobrado', val: numEscolhido, color: colors.text, bold: true },
-              { label: 'Custo dos ingredientes e embalagem (CMV)', val: -cmv, color: colors.error },
+              { label: embDeliveryCusto > 0 ? 'Custo no delivery (ingredientes + embalagem de delivery)' : 'Custo dos ingredientes e embalagem (CMV)', val: -cmvDelivery, color: colors.error },
               { label: `Custos fixos (${((contexto.fixoPerc || 0) * 100).toFixed(1)}%)`, val: -valFixos, color: colors.error },
               { label: `Imposto (${((contexto.impostoPerc || 0) * 100).toFixed(1)}%)`, val: -valImposto, color: colors.error },
               { label: `Comissão plataforma (${(comissaoPct * 100).toFixed(1)}%)`, val: -valComissao, color: colors.error },
