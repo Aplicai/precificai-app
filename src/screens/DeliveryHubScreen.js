@@ -30,6 +30,7 @@ import usePlan from '../hooks/usePlan';
 import UpgradeModal from '../components/UpgradeModal';
 import ProPreviewBanner from '../components/ProPreviewBanner';
 import { mensagemErroSalvar } from '../utils/planGate';
+import { taxasPadraoDaPlataforma } from '../utils/deliveryPlataformasPadrao';
 
 const isWeb = Platform.OS === 'web';
 
@@ -345,13 +346,17 @@ export default function DeliveryHubScreen({ navigation }) {
   }
 
   async function addPlataforma() {
-    if (!newPlatNome.trim()) return;
+    const nome = newPlatNome.trim();
+    if (!nome) return;
     if (gateDelivery()) return;
+    // Plataforma conhecida (iFood, Rappi...) já entra com a comissão e a taxa de
+    // pagamento online padrão — antes gravava 0% e 0 mesmo pelo atalho "iFood".
+    const t = taxasPadraoDaPlataforma(nome);
     try {
       const db = await getDatabase();
       await db.runAsync(
         'INSERT INTO delivery_config (plataforma, taxa_plataforma, taxa_entrega, comissao_app, desconto_promocao, ativo) VALUES (?,?,?,?,?,?)',
-        [newPlatNome.trim(), 0, 0, 0, 0, 1]
+        [nome, t.taxa_plataforma, t.taxa_entrega, t.comissao_app, t.desconto_promocao, 1]
       );
       setNewPlatNome('');
       loadData();

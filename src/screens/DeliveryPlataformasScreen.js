@@ -13,6 +13,7 @@ import usePlan from '../hooks/usePlan';
 import UpgradeModal from '../components/UpgradeModal';
 import ProPreviewBanner from '../components/ProPreviewBanner';
 import { isPlanRejection, mensagemErroSalvar } from '../utils/planGate';
+import { PLATAFORMAS_PADRAO, plataformaPadraoPorNome, taxasPadraoDaPlataforma } from '../utils/deliveryPlataformasPadrao';
 
 // ─── Numeric helpers (audit P0) ─────────────
 function parseInputNumber(raw) {
@@ -70,13 +71,8 @@ function getPlatformStyle(name) {
 //   desconto_promocao(R$) = Cupom de desconto recorrente (REPURPOSED — antes era %)
 //   taxa_entrega     (R$) = Frete subsidiado recorrente
 // Defaults pré-cadastrados: comissão + taxa pgto online padrão de mercado 2025-2026.
-const DEFAULT_PLATFORMS = [
-  { plataforma: 'iFood', taxa_plataforma: 27, taxa_entrega: 0, comissao_app: 3.2, desconto_promocao: 0, ativo: 1 },
-  { plataforma: 'Rappi', taxa_plataforma: 25, taxa_entrega: 0, comissao_app: 3, desconto_promocao: 0, ativo: 1 },
-  { plataforma: '99Food', taxa_plataforma: 22, taxa_entrega: 0, comissao_app: 3, desconto_promocao: 0, ativo: 1 },
-  { plataforma: 'Uber Eats', taxa_plataforma: 30, taxa_entrega: 0, comissao_app: 3, desconto_promocao: 0, ativo: 1 },
-  { plataforma: 'Site Próprio / WhatsApp', taxa_plataforma: 0, taxa_entrega: 0, comissao_app: 0, desconto_promocao: 0, ativo: 1 },
-];
+// Fonte única em utils/deliveryPlataformasPadrao (também usada pelo DeliveryHub).
+const DEFAULT_PLATFORMS = PLATAFORMAS_PADRAO;
 
 export default function DeliveryPlataformasScreen() {
   const isFocused = useIsFocused();
@@ -181,8 +177,11 @@ export default function DeliveryPlataformasScreen() {
     await updatePlatform(id, 'ativo', currentValue ? 0 : 1);
   }
 
-  async function adicionarPlataforma() {
-    const nome = novaPlataforma.trim();
+  // `nomeInformado`: os chips de plataforma conhecida passam o nome direto.
+  // Antes faziam setNovaPlataforma + setTimeout(adicionarPlataforma), e a
+  // função lia `novaPlataforma` do render antigo (vazio) → o chip não adicionava.
+  async function adicionarPlataforma(nomeInformado) {
+    const nome = (typeof nomeInformado === 'string' ? nomeInformado : novaPlataforma).trim();
     if (!nome) return;
     if (gateDelivery()) return;
     const exists = plataformas.some(p => (p.plataforma || '').trim().toLowerCase() === nome.toLowerCase());
@@ -191,11 +190,8 @@ export default function DeliveryPlataformasScreen() {
       return;
     }
     // D-08: se o nome bate com uma plataforma conhecida, traz os defaults (comissão + taxa pgto online)
-    const knownDefault = DEFAULT_PLATFORMS.find(d =>
-      (d.plataforma || '').toLowerCase() === nome.toLowerCase() ||
-      nome.toLowerCase().includes((d.plataforma || '').toLowerCase().split(' ')[0])
-    );
-    const defaults = knownDefault || { taxa_plataforma: 0, taxa_entrega: 0, comissao_app: 0, desconto_promocao: 0 };
+    const knownDefault = plataformaPadraoPorNome(nome);
+    const defaults = taxasPadraoDaPlataforma(nome);
     try {
       const db = await getDatabase();
       await db.runAsync(
@@ -467,7 +463,7 @@ export default function DeliveryPlataformasScreen() {
                   <TouchableOpacity
                     key={p.plataforma}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: colors.primary + '40', backgroundColor: colors.primary + '0F' }}
-                    onPress={() => { setNovaPlataforma(p.plataforma); setTimeout(() => adicionarPlataforma(), 50); }}
+                    onPress={() => adicionarPlataforma(p.plataforma)}
                     activeOpacity={0.7}
                     accessibilityRole="button"
                     accessibilityLabel={`Adicionar ${p.plataforma} com taxas pré-preenchidas`}

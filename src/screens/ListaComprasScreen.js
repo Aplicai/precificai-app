@@ -14,6 +14,8 @@ import { openPrintableHTML } from '../utils/openPrintableHTML';
 import usePlan from '../hooks/usePlan';
 import UpgradeModal from '../components/UpgradeModal';
 import ProPreviewBanner from '../components/ProPreviewBanner';
+import { selecionarTudoAoFocarProps } from '../utils/selecionarAoFocar';
+import { formatQtdLista } from '../utils/listaComprasFormat';
 
 const CATEGORY_COLORS = [
   '#004d47', '#265bb0', '#e3b842', '#e3704d', '#6a4fb0',
@@ -24,6 +26,14 @@ const CATEGORY_COLORS = [
 function normalizeStr(str) {
   return (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
+
+// Wrapper (web) do nome nos cards: o <div title> mostra o nome inteiro no hover.
+// display:flex é o que faz a reticência aparecer — o Text do react-native-web é
+// `display: inline`, e `text-overflow: ellipsis` não vale em elemento inline:
+// dentro de um <div> comum o nome era só cortado ("Chocolate meio am810 g").
+// Como item flex o Text vira bloco; flex:1 + minWidth:0 deixam ele encolher
+// antes de empurrar a quantidade.
+const WEB_NOME_TRUNCADO = { display: 'flex', flex: 1, minWidth: 0, overflow: 'hidden' };
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -379,7 +389,7 @@ export default function ListaComprasScreen({ navigation }) {
     for (const cat of lista.categorias) {
       html += `<div class="categoria"><h3>${escapeHtml(cat)}</h3>`;
       for (const item of lista.grouped[cat]) {
-        const qty = item.displayQty % 1 === 0 ? item.displayQty : item.displayQty.toFixed(2);
+        const qty = formatQtdLista(item.displayQty);
         html += `<div class="item">
           <div><span class="checkbox"></span><span class="item-nome">${escapeHtml(item.nome)}</span>
           <span class="item-qty"> (${qty} ${escapeHtml(item.displayUnit)})</span></div>
@@ -480,8 +490,10 @@ export default function ListaComprasScreen({ navigation }) {
           ) : produtos.length === 0 ? (
             <EmptyState
               icon="shopping-cart"
-              title="Nenhum ingrediente cadastrado"
-              description="Cadastre seus ingredientes em Ingredientes para gerar uma lista de compras automática a partir do estoque atual."
+              title="Nenhum produto cadastrado"
+              description="A lista de compras parte dos produtos que você vai produzir. Cadastre seus produtos com a receita para gerar a lista de ingredientes."
+              ctaLabel="Cadastrar produto"
+              onPress={() => navigation.navigate('Produtos', { screen: 'ProdutosList', params: { openNovoProduto: true } })}
             />
           ) : (
             <View>
@@ -507,7 +519,7 @@ export default function ListaComprasScreen({ navigation }) {
                           {Platform.OS === 'web' ? (
                             // minWidth:0 é crítico — sem isso o flex:1 não permite
                             // que o filho com texto truncado encolha (28.55).
-                            <div title={p.nome} style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                            <div title={p.nome} style={WEB_NOME_TRUNCADO}>
                               <Text style={isDesktop ? styles.gridCardName : styles.produtoNome} numberOfLines={1}>{p.nome}</Text>
                             </div>
                           ) : (
@@ -530,7 +542,7 @@ export default function ListaComprasScreen({ navigation }) {
                               value={quantidades[p.id] || '0'}
                               onChangeText={v => setQtd(p.id, v.replace(/[^0-9]/g, ''))}
                               keyboardType="numeric"
-                              selectTextOnFocus
+                              {...selecionarTudoAoFocarProps(Platform.OS)}
                               accessibilityLabel={`Quantidade de ${p.nome}`}
                             />
                             <TouchableOpacity
@@ -576,14 +588,14 @@ export default function ListaComprasScreen({ navigation }) {
                     {lista.grouped[cat].map(item => (
                       <View key={item.mp_id} style={styles.gridCardItem}>
                         {Platform.OS === 'web' ? (
-                          <div title={item.nome} style={{ overflow: 'hidden' }}>
+                          <div title={item.nome} style={WEB_NOME_TRUNCADO}>
                             <Text style={styles.gridCardName} numberOfLines={1}>{item.nome}</Text>
                           </div>
                         ) : (
                           <Text style={styles.gridCardName} numberOfLines={1}>{item.nome}</Text>
                         )}
                         <Text style={styles.gridCardPrice}>
-                          {item.displayQty % 1 === 0 ? item.displayQty : item.displayQty.toFixed(2)} {item.displayUnit} • {formatCurrency(item.custoEstimado)}
+                          {formatQtdLista(item.displayQty)} {item.displayUnit} • {formatCurrency(item.custoEstimado)}
                         </Text>
                       </View>
                     ))}
@@ -594,7 +606,7 @@ export default function ListaComprasScreen({ navigation }) {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.itemNome}>{item.nome}</Text>
                         <Text style={[styles.itemQty, { fontSize: listItemSubtitleFontSize }]}>
-                          {item.displayQty % 1 === 0 ? item.displayQty : item.displayQty.toFixed(2)} {item.displayUnit}
+                          {formatQtdLista(item.displayQty)} {item.displayUnit}
                         </Text>
                       </View>
                       <Text style={styles.itemCusto}>{formatCurrency(item.custoEstimado)}</Text>

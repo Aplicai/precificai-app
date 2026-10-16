@@ -119,7 +119,7 @@ const MENU_GROUPS = [
       {
         key: 'delivery',
         title: 'Delivery',
-        desc: 'Plataformas, preços e combos para delivery',
+        desc: 'Plataformas, taxas e preço de cada produto no delivery',
         icon: 'moped-outline',
         set: 'material',
         screen: 'DeliveryHub',
