@@ -68,7 +68,14 @@ export function publicarStatusFinanceiro(status) {
   }
 }
 
+// Leituras simultâneas (salvar no Financeiro + troca de tela + banner) podem
+// voltar fora de ordem: uma leitura ANTIGA ("incompleto") que chega depois da
+// nova ("completo") não pode ser publicada, senão o aviso volta e fica.
+let _ultimaLeitura = 0;
+let _ultimaPublicada = 0;
+
 export async function getFinanceiroStatus() {
+  const leitura = ++_ultimaLeitura;
   const db = await getDatabase();
 
   // Audit perf: eram 4 queries SEQUENCIAIS de tabela inteira, disparadas a cada
@@ -91,6 +98,9 @@ export async function getFinanceiroStatus() {
     fixasOk: fixasN > 0,
     variaveisOk: variaveisN > 0,
   });
-  publicarStatusFinanceiro(status);
+  if (leitura > _ultimaPublicada) {
+    _ultimaPublicada = leitura;
+    publicarStatusFinanceiro(status);
+  }
   return status;
 }

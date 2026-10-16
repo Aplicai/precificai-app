@@ -9,6 +9,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { getDatabase } from '../database/database';
 import { converterParaBase, formatCurrency, formatPercent, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, calcMarkup, calcPrecoSugerido, calcCustoPorKgPreparo, formatRendimentoPreparo, normalizarUnidade, calcCustoListaPreparo, getTipoUnidade } from '../utils/calculations';
 import { aplicarCustosPreparos } from '../services/cascadeRecalc';
+import { margemDoProduto } from '../utils/margemMeta';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import Loader from '../components/Loader';
 import { openPrintableHTML } from '../utils/openPrintableHTML';
@@ -477,7 +478,9 @@ export default function ExportPDFScreen({ navigation }) {
         // Calculate despesas percentuais from actual data
         const despFixasPerc = fatMedio > 0 ? totalFixas / fatMedio : 0;
         const despVarPerc = totalVar; // totalVar already in decimal form (e.g. 0.18 = 18%)
-        const lucroDesejado = config.lucro_desejado || 0.15;
+        // Mesma regra da ficha e do cadastro rápido: margem própria do produto
+        // quando > 0; 0/vazio (Kit, cadastro rápido) = margem do Financeiro.
+        const lucroDesejado = margemDoProduto(produto.margem_lucro_produto, config.lucro_desejado);
 
         const despFixasVal = precoVenda * despFixasPerc;
         // Sessão 28.9 — Auditoria P0-02: usar funções centrais
@@ -800,7 +803,6 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
     `).join('');
 
     const precoVenda = produto.preco_venda || 0;
-    const lucroDesejadoPerc = config.lucro_desejado || 0;
 
     // Dados de rendimento
     const tipoVenda = getTipoVenda(produto);

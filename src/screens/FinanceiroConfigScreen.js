@@ -86,6 +86,10 @@ export default function FinanceiroConfigScreen() {
   // aparecia em TODA visita. Agora só quando o usuário acabou de completar aqui.
   const [mostrarCompleto, setMostrarCompleto] = useState(false);
   const completoAntesRef = useRef(null);
+  // Cada save dispara loadData sem esperar o anterior: só o status da carga
+  // MAIS RECENTE entra na tela (um antigo "incompleto" deixava o aviso de
+  // pendência na tela depois de tudo salvo).
+  const statusSeqRef = useRef(0);
   const [savedFeedback, setSavedFeedback] = useState(null);
   const [margemSeguranca, setMargemSeguranca] = useState('0');
   const [currencyModal, setCurrencyModal] = useState(null);
@@ -177,6 +181,7 @@ export default function FinanceiroConfigScreen() {
   }
 
   async function loadData() {
+    const seq = ++statusSeqRef.current;
     try {
       setLoadError(false);
     const db = await getDatabase();
@@ -246,6 +251,7 @@ export default function FinanceiroConfigScreen() {
     }
 
     const status = await getFinanceiroStatus();
+    if (seq !== statusSeqRef.current) return status;
     setFinStatus(status);
     if (completoAntesRef.current === false && status?.completo) setMostrarCompleto(true);
     completoAntesRef.current = !!status?.completo;
@@ -464,8 +470,9 @@ export default function FinanceiroConfigScreen() {
       const v = parseNum(valor);
       await db.runAsync('UPDATE faturamento_mensal SET valor = ? WHERE id = ?',
         [Number.isFinite(v) ? v : 0, id]);
+      const seq = ++statusSeqRef.current;
       const status = await getFinanceiroStatus();
-      setFinStatus(status);
+      if (seq === statusSeqRef.current) setFinStatus(status);
     } catch (e) {
       if (typeof console !== 'undefined' && console.error) console.error('[FinanceiroConfigScreen.salvarFaturamento]', e);
       showError('Não foi possível salvar o faturamento.');
@@ -816,6 +823,9 @@ export default function FinanceiroConfigScreen() {
 
   function fecharWizard() {
     setWizardMode(null);
+    // "Concluir"/"Ver formulário completo": relê o status (e avisa o banner
+    // global e a Home) em vez de confiar no último que a tela viu.
+    loadData();
   }
 
   async function avancarWizard() {

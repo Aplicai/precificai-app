@@ -47,6 +47,7 @@ import useResponsiveLayout from '../hooks/useResponsiveLayout';
 // Área 4 (Preparos) — toast de confirmação ao salvar preparo via modal
 import { showToast } from '../utils/toastBus';
 import { resolverPrecoAoSalvar, avisoPrecoAoSalvar } from '../utils/precoAoSalvar';
+import { margemDoProduto, classificarMargem } from '../utils/margemMeta';
 // Sessão 28.71: cascata empilhada — insumo/embalagem abrem como modal
 // empilhado (igual o nested preparo), reaproveitando os formulários completos
 // via shim ScreenInModal em vez de navegar pra tela cheia.
@@ -154,6 +155,9 @@ export default function EntityCreateModal({
   const [nome, setNome] = useState('');
   const [categoriaId, setCategoriaId] = useState(defaultCategoriaId);
   const [precoVenda, setPrecoVenda] = useState('');
+  // margem_lucro_produto do produto em edição (só leitura aqui; o campo fica
+  // na ficha completa). 0/vazio = margem do Financeiro (utils/margemMeta.js).
+  const [margemProdutoSalva, setMargemProdutoSalva] = useState(null);
   // Produto-specific
   const [tipoVenda, setTipoVenda] = useState('unidade'); // 'unidade' | 'kg' | 'litro'
   const [rendimentoUnidades, setRendimentoUnidades] = useState('1');
@@ -370,6 +374,7 @@ export default function EntityCreateModal({
     setNome('');
     setCategoriaId(defaultCategoriaId);
     setPrecoVenda('');
+    setMargemProdutoSalva(null);
     setTipoVenda('unidade');
     setRendimentoUnidades('1');
     setRendimentoTotalProd('');
@@ -743,6 +748,7 @@ export default function EntityCreateModal({
         // Fix walkthrough #4 — carregava "25" em vez de "25,00" (String() cru
         // do número). Formata com 2 decimais PT-BR igual ao restante do app.
         setPrecoVenda(p.preco_venda != null ? Number(p.preco_venda).toFixed(2).replace('.', ',') : '');
+        setMargemProdutoSalva(p.margem_lucro_produto != null ? Number(p.margem_lucro_produto) : null);
         setTipoVenda(TIPO_VENDA_MAP_FROM_DB(p.unidade_rendimento));
         setRendimentoUnidades(p.rendimento_unidades != null ? String(p.rendimento_unidades) : '1');
         setRendimentoTotalProd(p.rendimento_total != null ? String(p.rendimento_total) : '');
@@ -1266,13 +1272,18 @@ export default function EntityCreateModal({
                     grande colorido por saúde; Lucro/Margem brutos ficam
                     secundários dentro do grid. */}
                 <View style={styles.resumoDestaque}>
-                  <Text style={styles.resumoDestaqueLabel}>Sobra líquida</Text>
+                  <Text style={styles.resumoDestaqueLabel}>Sobra líquida{usandoSugerido ? ' no sugerido' : ''}</Text>
+                  {/* Cor pela meta de margem (a mesma da lista e do Painel). */}
                   <Text style={[styles.resumoDestaqueValue, {
-                    color: (lucroLiquidoPerc * 100) >= 25 ? colors.success : (lucroLiquidoPerc * 100) >= 15 ? colors.accent : colors.error,
+                    color: precoEfetivo > 0
+                      ? ({ acima: colors.success, medio: colors.accent, abaixo: colors.error }[classificarMargem(lucroLiquidoPerc, lucroAlvoEfetivo)] || colors.textSecondary)
+                      : colors.textSecondary,
                   }]}>
-                    {pricingPronto
-                      ? <>{formatCurrency(lucroLiquido)} <Text style={styles.resumoDestaquePerc}>({formatPercent(lucroLiquidoPerc)})</Text></>
-                      : '…'}
+                    {!pricingPronto
+                      ? '…'
+                      : precoEfetivo > 0
+                        ? <>{formatCurrency(lucroLiquido)} <Text style={styles.resumoDestaquePerc}>({formatPercent(lucroLiquidoPerc)})</Text></>
+                        : '—'}
                   </Text>
                 </View>
                 <View style={styles.resumoGrid}>
@@ -1296,15 +1307,22 @@ export default function EntityCreateModal({
                   </View>
                   <View style={styles.resumoCell}>
                     <Text style={styles.resumoLabel}>Lucro bruto</Text>
-                    <Text style={[styles.resumoValue, { color: colors.textSecondary }]}>{formatCurrency(lucroUnit)}</Text>
+                    <Text style={[styles.resumoValue, { color: colors.textSecondary }]}>
+                      {pricingPronto && precoEfetivo > 0 ? formatCurrency(lucroUnit) : '—'}
+                    </Text>
                   </View>
                   <View style={styles.resumoCell}>
                     <Text style={styles.resumoLabel}>Margem bruta</Text>
                     <Text style={[styles.resumoValue, { color: colors.textSecondary }]}>
-                      {precoVendaNum > 0 ? `${margem.toFixed(1)}%` : '—'}
+                      {pricingPronto && precoEfetivo > 0 ? `${margem.toFixed(1).replace('.', ',')}%` : '—'}
                     </Text>
                   </View>
                 </View>
+                {pricingPronto && usandoSugerido && (
+                  <Text style={[styles.analiseHintText, { flex: 0, marginTop: 4 }]}>
+                    Sem preço de venda: sobra e lucro calculados no preço sugerido. Coloque o seu preço para ver os números reais.
+                  </Text>
+                )}
                 {!pricingPronto && (
                   pricingConfigErro ? (
                     <TouchableOpacity
@@ -1609,14 +1627,19 @@ export default function EntityCreateModal({
   const pricingPronto = !isProduto || pricingConfig != null;
   const pc = pricingConfig || { despFixasPerc: 0, despVarPerc: 0, lucroDesejado: 0, markup: 0, margemSeguranca: 0 };
   const temFinanceiro = isProduto && pc.despFixasPerc > 0;
-  const MARGEM_ALVO_DEFAULT = 0.15; // mesmo default existente no app
-  const lucroAlvoEfetivo = pc.lucroDesejado > 0 ? pc.lucroDesejado : MARGEM_ALVO_DEFAULT;
+  // Mesma regra da ficha completa e do PDF: margem própria do produto só se
+  // > 0; senão a do Financeiro (15% quando ela não foi preenchida).
+  const lucroAlvoEfetivo = margemDoProduto(margemProdutoSalva, pc.lucroDesejado);
+  const temMargemPropria = lucroAlvoEfetivo !== margemDoProduto(null, pc.lucroDesejado);
+  const markupConta = temMargemPropria
+    ? calcMarkup(pc.despFixasPerc, pc.despVarPerc, lucroAlvoEfetivo)
+    : pc.markup;
   // Markup usado quando o Financeiro NÃO está preenchido: fixos forçados a 0.
   const markupSemFixos = isProduto
     ? calcMarkup(0, pc.despVarPerc, lucroAlvoEfetivo)
     : 0;
   const markupParaSugerido = isProduto
-    ? (pc.markup > 0 ? pc.markup : markupSemFixos)
+    ? (markupConta > 0 ? markupConta : markupSemFixos)
     : 0;
   const precoSugerido = isProduto && pricingPronto && markupParaSugerido > 0
     ? calcPrecoSugerido(cmvUnitario, markupParaSugerido, pc.margemSeguranca || 0)
@@ -1631,9 +1654,13 @@ export default function EntityCreateModal({
   const lucroLiquido = calcLucroLiquido(precoEfetivo, cmvUnitario, despFixasValor, despVarValor);
   const lucroLiquidoPerc = calcMargemLiquida(precoEfetivo, cmvUnitario, despFixasValor, despVarValor);
   const cmvPerc = calcCMVPercentual(cmvUnitario, precoEfetivo);
-  const lucroUnit = isProduto ? precoVendaNum - cmvUnitario : 0;
+  // Bruto e líquido sobre o MESMO preço: sem preço digitado, os dois saem do
+  // sugerido (antes "Lucro bruto R$ -36,98" no preço 0 ao lado de uma "Sobra
+  // líquida" positiva calculada no sugerido).
+  const usandoSugerido = isProduto && !(precoVendaNum > 0) && precoSugerido > 0;
+  const lucroUnit = isProduto && precoEfetivo > 0 ? precoEfetivo - cmvUnitario : 0;
   // margem bruta (sem despesas) — usada no header do Resumo. Em %.
-  const margem = isProduto ? calcMargem(precoVendaNum, cmvUnitario) * 100 : 0;
+  const margem = isProduto && precoEfetivo > 0 ? calcMargem(precoEfetivo, cmvUnitario) * 100 : 0;
   const diffSugerido = precoVendaNum - precoSugerido;
 
   // Salvar

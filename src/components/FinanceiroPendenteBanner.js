@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, borderRadius } from '../utils/theme';
 import { getFinanceiroStatus, textoPendenciaFinanceiro, assinarStatusFinanceiro } from '../utils/financeiroStatus';
@@ -24,16 +24,23 @@ async function temProdutoComPreco() {
  * financeiroStatus): margem, faturamento, custos do mês ou custos por venda —
  * todas obrigatórias desde 14/10/2026. Tom informativo (cor da marca), não de erro.
  */
-export default function FinanceiroPendenteBanner() {
+export default function FinanceiroPendenteBanner({ ocultarNaTela = null }) {
   const navigation = useNavigation();
+  const route = useRoute();
   const [pendente, setPendente] = useState(false);
   const [faltando, setFaltando] = useState('');
+  const seqRef = useRef(0);
 
+  // Só o status MAIS RECENTE vale. Antes um status antigo ("incompleto"), que
+  // ainda esperava a contagem de produtos, chegava DEPOIS do "completo" do
+  // salvar/Concluir e religava o aviso, que ficava na tela com tudo preenchido.
   const aplicar = useCallback(async (s) => {
+    const meu = ++seqRef.current;
     const completo = !!s.completo;
     setFaltando(textoPendenciaFinanceiro(s));
     if (completo) { setPendente(false); return; }
-    setPendente(await temProdutoComPreco());
+    const temPreco = await temProdutoComPreco();
+    if (meu === seqRef.current) setPendente(temPreco);
   }, []);
 
   // Atualiza a cada leitura de status em qualquer tela (salvar no Financeiro,
@@ -45,7 +52,10 @@ export default function FinanceiroPendenteBanner() {
     getFinanceiroStatus().then(aplicar).catch(() => {});
   }, [aplicar]));
 
-  if (!pendente) return null;
+  // A tela que já tem o próprio aviso (Início: card "Configuração pendente")
+  // não empilha este. Rota indefinida = tela inicial da pilha.
+  const telaAtual = ocultarNaTela ? (getFocusedRouteNameFromRoute(route) ?? ocultarNaTela) : null;
+  if (!pendente || (ocultarNaTela && telaAtual === ocultarNaTela)) return null;
 
   function goToFinanceiro() {
     try {

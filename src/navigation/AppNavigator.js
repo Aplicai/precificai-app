@@ -208,10 +208,10 @@ function TabIcon({ label, focused, badge, baseSize }) {
 // em Início e Insumos. Uma faixa por vez; o resto do app respira.
 // A faixa agora é renderizada DENTRO de HomeScreen e MateriasPrimasScreen
 // (abaixo do header, não acima dele).
-function StackWithBanner({ children }) {
+function StackWithBanner({ children, ocultarBannerEm = null }) {
   return (
     <View style={{ flex: 1 }}>
-      <FinanceiroPendenteBanner />
+      <FinanceiroPendenteBanner ocultarNaTela={ocultarBannerEm} />
       {children}
     </View>
   );
@@ -219,7 +219,8 @@ function StackWithBanner({ children }) {
 
 function HomeStack() {
   return (
-    <StackWithBanner>
+    // O Início já mostra o card "Configuração pendente": sem a faixa repetida.
+    <StackWithBanner ocultarBannerEm="HomeMain">
       <Stack.Navigator screenOptions={screenOptions}>
         <Stack.Screen name="HomeMain" component={HomeScreen} options={{
           header: () => null, // Custom header rendered inside HomeScreen
