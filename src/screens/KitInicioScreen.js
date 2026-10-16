@@ -18,7 +18,8 @@ import {
   CATEGORIAS_PREPAROS_POR_SEGMENTO,
   CATEGORIAS_EMBALAGENS_POR_SEGMENTO,
 } from '../data/templates';
-import { calcFatorCorrecao, safeNum, calcCustoPorKgPreparo } from '../utils/calculations';
+import { calcFatorCorrecao, safeNum, calcCustoPorKgPreparo, formatCurrency } from '../utils/calculations';
+import { avisoApagarKit } from '../utils/kitInicioAviso';
 // D-27/D-28: aplica fatores de correção de referência (TACO) automaticamente
 import { getFatorCorrecaoReferencia, estimarQuantidadeLiquida } from '../data/fatoresCorrecao';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
@@ -784,6 +785,7 @@ export default function KitInicioScreen({ navigation, route }) {
   const categoriasCount = selected ? (CATEGORIAS_POR_SEGMENTO[selected]?.length || 0) : 0;
   // Planos: preview reflete o cap real de produtos criados (MAX_PRODUTOS_KIT).
   const produtosKit = selected ? (PRODUTOS_POR_SEGMENTO[selected] || []).slice(0, MAX_PRODUTOS_KIT) : [];
+  const avisoApagar = avisoApagarKit({ isSetup, selected, sobrescrever });
 
   return (
     <View style={styles.container}>
@@ -819,15 +821,15 @@ export default function KitInicioScreen({ navigation, route }) {
           </View>
         </View>
 
-        {/* Aviso de reset quando acessado pelas Configurações */}
-        {!isSetup && (
+        {/* Aviso de exclusão só quando a ação escolhida apaga de verdade
+            ("Começar do zero" ou "Sobrescrever" marcado). Sem sobrescrever o
+            kit só adiciona — o aviso antigo dizia que sempre apagava. */}
+        {avisoApagar ? (
           <View style={styles.warningCard}>
             <Feather name="alert-triangle" size={16} color={colors.warning} />
-            <Text style={styles.warningText}>
-              Trocar o segmento APAGA todos os ingredientes, receitas base, embalagens e produtos atuais.
-            </Text>
+            <Text style={styles.warningText}>{avisoApagar}</Text>
           </View>
-        )}
+        ) : null}
 
         {/* Opt-in: no setup inicial, "começar do zero" é o caminho padrão. O kit
             virou opcional — quem quiser começar com o app vazio pula direto aqui,
@@ -940,7 +942,7 @@ export default function KitInicioScreen({ navigation, route }) {
                 {produtosKit.map((p, i) => (
                   <View key={i} style={styles.previewListItem}>
                     <Text style={styles.previewListName} numberOfLines={1}>{p.nome}</Text>
-                    <Text style={styles.previewListPrice}>R$ {safeNum(p.preco_venda).toFixed(2)}</Text>
+                    <Text style={styles.previewListPrice}>{formatCurrency(safeNum(p.preco_venda))}</Text>
                   </View>
                 ))}
               </View>

@@ -6,6 +6,8 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, normalizeSearch, calcPrecoBase, safeNum, parseDecimalBR } from '../utils/calculations';
 import { formatInsumoNome } from '../utils/insumoDisplay';
+import { formatDecimalBR } from '../utils/insumoFormHelpers';
+import { tabelaDaAba, createLatestOnly } from '../utils/atualizarPrecos';
 import { notifyDataChanged } from '../utils/dataSync';
 import SearchBar from '../components/SearchBar';
 import EmptyState from '../components/EmptyState';
@@ -44,8 +46,11 @@ export default function AtualizarPrecosScreen({ navigation }) {
   const [recentSaved, setRecentSaved] = useState({}); // { id: true }
   const [collapsedDesktop, setCollapsedDesktop] = useState({});
   const inputRef = useRef(null);
-  // P0: guard contra race condition em loadData concorrente
-  const isLoadingRef = useRef(false);
+  // Só o load mais recente aplica resultado. O guard antigo (isLoadingRef)
+  // DESCARTAVA o load novo: trocar de aba durante o carregamento deixava a
+  // lista da aba anterior com a aba nova ativa.
+  const loadSeqRef = useRef(null);
+  if (!loadSeqRef.current) loadSeqRef.current = createLatestOnly();
 
   function toggleDesktopSection(key) { setCollapsedDesktop(prev => ({...prev, [key]: !prev[key]})); }
 
@@ -54,30 +59,30 @@ export default function AtualizarPrecosScreen({ navigation }) {
   }, [activeTab, busca]));
 
   async function loadData() {
-    if (isLoadingRef.current) return; // P0: evita corridas
-    isLoadingRef.current = true;
+    const token = loadSeqRef.current.next();
+    const aba = activeTab;
     setLoading(true);
     setLoadError(null);
     try {
       const db = await getDatabase();
       let rows = [];
 
-      if (activeTab === 'insumos') {
+      if (aba === 'insumos') {
         rows = await db.getAllAsync('SELECT id, nome, marca, valor_pago, categoria_id FROM materias_primas ORDER BY nome');
         const cats = await db.getAllAsync('SELECT id, nome FROM categorias_insumos');
         const catMap = Object.fromEntries(cats.map(c => [c.id, c.nome]));
         rows = rows.map(r => ({ ...r, displayName: formatInsumoNome(r.nome, r.marca), priceField: 'valor_pago', price: safeNum(r.valor_pago), categoria: catMap[r.categoria_id] || 'Sem categoria' }));
-      } else if (activeTab === 'embalagens') {
+      } else if (aba === 'embalagens') {
         rows = await db.getAllAsync('SELECT id, nome, marca, preco_embalagem, categoria_id FROM embalagens ORDER BY nome');
         const cats = await db.getAllAsync('SELECT id, nome FROM categorias_embalagens');
         const catMap = Object.fromEntries(cats.map(c => [c.id, c.nome]));
         rows = rows.map(r => ({ ...r, displayName: formatInsumoNome(r.nome, r.marca), priceField: 'preco_embalagem', price: safeNum(r.preco_embalagem), categoria: catMap[r.categoria_id] || 'Sem categoria' }));
-      } else if (activeTab === 'produtos') {
+      } else if (aba === 'produtos') {
         rows = await db.getAllAsync('SELECT id, nome, preco_venda, categoria_id FROM produtos ORDER BY nome');
         const cats = await db.getAllAsync('SELECT id, nome FROM categorias_produtos');
         const catMap = Object.fromEntries(cats.map(c => [c.id, c.nome]));
         rows = rows.map(r => ({ ...r, priceField: 'preco_venda', price: safeNum(r.preco_venda), categoria: catMap[r.categoria_id] || 'Sem categoria' }));
-      } else if (activeTab === 'combos') {
+      } else if (aba === 'combos') {
         rows = await db.getAllAsync('SELECT id, nome, preco_venda FROM delivery_combos ORDER BY nome');
         rows = rows.map(r => ({ ...r, priceField: 'preco_venda', price: safeNum(r.preco_venda), categoria: 'Combos' }));
       }
@@ -87,28 +92,23 @@ export default function AtualizarPrecosScreen({ navigation }) {
         rows = rows.filter(r => normalizeSearch(r.displayName || r.nome).includes(termo));
       }
 
-      setItems(rows);
+      // Load mais novo já disparou (troca de aba/busca): descarta este.
+      if (!loadSeqRef.current.isLatest(token)) return;
+      // Cada linha carrega a aba de onde veio — o save usa a tabela DELA.
+      setItems(rows.map(r => ({ ...r, aba })));
     } catch (err) {
+      if (!loadSeqRef.current.isLatest(token)) return;
       // Audit P0: era silent — agora loga e mostra banner.
       console.error('[AtualizarPrecos.loadData]', err);
       setLoadError('Não foi possível carregar os preços. Tente novamente.');
     } finally {
-      setLoading(false);
-      isLoadingRef.current = false;
+      if (loadSeqRef.current.isLatest(token)) setLoading(false);
     }
   }
 
-  function getTableName() {
-    if (activeTab === 'insumos') return 'materias_primas';
-    if (activeTab === 'embalagens') return 'embalagens';
-    if (activeTab === 'produtos') return 'produtos';
-    if (activeTab === 'combos') return 'delivery_combos';
-    return '';
-  }
-
-  function getPriceLabel() {
-    if (activeTab === 'insumos') return 'Valor Pago';
-    if (activeTab === 'embalagens') return 'Preço Embalagem';
+  function getPriceLabel(aba) {
+    if (aba === 'insumos') return 'Valor Pago';
+    if (aba === 'embalagens') return 'Preço Embalagem';
     return 'Preço de Venda';
   }
 
@@ -129,11 +129,17 @@ export default function AtualizarPrecosScreen({ navigation }) {
       return;
     }
     const numericValue = parsed;
+    // Tabela da aba de onde a LINHA veio, nunca da aba ativa.
+    const aba = item.aba;
+    const table = tabelaDaAba(aba);
+    if (!table) {
+      setEditError('Não foi possível identificar o item. Feche e tente novamente.');
+      return;
+    }
     try {
       const db = await getDatabase();
-      const table = getTableName();
 
-      if (activeTab === 'insumos') {
+      if (aba === 'insumos') {
         const row = await db.getFirstAsync('SELECT * FROM materias_primas WHERE id = ?', [item.id]);
         if (row) {
           // Sessão 28.44 — bug #2: usa calcPrecoBase pra converter unidade.
@@ -155,7 +161,7 @@ export default function AtualizarPrecosScreen({ navigation }) {
         }
       } else {
         await db.runAsync(`UPDATE ${table} SET ${item.priceField} = ? WHERE id = ?`, [numericValue, item.id]);
-        if (activeTab === 'embalagens') {
+        if (aba === 'embalagens') {
           const row = await db.getFirstAsync('SELECT * FROM embalagens WHERE id = ?', [item.id]);
           if (row) {
             // AUDITORIA: antes, se `quantidade` fosse 0/ausente, o preco_unitario
@@ -175,12 +181,12 @@ export default function AtualizarPrecosScreen({ navigation }) {
       const runCascadeBackground = () => {
         const task = (async () => {
           try {
-            if (activeTab === 'insumos' || activeTab === 'embalagens') {
+            if (aba === 'insumos' || aba === 'embalagens') {
               const { cascadeFromInsumo } = await import('../services/cascadeRecalc');
               await cascadeFromInsumo(db);
               const { clearQueryCache } = await import('../database/supabaseDb');
               clearQueryCache();
-            } else if (activeTab === 'preparos') {
+            } else if (aba === 'preparos') {
               const { recalcularTodosCombos } = await import('../services/cascadeRecalc');
               await recalcularTodosCombos(db);
             }
@@ -209,20 +215,20 @@ export default function AtualizarPrecosScreen({ navigation }) {
           produtos: 'produtos',
           combos: 'delivery_combos',
         };
-        const tableName = tableMap[activeTab];
+        const tableName = tableMap[aba];
         if (tableName) notifyDataChanged(tableName);
         // Cascade afetou preparos/combos também — notifica essas tabs
-        if (activeTab === 'insumos' || activeTab === 'embalagens') {
+        if (aba === 'insumos' || aba === 'embalagens') {
           notifyDataChanged('preparos');
           notifyDataChanged('produtos');
           notifyDataChanged('delivery_combos');
-        } else if (activeTab === 'preparos') {
+        } else if (aba === 'preparos') {
           notifyDataChanged('delivery_combos');
         }
       } catch (e) { console.warn('[AtualizarPrecos.notifyDataChanged]', e); }
 
       // Update local state
-      setItems(prev => prev.map(i => i.id === item.id ? { ...i, price: numericValue } : i));
+      setItems(prev => prev.map(i => (i.id === item.id && i.aba === aba) ? { ...i, price: numericValue } : i));
       setRecentSaved(prev => ({ ...prev, [item.id]: true }));
       setTimeout(() => setRecentSaved(prev => { const n = { ...prev }; delete n[item.id]; return n; }), 2000);
       setEditModal(null);
@@ -351,7 +357,13 @@ export default function AtualizarPrecosScreen({ navigation }) {
                     isActive && isDesktop && styles.tabActiveDesktop,
                     isWeb && { cursor: 'pointer' },
                   ]}
-                  onPress={() => { setActiveTab(tab.key); setBusca(''); }}
+                  onPress={() => {
+                    // Lista da aba anterior sai na hora (não fica clicável
+                    // enquanto a aba nova carrega).
+                    if (tab.key !== activeTab) setItems([]);
+                    setActiveTab(tab.key);
+                    setBusca('');
+                  }}
                   activeOpacity={0.7}
                 >
                   {isDesktop && (
@@ -428,7 +440,7 @@ export default function AtualizarPrecosScreen({ navigation }) {
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }}>
           <View style={styles.desktopContentWrap}>
             <View style={styles.desktopContentInner}>
-              {items.length === 0 ? (
+              {items.length === 0 ? (loading ? null : (
                 <View style={{ alignItems: 'center' }}>
                   <EmptyState
                     icon={busca.trim() ? 'search' : (activeTab === 'combos' ? 'layers' : 'dollar-sign')}
@@ -453,7 +465,7 @@ export default function AtualizarPrecosScreen({ navigation }) {
                     </TouchableOpacity>
                   )}
                 </View>
-              ) : (
+              )) : (
                 renderDesktopGrid()
               )}
             </View>
@@ -466,7 +478,7 @@ export default function AtualizarPrecosScreen({ navigation }) {
           contentContainerStyle={styles.list}
           renderItem={renderItem}
           keyboardShouldPersistTaps="handled"
-          ListEmptyComponent={
+          ListEmptyComponent={loading ? null : (
             <View style={{ alignItems: 'center' }}>
               <EmptyState
                 icon={busca.trim() ? 'search' : (activeTab === 'combos' ? 'layers' : 'dollar-sign')}
@@ -491,7 +503,7 @@ export default function AtualizarPrecosScreen({ navigation }) {
                 </TouchableOpacity>
               )}
             </View>
-          }
+          )}
           ListFooterComponent={<View style={{ height: 20 }} />}
         />
       )}
@@ -502,7 +514,7 @@ export default function AtualizarPrecosScreen({ navigation }) {
           <TouchableOpacity activeOpacity={1} style={[styles.modalContent, isDesktop && styles.modalContentDesktop]} onPress={Keyboard.dismiss}>
             <Text style={styles.modalTitle}>Atualizar Preço</Text>
             <Text style={styles.modalItemName} numberOfLines={2}>{editModal?.item?.nome}</Text>
-            <Text style={styles.modalPriceLabel}>{getPriceLabel()}</Text>
+            <Text style={styles.modalPriceLabel}>{getPriceLabel(editModal?.item?.aba)}</Text>
 
             <View style={styles.modalInputRow}>
               <Text style={styles.modalPrefix}>R$</Text>
@@ -537,7 +549,8 @@ export default function AtualizarPrecosScreen({ navigation }) {
 
             {/* Audit P1 (Fase 2 - Fix #4): preview de delta antes de salvar */}
             {(() => {
-              const novoPreco = safeNum(String(editModal?.value || '0').replace(',', '.'));
+              // parse PT-BR completo ("1.000,50"); replace(',', '.') quebrava milhar.
+              const novoPreco = safeNum(editModal?.value || '0');
               const oldPreco = safeNum(editModal?.item?.price);
               if (!(novoPreco > 0) || !(oldPreco > 0)) return null;
               const delta = novoPreco - oldPreco;
@@ -554,7 +567,7 @@ export default function AtualizarPrecosScreen({ navigation }) {
                   <View style={styles.modalDeltaRow}>
                     <Text style={styles.modalDeltaLabel}>Variação:</Text>
                     <Text style={[styles.modalDeltaValue, { color: cor }]}>
-                      {sinal}{formatCurrency(valorAbs)} ({sinal}{percAbs.toFixed(1)}%)
+                      {sinal}{formatCurrency(valorAbs)} ({sinal}{formatDecimalBR(percAbs, 1)}%)
                     </Text>
                   </View>
                   <Text style={styles.modalDeltaTransition}>
