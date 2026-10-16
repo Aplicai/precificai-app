@@ -29,6 +29,7 @@ import { entityCreateModalStyles as styles } from './styles/entityCreateModal.st
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
+import { aplicarCustosPreparos } from '../services/cascadeRecalc';
 import { rowsOrThrow } from '../database/dbResult';
 import InputField from './InputField';
 import SearchBar from './SearchBar';
@@ -544,14 +545,16 @@ export default function EntityCreateModal({
         }
       } else if (it.tipo === 'preparo') {
         const pr = allPreparos.find(p => p.id === it.id);
-        if (pr && (safeNum(pr.custo_por_kg) > 0 || safeNum(pr.custo_total) > 0)) {
+        // _custoSincronizado: custo refeito dos preços atuais — aí 0 é real
+        // (receita com ingredientes sem preço), não "ainda não carregou".
+        if (pr && (safeNum(pr.custo_por_kg) > 0 || safeNum(pr.custo_total) > 0 || pr._custoSincronizado)) {
           const custoUnit = calcCustoUnit('preparo', {
             custo_por_kg: pr.custo_por_kg,
             custo_total: pr.custo_total,
             unidade_medida: pr.unidade_medida,
           });
           const unidade = shortUnidade(pr.unidade_medida, 'preparo');
-          if (safeNum(custoUnit) > 0 &&
+          if ((safeNum(custoUnit) > 0 || pr._custoSincronizado) &&
               (Math.abs(safeNum(custoUnit) - safeNum(it.custoUnit)) > EPS || it.unidade !== unidade)) {
             mudou = true;
             return { ...it, custoUnit, unidade };
@@ -574,7 +577,10 @@ export default function EntityCreateModal({
       } catch (_) {}
       const db = await getDatabase();
       const materias = await db.getAllAsync('SELECT * FROM materias_primas ORDER BY nome');
-      const preparos = await db.getAllAsync('SELECT * FROM preparos ORDER BY nome');
+      const preparosGravados = await db.getAllAsync('SELECT * FROM preparos ORDER BY nome');
+      // Custo das receitas base refeito dos preços atuais — o gravado pode estar
+      // velho (ex.: "R$ 0,01" do Kit de Início antigo no picker do produto).
+      const preparos = await aplicarCustosPreparos(db, preparosGravados || []);
       setAllMaterias(materias || []);
       setAllPreparos(preparos || []);
       // D-20 (sessão 28.13): embalagens carregadas em ambos os modos (preparo precisa pra armazenamento)

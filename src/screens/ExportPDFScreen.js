@@ -7,7 +7,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { getDatabase } from '../database/database';
-import { converterParaBase, formatCurrency, formatPercent, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, calcMarkup, calcPrecoSugerido, calcCustoPorKgPreparo } from '../utils/calculations';
+import { converterParaBase, formatCurrency, formatPercent, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, calcMarkup, calcPrecoSugerido, calcCustoPorKgPreparo, formatRendimentoPreparo, normalizarUnidade, calcCustoListaPreparo, getTipoUnidade } from '../utils/calculations';
+import { aplicarCustosPreparos } from '../services/cascadeRecalc';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 import Loader from '../components/Loader';
 import { openPrintableHTML } from '../utils/openPrintableHTML';
@@ -179,7 +180,9 @@ export default function ExportPDFScreen({ navigation }) {
       ]);
       const prepCatMap = {};
       (prepCats || []).forEach(c => { prepCatMap[c.id] = c.nome; });
-      const rows = (rawPreps || []).map(p => ({ ...p, categoria_nome: prepCatMap[p.categoria_id] || null }))
+      // Custo refeito dos preços atuais — a ficha não pode sair com custo gravado velho.
+      const prepsAtuais = await aplicarCustosPreparos(db, rawPreps || []);
+      const rows = (prepsAtuais || []).map(p => ({ ...p, categoria_nome: prepCatMap[p.categoria_id] || null }))
         .sort((a, b) => (a.categoria_nome || 'zzz').localeCompare(b.categoria_nome || 'zzz') || (a.nome || '').localeCompare(b.nome || ''));
       setPreparos(rows);
     } catch (e) {
@@ -246,13 +249,18 @@ export default function ExportPDFScreen({ navigation }) {
         .filter(([, v]) => v)
         .map(([k]) => Number(k));
 
+      // Refaz o custo na hora de exportar (preço de insumo pode ter mudado desde a carga da aba).
+      const preparosAtuais = await aplicarCustosPreparos(db, preparos);
       const fichas = [];
       for (const id of selectedIds) {
-        const preparo = preparos.find(p => p.id === id);
+        const preparo = preparosAtuais.find(p => p.id === id);
         if (!preparo) continue;
         const ings = ingsByPrep[id] || [];
-        // custo_por_kg é a fonte (cascade mantém atualizado); custo_total gravado pode estar velho.
-        const custoTotal = (preparo.custo_por_kg > 0 && preparo.rendimento_total > 0)
+        // Sincronizado: custo_total acabou de ser calculado dos preços atuais (inclui
+        // sub-receitas e embalagens). Senão, deriva de custo_por_kg.
+        const custoTotal = preparo._custoSincronizado
+          ? (Number(preparo.custo_total) || 0)
+          : (preparo.custo_por_kg > 0 && preparo.rendimento_total > 0)
           ? calcCustoPreparo(preparo.custo_por_kg, preparo.rendimento_total, preparo.unidade_medida || 'g')
           : ings.reduce((a, ing) => {
           return a + calcCustoIngrediente(ing.preco_por_kg || 0, ing.quantidade_utilizada, ing.unidade_medida || 'g', ing.unidade_medida || 'g');
@@ -301,7 +309,7 @@ export default function ExportPDFScreen({ navigation }) {
         db.getAllAsync('SELECT * FROM produto_preparos'),
         db.getAllAsync('SELECT * FROM produto_embalagens'),
         db.getAllAsync('SELECT * FROM materias_primas'),
-        db.getAllAsync('SELECT * FROM preparos'),
+        db.getAllAsync('SELECT * FROM preparos').then(rows => aplicarCustosPreparos(db, rows)),
         db.getAllAsync('SELECT * FROM embalagens'),
         db.getAllAsync('SELECT * FROM despesas_fixas'),
         db.getAllAsync('SELECT * FROM despesas_variaveis'),
@@ -642,7 +650,7 @@ export default function ExportPDFScreen({ navigation }) {
                         {activeTab === 'produtos' && p.preco_venda ? (
                           <Text style={isDesktop ? styles.gridCardPrice : styles.productPrice}>{formatCurrency(p.preco_venda)}</Text>
                         ) : activeTab === 'preparos' && p.rendimento_total ? (
-                          <Text style={isDesktop ? styles.gridCardPrice : styles.productPrice}>{p.rendimento_total}g</Text>
+                          <Text style={isDesktop ? styles.gridCardPrice : styles.productPrice}>{formatRendimentoPreparo(p.rendimento_total, p.unidade_medida)}</Text>
                         ) : null}
                       </TouchableOpacity>
                     );
@@ -769,7 +777,7 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
       <tr>
         <td>${escapeHtml(i.mp_nome || '')}</td>
         <td style="text-align:center">${i.quantidade_utilizada || 0}</td>
-        <td style="text-align:center">${escapeHtml(i.unidade_medida || 'g')}</td>
+        <td style="text-align:center">${escapeHtml(normalizarUnidade(i.unidade_medida) || i.unidade_medida || 'g')}</td>
         <td style="text-align:right">${fmtCur(calcCustoIngrediente(i.preco_por_kg || 0, i.quantidade_utilizada, i.unidade_medida || 'g', i.unidade_medida || 'g'))}</td>
       </tr>
     `).join('');
@@ -778,7 +786,7 @@ function buildHTML(fichas, perfil, config, incluirAdicionais = true) {
       <tr>
         <td>${escapeHtml(p.pr_nome || '')}</td>
         <td style="text-align:center">${p.quantidade_utilizada || 0}</td>
-        <td style="text-align:center">${escapeHtml(p.unidade_medida || 'g')}</td>
+        <td style="text-align:center">${escapeHtml(normalizarUnidade(p.unidade_medida) || p.unidade_medida || 'g')}</td>
         <td style="text-align:right">${fmtCur(calcCustoPreparo(p.custo_por_kg || 0, p.quantidade_utilizada, p.unidade_medida || 'g'))}</td>
       </tr>
     `).join('');
@@ -1215,7 +1223,7 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
       <tr>
         <td>${escapeHtml(i.mp_nome || '')}</td>
         <td style="text-align:center">${i.quantidade_utilizada || 0}</td>
-        <td style="text-align:center">${escapeHtml(i.unidade_medida || 'g')}</td>
+        <td style="text-align:center">${escapeHtml(normalizarUnidade(i.unidade_medida) || i.unidade_medida || 'g')}</td>
         <td style="text-align:right">${fmtCur(calcCustoIngrediente(i.preco_por_kg || 0, i.quantidade_utilizada, i.unidade_medida || 'g', i.unidade_medida || 'g'))}</td>
       </tr>
     `).join('');
@@ -1226,7 +1234,7 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
           <h2>${escapeHtml(preparo.nome || 'Sem nome')}</h2>
           <div class="ficha-meta">
             <span class="badge">Receita base</span>
-            <span class="preco">Rende ${rendimento > 0 ? rendimento + (escapeHtml(preparo.unidade_medida || 'g')) : '—'}</span>
+            <span class="preco">Rende ${rendimento > 0 ? escapeHtml(formatRendimentoPreparo(rendimento, preparo.unidade_medida)) : '—'}</span>
           </div>
         </div>
 
@@ -1238,12 +1246,12 @@ function buildPreparosHTML(fichas, perfil, incluirAdicionais = true) {
             <span class="resumo-value">${fmtCur(custoTotal)}</span>
           </div>
           <div class="resumo-item">
-            <span class="resumo-label">Custo/kg</span>
-            <span class="resumo-value">${fmtCur(custoPorKg)}</span>
+            <span class="resumo-label">Custo/${({ peso: 'kg', volume: 'L' })[getTipoUnidade(preparo.unidade_medida || 'g')] || 'un'}</span>
+            <span class="resumo-value">${fmtCur(calcCustoListaPreparo(custoPorKg, preparo.unidade_medida || 'g'))}</span>
           </div>
           <div class="resumo-item">
             <span class="resumo-label">Rendimento</span>
-            <span class="resumo-value">${rendimento > 0 ? rendimento + escapeHtml(preparo.unidade_medida || 'g') : '—'}</span>
+            <span class="resumo-value">${rendimento > 0 ? escapeHtml(formatRendimentoPreparo(rendimento, preparo.unidade_medida)) : '—'}</span>
           </div>
         </div>
 

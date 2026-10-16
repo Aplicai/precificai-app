@@ -493,6 +493,17 @@ export default function MateriasPrimasScreen({ navigation }) {
         [novoValor, novoPrecoKg, item.id]
       );
     }));
+    // Receitas base que usam esses ingredientes têm o custo refeito (antes só a tela de
+    // edição individual/Atualizar Preços faziam o cascade). Em segundo plano.
+    (async () => {
+      try {
+        const { sincronizarCustosPreparos } = await import('../services/cascadeRecalc');
+        await sincronizarCustosPreparos(db);
+        const { notifyDataChanged } = await import('../utils/dataSync');
+        notifyDataChanged('preparos');
+        notifyDataChanged('produtos');
+      } catch (e) { console.warn('[MateriasPrimas.reajuste.cascade]', e); }
+    })();
     bulk.clear();
     const sigStr = sign === 1 ? '+' : '−';
     const valStr = mode === 'percent' ? `${value}%` : `R$ ${value.toFixed(2).replace('.', ',')}`;

@@ -22,7 +22,8 @@ import useListDensity from '../hooks/useListDensity';
 import { t } from '../i18n/pt-BR';
 // Sprint 2 S5 — checagem central de dependências antes de delete (audit P0-05).
 import { contarDependencias, formatarMensagemDeps } from '../services/dependenciesService';
-import { UNIDADES_MEDIDA, formatCurrency, formatPercent, calcMarkup, calcDespesasFixasPercentual, converterParaBase, getTipoUnidade, calcCustoIngrediente, calcCustoPreparo, getLabelPrecoBase, normalizeSearch, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, parseDecimalBR, safeNum } from '../utils/calculations';
+import { UNIDADES_MEDIDA, formatCurrency, formatPercent, calcMarkup, calcDespesasFixasPercentual, converterParaBase, getTipoUnidade, calcCustoIngrediente, calcCustoPreparo, getLabelPrecoBase, normalizeSearch, getTipoVenda, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, parseDecimalBR, safeNum, formatCustoListaPreparo, calcCustoTotalPreparo } from '../utils/calculations';
+import { aplicarCustosPreparos } from '../services/cascadeRecalc';
 // APP-19/24b: engine unificada + modal de transparência do cálculo
 import { calcularPrecoBalcao } from '../utils/precificacao';
 import ComoCalculadoModal from '../components/ComoCalculadoModal';
@@ -236,17 +237,28 @@ export default function ProdutoFormScreen({ route, navigation }) {
       Alert.alert('Valor inválido', 'Informe um custo válido.');
       return;
     }
+    const prAtual = preparosList.find(p => p.id === pp.preparo_id);
+    if (prAtual?._custoSincronizado) {
+      // Custo calculado dos ingredientes: um valor digitado aqui seria refeito na
+      // próxima carga (e o cascade antigo já o sobrescrevia na hora).
+      Alert.alert(
+        'Custo calculado pelos ingredientes',
+        'O custo desta receita base vem dos ingredientes dela. Para mudar, atualize o preço dos ingredientes ou edite a receita completa.'
+      );
+      return;
+    }
     try {
       const db = await getDatabase();
-      await db.runAsync('UPDATE preparos SET custo_por_kg = ? WHERE id = ?', [novoCusto, pp.preparo_id]);
+      const novoTotal = calcCustoTotalPreparo(novoCusto, prAtual?.rendimento_total, prAtual?.unidade_medida);
+      await db.runAsync('UPDATE preparos SET custo_por_kg = ?, custo_total = ? WHERE id = ?', [novoCusto, novoTotal, pp.preparo_id]);
       // Atualiza preparosList local pra refletir imediato no form
-      setPreparosList(prev => prev.map(p => p.id === pp.preparo_id ? { ...p, custo_por_kg: novoCusto } : p));
+      setPreparosList(prev => prev.map(p => p.id === pp.preparo_id ? { ...p, custo_por_kg: novoCusto, custo_total: novoTotal } : p));
       setProdutoPreparos(prev => prev.map((it, i) => i === idx ? { ...it, custo_por_kg: novoCusto } : it));
-      // D-19 cascade: produtos+combos que usam esse preparo
+      // D-19: receitas que usam esta como sub-receita. Não usa cascadeFromPreparo:
+      // ele recalcula ESTA receita pelas linhas — sem linhas, zerava o custo digitado.
       try {
-        // Audit A12: cascadeFromPreparo agora existe (antes o typeof mascarava o no-op).
-        const { cascadeFromPreparo } = await import('../services/cascadeRecalc');
-        await cascadeFromPreparo(db, pp.preparo_id);
+        const { sincronizarCustosPreparos } = await import('../services/cascadeRecalc');
+        await sincronizarCustosPreparos(db);
       } catch (_) {}
       setEditPrecoModal(null);
       setEditPrecoValor('');
@@ -446,7 +458,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
       db.getAllAsync('SELECT * FROM faturamento_mensal'),
     ]);
     setMateriasPrimas(mpList);
-    setPreparosList(prepList);
+    // Custo das receitas base refeito dos preços atuais (o gravado pode estar velho).
+    setPreparosList(await aplicarCustosPreparos(db, prepList));
     setEmbalagensList(embList);
 
     // Design embalagem-delivery-no-produto (2026-09-09) — default do toggle
@@ -568,7 +581,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
   const custoPreparos = produtoPreparos.reduce((acc, pp) => {
     const pr = preparosList.find(p => p.id === pp.preparo_id);
-    const cpk = pr?.custo_por_kg || pp.custo_por_kg || 0;
+    // Receita da lista manda (custo atual, 0 inclusive); pp.custo_por_kg veio do JOIN da carga.
+    const cpk = pr ? safeNum(pr.custo_por_kg) : safeNum(pp.custo_por_kg);
     const unidade = pp.unidade || pr?.unidade_medida || 'g';
     return acc + calcCustoPreparo(cpk, pp.quantidade_utilizada, unidade);
   }, 0);
@@ -820,7 +834,8 @@ export default function ProdutoFormScreen({ route, navigation }) {
 
   function custoPreparo(pp) {
     const pr = preparosList.find(p => p.id === pp.preparo_id);
-    const cpk = pr?.custo_por_kg || pp.custo_por_kg || 0;
+    // Receita da lista manda (custo atual, 0 inclusive); pp.custo_por_kg veio do JOIN da carga.
+    const cpk = pr ? safeNum(pr.custo_por_kg) : safeNum(pp.custo_por_kg);
     const unidade = pp.unidade || pr?.unidade_medida || 'g';
     return calcCustoPreparo(cpk, pp.quantidade_utilizada, unidade);
   }
@@ -1354,7 +1369,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     >
                       <Text style={styles.dropdownItemName}>{p.nome}</Text>
                       <Text style={styles.dropdownItemDetail}>
-                        {p.unidade_medida || 'g'} - {formatCurrency(p.custo_por_kg)}/kg
+                        {formatCustoListaPreparo(p.custo_por_kg, p.unidade_medida)}
                       </Text>
                     </TouchableOpacity>
                   ))}
@@ -2093,7 +2108,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                   <>
                     <Text style={[styles.costsTitle, { fontSize: 13, marginTop: 10, marginBottom: 6 }]}>Preparos ({produtoPreparos.length})</Text>
                     {produtoPreparos.map((pr, i) => {
-                      const custoPr = calcCustoPreparo(pr.custo_por_kg || 0, pr.quantidade_utilizada || 0, pr.unidade || 'g');
+                      const custoPr = custoPreparo(pr);
                       return (
                         <View key={pr.preparo_id || i} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
                           <Text style={{ fontSize: 12, color: colors.textSecondary, flex: 1 }} numberOfLines={1}>{pr.pr_nome}</Text>
@@ -2357,7 +2372,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                   {editPrecoModal?.pp?.pr_nome}
                 </Text>
                 <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6 }}>
-                  Novo custo por {editPrecoModal?.pp?.unidade || 'kg'}
+                  Novo custo por {({ peso: 'kg', volume: 'L' })[getTipoUnidade(editPrecoModal?.pp?.unidade || 'g')] || '1.000 un'}
                 </Text>
                 <TextInput
                   style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 12, fontSize: 16, marginBottom: 12 }}
