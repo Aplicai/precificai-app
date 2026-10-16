@@ -61,17 +61,9 @@ test('filtro de sugestões ignora acento e o que já foi usado', () => {
   assert.equal(filtrarSugestoes(lista, 'a', [], 1).length, 1);
 });
 
-test('sugestões de produto: nomes simples, do segmento ou gerais', () => {
-  assert.ok(sugestoesProduto('confeitaria').includes('Brigadeiro'));
-  assert.ok(sugestoesProduto('hamburgueria').includes('Hambúrguer artesanal'));
-  // Sem segmento (ou segmento que não reconhecemos): sugestões gerais, nunca vazio.
-  assert.equal(sugestoesProduto(null).length, 6);
-  assert.deepEqual(sugestoesProduto('xyz'), sugestoesProduto(null));
-  // Nada de tamanho ou embalagem no nome ("caixa 12 un", "1kg"): isso é o
-  // rendimento, perguntado logo abaixo.
-  const todos = ['confeitaria', 'padaria', 'hamburgueria', 'pizzaria', 'restaurante', 'marmitaria', 'acai', 'cafeteria', 'sorveteria', 'salgaderia', 'japonesa', null]
-    .flatMap((k) => sugestoesProduto(k));
-  assert.ok(todos.every((n) => !/\d|\bun\b|\bkg\b|caixa/i.test(n)), todos.filter((n) => /\d|\bun\b|\bkg\b|caixa/i.test(n)).join(', '));
+test('sugestões de produto vêm do segmento', () => {
+  assert.ok(sugestoesProduto('confeitaria').includes('Bolo de Chocolate 1kg'));
+  assert.deepEqual(sugestoesProduto(null), []);
 });
 
 test('quantidade do template vira a frase de compra', () => {

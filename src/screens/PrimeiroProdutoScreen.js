@@ -42,9 +42,9 @@ import { trackPrimeiroPrecoOnce } from '../utils/marketing';
 
 const PASSOS = ['produto', 'ingredientes', 'resultado'];
 const RENDIMENTO_TIPOS = [
-  { key: 'unidade', label: 'unidades', singular: 'unidade' },
-  { key: 'kg', label: 'kg', singular: 'kg' },
-  { key: 'litro', label: 'litros', singular: 'litro' },
+  { key: 'unidade', label: 'unidades' },
+  { key: 'kg', label: 'kg' },
+  { key: 'litro', label: 'litros' },
 ];
 const SUFIXO_RENDIMENTO = { unidade: 'por unidade', kg: 'por kg', litro: 'por litro' };
 const OPCOES_COMPRA = UNIDADES_MEDIDA.map((u) => ({ label: u.label, value: u.value }));
@@ -126,10 +126,9 @@ function PassoProduto({ nome, setNome, rendimento, setRendimento, sugestoes, onC
         />
         {RENDIMENTO_TIPOS.map((t) => {
           const ativo = rendimento.tipo === t.key;
-          const umSo = parseDecimalBR(rendimento.qtd) === 1;
           return (
             <TouchableOpacity key={t.key} style={[styles.chip, ativo && styles.chipAtivo]} onPress={() => setRendimento((r) => ({ ...r, tipo: t.key }))} accessibilityRole="button" accessibilityState={{ selected: ativo }}>
-              <Text style={[styles.chipTexto, ativo && styles.chipTextoAtivo]}>{umSo ? t.singular : t.label}</Text>
+              <Text style={[styles.chipTexto, ativo && styles.chipTextoAtivo]}>{t.label}</Text>
             </TouchableOpacity>
           );
         })}

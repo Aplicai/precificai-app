@@ -22,7 +22,7 @@ import {
 } from './calculations';
 import { fraseCustoResultado } from './compraSentence';
 import { resolverPrecoAoSalvar } from './precoAoSalvar';
-import { INSUMOS_POR_SEGMENTO } from '../data/templates';
+import { INSUMOS_POR_SEGMENTO, PRODUTOS_POR_SEGMENTO } from '../data/templates';
 
 export const MAX_LINHAS = 6;
 export const LINHAS_INICIAIS = 3;
@@ -108,27 +108,10 @@ export function filtrarSugestoes(lista, termo, nomesUsados = [], max = 6) {
     .slice(0, max);
 }
 
-// Chips do passo 1. Nomes simples, sem tamanho nem embalagem: os do Kit
-// ("Brigadeiro Gourmet caixa 12 un", "Bolo de Chocolate 1kg") brigavam com
-// "Essa receita rende", logo abaixo.
-const PRODUTOS_SUGERIDOS = {
-  confeitaria: ['Bolo de chocolate', 'Brigadeiro', 'Bolo de pote', 'Brownie', 'Torta de limão', 'Cupcake'],
-  padaria: ['Pão francês', 'Pão de queijo', 'Bolo caseiro', 'Sonho', 'Rosca doce', 'Pão de forma'],
-  hamburgueria: ['Hambúrguer artesanal', 'X-salada', 'X-bacon', 'Batata frita', 'Hot dog', 'Milkshake'],
-  pizzaria: ['Pizza de calabresa', 'Pizza de mussarela', 'Pizza de frango com catupiry', 'Esfiha', 'Calzone', 'Pizza doce'],
-  restaurante: ['Prato feito', 'Lasanha', 'Macarrão à bolonhesa', 'Strogonoff', 'Feijoada', 'Parmegiana'],
-  marmitaria: ['Marmita de frango', 'Marmita fit', 'Marmita de carne', 'Feijoada', 'Strogonoff', 'Marmita congelada'],
-  acai: ['Açaí na tigela', 'Açaí no copo', 'Smoothie', 'Creme de cupuaçu', 'Bowl de frutas', 'Creme de ninho'],
-  cafeteria: ['Café coado', 'Cappuccino', 'Pão de queijo', 'Bolo de cenoura', 'Croissant', 'Misto quente'],
-  sorveteria: ['Sorvete de massa', 'Picolé', 'Milkshake', 'Sundae', 'Geladinho', 'Taça de sorvete'],
-  salgaderia: ['Coxinha', 'Pastel', 'Empada', 'Kibe', 'Esfiha', 'Espetinho'],
-  japonesa: ['Temaki', 'Hot roll', 'Sushi', 'Uramaki', 'Yakisoba', 'Poke'],
-};
-const PRODUTOS_GERAIS = ['Bolo de chocolate', 'Brigadeiro', 'Marmita', 'Hambúrguer', 'Pizza', 'Coxinha'];
-
-/** Nomes de produto para os chips do passo 1 (gerais quando não sabemos o segmento). */
+/** Nomes de produto do segmento (chips do passo 1). */
 export function sugestoesProduto(segKey) {
-  return PRODUTOS_SUGERIDOS[segKey] || PRODUTOS_GERAIS;
+  if (!segKey || !PRODUTOS_POR_SEGMENTO[segKey]) return [];
+  return PRODUTOS_POR_SEGMENTO[segKey].map((p) => p.nome);
 }
 
 function numBR(n) {
