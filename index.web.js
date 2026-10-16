@@ -68,17 +68,12 @@ if (typeof document !== 'undefined') {
     }
   }
 
-  // PWA install prompt — captura para uso pelo componente InstallPrompt.
-  window.__pwaInstallPrompt = null;
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    window.__pwaInstallPrompt = e;
-    window.dispatchEvent(new CustomEvent('pwa-install-available'));
-  });
-  window.addEventListener('appinstalled', () => {
-    window.__pwaInstallPrompt = null;
-    window.dispatchEvent(new CustomEvent('pwa-installed'));
-  });
+  // PWA install prompt: captura, flag `pwa_installed` e eventos de compat
+  // vivem em src/utils/pwaInstall.js (mesma fonte do index.js). Sem isso os
+  // componentes que usam subscribe() não eram avisados do pedido do Chrome.
+  try {
+    require('./src/utils/pwaInstall').setupPwaInstallCapture();
+  } catch (_) {}
 }
 
 registerRootComponent(App);

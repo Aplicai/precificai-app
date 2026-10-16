@@ -8,6 +8,7 @@ import { colors } from './src/utils/theme';
 import { initErrorReporter, wrap as wrapWithSentry } from './src/utils/errorReporter';
 import GlobalToastHost from './src/components/GlobalToastHost';
 import TutorialVideoHost from './src/components/TutorialVideoHost';
+import InstalarAppHost from './src/components/InstalarAppHost';
 import ErrorBoundary from './src/components/ErrorBoundary';
 
 // Inicializa o reporter de erros (P0-01). No-op se DSN ausente.
@@ -56,6 +57,8 @@ function App() {
           <GlobalToastHost />
           {/* Vídeo tutorial: qualquer tela abre via abrirTutorial(capitulo). */}
           <TutorialVideoHost />
+          {/* "Instale o app": tira do navegador do Instagram e ensina a instalar (Android e iPhone). */}
+          <InstalarAppHost />
         </View>
       </AuthProvider>
     </ErrorBoundary>
