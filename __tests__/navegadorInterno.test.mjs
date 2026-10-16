@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { ehNavegadorInterno, deveOferecerChrome, deveOferecerSafari, ehIPhone, urlAbrirNoSafari, urlAbrirNoChrome, comParametroInstalar, veioDoAnuncio, pedeInstalar, semParametroInstalar } from '../src/utils/navegadorInterno.js';
+import { ehNavegadorInterno, deveOferecerChrome, deveOferecerSafari, ehIPhone, urlAbrirNoSafari, urlAbrirNoChrome, comParametroInstalar, lembreteLiberado, proximoLembrete, DIAS_LEMBRETE, pedeInstalar, semParametroInstalar } from '../src/utils/navegadorInterno.js';
 
 const IG_ANDROID = 'Mozilla/5.0 (Linux; Android 13; SM-A135M Build/TP1A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/129.0.6668.81 Mobile Safari/537.36 Instagram 349.0.0.42.115 Android';
 const FB_ANDROID = 'Mozilla/5.0 (Linux; Android 12; moto g22; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/129.0 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/483.0.0.48.86;]';
@@ -65,9 +65,12 @@ test('no iPhone, dentro do Instagram/Facebook, oferece abrir no Safari', () => {
   );
 });
 
-test('reconhece visita vinda de anúncio do Meta', () => {
-  assert.equal(veioDoAnuncio('?fbclid=AbC'), true);
-  assert.equal(veioDoAnuncio('?utm_source=meta&utm_medium=paid'), true);
-  assert.equal(veioDoAnuncio('?utm_source=google'), false);
-  assert.equal(veioDoAnuncio(''), false);
+test('aviso fechado volta depois de alguns dias', () => {
+  const agora = 1_800_000_000_000;
+  assert.equal(DIAS_LEMBRETE, 3);
+  assert.equal(lembreteLiberado(null, agora), true);
+  assert.equal(lembreteLiberado('lixo', agora), true);
+  const ate = proximoLembrete(agora);
+  assert.equal(lembreteLiberado(String(ate), agora + 1000), false);
+  assert.equal(lembreteLiberado(String(ate), agora + 3 * 24 * 3600 * 1000), true);
 });

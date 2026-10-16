@@ -15,21 +15,27 @@
  *    (?instalar=1), ensina "Compartilhar → Adicionar à Tela de Início"
  *    (a Apple não deixa instalar com um toque).
  *
+ * 4. Lembrete: no celular, quem ainda não instalou vê o aviso em toda visita;
+ *    fechou no ✕, volta em DIAS_LEMBRETE dias.
+ *
  * Eventos no Meta: AbrirNoChrome, AbrirNoSafari e InstalouApp.
  */
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { deveOferecerChrome, deveOferecerSafari, ehIPhone, urlAbrirNoChrome, urlAbrirNoSafari, pedeInstalar, veioDoAnuncio, comParametroInstalar, semParametroInstalar } from '../utils/navegadorInterno';
+import { deveOferecerChrome, deveOferecerSafari, ehIPhone, urlAbrirNoChrome, urlAbrirNoSafari, pedeInstalar, comParametroInstalar, semParametroInstalar, lembreteLiberado, proximoLembrete } from '../utils/navegadorInterno';
 import { canInstall, isInstalled, promptInstall, subscribe } from '../utils/pwaInstall';
 import { trackEvent } from '../utils/marketing';
 
 const CHAVE_SESSAO_FECHOU = 'pcf_instalar_fechado';
 const CHAVE_SESSAO_PEDIU = 'pcf_instalar_pedido';
+const CHAVE_LEMBRETE_ATE = 'pcf_instalar_lembrete_ate';
 
 function lerSessao(k) { try { return window.sessionStorage.getItem(k); } catch { return null; } }
 function gravarSessao(k, v) { try { window.sessionStorage.setItem(k, v); } catch {} }
+function lerLocal(k) { try { return window.localStorage.getItem(k); } catch { return null; } }
+function gravarLocal(k, v) { try { window.localStorage.setItem(k, v); } catch {} }
 
 const TEXTO_GRATIS = 'Grátis. Fica na sua tela inicial e você não perde o acesso.';
 
@@ -44,6 +50,17 @@ export default function InstalarAppHost() {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return undefined;
     const ua = window.navigator?.userAgent || '';
     if (lerSessao(CHAVE_SESSAO_FECHOU) === '1') return undefined;
+    const iphone = ehIPhone(ua);
+    if (!iphone && !/Android/i.test(ua)) return undefined; // só celular
+    if (isInstalled()) return undefined;
+
+    // Chegou ao navegador pelo botão: guarda o pedido e limpa a URL.
+    if (pedeInstalar(window.location.search)) {
+      gravarSessao(CHAVE_SESSAO_PEDIU, '1');
+      try { window.history.replaceState(window.history.state, '', semParametroInstalar(window.location.href)); } catch {}
+    }
+    // Quem ainda não instalou vê o aviso; fechou no ✕, volta em alguns dias.
+    if (lerSessao(CHAVE_SESSAO_PEDIU) !== '1' && !lembreteLiberado(lerLocal(CHAVE_LEMBRETE_ATE))) return undefined;
 
     const noChrome = deveOferecerChrome(ua);
     if (noChrome || deveOferecerSafari(ua)) {
@@ -54,15 +71,7 @@ export default function InstalarAppHost() {
       return undefined;
     }
 
-    // Chegou ao navegador pelo botão: guarda o pedido e limpa a URL.
-    const doAnuncio = veioDoAnuncio(window.location.search) && (ehIPhone(ua) || /Android/i.test(ua));
-    if (pedeInstalar(window.location.search) || doAnuncio) {
-      gravarSessao(CHAVE_SESSAO_PEDIU, '1');
-      try { window.history.replaceState(window.history.state, '', semParametroInstalar(window.location.href)); } catch {}
-    }
-    if (lerSessao(CHAVE_SESSAO_PEDIU) !== '1' || isInstalled()) return undefined;
-
-    if (ehIPhone(ua)) { setModo('iphone'); return undefined; }
+    if (iphone) { setModo('iphone'); return undefined; }
 
     setModo('instalar');
     setPodeInstalar(canInstall());
@@ -79,6 +88,7 @@ export default function InstalarAppHost() {
 
   function fechar() {
     gravarSessao(CHAVE_SESSAO_FECHOU, '1');
+    gravarLocal(CHAVE_LEMBRETE_ATE, String(proximoLembrete()));
     setModo(null);
   }
 

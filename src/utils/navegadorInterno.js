@@ -66,15 +66,18 @@ export function comParametroInstalar(href) {
   return comInstalar(href).toString();
 }
 
-/**
- * Veio de anúncio do Meta? O "Abrir no navegador externo" do Instagram leva
- * o link original (com fbclid/utm), não a URL alterada na página.
- */
-export function veioDoAnuncio(search) {
-  try {
-    const q = new URLSearchParams(search || '');
-    return !!q.get('fbclid') || /^(meta|facebook|instagram|fb|ig)$/i.test(q.get('utm_source') || '');
-  } catch { return false; }
+/** Fechou o aviso no ✕: ele volta depois de alguns dias (quem ainda não instalou). */
+export const DIAS_LEMBRETE = 3;
+const DIA_MS = 24 * 60 * 60 * 1000;
+
+export function proximoLembrete(agora = Date.now()) {
+  return agora + DIAS_LEMBRETE * DIA_MS;
+}
+
+/** `ate` = valor gravado no ✕ (texto do localStorage ou null). */
+export function lembreteLiberado(ate, agora = Date.now()) {
+  const n = Number(ate);
+  return !ate || !Number.isFinite(n) || agora >= n;
 }
 
 export function semParametroInstalar(href) {
