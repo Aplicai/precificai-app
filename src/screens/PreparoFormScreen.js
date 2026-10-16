@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Alert, Modal, TextInput } from 'react-native';
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Alert, Modal, TextInput, Platform } from 'react-native';
+import { selecionarTudoAoFocarProps } from '../utils/selecionarAoFocar';
 import { Feather } from '@expo/vector-icons';
 import { getDatabase } from '../database/database';
 import { rowsOrThrow } from '../database/dbResult';
@@ -1016,7 +1017,7 @@ export default function PreparoFormScreen({ route, navigation }) {
                         const n = parseDecimalBR(v) || 0;
                         setPreparoEmbalagens(prev => prev.map((it, i) => i === idx ? { ...it, quantidade_utilizada: n } : it));
                       }}
-                      selectTextOnFocus
+                      {...selecionarTudoAoFocarProps(Platform.OS)}
                     />
                     <View style={{ flex: 1.2, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
                       <Text style={styles.ingCellCusto}>{formatCurrency(totalPe)}</Text>

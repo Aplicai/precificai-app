@@ -12,7 +12,7 @@
  */
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
@@ -152,6 +152,24 @@ test('Lista de Compras e popup do Delivery não usam mais o selectTextOnFocus do
     assert.doesNotMatch(src, /^\s*selectTextOnFocus\s*$/m, rel);
     assert.match(src, /selecionarTudoAoFocarProps\(Platform\.OS\)/, rel);
   }
+});
+
+test('nenhuma tela/componente usa selectTextOnFocus direto (só via selecionarTudoAoFocarProps)', () => {
+  // Exceções explícitas só-nativo: nenhuma hoje. Se surgir, liste aqui o arquivo
+  // e garanta que o prop está atrás de `Platform.OS !== 'web'`.
+  const NATIVE_ONLY = new Set();
+  const listar = (dir) => readdirSync(join(raiz, dir), { withFileTypes: true }).flatMap((d) => {
+    const rel = `${dir}/${d.name}`;
+    if (d.isDirectory()) return listar(rel);
+    return /\.(js|jsx|ts|tsx)$/.test(d.name) ? [rel] : [];
+  });
+  const ofensores = [];
+  for (const rel of [...listar('src/screens'), ...listar('src/components')]) {
+    if (NATIVE_ONLY.has(rel)) continue;
+    const semComentarios = fonte(rel).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    if (/\bselectTextOnFocus\b/.test(semComentarios)) ofensores.push(rel);
+  }
+  assert.deepEqual(ofensores, []);
 });
 
 // ─── 5. Quantidade da lista em PT-BR ──────────────────────────────────

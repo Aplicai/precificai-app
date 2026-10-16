@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { View, Text, FlatList, ScrollView, StyleSheet, TextInput, TouchableOpacity, Modal, Keyboard, Platform, ActivityIndicator } from 'react-native';
+import { selecionarTudoAoFocarProps } from '../utils/selecionarAoFocar';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import { Feather } from '@expo/vector-icons';
@@ -529,7 +530,7 @@ export default function AtualizarPrecosScreen({ navigation }) {
                   setEditModal(prev => prev ? { ...prev, value: clean } : null);
                 }}
                 keyboardType="numeric"
-                selectTextOnFocus
+                {...selecionarTudoAoFocarProps(Platform.OS)}
                 autoFocus
                 onSubmitEditing={confirmSave}
                 accessibilityLabel="Novo preço"

@@ -22,6 +22,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, Modal, Platform,
   TextInput, ActivityIndicator, StyleSheet,
 } from 'react-native';
+import { selecionarTudoAoFocarProps } from '../utils/selecionarAoFocar';
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
@@ -1228,7 +1229,7 @@ function DREEditableRow({
             inputMode="decimal"
             placeholder="0,00"
             placeholderTextColor={colors.placeholder}
-            selectTextOnFocus
+            {...selecionarTudoAoFocarProps(Platform.OS)}
           />
         </View>
         {showPct ? (

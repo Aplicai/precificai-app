@@ -23,6 +23,7 @@
 
 import React, { useEffect, useLayoutEffect, useState, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Platform, Switch, Alert, ActivityIndicator } from 'react-native';
+import { selecionarTudoAoFocarProps } from '../utils/selecionarAoFocar';
 import usePushPermissions from '../hooks/usePushPermissions';
 // Sessão 28.29: styles extraídos pra arquivo dedicado (eram 611 linhas inline)
 import { entityCreateModalStyles as styles } from './styles/entityCreateModal.styles';
@@ -180,7 +181,7 @@ export default function EntityCreateModal({
   const [embDeliveryPickerVisible, setEmbDeliveryPickerVisible] = useState(false);
   const [embDeliveryPickerBusca, setEmbDeliveryPickerBusca] = useState('');
   // Fix walkthrough #1 — foco automático no input de quantidade do item recém
-  // adicionado (com texto selecionado via selectTextOnFocus). Mapa de refs
+  // adicionado (com texto selecionado via selecionarTudoAoFocarProps). Mapa de refs
   // por chave `${tipo}-${id}` + a chave do último item adicionado (dispara o
   // foco num useEffect após o novo row montar).
   const itemQtyRefs = useRef({});
@@ -1229,7 +1230,7 @@ export default function EntityCreateModal({
                         keyboardType="decimal-pad"
                         style={styles.stepperInput}
                         placeholder="0"
-                        selectTextOnFocus
+                        {...selecionarTudoAoFocarProps(Platform.OS)}
                       />
                       <TouchableOpacity
                         style={styles.stepperBtn}
@@ -1539,7 +1540,7 @@ export default function EntityCreateModal({
                         value={String(l.quantidade ?? '')}
                         onChangeText={(v) => mudarQtdDelivery(l.id, v)}
                         keyboardType="decimal-pad"
-                        selectTextOnFocus
+                        {...selecionarTudoAoFocarProps(Platform.OS)}
                         accessibilityLabel={`Quantidade de ${l.nome}`}
                         style={{
                           width: 56, textAlign: 'center', backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,

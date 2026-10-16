@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal, TextInput, Switch, RefreshControl, Platform } from 'react-native';
+import { selecionarTudoAoFocarProps } from '../utils/selecionarAoFocar';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import CurrencyInputModal from '../components/CurrencyInputModal';
 import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
@@ -1824,7 +1825,7 @@ export default function FinanceiroConfigScreen() {
                 keyboardType="decimal-pad"
                 placeholder="0,00"
                 placeholderTextColor={colors.placeholder}
-                selectTextOnFocus
+                {...selecionarTudoAoFocarProps(Platform.OS)}
               />
             </View>
             <View style={s.modalActions}>

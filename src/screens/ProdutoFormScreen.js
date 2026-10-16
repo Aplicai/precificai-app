@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ScrollView, View, Text, StyleSheet, TouchableOpacity, Pressable, Alert, Modal, TextInput, Platform, KeyboardAvoidingView, Switch } from 'react-native';
+import { selecionarTudoAoFocarProps } from '../utils/selecionarAoFocar';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { getDatabase } from '../database/database';
 import { rowsOrThrow } from '../database/dbResult';
@@ -341,7 +342,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
     setErroCarga(nivel);
   }
   // Fix walkthrough #1 — foco automático (com texto selecionado via
-  // selectTextOnFocus) no input de quantidade do item recém-adicionado.
+  // selecionarTudoAoFocarProps) no input de quantidade do item recém-adicionado.
   // Mapa de refs por chave `tipo-id` + chave do último item adicionado.
   const qtyInputRefs = useRef({});
   const [lastAddedQtyKey, setLastAddedQtyKey] = useState(null);
@@ -755,7 +756,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
   // 14/10/2026: defaultQtyForUnidade vem de src/utils/itemQuantityDefaults.js
   // (mesma regra do EntityCreateModal; kg/L começam em 0,1 = 100 g/mL).
 
-  // Foca (com texto selecionado, via selectTextOnFocus na TextInput) o campo
+  // Foca (com texto selecionado, via selecionarTudoAoFocarProps na TextInput) o campo
   // de quantidade do item que acabou de ser adicionado.
   useEffect(() => {
     if (!lastAddedQtyKey) return;
@@ -1392,7 +1393,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                       value={String(pp.quantidade_utilizada)}
                       onChangeText={(v) => updateQuantidade('preparo', idx, v)}
                       keyboardType="decimal-pad"
-                      selectTextOnFocus
+                      {...selecionarTudoAoFocarProps(Platform.OS)}
                     />
                     <Text style={[styles.tableCell, { flex: 0.8, textAlign: 'center' }]}>{unidade}</Text>
                     {/* D-18: tap no custo abre modal pra editar custo do preparo (cascade) */}
@@ -1502,7 +1503,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                     value={String(ing.quantidade_utilizada)}
                     onChangeText={(v) => updateQuantidade('ingrediente', idx, v)}
                     keyboardType="decimal-pad"
-                    selectTextOnFocus
+                    {...selecionarTudoAoFocarProps(Platform.OS)}
                   />
                   <Text style={[styles.tableCell, { flex: 0.8, textAlign: 'center' }]}>{ing.unidade}</Text>
                   {/* D-17: tap no custo abre prompt rápido pra atualizar preço do insumo */}
@@ -1598,7 +1599,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                       value={String(pe.quantidade_utilizada)}
                       onChangeText={(v) => updateQuantidade('embalagem', idx, v)}
                       keyboardType="decimal-pad"
-                      selectTextOnFocus
+                      {...selecionarTudoAoFocarProps(Platform.OS)}
                     />
                     <Text style={[styles.tableCellCusto, { flex: 1.2, textAlign: 'right' }]}>{formatCurrency(custo)}</Text>
                     <TouchableOpacity onPress={() => setProdutoEmbalagens(prev => prev.filter((_, i) => i !== idx))} style={{ width: 32, alignItems: 'center' }}>
@@ -1728,7 +1729,7 @@ export default function ProdutoFormScreen({ route, navigation }) {
                       value={String(l.quantidade ?? '')}
                       onChangeText={(v) => setEmbalagensDelivery(prev => prev.map(e => (e.id === l.id ? { ...e, quantidade: v } : e)))}
                       keyboardType="decimal-pad"
-                      selectTextOnFocus
+                      {...selecionarTudoAoFocarProps(Platform.OS)}
                       accessibilityLabel={`Quantidade de ${l.nome}`}
                       style={[styles.inlineQtyInput, { minWidth: 60 }]}
                     />

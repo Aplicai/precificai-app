@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, StyleSheet, Modal, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { selecionarTudoAoFocarProps } from '../utils/selecionarAoFocar';
 import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, borderRadius, fontFamily } from '../utils/theme';
 
@@ -80,7 +81,7 @@ export default function CurrencyInputModal({ visible, title, value, prefix, suff
               placeholder={placeholder || '0,00'}
               placeholderTextColor={colors.placeholder}
               keyboardType={keyboardType}
-              selectTextOnFocus
+              {...selecionarTudoAoFocarProps(Platform.OS)}
               onSubmitEditing={handleConfirm}
               returnKeyType="done"
             />

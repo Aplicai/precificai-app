@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, FlatList, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert, Platform, TextInput } from 'react-native';
+import { selecionarTudoAoFocarProps } from '../utils/selecionarAoFocar';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import UndoToast from '../components/UndoToast';
@@ -1577,7 +1578,7 @@ export default function DeliveryCombosScreen() {
                           value={String(l.quantidade ?? '')}
                           onChangeText={(v) => atualizarEmbsDelivery(lista => lista.map(e => (e.id === l.id ? { ...e, quantidade: String(v).replace(/[^0-9.,]/g, '') } : e)))}
                           keyboardType="decimal-pad"
-                          selectTextOnFocus
+                          {...selecionarTudoAoFocarProps(Platform.OS)}
                           accessibilityLabel={`Quantidade de ${l.nome}`}
                           style={{
                             width: 56, textAlign: 'center', backgroundColor: colors.inputBg, borderWidth: 1, borderColor: colors.border,
