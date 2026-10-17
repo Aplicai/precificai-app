@@ -18,6 +18,9 @@
  * 4. Lembrete: no celular, quem ainda não instalou vê o aviso em toda visita;
  *    fechou no ✕, volta em DIAS_LEMBRETE dias.
  *
+ * 5. Logado, só aparece depois do primeiro preço (nunca no meio do perfil /
+ *    Preço rápido). Sem conta, aparece no cadastro/login.
+ *
  * Eventos no Meta: AbrirNoChrome, AbrirNoSafari e InstalouApp.
  */
 import React, { useEffect, useState } from 'react';
@@ -27,6 +30,8 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { deveOferecerChrome, deveOferecerSafari, ehIPhone, urlAbrirNoChrome, urlAbrirNoSafari, pedeInstalar, comParametroInstalar, semParametroInstalar, lembreteLiberado, proximoLembrete } from '../utils/navegadorInterno';
 import { canInstall, isInstalled, promptInstall, subscribe } from '../utils/pwaInstall';
 import { trackEvent } from '../utils/marketing';
+import { useAuth } from '../contexts/AuthContext';
+import { avisoInstalarPermitido, avisoInstalarLiberado, assinarAvisoInstalar } from '../utils/avisoInstalar';
 
 const CHAVE_SESSAO_FECHOU = 'pcf_instalar_fechado';
 const CHAVE_SESSAO_PEDIU = 'pcf_instalar_pedido';
@@ -45,6 +50,10 @@ export default function InstalarAppHost() {
   const [podeInstalar, setPodeInstalar] = useState(false);
   const [semPedido, setSemPedido] = useState(false);
   const [safariNaoAbriu, setSafariNaoAbriu] = useState(false);
+  // Logado: só depois do primeiro preço (src/utils/avisoInstalar.js).
+  const { user, loading: authCarregando } = useAuth() || {};
+  const [liberado, setLiberado] = useState(() => avisoInstalarLiberado());
+  useEffect(() => assinarAvisoInstalar(setLiberado), []);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return undefined;
@@ -85,6 +94,7 @@ export default function InstalarAppHost() {
   }, []);
 
   if (!modo) return null;
+  if (authCarregando || !avisoInstalarPermitido({ logado: !!user, liberado })) return null;
 
   function fechar() {
     gravarSessao(CHAVE_SESSAO_FECHOU, '1');

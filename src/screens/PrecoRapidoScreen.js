@@ -23,6 +23,7 @@ import { getDatabase } from '../database/database';
 import { clearQueryCache } from '../database/supabaseDb';
 import { notifyDataChanged } from '../utils/dataSync';
 import { trackEvent } from '../utils/marketing';
+import { liberarAvisoInstalar } from '../utils/avisoInstalar';
 import { CHAVE_PRECO_RAPIDO } from '../utils/initialRoute';
 
 const SUGESTOES = ['Bolo de chocolate', 'Brigadeiro', 'Marmita', 'Hambúrguer', 'Pizza', 'Coxinha'];
@@ -65,6 +66,8 @@ export default function PrecoRapidoScreen({ navigation }) {
 
   useEffect(() => {
     AsyncStorage.setItem(CHAVE_PRECO_RAPIDO, 'true').catch(() => {});
+    // Funil do primeiro acesso: quantos chegam a esta tela (vs. salvam/pulam).
+    trackEvent('PrecoRapidoVisto', { content_name: 'preco_rapido' });
   }, []);
 
   const r = useMemo(
@@ -73,6 +76,11 @@ export default function PrecoRapidoScreen({ navigation }) {
   );
   const preenchido = custoReceita && rendimento && gastoMes !== '' && vendaMes;
   const nomeProduto = nome.trim() || 'seu produto';
+
+  function pular() {
+    trackEvent('PrecoRapidoPulou', { content_name: 'preco_rapido' });
+    irParaApp();
+  }
 
   async function irParaApp() {
     try { await AsyncStorage.setItem('onboarding_done', 'true'); } catch (_) {}
@@ -95,6 +103,8 @@ export default function PrecoRapidoScreen({ navigation }) {
       notifyDataChanged('faturamento_mensal');
       notifyDataChanged('despesas_fixas');
       trackEvent('PrecoRapido', { content_name: 'preco_rapido', value: res.preco, currency: 'BRL' });
+      // Primeiro preço feito: agora sim o aviso "Instale o app" pode aparecer.
+      liberarAvisoInstalar();
       await irParaApp();
     } catch (e) {
       console.error('[PrecoRapido.salvar]', e);
@@ -199,7 +209,7 @@ export default function PrecoRapidoScreen({ navigation }) {
               </>
             )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.pular} onPress={irParaApp} accessibilityRole="button">
+          <TouchableOpacity style={styles.pular} onPress={pular} accessibilityRole="button">
             <Text style={styles.pularTexto}>Pular por agora</Text>
           </TouchableOpacity>
         </View>

@@ -9,6 +9,7 @@ import { colors, spacing, fonts, fontFamily, borderRadius, typography, numeric, 
 import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPercentual, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcLucroLiquido, calcMargemLiquida, calcCMVPercentual, parseDecimalBR, formatNumberBR } from '../utils/calculations';
 import { calcSobraMes } from '../utils/breakeven';
 import { getFinanceiroStatus, montarStatusFinanceiro, textoPendenciaFinanceiro, publicarStatusFinanceiro, assinarStatusFinanceiro } from '../utils/financeiroStatus';
+import { liberarAvisoInstalar } from '../utils/avisoInstalar';
 import { resolverMargemMeta, isMargemBaixa, classificarMargem } from '../utils/margemMeta';
 import { avaliarIndicadores, indicadorEmAlerta, CMV_META_PADRAO } from '../utils/painelSaude';
 import { sincronizarCustosPreparos } from '../services/cascadeRecalc';
@@ -532,6 +533,7 @@ export default function HomeScreen({ navigation }) {
         vendasMesDelivery = Number(cfgRow?.vendas_mes_delivery) || 0;
       } catch (_) { /* coluna pode não existir em build antigo */ }
       if (seq !== loadSeqRef.current) return;
+      if (prodsComPreco > 0) liberarAvisoInstalar();
       setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, sobraSoFixas, produtosMargBaixa: uniqueProds, produtosSemPreco, primeiroSemPreco, prodsComPreco, margemMeta, cmvPercent, pontoEquilibrio, fatMedio, insights, vendasMesBalcao, vendasMesDelivery });
       // Não sobrescreve o que a pessoa está digitando no modal da meta.
       if (!showMargemMetaRef.current) setMargemMetaValue(textoMeta(margemMeta * 100));
