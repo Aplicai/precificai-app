@@ -21,11 +21,11 @@ import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CommonActions } from '@react-navigation/native';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
-import { formatCurrency } from '../utils/calculations';
+import { formatCurrency, buildPricingConfig } from '../utils/calculations';
 import { calcularPrecoRapido, parseValorBR, LUCRO_PADRAO } from '../utils/precoRapido';
 import { numerosDoMes, valorParaCampo, META_ESCADA } from '../utils/escadaPrecos';
 import { mensagemErroSalvar } from '../utils/planGate';
-import { countOrThrow } from '../database/dbResult';
+import { countOrThrow, isErrorResult as isDbErrorResult } from '../database/dbResult';
 import { salvarPrecoRapido } from '../services/precoRapidoService';
 import { getDatabase } from '../database/database';
 import { clearQueryCache } from '../database/supabaseDb';
@@ -73,6 +73,9 @@ export default function PrecoRapidoScreen({ navigation, route }) {
   const salvandoRef = useRef(false);
   // Modo próximo: 'carregando' | 'salvos' (linha "Usando seus gastos…") | 'perguntar'
   const [numerosMes, setNumerosMes] = useState(proximo ? 'carregando' : 'perguntar');
+  // 2º produto em diante: lucro, taxas e margem de segurança do Financeiro da
+  // conta (o 1º usa o lucro padrão: a conta ainda não tem configuração).
+  const [contaCfg, setContaCfg] = useState({ lucro: LUCRO_PADRAO, taxasPerc: 0, margemSeguranca: 0 });
 
   useEffect(() => {
     if (proximo) return;
@@ -90,11 +93,18 @@ export default function PrecoRapidoScreen({ navigation, route }) {
       let n = { gastoMes: null, vendaMes: null, completo: false };
       try {
         const db = await getDatabase();
-        const [fixas, fat] = await Promise.all([
+        const [fixas, fat, cfgs, vars] = await Promise.all([
           db.getAllAsync('SELECT valor FROM despesas_fixas'),
           db.getAllAsync('SELECT valor FROM faturamento_mensal'),
+          db.getAllAsync('SELECT lucro_desejado, margem_seguranca FROM configuracao LIMIT 1'),
+          db.getAllAsync('SELECT percentual FROM despesas_variaveis'),
         ]);
         n = numerosDoMes(fixas, fat);
+        // Leitura falhou: fica o padrão (lucro 15%, sem taxas), nunca zero de lucro.
+        if (Array.isArray(cfgs) && !isDbErrorResult(cfgs) && Array.isArray(vars) && !isDbErrorResult(vars)) {
+          const pc = buildPricingConfig({ cfgs, vars, fixas: [], fat: [] });
+          if (vivo) setContaCfg({ lucro: pc.lucroDesejado, taxasPerc: pc.despVarPerc, margemSeguranca: pc.margemSeguranca });
+        }
       } catch (_) { /* pergunta os dois */ }
       if (!vivo) return;
       setGastoMes(valorParaCampo(n.gastoMes));
@@ -105,11 +115,12 @@ export default function PrecoRapidoScreen({ navigation, route }) {
   }, [proximo]);
 
   const r = useMemo(
-    () => calcularPrecoRapido({ custoReceita, rendimento, gastoMes, vendaMes, cobraHoje }),
-    [custoReceita, rendimento, gastoMes, vendaMes, cobraHoje]
+    () => calcularPrecoRapido({ custoReceita, rendimento, gastoMes, vendaMes, cobraHoje, ...contaCfg }),
+    [custoReceita, rendimento, gastoMes, vendaMes, cobraHoje, contaCfg]
   );
   const preenchido = custoReceita && rendimento && gastoMes !== '' && vendaMes;
   const nomeProduto = nome.trim() || 'seu produto';
+  const lucroPct = String(Math.round(contaCfg.lucro * 1000) / 10).replace('.', ',');
 
   function pular() {
     trackEvent('PrecoRapidoPulou', { content_name: 'preco_rapido' });
@@ -137,7 +148,7 @@ export default function PrecoRapidoScreen({ navigation, route }) {
     setErro(null);
     try {
       const db = await getDatabase();
-      const res = await salvarPrecoRapido(db, { nome, custoReceita, rendimento, gastoMes, vendaMes, cobraHoje });
+      const res = await salvarPrecoRapido(db, { nome, custoReceita, rendimento, gastoMes, vendaMes, cobraHoje, ...contaCfg });
       try { clearQueryCache(); } catch (_) {}
       notifyDataChanged('materias_primas');
       notifyDataChanged('produtos');
@@ -250,16 +261,18 @@ export default function PrecoRapidoScreen({ navigation, route }) {
 
           {r.ok ? (
             <View style={[styles.cartao, styles.resultado]}>
-              <Text style={styles.resultadoLabel}>Preço certo do {nomeProduto}</Text>
+              <Text style={styles.resultadoLabel}>Preço certo: {nomeProduto}</Text>
               <Text style={styles.resultadoValor}>{formatCurrency(r.preco)} <Text style={styles.resultadoUnidade}>por unidade</Text></Text>
               <LinhaParte cor="#ffffff" texto="Custo de fazer" valor={r.partes.custo} />
+              {r.partes.seguranca > 0.005 ? <LinhaParte cor="#ffffff" texto="Margem de segurança" valor={r.partes.seguranca} /> : null}
               <LinhaParte cor={colors.yellow} texto="Gastos do mês" valor={r.partes.gastos} />
-              <LinhaParte cor={colors.success} texto={`Seu lucro (${Math.round(LUCRO_PADRAO * 100)}%)`} valor={r.partes.lucro} />
+              {r.partes.taxas > 0.005 ? <LinhaParte cor={colors.yellow} texto="Taxas e impostos" valor={r.partes.taxas} /> : null}
+              <LinhaParte cor={colors.success} texto={`Seu lucro (${lucroPct}%)`} valor={r.partes.lucro} />
               {r.comparacao ? (
                 <Text style={styles.comparacao}>
                   {r.comparacao.situacao === 'abaixo'
-                    ? `Hoje você cobra ${formatCurrency(r.comparacao.hoje)}. Para pagar o custo, os gastos do mês e ainda ter ${Math.round(LUCRO_PADRAO * 100)}% de lucro, cobre ${formatCurrency(r.preco)}.`
-                    : `Hoje você cobra ${formatCurrency(r.comparacao.hoje)}: já paga o custo, os gastos do mês e deixa pelo menos ${Math.round(LUCRO_PADRAO * 100)}% de lucro.`}
+                    ? `Hoje você cobra ${formatCurrency(r.comparacao.hoje)}. Para pagar o custo, os gastos do mês e ainda ter ${lucroPct}% de lucro, cobre ${formatCurrency(r.preco)}.`
+                    : `Hoje você cobra ${formatCurrency(r.comparacao.hoje)}: já paga o custo, os gastos do mês e deixa pelo menos ${lucroPct}% de lucro.`}
                 </Text>
               ) : null}
             </View>

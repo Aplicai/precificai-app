@@ -32,3 +32,26 @@ export function assinarAvisoInstalar(fn) {
   ouvintes.add(fn);
   return () => { ouvintes.delete(fn); };
 }
+
+// Telas com o próprio cartão de instalar (tabela de preços) escondem o aviso
+// do topo, que cobriria o título e repetiria o pedido.
+let _ocultosNoTopo = 0;
+const ouvintesTopo = new Set();
+
+export function avisoTopoOculto() {
+  return _ocultosNoTopo > 0;
+}
+
+export function ocultarAvisoTopo() {
+  _ocultosNoTopo += 1;
+  ouvintesTopo.forEach((fn) => { try { fn(true); } catch (_) {} });
+  return () => {
+    _ocultosNoTopo = Math.max(0, _ocultosNoTopo - 1);
+    ouvintesTopo.forEach((fn) => { try { fn(_ocultosNoTopo > 0); } catch (_) {} });
+  };
+}
+
+export function assinarAvisoTopo(fn) {
+  ouvintesTopo.add(fn);
+  return () => { ouvintesTopo.delete(fn); };
+}

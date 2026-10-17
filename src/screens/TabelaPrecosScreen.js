@@ -22,9 +22,9 @@ import { rowsOrThrow } from '../database/dbResult';
 import { supabase } from '../config/supabase';
 import { trackEvent } from '../utils/marketing';
 import { showToast } from '../utils/toastBus';
-import { liberarAvisoInstalar } from '../utils/avisoInstalar';
+import { liberarAvisoInstalar, ocultarAvisoTopo } from '../utils/avisoInstalar';
 import { canInstall, isInstalled, promptInstall } from '../utils/pwaInstall';
-import { ehIPhone } from '../utils/navegadorInterno';
+import { ehIPhone, deveOferecerChrome, deveOferecerSafari, urlAbrirNoChrome } from '../utils/navegadorInterno';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 
 function userAgent() {
@@ -71,6 +71,9 @@ export default function TabelaPrecosScreen({ navigation, route }) {
   const [email, setEmail] = useState({ estado: 'livre', texto: null }); // livre | enviando | feito | erro
   const [instalar, setInstalar] = useState(() => Platform.OS === 'web' && !isInstalled());
   const [instalarAjuda, setInstalarAjuda] = useState(null);
+
+  // Esta tela tem o próprio cartão "Salve o app": sem o aviso do topo.
+  useEffect(() => ocultarAvisoTopo(), []);
 
   useEffect(() => {
     // O aviso "Instale o app" sai do 1º preço e passa para cá.
@@ -149,6 +152,17 @@ export default function TabelaPrecosScreen({ navigation, route }) {
   }
 
   async function salvarApp() {
+    const ua = userAgent();
+    // Dentro do Instagram/Facebook não dá para instalar: Android abre no Chrome.
+    if (deveOferecerChrome(ua)) {
+      trackEvent('AbrirNoChrome', { content_name: 'tabela_precos' });
+      window.location.href = urlAbrirNoChrome(window.location.href);
+      return;
+    }
+    if (deveOferecerSafari(ua)) {
+      setInstalarAjuda('Toque em ⋯ no canto de cima e em "Abrir no navegador externo". No Safari, toque em Compartilhar e em "Adicionar à Tela de Início".');
+      return;
+    }
     if (canInstall()) {
       const r = await promptInstall();
       if (r === 'accepted') {

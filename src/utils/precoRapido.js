@@ -35,7 +35,7 @@ const num = parseValorBR;
  * @returns {{ ok, erros, inviavel, custoUnit, fixosPerc, markup, preco,
  *   partes: {custo, gastos, lucro}, comparacao: null|{situacao:'abaixo'|'cobre', hoje, diferenca} }}
  */
-export function calcularPrecoRapido({ custoReceita, rendimento, gastoMes, vendaMes, cobraHoje, lucro = LUCRO_PADRAO }) {
+export function calcularPrecoRapido({ custoReceita, rendimento, gastoMes, vendaMes, cobraHoje, lucro = LUCRO_PADRAO, taxasPerc = 0, margemSeguranca = 0 }) {
   const custo = num(custoReceita);
   const rend = num(rendimento);
   const gasto = num(gastoMes);
@@ -48,16 +48,20 @@ export function calcularPrecoRapido({ custoReceita, rendimento, gastoMes, vendaM
   if (gasto === null || gasto < 0) erros.gastoMes = 'Diga quanto gasta por mês (pode ser 0)';
   if (!(venda > 0)) erros.vendaMes = 'Diga quanto vende por mês';
 
-  const vazio = { ok: false, erros, inviavel: false, custoUnit: 0, fixosPerc: 0, markup: 0, preco: 0, partes: { custo: 0, gastos: 0, lucro: 0 }, comparacao: null };
+  const vazio = { ok: false, erros, inviavel: false, custoUnit: 0, fixosPerc: 0, markup: 0, preco: 0, partes: { custo: 0, seguranca: 0, gastos: 0, taxas: 0, lucro: 0 }, comparacao: null };
   if (Object.keys(erros).length) return vazio;
 
   const custoUnit = custo / rend;
   const fixosPerc = calcDespesasFixasPercentual(gasto, venda);
-  const markup = calcMarkup(fixosPerc, 0, lucro);
+  // 2º produto em diante (conta já configurada): mesma conta do app, com as
+  // taxas (% sobre a venda) e a margem de segurança do Financeiro.
+  const taxas = Number(taxasPerc) > 0 ? Number(taxasPerc) : 0;
+  const seguranca = Number(margemSeguranca) > 0 ? Number(margemSeguranca) : 0;
+  const markup = calcMarkup(fixosPerc, taxas, lucro);
   if (!(markup > 0)) {
     return { ...vazio, inviavel: true, custoUnit, fixosPerc, erros: { gastoMes: 'Os gastos do mês passam do que você vende: confira os dois valores' } };
   }
-  const preco = calcPrecoSugerido(custoUnit, markup, 0);
+  const preco = calcPrecoSugerido(custoUnit, markup, seguranca);
   const comparacao = hoje > 0
     ? { situacao: hoje + 0.005 < preco ? 'abaixo' : 'cobre', hoje, diferenca: preco - hoje }
     : null;
@@ -70,7 +74,13 @@ export function calcularPrecoRapido({ custoReceita, rendimento, gastoMes, vendaM
     fixosPerc,
     markup,
     preco,
-    partes: { custo: custoUnit, gastos: preco * fixosPerc, lucro: preco * lucro },
+    partes: {
+      custo: custoUnit,
+      seguranca: custoUnit * seguranca,
+      gastos: preco * fixosPerc,
+      taxas: preco * taxas,
+      lucro: preco * lucro,
+    },
     comparacao,
   };
 }

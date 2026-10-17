@@ -138,3 +138,14 @@ test('entrada inválida não grava nada', async () => {
   await assert.rejects(() => salvarPrecoRapido(db, { ...entrada, nome: ' ' }));
   assert.equal(db.chamadas.length, 0);
 });
+
+test('2º produto: usa lucro, taxas e margem de segurança da conta (mesma conta do app)', async () => {
+  const { calcMarkup, calcPrecoSugerido } = await import('../src/utils/calculations.js');
+  const r = calcularPrecoRapido({ custoReceita: '40', rendimento: '20', gastoMes: '2000', vendaMes: '8000', lucro: 0.2, taxasPerc: 0.05, margemSeguranca: 0.1 });
+  assert.equal(r.ok, true);
+  const esperado = calcPrecoSugerido(2, calcMarkup(0.25, 0.05, 0.2), 0.1);
+  assert.ok(Math.abs(r.preco - esperado) < 1e-9);
+  // As partes somam o preço.
+  const soma = r.partes.custo + r.partes.seguranca + r.partes.gastos + r.partes.taxas + r.partes.lucro;
+  assert.ok(Math.abs(soma - r.preco) < 1e-9);
+});

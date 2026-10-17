@@ -31,7 +31,7 @@ import { deveOferecerChrome, deveOferecerSafari, ehIPhone, urlAbrirNoChrome, url
 import { canInstall, isInstalled, promptInstall, subscribe } from '../utils/pwaInstall';
 import { trackEvent } from '../utils/marketing';
 import { useAuth } from '../contexts/AuthContext';
-import { avisoInstalarPermitido, avisoInstalarLiberado, assinarAvisoInstalar } from '../utils/avisoInstalar';
+import { avisoInstalarPermitido, avisoInstalarLiberado, assinarAvisoInstalar, avisoTopoOculto, assinarAvisoTopo } from '../utils/avisoInstalar';
 
 const CHAVE_SESSAO_FECHOU = 'pcf_instalar_fechado';
 const CHAVE_SESSAO_PEDIU = 'pcf_instalar_pedido';
@@ -54,6 +54,8 @@ export default function InstalarAppHost() {
   const { user, loading: authCarregando } = useAuth() || {};
   const [liberado, setLiberado] = useState(() => avisoInstalarLiberado());
   useEffect(() => assinarAvisoInstalar(setLiberado), []);
+  const [ocultoNaTela, setOcultoNaTela] = useState(() => avisoTopoOculto());
+  useEffect(() => assinarAvisoTopo(setOcultoNaTela), []);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return undefined;
@@ -94,7 +96,7 @@ export default function InstalarAppHost() {
   }, []);
 
   if (!modo) return null;
-  if (authCarregando || !avisoInstalarPermitido({ logado: !!user, liberado })) return null;
+  if (authCarregando || ocultoNaTela || !avisoInstalarPermitido({ logado: !!user, liberado })) return null;
 
   function fechar() {
     gravarSessao(CHAVE_SESSAO_FECHOU, '1');
