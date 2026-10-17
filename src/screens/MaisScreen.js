@@ -51,6 +51,14 @@ const MENU_GROUPS = [
         screen: 'AtualizarPrecos',
       },
       {
+        key: 'tabela_precos',
+        title: 'Tabela de preços',
+        desc: 'Seus preços prontos para enviar no WhatsApp',
+        icon: 'list',
+        set: 'feather',
+        screen: 'TabelaPrecos',
+      },
+      {
         key: 'listacompras',
         title: 'Lista de Compras',
         desc: 'Gere sua lista de compras automática',

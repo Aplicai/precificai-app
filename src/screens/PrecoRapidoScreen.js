@@ -9,6 +9,11 @@
  *
  * Conta: src/utils/precoRapido.js (mesma do Financeiro). Gravação:
  * src/services/precoRapidoService.js.
+ *
+ * Modo "próximo" (`{ proximo: true }`, escada dos 3 preços, 17/10/2026): o 2º
+ * e o 3º produto. Pergunta só produto, receita e quanto cobra hoje; os gastos
+ * e as vendas do mês vêm do que já está salvo (src/utils/escadaPrecos.js).
+ * No 3º produto com preço, abre a tabela de preços (TabelaPrecosScreen).
  */
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
@@ -17,13 +22,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CommonActions } from '@react-navigation/native';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency } from '../utils/calculations';
-import { calcularPrecoRapido, LUCRO_PADRAO } from '../utils/precoRapido';
+import { calcularPrecoRapido, parseValorBR, LUCRO_PADRAO } from '../utils/precoRapido';
+import { numerosDoMes, valorParaCampo, META_ESCADA } from '../utils/escadaPrecos';
+import { mensagemErroSalvar } from '../utils/planGate';
+import { countOrThrow } from '../database/dbResult';
 import { salvarPrecoRapido } from '../services/precoRapidoService';
 import { getDatabase } from '../database/database';
 import { clearQueryCache } from '../database/supabaseDb';
 import { notifyDataChanged } from '../utils/dataSync';
 import { trackEvent } from '../utils/marketing';
-import { liberarAvisoInstalar } from '../utils/avisoInstalar';
 import { CHAVE_PRECO_RAPIDO } from '../utils/initialRoute';
 
 const SUGESTOES = ['Bolo de chocolate', 'Brigadeiro', 'Marmita', 'Hambúrguer', 'Pizza', 'Coxinha'];
@@ -53,7 +60,8 @@ function LinhaParte({ cor, texto, valor }) {
   );
 }
 
-export default function PrecoRapidoScreen({ navigation }) {
+export default function PrecoRapidoScreen({ navigation, route }) {
+  const proximo = !!route?.params?.proximo;
   const [nome, setNome] = useState('');
   const [custoReceita, setCustoReceita] = useState('');
   const [rendimento, setRendimento] = useState('');
@@ -63,12 +71,38 @@ export default function PrecoRapidoScreen({ navigation }) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
   const salvandoRef = useRef(false);
+  // Modo próximo: 'carregando' | 'salvos' (linha "Usando seus gastos…") | 'perguntar'
+  const [numerosMes, setNumerosMes] = useState(proximo ? 'carregando' : 'perguntar');
 
   useEffect(() => {
+    if (proximo) return;
     AsyncStorage.setItem(CHAVE_PRECO_RAPIDO, 'true').catch(() => {});
     // Funil do primeiro acesso: quantos chegam a esta tela (vs. salvam/pulam).
     trackEvent('PrecoRapidoVisto', { content_name: 'preco_rapido' });
-  }, []);
+  }, [proximo]);
+
+  // Próximo produto: gastos e vendas do mês salvos. Falhou a leitura ou falta
+  // algum: volta a perguntar, já com o que tiver (nunca calcula com zero).
+  useEffect(() => {
+    if (!proximo) return undefined;
+    let vivo = true;
+    (async () => {
+      let n = { gastoMes: null, vendaMes: null, completo: false };
+      try {
+        const db = await getDatabase();
+        const [fixas, fat] = await Promise.all([
+          db.getAllAsync('SELECT valor FROM despesas_fixas'),
+          db.getAllAsync('SELECT valor FROM faturamento_mensal'),
+        ]);
+        n = numerosDoMes(fixas, fat);
+      } catch (_) { /* pergunta os dois */ }
+      if (!vivo) return;
+      setGastoMes(valorParaCampo(n.gastoMes));
+      setVendaMes(valorParaCampo(n.vendaMes));
+      setNumerosMes(n.completo ? 'salvos' : 'perguntar');
+    })();
+    return () => { vivo = false; };
+  }, [proximo]);
 
   const r = useMemo(
     () => calcularPrecoRapido({ custoReceita, rendimento, gastoMes, vendaMes, cobraHoje }),
@@ -82,9 +116,16 @@ export default function PrecoRapidoScreen({ navigation }) {
     irParaApp();
   }
 
-  async function irParaApp() {
+  async function irParaApp(tabelaPronta = false) {
     try { await AsyncStorage.setItem('onboarding_done', 'true'); } catch (_) {}
-    navigation.dispatch(CommonActions.reset({ index: 0, routes: [{ name: 'MainTabs', params: { initialTab: 'Início' } }] }));
+    const routes = [{ name: 'MainTabs', params: { initialTab: 'Início' } }];
+    if (tabelaPronta) routes.push({ name: 'TabelaPrecos', params: { pronta: true } });
+    navigation.dispatch(CommonActions.reset({ index: routes.length - 1, routes }));
+  }
+
+  function voltar() {
+    if (navigation.canGoBack()) navigation.goBack();
+    else irParaApp();
   }
 
   async function salvar() {
@@ -102,13 +143,21 @@ export default function PrecoRapidoScreen({ navigation }) {
       notifyDataChanged('produtos');
       notifyDataChanged('faturamento_mensal');
       notifyDataChanged('despesas_fixas');
-      trackEvent('PrecoRapido', { content_name: 'preco_rapido', value: res.preco, currency: 'BRL' });
-      // Primeiro preço feito: agora sim o aviso "Instale o app" pode aparecer.
-      liberarAvisoInstalar();
-      await irParaApp();
+      if (!proximo) {
+        trackEvent('PrecoRapido', { content_name: 'preco_rapido', value: res.preco, currency: 'BRL' });
+        // O aviso "Instale o app" agora é liberado na tabela de preços (3º preço).
+        await irParaApp();
+        return;
+      }
+      // 2º e 3º produto. Contagem falhou: a Home decide (mostra a escada).
+      let comPreco = 0;
+      try { comPreco = await countOrThrow(db, 'SELECT COUNT(*) as n FROM produtos WHERE preco_venda > 0'); } catch (_) {}
+      trackEvent('PrecoRapidoProximo', { content_name: `produto_${comPreco || 'n'}`, value: res.preco, currency: 'BRL' });
+      await irParaApp(comPreco >= META_ESCADA);
     } catch (e) {
       console.error('[PrecoRapido.salvar]', e);
-      setErro('Não conseguimos salvar. Verifique a internet e tente de novo.');
+      // Limite do Grátis (5 produtos) vem do servidor com a mensagem do plano.
+      setErro(mensagemErroSalvar(e, 'Não conseguimos salvar. Verifique a internet e tente de novo.'));
     } finally {
       salvandoRef.current = false;
       setSalvando(false);
@@ -119,12 +168,21 @@ export default function PrecoRapidoScreen({ navigation }) {
     <KeyboardAvoidingView style={styles.tela} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.conteudo} keyboardShouldPersistTaps="handled">
         <View style={styles.coluna}>
-          <Text style={styles.titulo}>Seu preço em 30 segundos</Text>
-          <Text style={styles.subtitulo}>Só números que você sabe de cabeça. Detalhar a receita fica para depois.</Text>
-          <TouchableOpacity style={styles.videoLink} onPress={() => navigation.navigate('ComoFunciona')} accessibilityRole="button">
-            <Feather name="play-circle" size={15} color={colors.primary} style={{ marginRight: 6 }} />
-            <Text style={styles.linkTexto}>Ver como funciona (1 min)</Text>
-          </TouchableOpacity>
+          {proximo ? (
+            <>
+              <Text style={styles.titulo}>Próximo produto</Text>
+              <Text style={[styles.subtitulo, { marginBottom: spacing.md }]}>Seus números do mês já estão salvos. Falta só o produto e a receita.</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.titulo}>Seu preço em 30 segundos</Text>
+              <Text style={styles.subtitulo}>Só números que você sabe de cabeça. Detalhar a receita fica para depois.</Text>
+              <TouchableOpacity style={styles.videoLink} onPress={() => navigation.navigate('ComoFunciona')} accessibilityRole="button">
+                <Feather name="play-circle" size={15} color={colors.primary} style={{ marginRight: 6 }} />
+                <Text style={styles.linkTexto}>Ver como funciona (1 min)</Text>
+              </TouchableOpacity>
+            </>
+          )}
 
           <View style={styles.cartao}>
             <Text style={styles.pergunta}>1. Qual produto?</Text>
@@ -159,6 +217,14 @@ export default function PrecoRapidoScreen({ navigation }) {
             <Text style={styles.dica}>Some ingredientes e embalagem de uma receita. Uma estimativa já serve.</Text>
           </View>
 
+          {numerosMes === 'carregando' ? (
+            <ActivityIndicator color={colors.primary} style={{ marginVertical: spacing.sm }} />
+          ) : numerosMes === 'salvos' ? (
+            <Text style={styles.usando}>
+              Usando seus gastos do mês: {formatCurrency(parseValorBR(gastoMes))} · vendas: {formatCurrency(parseValorBR(vendaMes))}{' '}
+              <Text style={styles.linkTexto} onPress={() => setNumerosMes('perguntar')} accessibilityRole="button">(alterar)</Text>
+            </Text>
+          ) : (
           <View style={styles.cartao}>
             <Text style={styles.pergunta}>3. Seus números do mês</Text>
             <View style={styles.frase}>
@@ -171,9 +237,10 @@ export default function PrecoRapidoScreen({ navigation }) {
               <Campo valor={vendaMes} onChange={setVendaMes} placeholder="8.000" label="Quanto vende por mês" />
             </View>
           </View>
+          )}
 
           <View style={styles.cartao}>
-            <Text style={styles.pergunta}>4. Quanto você cobra hoje? <Text style={styles.opcional}>(opcional)</Text></Text>
+            <Text style={styles.pergunta}>{numerosMes === 'perguntar' ? '4' : '3'}. Quanto você cobra hoje? <Text style={styles.opcional}>(opcional)</Text></Text>
             <View style={styles.frase}>
               <Text style={styles.palavra}>R$</Text>
               <Campo valor={cobraHoje} onChange={setCobraHoje} placeholder="3,50" label="Quanto cobra hoje" />
@@ -204,13 +271,13 @@ export default function PrecoRapidoScreen({ navigation }) {
           <TouchableOpacity style={[styles.botao, (!r.ok || salvando) && styles.botaoApagado]} onPress={salvar} disabled={salvando} accessibilityRole="button">
             {salvando ? <ActivityIndicator color="#fff" /> : (
               <>
-                <Text style={styles.botaoTexto}>Salvar e entrar no app</Text>
+                <Text style={styles.botaoTexto}>{proximo ? 'Salvar o preço' : 'Salvar e entrar no app'}</Text>
                 <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
               </>
             )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.pular} onPress={pular} accessibilityRole="button">
-            <Text style={styles.pularTexto}>Pular por agora</Text>
+          <TouchableOpacity style={styles.pular} onPress={proximo ? voltar : pular} accessibilityRole="button">
+            <Text style={styles.pularTexto}>{proximo ? 'Voltar' : 'Pular por agora'}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -233,6 +300,7 @@ const styles = StyleSheet.create({
   palavra: { fontSize: fonts.regular, fontFamily: fontFamily.medium, color: colors.text },
   input: { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: borderRadius.sm, paddingHorizontal: 12, paddingVertical: 10, fontSize: fonts.regular, fontFamily: fontFamily.semiBold, color: colors.text, minHeight: 44, textAlign: 'center' },
   inputLargo: { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, borderRadius: borderRadius.sm, paddingHorizontal: 12, paddingVertical: 10, fontSize: fonts.regular, fontFamily: fontFamily.regular, color: colors.text, minHeight: 44 },
+  usando: { fontSize: fonts.small, lineHeight: 21, fontFamily: fontFamily.regular, color: colors.textSecondary, marginBottom: spacing.sm + 4, paddingHorizontal: 2 },
   dica: { fontSize: fonts.tiny + 1, lineHeight: 18, fontFamily: fontFamily.regular, color: colors.textSecondary, marginTop: spacing.xs },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.sm },
   chip: { borderWidth: 1, borderColor: colors.border, borderRadius: borderRadius.full, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: colors.surface },

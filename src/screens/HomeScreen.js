@@ -10,6 +10,8 @@ import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPerc
 import { calcSobraMes } from '../utils/breakeven';
 import { getFinanceiroStatus, montarStatusFinanceiro, textoPendenciaFinanceiro, publicarStatusFinanceiro, assinarStatusFinanceiro } from '../utils/financeiroStatus';
 import { liberarAvisoInstalar } from '../utils/avisoInstalar';
+import { etapaEscada, mostrarInicioSimples, mostrarEscadaNoPainel, CHAVE_PAINEL_ESCOLHIDO, META_ESCADA, LINK_APP } from '../utils/escadaPrecos';
+import { ehIPhone } from '../utils/navegadorInterno';
 import { resolverMargemMeta, isMargemBaixa, classificarMargem } from '../utils/margemMeta';
 import { avaliarIndicadores, indicadorEmAlerta, CMV_META_PADRAO } from '../utils/painelSaude';
 import { sincronizarCustosPreparos } from '../services/cascadeRecalc';
@@ -90,6 +92,93 @@ function passoDoComeco(d) {
   return 2;
 }
 
+/** Celular de verdade: app nativo ou navegador de iPhone/Android em tela estreita. */
+function ehCelular(isMobile) {
+  if (Platform.OS !== 'web') return true;
+  let ua = '';
+  try { ua = (typeof navigator !== 'undefined' && navigator.userAgent) || ''; } catch (_) {}
+  return isMobile && (ehIPhone(ua) || /Android/i.test(ua));
+}
+
+/** "1 de 3": um degrau por preço, o último é a tabela de preços. */
+function DegrausEscada({ feitos, meta }) {
+  return (
+    <View style={inicioStyles.passos}>
+      {Array.from({ length: meta }, (_, i) => {
+        const feito = i < feitos;
+        const atual = i === feitos;
+        const nome = i === meta - 1 ? 'Tabela' : `${i + 1}º preço`;
+        return (
+          <View key={nome} style={[inicioStyles.passo, feito && inicioStyles.passoFeito, atual && inicioStyles.passoAtual]}>
+            {feito ? <Feather name="check" size={13} color="#fff" style={{ marginRight: 4 }} /> : null}
+            <Text style={[inicioStyles.passoTexto, (feito || atual) && { color: atual ? colors.primary : '#fff' }]}>{nome}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/**
+ * Escada dos 3 preços (17/10/2026): com 1 ou 2 produtos com preço, a Home
+ * simples mostra os preços feitos e UM botão para o próximo Preço rápido.
+ * No 3º, a tabela de preços para o WhatsApp (src/utils/escadaPrecos.js).
+ */
+function EscadaSimples({ nomeNegocio, produtos, onProximo, onPainel, celular }) {
+  const { feitos, meta } = etapaEscada(produtos.length);
+  const faltam = meta - feitos;
+  return (
+    <View style={inicioStyles.caixa}>
+      <Text style={inicioStyles.ola}>{nomeNegocio ? `Olá, ${nomeNegocio}!` : 'Olá!'}</Text>
+      <Text style={inicioStyles.sub}>
+        {faltam === 1 ? 'Falta 1 preço para sua tabela de preços.' : `Faltam ${faltam} preços para sua tabela de preços.`}
+      </Text>
+      <DegrausEscada feitos={feitos} meta={meta} />
+      <Text style={inicioStyles.contagem}>{feitos} de {meta}</Text>
+      <View style={[inicioStyles.cartao, { marginBottom: spacing.sm + 4 }]}>
+        {produtos.map((p, i) => (
+          <View key={p.id} style={[inicioStyles.linha, i > 0 && inicioStyles.linhaBorda]}>
+            <Feather name="check-circle" size={16} color={colors.success} style={{ marginRight: 8 }} />
+            <Text style={inicioStyles.linhaNome} numberOfLines={2}>{p.nome}</Text>
+            <Text style={inicioStyles.linhaPreco}>{formatCurrency(p.preco)}</Text>
+          </View>
+        ))}
+      </View>
+      <View style={inicioStyles.cartao}>
+        <Text style={inicioStyles.cartaoTitulo}>Calcule o próximo produto</Text>
+        <Text style={inicioStyles.cartaoTexto}>Seus números do mês já estão salvos. Com {meta} produtos com preço, você ganha uma tabela de preços pronta para enviar no WhatsApp.</Text>
+        <TouchableOpacity style={inicioStyles.botao} onPress={onProximo} activeOpacity={0.8} accessibilityRole="button">
+          <Text style={inicioStyles.botaoTexto}>Calcular o próximo produto (15 s)</Text>
+          <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
+        </TouchableOpacity>
+      </View>
+      <TouchableOpacity style={inicioStyles.video} onPress={onPainel} accessibilityRole="button">
+        <Text style={inicioStyles.videoTexto}>Ver painel completo</Text>
+      </TouchableOpacity>
+      {celular ? (
+        <View style={inicioStyles.dica}>
+          <Feather name="monitor" size={14} color={colors.textSecondary} style={{ marginRight: 6, marginTop: 2 }} />
+          <Text style={inicioStyles.dicaTexto}>Dica: no computador o app é mais completo. Entre com o mesmo e-mail em {LINK_APP.replace('https://', '')}.</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** Escolheu o painel com 1 ou 2 preços: a escada num card no topo. */
+function CartaoEscada({ feitos, meta, onProximo }) {
+  return (
+    <View style={inicioStyles.cartaoPainel}>
+      <Text style={inicioStyles.cartaoTitulo}>Sua tabela de preços: {feitos} de {meta}</Text>
+      <DegrausEscada feitos={feitos} meta={meta} />
+      <TouchableOpacity style={inicioStyles.botao} onPress={onProximo} activeOpacity={0.8} accessibilityRole="button">
+        <Text style={inicioStyles.botaoTexto}>Calcular o próximo produto (15 s)</Text>
+        <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function InicioSimples({ nomeNegocio, d, onAcao, onVideo, onPrecoRapido }) {
   const passo = passoDoComeco(d);
   const produto = d.primeiroSemPreco?.nome;
@@ -166,6 +255,14 @@ const inicioStyles = StyleSheet.create({
   botaoTexto: { color: '#fff', fontSize: fonts.medium, fontFamily: fontFamily.bold },
   video: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.md },
   videoTexto: { color: colors.primary, fontSize: fonts.small, fontFamily: fontFamily.semiBold, textDecorationLine: 'underline' },
+  contagem: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, color: colors.textSecondary, marginTop: -spacing.sm, marginBottom: spacing.sm },
+  linha: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+  linhaBorda: { borderTopWidth: 1, borderTopColor: colors.border },
+  linhaNome: { flex: 1, fontSize: fonts.regular, fontFamily: fontFamily.medium, color: colors.text, marginRight: spacing.sm },
+  linhaPreco: { fontSize: fonts.regular, fontFamily: fontFamily.bold, color: colors.primary },
+  dica: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: spacing.xs, marginTop: spacing.xs },
+  dicaTexto: { flex: 1, fontSize: fonts.tiny + 1, lineHeight: 18, fontFamily: fontFamily.regular, color: colors.textSecondary },
+  cartaoPainel: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.primary, borderRadius: borderRadius.lg, padding: spacing.md, marginBottom: spacing.md },
 });
 
 export default function HomeScreen({ navigation }) {
@@ -180,7 +277,7 @@ export default function HomeScreen({ navigation }) {
   const [d, setD] = useState({
     totalInsumos: 0, totalEmbalagens: 0, totalPreparos: 0, totalProdutos: 0,
     margemMedia: 0, custoTotal: 0, impactoDelivery: 0, resultadoFinanceiro: 0, sobraSoFixas: true,
-    produtosMargBaixa: [], produtosSemPreco: [], prodsComPreco: 0,
+    produtosMargBaixa: [], produtosSemPreco: [], prodsComPreco: 0, produtosComPreco: [],
     // Meta de margem = lucro_desejado do Financeiro (src/utils/margemMeta.js).
     margemMeta: resolverMargemMeta(null),
     cmvPercent: 0, pontoEquilibrio: 0, fatMedio: 0,
@@ -205,6 +302,8 @@ export default function HomeScreen({ navigation }) {
   const loadSeqRef = useRef(0);
   const [margemMetaValue, setMargemMetaValue] = useState('15');
   const [loadError, setLoadError] = useState(null);
+  // Escada dos 3 preços: tocou em "Ver painel completo" antes do 3º preço.
+  const [escolheuPainel, setEscolheuPainel] = useState(false);
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
   // Sessão 26 — flags escondem etapas/CTAs de Delivery e BCG até user habilitar
@@ -352,6 +451,7 @@ export default function HomeScreen({ navigation }) {
       let somaMargens = 0, somaCustos = 0, somaPrecos = 0, prodsComPreco = 0;
       const produtosMargBaixa = [];
       const produtosSemPreco = [];
+      const produtosComPreco = [];
       let primeiroSemPreco = null;
 
       for (const p of prodsR) {
@@ -380,6 +480,7 @@ export default function HomeScreen({ navigation }) {
           const margem = calcMargemLiquida(p.preco_venda, custoUnit, despFixasVal, despVarVal);
           somaMargens += margem;
           prodsComPreco++;
+          produtosComPreco.push({ id: p.id, nome: p.nome, preco: p.preco_venda });
           if (isMargemBaixa(margem, margemMeta)) produtosMargBaixa.push({ id: p.id, nome: p.nome, margem });
         } else {
           produtosSemPreco.push(p.nome);
@@ -532,9 +633,15 @@ export default function HomeScreen({ navigation }) {
         vendasMesBalcao = Number(cfgRow?.vendas_mes_balcao) || 0;
         vendasMesDelivery = Number(cfgRow?.vendas_mes_delivery) || 0;
       } catch (_) { /* coluna pode não existir em build antigo */ }
+      let painelEscolhido = false;
+      try { painelEscolhido = (await AsyncStorage.getItem(CHAVE_PAINEL_ESCOLHIDO)) === 'true'; } catch (_) {}
       if (seq !== loadSeqRef.current) return;
-      if (prodsComPreco > 0) liberarAvisoInstalar();
-      setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, sobraSoFixas, produtosMargBaixa: uniqueProds, produtosSemPreco, primeiroSemPreco, prodsComPreco, margemMeta, cmvPercent, pontoEquilibrio, fatMedio, insights, vendasMesBalcao, vendasMesDelivery });
+      // O aviso "Instale o app" é liberado na tabela de preços (3º preço).
+      // Contas que já tinham 3 ou mais antes da escada não passam por ela.
+      if (prodsComPreco >= META_ESCADA) liberarAvisoInstalar();
+      setEscolheuPainel(painelEscolhido);
+      produtosComPreco.sort((a, b) => a.id - b.id);
+      setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, sobraSoFixas, produtosMargBaixa: uniqueProds, produtosSemPreco, primeiroSemPreco, prodsComPreco, produtosComPreco, margemMeta, cmvPercent, pontoEquilibrio, fatMedio, insights, vendasMesBalcao, vendasMesDelivery });
       // Não sobrescreve o que a pessoa está digitando no modal da meta.
       if (!showMargemMetaRef.current) setMargemMetaValue(textoMeta(margemMeta * 100));
       setAlertas(pendencias);
@@ -589,7 +696,17 @@ export default function HomeScreen({ navigation }) {
   const semPrimeiroPreco = !loading && !loadError
     && (d.totalProdutos === 0 || d.produtosSemPreco.length >= d.totalProdutos);
   const financeiroNaFrente = pendente && !semPrimeiroPreco;
-  const modoComeco = semPrimeiroPreco;
+  // Escada dos 3 preços (17/10/2026): Home simples até 3 produtos com preço,
+  // a menos que a pessoa tenha escolhido o painel (aí a escada vira card).
+  const escadaArgs = { dadosOk: !loading && !loadError, prodsComPreco: d.prodsComPreco, escolheuPainel };
+  const modoComeco = mostrarInicioSimples(escadaArgs);
+  const escadaNoPainel = mostrarEscadaNoPainel(escadaArgs);
+  const celular = ehCelular(isMobile);
+  const irProximoPreco = () => navigation.navigate('PrecoRapido', { proximo: true });
+  const escolherPainel = () => {
+    setEscolheuPainel(true);
+    AsyncStorage.setItem(CHAVE_PAINEL_ESCOLHIDO, 'true').catch(() => {});
+  };
   // UX audit 09/09 (Fase B, item 16): banner "Configuração do app" só quando
   // falta etapa de núcleo. Só opcionais (Delivery, Preparos, Embalagens)
   // pendentes = sem banner, senão ele nunca chega a 100% pra quem não usa delivery.
@@ -792,9 +909,17 @@ export default function HomeScreen({ navigation }) {
 
       {/* Home simples até o primeiro produto com preço (16/10/2026): no celular
           a conta nova via 10 blocos, 3 levando ao mesmo lugar e 4 números
-          vazios. Agora: saudação, 3 passos e UM próximo passo. Depois do
-          primeiro preço, a Home completa abaixo. */}
-      {modoComeco ? (
+          vazios. Agora: saudação, 3 passos e UM próximo passo. Com 1 ou 2
+          preços, a escada dos 3 preços (17/10/2026); depois, a Home completa. */}
+      {modoComeco && d.prodsComPreco > 0 ? (
+        <EscadaSimples
+          nomeNegocio={nomeNegocio}
+          produtos={d.produtosComPreco}
+          onProximo={irProximoPreco}
+          onPainel={escolherPainel}
+          celular={celular}
+        />
+      ) : modoComeco ? (
         <InicioSimples
           nomeNegocio={nomeNegocio}
           d={d}
@@ -808,6 +933,9 @@ export default function HomeScreen({ navigation }) {
           onPrecoRapido={() => navigation.navigate('PrecoRapido')}
         />
       ) : (<>
+      {escadaNoPainel ? (
+        <CartaoEscada {...etapaEscada(d.prodsComPreco)} onProximo={irProximoPreco} />
+      ) : null}
       <PrecosZeradosBanner />
 
       {/* HomeInstallBanner: movido pra depois de "Ações Rápidas" (UX walkthrough —

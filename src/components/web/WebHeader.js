@@ -11,6 +11,7 @@ import useListDensity from '../../hooks/useListDensity';
 export const ROUTE_TITLES = {
   'ComoFunciona': 'Como funciona',
   'PrecoRapido': 'Seu preço em 30 segundos',
+  'TabelaPrecos': 'Tabela de preços',
   'Início': 'Painel Geral',
   'HomeMain': 'Painel Geral',
   'Insumos': 'Ingredientes',
