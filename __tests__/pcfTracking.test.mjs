@@ -172,11 +172,11 @@ test('aviso aparece sozinho só com data-banner="auto" e some depois da resposta
   assert.equal(body.children.length, 0);
 });
 
-test('aviso (LGPD): Recusar e Aceitar com o mesmo peso, no topo (não cobre o botão de cadastro)', () => {
+test('aviso (LGPD): Recusar e Aceitar com o mesmo peso, no rodapé, compacto (o topo é do aviso de instalar)', () => {
   const { body, pcf } = boot({ banner: 'auto' });
   const box = body.children[0];
-  assert.match(box.style.cssText, /top:/);
-  assert.doesNotMatch(box.style.cssText, /bottom:/);
+  assert.match(box.style.cssText, /bottom:/);
+  assert.doesNotMatch(box.style.cssText, /top:/);
   const [texto, linha] = box.children;
   assert.match(texto.children[0].text, /cookies/);
   assert.match(texto.children[0].text, /anúncios/); // finalidade dita

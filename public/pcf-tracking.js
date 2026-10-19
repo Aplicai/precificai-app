@@ -192,7 +192,7 @@
     var box = document.createElement('div');
     box.setAttribute('role', 'region');
     box.setAttribute('aria-label', 'Aviso de cookies');
-    box.style.cssText = 'position:fixed;left:8px;right:8px;top:calc(8px + env(safe-area-inset-top, 0px));' +
+    box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom, 0px));' +
       'z-index:2147483000;max-width:520px;margin:0 auto;background:#fff;color:#1c2b29;' +
       'border:1px solid #d9e4e2;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);' +
       'padding:10px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;' +
