@@ -2,11 +2,13 @@ import React, { createContext, useState, useEffect, useContext, useRef, useCallb
 import { AppState, Platform } from 'react-native';
 import { supabase } from '../config/supabase';
 import { isRecoveryIntent, clearRecoveryIntent } from '../utils/recoveryFlag';
-import { resetDatabase } from '../database/database';
+import { resetDatabase, getDatabase } from '../database/database';
 import { captureException, addBreadcrumb, setUser as reportSetUser } from '../utils/errorReporter';
 import { getAttribution, trackRegistrationOnce, syncMarketingForUser, checkActivation, checkPrimeiroPreco, trackEvent } from '../utils/marketing';
 import { subscribeDataChanged } from '../utils/dataSync';
 import { iniciarRegistroAberturas } from '../utils/aberturas';
+import { migrarRendimentoKit } from '../services/migracaoRendimentoKit';
+import { showToast } from '../utils/toastBus';
 
 const AuthContext = createContext({});
 
@@ -129,6 +131,22 @@ export function AuthProvider({ children }) {
   const userId = user?.id;
   useEffect(() => {
     if (userId) syncMarketingForUser(user, supabase);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  // Migração 19/10/2026: rendimento das receitas do Kit de Início (uma vez por
+  // usuário, flag no user_metadata). Em segundo plano, depois do login.
+  useEffect(() => {
+    if (!userId) return undefined;
+    const t = setTimeout(async () => {
+      try {
+        const db = await getDatabase();
+        await migrarRendimentoKit({ db, user, supabase, avisar: (msg) => showToast(msg, 'info', 8000) });
+      } catch (e) {
+        console.warn('[migracaoRendimentoKit]', e?.message || e);
+      }
+    }, 2500);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 

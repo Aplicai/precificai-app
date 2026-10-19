@@ -62,7 +62,7 @@ export default function InfoToast({
     >
       <View style={styles.toast}>
         <Feather name={icon} size={16} color="#fff" style={{ marginRight: spacing.sm }} />
-        <Text style={styles.message} numberOfLines={2}>{message}</Text>
+        <Text style={styles.message} numberOfLines={3}>{message}</Text>
       </View>
     </Animated.View>
   );
