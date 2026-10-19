@@ -138,3 +138,26 @@ Logo vetorizado (SVG Tiny PS) em https://precificaiapp.com/assets/email/bimi-log
 - 14/10: sistema criado (d1/d3/campanhas, descadastro com link assinado), layout novo da marca (cabeçalho verde, barra de jornada, caixa "Você escreve", capa do vídeo, preços do Pro), bug do `R$` corrigido antes de qualquer envio real, etapa do kit corrigida.
 - Ideias em espera (decidir com mais dados, ~30 contas que chegaram ao Kit): o Kit de Início com ~90 ingredientes sem preço parece travar o primeiro preço.
 - Próximo vídeo tutorial: mostrar "Vende no delivery" dentro de Produtos e que dá para cadastrar insumo, embalagem e receita de dentro do produto.
+
+## Pendência (19/10/2026): D1 e D3 quase não são abertos
+
+Números de 14 a 19/10 (tabelas `email_envios` + `email_eventos`):
+
+| Campanha | Entregues | Abertos | Clicados |
+|---|---|---|---|
+| D1 | 99 | 5 (5%) | 2 (2%) |
+| D3 | 45 | 1 (2%) | 0 |
+| Reativação | 30 | 6 (20%) | 0 |
+| Confirmação de cadastro (sem campanha) | 41 | 33 (80%) | n/d |
+
+- O canal funciona: o e-mail de confirmação de cadastro é aberto por ~80%.
+- Hipóteses para o D1/D3:
+  - caem em Promoções ou spam;
+  - o remetente é diferente do e-mail de confirmação;
+  - o assunto não puxa.
+- O que conferir:
+  - remetente igual ao da confirmação;
+  - assunto com o nome do produto e o preço que a pessoa calculou;
+  - texto curto, sem cara de newsletter;
+  - teste em caixa Gmail (aba Principal ou Promoções).
+- Conversa responsável: a dos e-mails (este documento).
