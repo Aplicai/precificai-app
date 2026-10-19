@@ -19,7 +19,9 @@
  *    fechou no ✕, volta em DIAS_LEMBRETE dias.
  *
  * 5. Logado, só aparece depois do primeiro preço (nunca no meio do perfil /
- *    Preço rápido). Sem conta, aparece no cadastro/login.
+ *    Preço rápido). Sem conta, aparece no cadastro/login. Exceção: chegou
+ *    pelo botão "Abrir no Chrome" (?instalar=1), por exemplo já logado pelo
+ *    link de acesso da tela do primeiro preço (19/10/2026).
  *
  * Eventos no Meta: AbrirNoChrome, AbrirNoSafari e InstalouApp.
  */
@@ -53,6 +55,8 @@ export default function InstalarAppHost() {
   // Logado: só depois do primeiro preço (src/utils/avisoInstalar.js).
   const { user, loading: authCarregando } = useAuth() || {};
   const [liberado, setLiberado] = useState(() => avisoInstalarLiberado());
+  // Veio pelo botão "Abrir no Chrome/Safari" (?instalar=1) nesta aba.
+  const [pediu, setPediu] = useState(false);
   useEffect(() => assinarAvisoInstalar(setLiberado), []);
   const [ocultoNaTela, setOcultoNaTela] = useState(() => avisoTopoOculto());
   useEffect(() => assinarAvisoTopo(setOcultoNaTela), []);
@@ -70,6 +74,7 @@ export default function InstalarAppHost() {
       gravarSessao(CHAVE_SESSAO_PEDIU, '1');
       try { window.history.replaceState(window.history.state, '', semParametroInstalar(window.location.href)); } catch {}
     }
+    if (lerSessao(CHAVE_SESSAO_PEDIU) === '1') setPediu(true);
     // Quem ainda não instalou vê o aviso; fechou no ✕, volta em alguns dias.
     if (lerSessao(CHAVE_SESSAO_PEDIU) !== '1' && !lembreteLiberado(lerLocal(CHAVE_LEMBRETE_ATE))) return undefined;
 
@@ -96,7 +101,7 @@ export default function InstalarAppHost() {
   }, []);
 
   if (!modo) return null;
-  if (authCarregando || ocultoNaTela || !avisoInstalarPermitido({ logado: !!user, liberado })) return null;
+  if (authCarregando || ocultoNaTela || !avisoInstalarPermitido({ logado: !!user, liberado, pediu })) return null;
 
   function fechar() {
     gravarSessao(CHAVE_SESSAO_FECHOU, '1');

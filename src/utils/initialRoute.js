@@ -16,6 +16,23 @@ async function rotaSemIngrediente() {
 import { isDbErrorResult } from '../database/supabaseDb';
 
 /**
+ * A conta já tem ingrediente (o Preço rápido grava um)? Quem entra num
+ * navegador novo com conta pronta (ex.: link de acesso da tela do primeiro
+ * preço, Instagram → Chrome, 19/10/2026) não deve ver o tour de boas-vindas.
+ * Erro de leitura: false (mantém o comportamento de antes).
+ */
+async function contaJaTemDados() {
+  try {
+    const { getDatabase } = require('../database/database');
+    const db = await getDatabase();
+    const rows = await db.getAllAsync('SELECT id FROM materias_primas LIMIT 1');
+    return Array.isArray(rows) && !isDbErrorResult(rows) && rows.length > 0;
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
  * Determina a rota inicial do RootStack para usuários autenticados.
  *
  * Fluxo (audit P1-07):
@@ -45,9 +62,9 @@ export async function determineInitialRoute({ skipWelcomeTour = false } = {}) {
       } else {
         const rawCount = await AsyncStorage.getItem('welcome_tour_count');
         const count = Number(rawCount) || 0;
-        if (count < 2) return 'WelcomeTour';
+        if (count < 2 && !(await contaJaTemDados())) return 'WelcomeTour';
         // 2 exibições já consumidas → marca como done permanentemente
-        await AsyncStorage.setItem('welcome_tour_done', 'true');
+        if (count >= 2) await AsyncStorage.setItem('welcome_tour_done', 'true');
       }
     }
 
@@ -133,8 +150,8 @@ export async function determineInitialRouteSafe({ skipWelcomeTour = false } = {}
       if (tourDone !== 'true') {
         const rawCount = await AsyncStorage.getItem('welcome_tour_count');
         const count = Number(rawCount) || 0;
-        if (count < 2) return { route: 'WelcomeTour', routeError: null };
-        await AsyncStorage.setItem('welcome_tour_done', 'true');
+        if (count < 2 && !(await contaJaTemDados())) return { route: 'WelcomeTour', routeError: null };
+        if (count >= 2) await AsyncStorage.setItem('welcome_tour_done', 'true');
       }
     }
 

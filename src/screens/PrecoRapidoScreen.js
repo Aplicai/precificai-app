@@ -14,6 +14,11 @@
  * e o 3º produto. Pergunta só produto, receita e quanto cobra hoje; os gastos
  * e as vendas do mês vêm do que já está salvo (src/utils/escadaPrecos.js).
  * No 3º produto com preço, abre a tabela de preços (TabelaPrecosScreen).
+ *
+ * Primeiro preço (19/10/2026): o nome do produto já vem preenchido com um
+ * produto típico do segmento do perfil (src/utils/primeiroPreco.js), o
+ * "Pular por agora" virou um link discreto no fim da página e, ao salvar, a
+ * pessoa vê o "momento de valor" (PrimeiroPrecoScreen) em vez da Home.
  */
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
@@ -32,8 +37,7 @@ import { clearQueryCache } from '../database/supabaseDb';
 import { notifyDataChanged } from '../utils/dataSync';
 import { trackEvent } from '../utils/marketing';
 import { CHAVE_PRECO_RAPIDO } from '../utils/initialRoute';
-
-const SUGESTOES = ['Bolo de chocolate', 'Brigadeiro', 'Marmita', 'Hambúrguer', 'Pizza', 'Coxinha'];
+import { SUGESTOES_PADRAO, sugestoesDeProduto, produtoDoSegmento } from '../utils/primeiroPreco';
 
 function Campo({ valor, onChange, placeholder, largura = 110, label }) {
   return (
@@ -70,7 +74,10 @@ export default function PrecoRapidoScreen({ navigation, route }) {
   const [cobraHoje, setCobraHoje] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
+  const [sugestoes, setSugestoes] = useState(SUGESTOES_PADRAO);
   const salvandoRef = useRef(false);
+  // A pessoa já mexeu no nome: a sugestão do segmento (que chega depois) não sobrescreve.
+  const nomeTocadoRef = useRef(false);
   // Modo próximo: 'carregando' | 'salvos' (linha "Usando seus gastos…") | 'perguntar'
   const [numerosMes, setNumerosMes] = useState(proximo ? 'carregando' : 'perguntar');
   // 2º produto em diante: lucro, taxas e margem de segurança do Financeiro da
@@ -83,6 +90,30 @@ export default function PrecoRapidoScreen({ navigation, route }) {
     // Funil do primeiro acesso: quantos chegam a esta tela (vs. salvam/pulam).
     trackEvent('PrecoRapidoVisto', { content_name: 'preco_rapido' });
   }, [proximo]);
+
+  // 1º preço: produto típico do segmento do perfil já no campo (pode trocar).
+  // Falhou a leitura ou o segmento não diz nada: campo vazio, chips padrão.
+  useEffect(() => {
+    if (proximo) return undefined;
+    let vivo = true;
+    (async () => {
+      try {
+        const db = await getDatabase();
+        const rows = await db.getAllAsync('SELECT segmento FROM perfil LIMIT 1');
+        if (!vivo || !Array.isArray(rows) || isDbErrorResult(rows)) return;
+        const segmento = rows[0]?.segmento || '';
+        setSugestoes(sugestoesDeProduto(segmento));
+        const produto = produtoDoSegmento(segmento);
+        if (produto && !nomeTocadoRef.current) setNome((atual) => atual || produto);
+      } catch (_) { /* fica sem sugestão do segmento */ }
+    })();
+    return () => { vivo = false; };
+  }, [proximo]);
+
+  function mudarNome(v) {
+    nomeTocadoRef.current = true;
+    setNome(v);
+  }
 
   // Próximo produto: gastos e vendas do mês salvos. Falhou a leitura ou falta
   // algum: volta a perguntar, já com o que tiver (nunca calcula com zero).
@@ -127,10 +158,12 @@ export default function PrecoRapidoScreen({ navigation, route }) {
     irParaApp();
   }
 
-  async function irParaApp(tabelaPronta = false) {
+  async function irParaApp(tabelaPronta = false, primeiroPreco = null) {
     try { await AsyncStorage.setItem('onboarding_done', 'true'); } catch (_) {}
     const routes = [{ name: 'MainTabs', params: { initialTab: 'Início' } }];
     if (tabelaPronta) routes.push({ name: 'TabelaPrecos', params: { pronta: true } });
+    // 1º preço: o "momento de valor" por cima da Home (voltar cai no app).
+    if (primeiroPreco) routes.push({ name: 'PrimeiroPreco', params: primeiroPreco });
     navigation.dispatch(CommonActions.reset({ index: routes.length - 1, routes }));
   }
 
@@ -157,7 +190,7 @@ export default function PrecoRapidoScreen({ navigation, route }) {
       if (!proximo) {
         trackEvent('PrecoRapido', { content_name: 'preco_rapido', value: res.preco, currency: 'BRL' });
         // O aviso "Instale o app" agora é liberado na tabela de preços (3º preço).
-        await irParaApp();
+        await irParaApp(false, { nome: nome.trim(), preco: res.preco, lucro: contaCfg.lucro });
         return;
       }
       // 2º e 3º produto. Contagem falhou: a Home decide (mostra a escada).
@@ -200,14 +233,14 @@ export default function PrecoRapidoScreen({ navigation, route }) {
             <TextInput
               style={styles.inputLargo}
               value={nome}
-              onChangeText={setNome}
+              onChangeText={mudarNome}
               placeholder="Ex.: Bolo de chocolate"
               placeholderTextColor={colors.placeholder}
               accessibilityLabel="Nome do produto"
             />
             <View style={styles.chips}>
-              {SUGESTOES.map((s) => (
-                <TouchableOpacity key={s} style={[styles.chip, nome === s && styles.chipAtivo]} onPress={() => setNome(s)} accessibilityRole="button">
+              {sugestoes.map((s) => (
+                <TouchableOpacity key={s} style={[styles.chip, nome === s && styles.chipAtivo]} onPress={() => mudarNome(s)} accessibilityRole="button">
                   <Text style={[styles.chipTexto, nome === s && { color: '#fff' }]}>{s}</Text>
                 </TouchableOpacity>
               ))}
@@ -289,9 +322,16 @@ export default function PrecoRapidoScreen({ navigation, route }) {
               </>
             )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.pular} onPress={proximo ? voltar : pular} accessibilityRole="button">
-            <Text style={styles.pularTexto}>{proximo ? 'Voltar' : 'Pular por agora'}</Text>
-          </TouchableOpacity>
+          {proximo ? (
+            <TouchableOpacity style={styles.pular} onPress={voltar} accessibilityRole="button">
+              <Text style={styles.pularTexto}>Voltar</Text>
+            </TouchableOpacity>
+          ) : (
+            // Discreto e no fim da página (48% pulavam), mas sempre acessível.
+            <TouchableOpacity style={styles.pularDiscreto} onPress={pular} accessibilityRole="button" accessibilityLabel="Pular por agora e ir para o app">
+              <Text style={styles.pularDiscretoTexto}>Pular por agora</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -334,4 +374,6 @@ const styles = StyleSheet.create({
   botaoTexto: { color: '#fff', fontSize: fonts.medium, fontFamily: fontFamily.bold },
   pular: { alignItems: 'center', paddingVertical: spacing.md },
   pularTexto: { color: colors.textSecondary, fontSize: fonts.small, fontFamily: fontFamily.medium, textDecorationLine: 'underline' },
+  pularDiscreto: { alignSelf: 'center', justifyContent: 'center', minHeight: 44, paddingHorizontal: spacing.md, marginTop: spacing.xl },
+  pularDiscretoTexto: { color: colors.textSecondary, fontSize: fonts.tiny + 1, fontFamily: fontFamily.regular, textDecorationLine: 'underline' },
 });

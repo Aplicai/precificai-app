@@ -29,9 +29,9 @@ export function deveOferecerSafari(ua) {
   return ehNavegadorInterno(ua) && ehIPhone(ua);
 }
 
-function comInstalar(href) {
+function comInstalar(href, marcarInstalar = true) {
   const u = new URL(href);
-  u.searchParams.set(PARAM_INSTALAR, '1');
+  if (marcarInstalar) u.searchParams.set(PARAM_INSTALAR, '1');
   return u;
 }
 
@@ -40,16 +40,20 @@ function comInstalar(href) {
  * do anúncio (utm, fbclid: o Meta continua atribuindo o cadastro) e marcando
  * ?instalar=1 para o Chrome mostrar o pedido de instalação. Sem Chrome, o
  * fallback abre a mesma página onde a pessoa está.
+ *
+ * `{ marcarInstalar: false }`: abre `href` como está. Usado com o link de
+ * acesso de uso único (edge function `link-acesso`), que já leva o
+ * ?instalar=1 no redirect_to e não pode ter a URL mexida.
  */
-export function urlAbrirNoChrome(href) {
-  const u = comInstalar(href);
+export function urlAbrirNoChrome(href, { marcarInstalar = true } = {}) {
+  const u = comInstalar(href, marcarInstalar);
   const semEsquema = `${u.host}${u.pathname}${u.search}`;
   return `intent://${semEsquema}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(u.toString())};end`;
 }
 
-/** Link que tenta abrir `href` no Safari, marcando ?instalar=1. */
-export function urlAbrirNoSafari(href) {
-  const u = comInstalar(href);
+/** Link que tenta abrir `href` no Safari, marcando ?instalar=1 (ou não, como no Chrome). */
+export function urlAbrirNoSafari(href, { marcarInstalar = true } = {}) {
+  const u = comInstalar(href, marcarInstalar);
   return `x-safari-${u.protocol.replace(':', '')}://${u.host}${u.pathname}${u.search}`;
 }
 

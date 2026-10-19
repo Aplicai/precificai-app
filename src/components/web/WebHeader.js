@@ -12,6 +12,7 @@ export const ROUTE_TITLES = {
   'ComoFunciona': 'Como funciona',
   'PrecoRapido': 'Seu preço em 30 segundos',
   'TabelaPrecos': 'Tabela de preços',
+  'PrimeiroPreco': 'Preço salvo',
   'Início': 'Painel Geral',
   'HomeMain': 'Painel Geral',
   'Insumos': 'Ingredientes',

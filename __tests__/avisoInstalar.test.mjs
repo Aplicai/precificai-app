@@ -14,3 +14,8 @@ test('logado, só depois do primeiro preço', () => {
   assert.equal(avisoInstalarPermitido({ logado: true, liberado: false }), false);
   assert.equal(avisoInstalarPermitido({ logado: true, liberado: true }), true);
 });
+
+test('logado e chegou pelo botão "Abrir no Chrome" (?instalar=1): pode aparecer', () => {
+  assert.equal(avisoInstalarPermitido({ logado: true, liberado: false, pediu: true }), true);
+  assert.equal(avisoInstalarPermitido({ logado: true, liberado: false, pediu: false }), false);
+});

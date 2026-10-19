@@ -87,6 +87,7 @@ const KitInicioScreen = lazyScreen(() => import('../screens/KitInicioScreen'));
 const ComoFuncionaScreen = lazyScreen(() => import('../screens/ComoFuncionaScreen'));
 const PrecoRapidoScreen = lazyScreen(() => import('../screens/PrecoRapidoScreen'));
 const TabelaPrecosScreen = lazyScreen(() => import('../screens/TabelaPrecosScreen'));
+const PrimeiroPrecoScreen = lazyScreen(() => import('../screens/PrimeiroPrecoScreen'));
 const SimuladorScreen = lazyScreen(() => import('../screens/SimuladorScreen'));
 const SimuladorLoteScreen = lazyScreen(() => import('../screens/SimuladorLoteScreen'));
 const FluxoCaixaDREScreen = lazyScreen(() => import('../screens/FluxoCaixaDREScreen'));
@@ -745,6 +746,8 @@ function AppContent() {
       <RootStack.Screen name="PrecoRapido" component={PrecoRapidoScreen} options={{ headerShown: false, title: 'Seu preço em 30 segundos' }} />
       {/* Escada dos 3 preços: recompensa do 3º preço e atalho em "Mais" (17/10/2026). */}
       <RootStack.Screen name="TabelaPrecos" component={TabelaPrecosScreen} options={{ headerShown: false, title: 'Tabela de preços' }} />
+      {/* Momento de valor logo depois do 1º Preço rápido salvo (19/10/2026). */}
+      <RootStack.Screen name="PrimeiroPreco" component={PrimeiroPrecoScreen} options={{ headerShown: false, title: 'Preço salvo' }} />
       <RootStack.Screen name="MainTabs" component={MainTabs} initialParams={{ initialTab: savedTab }} />
       {initialRoute === 'MainTabs' && (
         <RootStack.Screen name="Onboarding" component={OnboardingScreen} options={{
