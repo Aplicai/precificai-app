@@ -22,6 +22,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 import { APP, esc } from './layout.ts';
 import { montarEmail } from './legado.ts';
+import { FROM_SIMPLES, montarSimples, versaoAB } from './simples.ts';
 import { escolher, montarRegua } from './regua.ts';
 import type { Candidato, Dados } from './regua.ts';
 
@@ -55,12 +56,12 @@ function pagina(titulo: string, texto: string, status = 200): Response {
 
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function enviarResend(para: string, email: { assunto: string; html: string; texto: string }, sair: string, campanha: string) {
+async function enviarResend(para: string, email: { assunto: string; html: string; texto: string }, sair: string, campanha: string, from = FROM) {
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${Deno.env.get('RESEND_API_KEY')}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from: FROM,
+      from,
       to: [para],
       reply_to: REPLY_TO,
       subject: email.assunto,
@@ -199,12 +200,13 @@ serve(async (req) => {
   // Amostra para conferir o visual, sem registrar envio.
   if (body?.teste?.para) {
     const t = body.teste;
-    const email = montarEmail({
+    const montar = t.simples ? montarSimples : montarEmail;
+    const email = montar({
       campanha: t.campanha || 'd1', estagio: t.estagio || 'sem_ingrediente', plano: t.plano || 'free',
       negocio: t.negocio || null, linkSair: `${APP}#exemplo-descadastro`,
     });
     if (!email) return new Response(JSON.stringify({ ok: true, enviado: false, motivo: 'combinação sem e-mail' }));
-    const id = await enviarResend(t.para, { ...email, assunto: `[Teste] ${email.assunto}` }, `${APP}#exemplo-descadastro`, 'teste');
+    const id = await enviarResend(t.para, { ...email, assunto: `[Teste] ${email.assunto}` }, `${APP}#exemplo-descadastro`, 'teste', t.simples ? FROM_SIMPLES : FROM);
     return new Response(JSON.stringify({ ok: true, enviado: true, id, assunto: email.assunto }));
   }
 
@@ -238,7 +240,10 @@ serve(async (req) => {
     }
     for (const c of (candidatos || []).slice(0, limite)) {
       const sairLink = await linkSair(c.user_id);
-      const email = montarEmail({ campanha, estagio: c.estagio, plano: c.plano, negocio: c.negocio, linkSair: sairLink });
+      // Teste A/B (19/10): d1/d3 em duas versões, fixas por pessoa; campanhas avulsas seguem no layout.
+      const versao = campanha === 'd1' || campanha === 'd3' ? versaoAB(c.user_id) : null;
+      const pedido = { campanha, estagio: c.estagio, plano: c.plano, negocio: c.negocio, linkSair: sairLink };
+      const email = versao === 'simples' ? montarSimples(pedido) : montarEmail(pedido);
       if (!email) { relatorio.push({ campanha, email: c.email, estagio: c.estagio, pulado: 'nada a enviar' }); continue; }
       if (!enviar) { relatorio.push({ campanha, email: c.email, estagio: c.estagio, plano: c.plano, assunto: email.assunto }); continue; }
 
@@ -246,12 +251,12 @@ serve(async (req) => {
       // se duas execuções se cruzarem. Falhou o envio → libera a reserva.
       const { data: reserva, error: errReserva } = await supabase
         .from('email_envios')
-        .insert({ user_id: c.user_id, campanha, estagio: c.estagio })
+        .insert({ user_id: c.user_id, campanha, estagio: c.estagio, formato: versao })
         .select('id')
         .maybeSingle();
       if (errReserva || !reserva) { relatorio.push({ campanha, email: c.email, pulado: 'já enviado' }); continue; }
       try {
-        const id = await enviarResend(c.email, email, sairLink, campanha);
+        const id = await enviarResend(c.email, email, sairLink, campanha, versao === 'simples' ? FROM_SIMPLES : FROM);
         await supabase.from('email_envios').update({ resend_id: id ?? null }).eq('id', reserva.id);
         relatorio.push({ campanha, email: c.email, estagio: c.estagio, enviado: true });
       } catch (e) {

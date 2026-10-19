@@ -122,6 +122,10 @@ Chamadas novas: `{"regua":true}` simula; `{"regua":true,"enviar":true}` envia. A
 
 Pendente na V1: prints de tela (formato `tela`, pasta `assets/email/telas/`) ainda não existem, então nenhum tema usa esse formato; custo/margem no e-mail; datas sazonais; e-mails assinados.
 
+## Teste A/B do d1/d3 (desde 19/10)
+
+Teste no Gmail (erickkfa): o layout da marca cai em **Promoções**. Metade das pessoas (último caractere do user_id ímpar, `versaoAB` em `simples.ts`) recebe o d1/d3 numa versão quase só texto, sem imagens, 1 link, assinada "Erick, do Precificaí <contato@precificaiapp.com>". A outra metade segue com o layout. `email_envios.formato` = `simples` | `design`; a página de resultados separa as duas linhas. Avaliar em ~26/10 por clique e "voltou ao app em 7 dias". Amostra: `{"teste":{...,"simples":true}}`.
+
 ## Logo do remetente (BIMI)
 
 Logo vetorizado (SVG Tiny PS) em https://precificaiapp.com/assets/email/bimi-logo.svg (repo precificai-site). DNS na Hostinger (Erick faz; o Claude é bloqueado em DNS):

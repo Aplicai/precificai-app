@@ -38,6 +38,7 @@ const ETAPA_NOME: Record<string, string> = {
 };
 const FORMATO_NOME: Record<string, string> = {
   passo: 'Passo a passo', painel: 'Painel de números', tela: 'Tela anotada', carta: 'Carta', mito: 'Mito ou verdade', checklist: 'Checklist',
+  simples: 'Teste A/B: versão simples', design: 'Teste A/B: versão com layout',
 };
 
 // A página do Artifact não carrega imagens de outros sites: logos viram data URI.

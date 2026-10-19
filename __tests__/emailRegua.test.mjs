@@ -109,3 +109,30 @@ test('régua: nome digitado é escapado e cortado', () => {
   assert.ok(m.html.includes('&lt;script&gt;'));
   assert.ok(m.assunto.includes('…'));
 });
+
+// ---------- versão simples do d1/d3 (teste A/B) ----------
+import { montarSimples, versaoAB } from '../supabase/functions/email-ciclo-vida/simples.ts';
+
+test('simples: toda etapa × d1/d3 × plano renderiza sem texto quebrado, sem imagem, com 1 link do app', () => {
+  for (const est of ESTAGIOS) for (const campanha of ['d1', 'd3']) for (const plano of ['free', 'pro']) for (const negocio of ['Doces da Ana', null]) {
+    const m = montarSimples({ campanha, estagio: est, plano, negocio, linkSair: 'https://x/#sair' });
+    if (campanha === 'd3' && est === 'ativo' && plano !== 'free') { assert.equal(m, null); continue; }
+    assert.deepEqual(problemas(m), [], `${campanha}/${est}/${plano}`);
+    assert.ok(!/<img/i.test(m.html), 'sem imagem');
+    assert.equal((m.html.match(/precificaiapp\.com\/\?utm/g) || []).length, 1, 'um link do app');
+    assert.ok(m.html.includes('utm_content=simples'));
+    assert.ok(m.html.includes('https://x/#sair'));
+  }
+});
+
+test('simples: A/B fixo por pessoa e dividido ao meio', () => {
+  assert.equal(versaoAB('0000-…-a1'), 'simples');
+  assert.equal(versaoAB('0000-…-a2'), 'design');
+  const hex = '0123456789abcdef'.split('');
+  assert.equal(hex.filter((h) => versaoAB(`x${h}`) === 'simples').length, 8);
+});
+
+test('simples: nome do negócio é escapado', () => {
+  const m = montarSimples({ campanha: 'd1', estagio: 'sem_ingrediente', plano: 'free', negocio: '<b>x</b>', linkSair: '#' });
+  assert.ok(!m.html.includes('<b>x</b>'));
+});
