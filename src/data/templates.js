@@ -1581,7 +1581,8 @@ export const PREPAROS_POR_SEGMENTO = {
     {
       nome: 'Brigadeiro tradicional',
       categoria: 'Recheios',
-      rendimento_total: 600,
+      // Ingredientes somam 455 g; no ponto de enrolar evapora ~12% → ~400 g.
+      rendimento_total: 400,
       unidade_medida: 'Grama(s)',
       ingredientes: [
         { nome_insumo: 'Leite condensado',    quantidade: 395, unidade: 'g' },
@@ -1592,7 +1593,8 @@ export const PREPAROS_POR_SEGMENTO = {
     {
       nome: 'Beijinho',
       categoria: 'Recheios',
-      rendimento_total: 550,
+      // Ingredientes somam 505 g; cozido até o ponto perde ~11% → ~450 g.
+      rendimento_total: 450,
       unidade_medida: 'Grama(s)',
       ingredientes: [
         { nome_insumo: 'Leite condensado',    quantidade: 395, unidade: 'g' },
@@ -1634,7 +1636,8 @@ export const PREPAROS_POR_SEGMENTO = {
   pizzaria: [
     { nome: 'Massa de pizza 35cm', categoria: 'Massas', rendimento_total: 350, unidade_medida: 'Grama(s)',
       ingredientes: [{ nome_insumo: 'Farinha de trigo tipo 1', quantidade: 200, unidade: 'g' }, { nome_insumo: 'Fermento biológico seco', quantidade: 5, unidade: 'g' }, { nome_insumo: 'Azeite de oliva extra virgem', quantidade: 20, unidade: 'ml' }, { nome_insumo: 'Sal', quantidade: 5, unidade: 'g' }] },
-    { nome: 'Molho de tomate caseiro', categoria: 'Molhos', rendimento_total: 1000, unidade_medida: 'Grama(s)',
+    // Ingredientes somam 838 g; o molho reduz no fogo (~10%) → 750 g.
+    { nome: 'Molho de tomate caseiro', categoria: 'Molhos', rendimento_total: 750, unidade_medida: 'Grama(s)',
       ingredientes: [{ nome_insumo: 'Tomate pelado enlatado', quantidade: 800, unidade: 'g' }, { nome_insumo: 'Azeite de oliva extra virgem', quantidade: 30, unidade: 'ml' }, { nome_insumo: 'Sal', quantidade: 5, unidade: 'g' }, { nome_insumo: 'Orégano', quantidade: 3, unidade: 'g' }] },
     { nome: 'Recheio frango c/ catupiry', categoria: 'Recheios', rendimento_total: 600, unidade_medida: 'Grama(s)',
       ingredientes: [{ nome_insumo: 'Frango desfiado', quantidade: 400, unidade: 'g' }, { nome_insumo: 'Catupiry', quantidade: 200, unidade: 'g' }] },
@@ -1650,7 +1653,8 @@ export const PREPAROS_POR_SEGMENTO = {
   padaria: [
     { nome: 'Massa de pão francês', categoria: 'Massas', rendimento_total: 1500, unidade_medida: 'Grama(s)',
       ingredientes: [{ nome_insumo: 'Farinha de trigo especial', quantidade: 1000, unidade: 'g' }, { nome_insumo: 'Fermento biológico seco', quantidade: 15, unidade: 'g' }, { nome_insumo: 'Sal', quantidade: 20, unidade: 'g' }] },
-    { nome: 'Recheio coxinha de frango', categoria: 'Recheios', rendimento_total: 1000, unidade_medida: 'Grama(s)',
+    // Ingredientes somam 985 g; o refogado perde umidade (~8%) → 900 g.
+    { nome: 'Recheio coxinha de frango', categoria: 'Recheios', rendimento_total: 900, unidade_medida: 'Grama(s)',
       ingredientes: [{ nome_insumo: 'Frango desfiado', quantidade: 700, unidade: 'g' }, { nome_insumo: 'Catupiry', quantidade: 200, unidade: 'g' }, { nome_insumo: 'Cebola', quantidade: 80, unidade: 'g' }, { nome_insumo: 'Sal', quantidade: 5, unidade: 'g' }] },
   ],
   marmitaria: [
@@ -1680,11 +1684,14 @@ export const PREPAROS_POR_SEGMENTO = {
       ingredientes: [{ nome_insumo: 'Chocolate meio amargo', quantidade: 200, unidade: 'g' }, { nome_insumo: 'Creme de leite (lata)', quantidade: 200, unidade: 'g' }] },
   ],
   salgaderia: [
-    { nome: 'Massa de coxinha', categoria: 'Massas', rendimento_total: 1200, unidade_medida: 'Grama(s)',
+    // Ingredientes somam 1.110 g; a massa cozida perde vapor (~10%) → 1.000 g.
+    { nome: 'Massa de coxinha', categoria: 'Massas', rendimento_total: 1000, unidade_medida: 'Grama(s)',
       ingredientes: [{ nome_insumo: 'Farinha de trigo', quantidade: 500, unidade: 'g' }, { nome_insumo: 'Manteiga', quantidade: 100, unidade: 'g' }, { nome_insumo: 'Leite integral', quantidade: 500, unidade: 'ml' }, { nome_insumo: 'Sal', quantidade: 10, unidade: 'g' }] },
-    { nome: 'Recheio frango catupiry', categoria: 'Recheios', rendimento_total: 1000, unidade_medida: 'Grama(s)',
+    // Ingredientes somam 955 g; o refogado perde umidade (~6%) → 900 g.
+    { nome: 'Recheio frango catupiry', categoria: 'Recheios', rendimento_total: 900, unidade_medida: 'Grama(s)',
       ingredientes: [{ nome_insumo: 'Frango desfiado (peito)', quantidade: 700, unidade: 'g' }, { nome_insumo: 'Catupiry', quantidade: 250, unidade: 'g' }, { nome_insumo: 'Sal', quantidade: 5, unidade: 'g' }] },
-    { nome: 'Recheio carne moída', categoria: 'Recheios', rendimento_total: 800, unidade_medida: 'Grama(s)',
+    // Ingredientes somam 705 g; carne moída perde ~25% de água/gordura e a cebola murcha → 550 g.
+    { nome: 'Recheio carne moída', categoria: 'Recheios', rendimento_total: 550, unidade_medida: 'Grama(s)',
       ingredientes: [{ nome_insumo: 'Carne moída (patinho)', quantidade: 600, unidade: 'g' }, { nome_insumo: 'Cebola', quantidade: 100, unidade: 'g' }, { nome_insumo: 'Sal', quantidade: 5, unidade: 'g' }] },
   ],
   japonesa: [
