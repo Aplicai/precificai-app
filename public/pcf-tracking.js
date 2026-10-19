@@ -184,8 +184,8 @@
     return b;
   }
 
-  // Aviso compacto no TOPO: no celular, embaixo ele cobria o botão de cadastro
-  // (a pessoa fechava a página ou cadastrava sem responder). Uma pergunta curta,
+  // Aviso compacto no RODAPÉ (o topo é do aviso "Instale o app"). Antes era um
+  // cartão grande que cobria o cadastro no celular. Agora: uma pergunta curta,
   // com a finalidade e o link da política; respondeu, some e não volta (cookie 180 dias).
   function askConsent() {
     if (consent() || bannerEl || !document.body) return;
