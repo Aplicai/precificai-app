@@ -172,6 +172,24 @@ test('aviso aparece sozinho só com data-banner="auto" e some depois da resposta
   assert.equal(body.children.length, 0);
 });
 
+test('aviso (LGPD): Recusar e Aceitar com o mesmo peso, no topo (não cobre o botão de cadastro)', () => {
+  const { body, pcf } = boot({ banner: 'auto' });
+  const box = body.children[0];
+  assert.match(box.style.cssText, /top:/);
+  assert.doesNotMatch(box.style.cssText, /bottom:/);
+  const [texto, linha] = box.children;
+  assert.match(texto.children[0].text, /cookies/);
+  assert.match(texto.children[0].text, /anúncios/); // finalidade dita
+  assert.match(texto.children[1].href, /\/privacy$/);
+  const [recusar, aceitar] = linha.children;
+  assert.equal(recusar.textContent, 'Recusar');
+  assert.equal(aceitar.textContent, 'Aceitar');
+  assert.equal(recusar.style.cssText, aceitar.style.cssText); // mesmo peso visual
+  aceitar.onclick();
+  assert.equal(pcf.consent(), 'granted');
+  assert.equal(body.children.length, 0);
+});
+
 test('fbc é montado do fbclid só com aceite; consentimento vai junto na atribuição', () => {
   const semAceite = boot({ url: 'https://precificaiapp.com/?fbclid=XYZ' });
   assert.equal(semAceite.pcf.attribution().fbc, undefined);

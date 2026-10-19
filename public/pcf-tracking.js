@@ -171,46 +171,50 @@
     bannerEl = null;
   }
 
-  function button(label, primary, onClick) {
+  // Os dois botões têm o MESMO peso (cor, tamanho, borda): recusar é tão fácil
+  // quanto aceitar (LGPD; sem padrão enganoso).
+  function button(label, onClick) {
     var b = document.createElement('button');
     b.type = 'button';
     b.textContent = label;
     b.style.cssText = 'font:600 14px/1 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;' +
-      'padding:11px 18px;border-radius:8px;cursor:pointer;min-height:40px;' +
-      (primary
-        ? 'background:#004d47;color:#fff;border:1px solid #004d47;'
-        : 'background:#fff;color:#004d47;border:1px solid #b9cfcc;');
+      'flex:1 1 0;min-width:96px;padding:10px 16px;border-radius:8px;cursor:pointer;min-height:40px;' +
+      'background:#fff;color:#004d47;border:1.5px solid #004d47;';
     b.addEventListener('click', onClick);
     return b;
   }
 
+  // Aviso compacto no TOPO: no celular, embaixo ele cobria o botão de cadastro
+  // (a pessoa fechava a página ou cadastrava sem responder). Uma pergunta curta,
+  // com a finalidade e o link da política; respondeu, some e não volta (cookie 180 dias).
   function askConsent() {
     if (consent() || bannerEl || !document.body) return;
     var box = document.createElement('div');
-    box.setAttribute('role', 'dialog');
+    box.setAttribute('role', 'region');
     box.setAttribute('aria-label', 'Aviso de cookies');
-    box.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:2147483000;' +
-      'max-width:560px;margin:0 auto;background:#fff;color:#1c2b29;border:1px solid #d9e4e2;' +
-      'border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.18);padding:16px;' +
-      'font:400 14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;';
+    box.style.cssText = 'position:fixed;left:8px;right:8px;top:calc(8px + env(safe-area-inset-top, 0px));' +
+      'z-index:2147483000;max-width:520px;margin:0 auto;background:#fff;color:#1c2b29;' +
+      'border:1px solid #d9e4e2;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);' +
+      'padding:10px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;' +
+      'font:400 13px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;';
 
     var text = document.createElement('p');
-    text.style.cssText = 'margin:0 0 12px 0;';
+    text.style.cssText = 'margin:0;flex:1 1 240px;';
     text.appendChild(document.createTextNode(
-      'Usamos cookies para medir nossos anúncios e para mostrar anúncios do Precificaí a quem já nos visitou. Você escolhe se aceita. '
+      'Podemos usar cookies para medir nossos anúncios e mostrar o Precificaí a quem já nos visitou? '
     ));
     var link = document.createElement('a');
     link.href = 'https://app.precificaiapp.com/privacy';
     link.target = '_blank';
     link.rel = 'noopener';
-    link.textContent = 'Ver política de privacidade';
+    link.textContent = 'Saiba mais';
     link.style.cssText = 'color:#004d47;text-decoration:underline;';
     text.appendChild(link);
 
     var row = document.createElement('div');
-    row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;';
-    row.appendChild(button('Recusar', false, function () { setConsent('denied'); }));
-    row.appendChild(button('Aceitar', true, function () { setConsent('granted'); }));
+    row.style.cssText = 'display:flex;gap:8px;flex:1 1 200px;';
+    row.appendChild(button('Recusar', function () { setConsent('denied'); }));
+    row.appendChild(button('Aceitar', function () { setConsent('granted'); }));
 
     box.appendChild(text);
     box.appendChild(row);

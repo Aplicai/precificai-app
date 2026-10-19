@@ -148,3 +148,194 @@ test('cadastro sem resposta de cookies não é marcado como enviado (tenta de no
   assert.equal(enviados.length, 2);          // recusa: nada
   delete globalThis.window;
 });
+
+// ---------- eventos pelo servidor (Conversions API, função meta-evento) ----------
+
+function fakeWindow(consent = 'granted', extra = {}) {
+  const store = {};
+  const enviados = [];
+  globalThis.window = {
+    pcf: { consent: () => consent, track: (...a) => enviados.push(a), attribution: () => null },
+    localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } },
+    location: { origin: 'https://app.precificaiapp.com', pathname: '/produtos' },
+    ...extra,
+  };
+  return { store, enviados };
+}
+
+function fakeFunctions(resposta = { data: { ok: true }, error: null }) {
+  const chamadas = [];
+  return {
+    chamadas,
+    invoke: async (nome, opts) => {
+      chamadas.push([nome, opts.body]);
+      return typeof resposta === 'function' ? resposta() : resposta;
+    },
+  };
+}
+
+test('corpo do evento de servidor: só existe com aceite (LGPD)', async () => {
+  const { montarCorpoEventoServidor } = await import('../src/utils/marketing.js');
+  for (const consent of [null, undefined, 'denied']) {
+    assert.equal(montarCorpoEventoServidor({ consent, name: 'Ativacao', eventId: 'act_u1' }), null);
+  }
+  assert.deepEqual(montarCorpoEventoServidor({
+    consent: 'granted', name: 'CompleteRegistration', eventId: 'reg_u1',
+    customData: { value: 0, currency: 'BRL' }, fbp: 'fb.1.1.a', fbc: null, url: 'https://app.precificaiapp.com/',
+  }), {
+    event_name: 'CompleteRegistration', event_id: 'reg_u1', consent: 'granted',
+    custom_data: { value: 0, currency: 'BRL' }, fbp: 'fb.1.1.a', event_source_url: 'https://app.precificaiapp.com/',
+  });
+});
+
+test('lerCookie acha _fbp/_fbc sem confundir prefixos', async () => {
+  const { lerCookie } = await import('../src/utils/marketing.js');
+  const jar = 'x_fbp=nao; _fbp=fb.1.123.456; _fbc=fb.1.123.IwAR%20x';
+  assert.equal(lerCookie('_fbp', jar), 'fb.1.123.456');
+  assert.equal(lerCookie('_fbc', jar), 'fb.1.123.IwAR x');
+  assert.equal(lerCookie('_ga', jar), null);
+});
+
+test('enviarEventoServidor: sem aceite não chama a função', async () => {
+  const { enviarEventoServidor } = await import('../src/utils/marketing.js');
+  for (const consent of [null, 'denied']) {
+    fakeWindow(consent);
+    const functions = fakeFunctions();
+    assert.equal(await enviarEventoServidor({ functions }, 'Ativacao', 'act_u1'), false);
+    assert.equal(functions.chamadas.length, 0);
+  }
+  fakeWindow('granted');
+  const functions = fakeFunctions();
+  assert.equal(await enviarEventoServidor({ functions }, 'Ativacao', 'act_u1', { content_name: '3_produtos' }), true);
+  assert.deepEqual(functions.chamadas[0], ['meta-evento', {
+    event_name: 'Ativacao', event_id: 'act_u1', consent: 'granted',
+    custom_data: { content_name: '3_produtos' }, event_source_url: 'https://app.precificaiapp.com/produtos',
+  }]);
+  // erro do servidor ou de rede vira false, nunca exceção
+  assert.equal(await enviarEventoServidor({ functions: fakeFunctions({ data: null, error: new Error('x') }) }, 'Ativacao', 'act_u1'), false);
+  assert.equal(await enviarEventoServidor({ functions: fakeFunctions(() => { throw new Error('rede'); }) }, 'Ativacao', 'act_u1'), false);
+  delete globalThis.window;
+});
+
+test('cadastro: Pixel com valor e moeda + servidor com o MESMO event_id', async () => {
+  const { trackRegistrationOnce } = await import('../src/utils/marketing.js');
+  const { store, enviados } = fakeWindow('granted');
+  const functions = fakeFunctions();
+  await trackRegistrationOnce({ id: 'u1' }, { functions });
+  assert.deepEqual(enviados[0], ['CompleteRegistration', { value: 0, currency: 'BRL', content_name: 'conta_gratis' }, 'reg_u1']);
+  assert.equal(functions.chamadas.length, 1);
+  assert.equal(functions.chamadas[0][1].event_id, 'reg_u1');
+  assert.equal(store.pcf_reg_srv_u1, '1');
+  await trackRegistrationOnce({ id: 'u1' }, { functions });
+  assert.equal(enviados.length, 1);
+  assert.equal(functions.chamadas.length, 1); // uma vez só
+  delete globalThis.window;
+});
+
+test('cadastro por e-mail sem sessão: servidor fica pendente e vai na primeira sessão', async () => {
+  const { trackRegistrationOnce } = await import('../src/utils/marketing.js');
+  const { store, enviados } = fakeWindow('granted');
+  await trackRegistrationOnce({ id: 'u2' }, null); // signUp sem sessão
+  assert.equal(enviados.length, 1);
+  assert.equal(store.pcf_reg_srv_u2, 'pendente');
+  const functions = fakeFunctions();
+  await trackRegistrationOnce({ id: 'u2' }, { functions }); // primeira sessão
+  assert.equal(enviados.length, 1); // Pixel não repete
+  assert.equal(functions.chamadas.length, 1);
+  assert.equal(store.pcf_reg_srv_u2, '1');
+  delete globalThis.window;
+});
+
+test('cadastro sem resposta de cookies: Pixel na fila, servidor não', async () => {
+  const { trackRegistrationOnce } = await import('../src/utils/marketing.js');
+  const { store, enviados } = fakeWindow(null);
+  const functions = fakeFunctions();
+  await trackRegistrationOnce({ id: 'u3' }, { functions });
+  assert.equal(enviados.length, 1);
+  assert.equal(functions.chamadas.length, 0);
+  assert.deepEqual(store, {});
+  delete globalThis.window;
+});
+
+test('conta com Ativacao marcada antes do servidor existir não manda evento atrasado', async () => {
+  const { checkActivation } = await import('../src/utils/marketing.js');
+  const { store } = fakeWindow('granted');
+  store.pcf_act_u9 = '1';
+  const sb = { ...fakeSupabase([{}, {}, {}]), functions: fakeFunctions() };
+  await checkActivation(sb);
+  assert.equal(sb.functions.chamadas.length, 0);
+  delete globalThis.window;
+});
+
+test('Ativacao: servidor com o mesmo event_id; falhou, tenta de novo sem repetir o Pixel', async () => {
+  const { checkActivation } = await import('../src/utils/marketing.js');
+  const { store, enviados } = fakeWindow('granted');
+  let ok = false;
+  const functions = fakeFunctions(() => ({ data: { ok }, error: null }));
+  const sb = { ...fakeSupabase([{}, {}, {}]), functions };
+  await checkActivation(sb);
+  assert.equal(enviados.length, 1);
+  assert.equal(functions.chamadas[0][1].event_id, 'act_u9');
+  assert.equal(store.pcf_act_srv_u9, 'pendente');
+  ok = true;
+  await checkActivation(sb);
+  assert.equal(enviados.length, 1);
+  assert.equal(functions.chamadas.length, 2);
+  assert.equal(store.pcf_act_srv_u9, '1');
+  await checkActivation(sb);
+  assert.equal(functions.chamadas.length, 2);
+  delete globalThis.window;
+});
+
+test('primeiro preço: só produto próprio com preço > 0', async () => {
+  const { temPrimeiroPreco } = await import('../src/utils/marketing.js');
+  assert.equal(temPrimeiroPreco([{ preco_venda: 12, observacoes: 'Exemplo do Kit de Início — ajuste' }]), false);
+  assert.equal(temPrimeiroPreco([{ preco_venda: 0 }, { preco_venda: null }]), false);
+  assert.equal(temPrimeiroPreco([{ preco_venda: '8.5', observacoes: null }]), true);
+  assert.equal(temPrimeiroPreco(null), false);
+});
+
+function fakeSupabasePP(rows, createdAt, uid = 'u5') {
+  const consultas = [];
+  const q = {
+    select: () => q, eq: () => q, gt: () => q,
+    limit: async () => { consultas.push(1); return { data: rows, error: null }; },
+  };
+  return {
+    consultas,
+    auth: { getSession: async () => ({ data: { session: { user: { id: uid, created_at: createdAt } } } }) },
+    from: () => q,
+    functions: fakeFunctions(),
+  };
+}
+
+test('PrimeiroPreco: uma vez por conta nova, Pixel + servidor com pp_<uid>', async () => {
+  const { checkPrimeiroPreco } = await import('../src/utils/marketing.js');
+  const { enviados } = fakeWindow('granted');
+  const recente = new Date(Date.now() - 60_000).toISOString();
+  await checkPrimeiroPreco(fakeSupabasePP([{ preco_venda: 0 }], recente));
+  assert.equal(enviados.length, 0);
+  const sb = fakeSupabasePP([{ preco_venda: 15 }], recente);
+  await checkPrimeiroPreco(sb);
+  assert.deepEqual(enviados[0], ['PrimeiroPreco', { value: 0, currency: 'BRL', content_name: 'primeiro_preco' }, 'pp_u5']);
+  assert.equal(sb.functions.chamadas[0][1].event_id, 'pp_u5');
+  await checkPrimeiroPreco(sb);
+  assert.equal(enviados.length, 1);
+  assert.equal(sb.consultas.length, 1);
+  delete globalThis.window;
+});
+
+test('PrimeiroPreco: conta antiga ou sem aceite não dispara nem marca', async () => {
+  const { checkPrimeiroPreco } = await import('../src/utils/marketing.js');
+  let w = fakeWindow('granted');
+  await checkPrimeiroPreco(fakeSupabasePP([{ preco_venda: 15 }], '2025-01-01T00:00:00Z', 'u6'));
+  assert.equal(w.enviados.length, 0);
+  assert.deepEqual(w.store, {});
+  w = fakeWindow(null);
+  const sb = fakeSupabasePP([{ preco_venda: 15 }], new Date().toISOString(), 'u6');
+  await checkPrimeiroPreco(sb);
+  assert.equal(w.enviados.length, 0);
+  assert.equal(sb.functions.chamadas.length, 0);
+  assert.deepEqual(w.store, {});
+  delete globalThis.window;
+});

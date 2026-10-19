@@ -43,7 +43,7 @@ import { contarDependencias, formatarMensagemDeps } from '../services/dependenci
 import { t } from '../i18n/pt-BR';
 import { subscribeDataChanged } from '../utils/dataSync';
 import { supabase } from '../config/supabase';
-import { checkActivation } from '../utils/marketing';
+import { checkActivation, checkPrimeiroPreco } from '../utils/marketing';
 import { resolverMargemMeta, classificarMargem, FAIXA_ATENCAO_MARGEM } from '../utils/margemMeta';
 
 // Cores para categorias
@@ -428,6 +428,7 @@ export default function ProdutosListScreen({ navigation }) {
       avisarLimiteProximo(result.length);
     }
     setTotalProdutos(result.length);
+    checkPrimeiroPreco(supabase);
     checkActivation(supabase);
 
     // Aplicar ordenação P1-22
