@@ -74,3 +74,15 @@ test('aviso fechado volta depois de alguns dias', () => {
   assert.equal(lembreteLiberado(String(ate), agora + 1000), false);
   assert.equal(lembreteLiberado(String(ate), agora + 3 * 24 * 3600 * 1000), true);
 });
+
+test('link de acesso (uso único): abre como está, sem mexer na URL', () => {
+  const link = 'https://lwznqpxzmqptrpbifvka.supabase.co/auth/v1/verify?token=abc123&type=magiclink&redirect_to=https%3A%2F%2Fapp.precificaiapp.com%2F%3Finstalar%3D1';
+  const chrome = urlAbrirNoChrome(link, { marcarInstalar: false });
+  assert.ok(chrome.startsWith('intent://lwznqpxzmqptrpbifvka.supabase.co/auth/v1/verify?token=abc123&type=magiclink&redirect_to=https%3A%2F%2Fapp.precificaiapp.com%2F%3Finstalar%3D1#Intent;'));
+  assert.ok(chrome.includes(';package=com.android.chrome;'));
+  assert.ok(chrome.includes(';S.browser_fallback_url=' + encodeURIComponent(link) + ';'));
+  assert.equal(urlAbrirNoSafari(link, { marcarInstalar: false }), 'x-safari-' + link);
+  // Sem a opção, continua marcando ?instalar=1 (aviso do topo, tabela de preços)
+  assert.ok(urlAbrirNoChrome('https://app.precificaiapp.com/').includes('instalar=1'));
+  assert.equal(urlAbrirNoSafari('https://app.precificaiapp.com/'), 'x-safari-https://app.precificaiapp.com/?instalar=1');
+});

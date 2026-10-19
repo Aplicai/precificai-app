@@ -182,10 +182,38 @@ function CartaoEscada({ feitos, meta, onProximo }) {
 function InicioSimples({ nomeNegocio, d, onAcao, onVideo, onPrecoRapido }) {
   const passo = passoDoComeco(d);
   const produto = d.primeiroSemPreco?.nome;
+  if (passo === 0) {
+    // 19/10/2026: o Preço rápido é o caminho padrão (23% dos que pulavam
+    // digitavam ~2 ingredientes e paravam). Para o "Pular" não parecer que
+    // voltou à mesma tela (16/10), aqui é um cartão só, sem formulário nem a
+    // trilha de 3 passos; o caminho à mão vira um link.
+    return (
+      <View style={inicioStyles.caixa}>
+        <Text style={inicioStyles.ola}>{nomeNegocio ? `Olá, ${nomeNegocio}!` : 'Olá!'}</Text>
+        <Text style={inicioStyles.sub}>Quando quiser, seu primeiro preço sai em 30 segundos.</Text>
+        <View style={[inicioStyles.cartao, inicioStyles.cartaoRapido]}>
+          <View style={inicioStyles.icone}>
+            <Feather name="zap" size={22} color={colors.primary} />
+          </View>
+          <Text style={inicioStyles.cartaoTitulo}>Descubra quanto cobrar</Text>
+          <Text style={inicioStyles.cartaoTexto}>Sem cadastrar ingredientes: só o custo da receita, quanto ela rende e seus gastos e vendas do mês.</Text>
+          <TouchableOpacity style={inicioStyles.botao} onPress={onPrecoRapido} activeOpacity={0.8} accessibilityRole="button">
+            <Text style={inicioStyles.botaoTexto}>Calcular meu primeiro preço (30 s)</Text>
+            <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
+          </TouchableOpacity>
+        </View>
+        <TouchableOpacity style={inicioStyles.video} onPress={() => onAcao(0)} accessibilityRole="button">
+          <Text style={inicioStyles.manualTexto}>Prefiro cadastrar ingredientes um a um</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={inicioStyles.videoSemTopo} onPress={onVideo} accessibilityRole="button">
+          <Feather name="play-circle" size={16} color={colors.primary} style={{ marginRight: 6 }} />
+          <Text style={inicioStyles.videoTexto}>Ver o vídeo de 1 minuto</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
   const conteudo = [
     {
-      // Quem chega aqui pulou o Preço rápido: oferecer o MESMO cálculo como
-      // passo principal parecia que o "Pular" não tinha funcionado (16/10).
       titulo: 'Cadastre seu primeiro ingrediente',
       texto: 'Do jeito que você compra: "Comprei 5 kg de farinha por R$ 25". O app calcula o preço por kg.',
       botao: 'Cadastrar ingrediente',
@@ -225,12 +253,6 @@ function InicioSimples({ nomeNegocio, d, onAcao, onVideo, onPrecoRapido }) {
           <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
         </TouchableOpacity>
       </View>
-      {passo === 0 ? (
-        <TouchableOpacity style={inicioStyles.video} onPress={onPrecoRapido} accessibilityRole="button">
-          <Feather name="zap" size={16} color={colors.primary} style={{ marginRight: 6 }} />
-          <Text style={inicioStyles.videoTexto}>Ou calcule um preço rápido em 30 segundos</Text>
-        </TouchableOpacity>
-      ) : null}
       <TouchableOpacity style={inicioStyles.video} onPress={onVideo} accessibilityRole="button">
         <Feather name="play-circle" size={16} color={colors.primary} style={{ marginRight: 6 }} />
         <Text style={inicioStyles.videoTexto}>Ver o vídeo de 1 minuto</Text>
@@ -255,6 +277,10 @@ const inicioStyles = StyleSheet.create({
   botaoTexto: { color: '#fff', fontSize: fonts.medium, fontFamily: fontFamily.bold },
   video: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.md },
   videoTexto: { color: colors.primary, fontSize: fonts.small, fontFamily: fontFamily.semiBold, textDecorationLine: 'underline' },
+  videoSemTopo: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingBottom: spacing.md },
+  manualTexto: { color: colors.textSecondary, fontSize: fonts.small, fontFamily: fontFamily.medium, textDecorationLine: 'underline' },
+  cartaoRapido: { borderColor: colors.primary, borderWidth: 2 },
+  icone: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary + '14', alignItems: 'center', justifyContent: 'center', marginBottom: spacing.sm },
   contagem: { fontSize: fonts.small, fontFamily: fontFamily.semiBold, color: colors.textSecondary, marginTop: -spacing.sm, marginBottom: spacing.sm },
   linha: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
   linhaBorda: { borderTopWidth: 1, borderTopColor: colors.border },
