@@ -4,7 +4,7 @@ import { supabase } from '../config/supabase';
 import { isRecoveryIntent, clearRecoveryIntent } from '../utils/recoveryFlag';
 import { resetDatabase } from '../database/database';
 import { captureException, addBreadcrumb, setUser as reportSetUser } from '../utils/errorReporter';
-import { getAttribution, trackRegistrationOnce, syncMarketingForUser, checkActivation, trackEvent } from '../utils/marketing';
+import { getAttribution, trackRegistrationOnce, syncMarketingForUser, checkActivation, checkPrimeiroPreco, trackEvent } from '../utils/marketing';
 import { subscribeDataChanged } from '../utils/dataSync';
 import { iniciarRegistroAberturas } from '../utils/aberturas';
 
@@ -140,12 +140,14 @@ export function AuthProvider({ children }) {
     });
   }, [userId]);
 
-  // Ativação (3 produtos próprios): confere a cada mudança em produtos.
+  // Primeiro preço (1º produto próprio com preço) e Ativação (3 produtos próprios):
+  // confere a cada mudança em produtos.
   useEffect(() => {
     if (!userId || Platform.OS !== 'web') return undefined;
-    checkActivation(supabase);
+    const conferir = () => { checkPrimeiroPreco(supabase); checkActivation(supabase); };
+    conferir();
     return subscribeDataChanged((table) => {
-      if (table === 'produtos') checkActivation(supabase);
+      if (table === 'produtos') conferir();
     });
   }, [userId]);
 
@@ -289,7 +291,8 @@ export function AuthProvider({ children }) {
         options: Object.keys(options).length ? options : undefined,
       });
       if (error) throw error;
-      if (data?.user) trackRegistrationOnce(data.user);
+      // Sem sessão (falta confirmar o e-mail) o servidor fica para a primeira sessão.
+      if (data?.user) trackRegistrationOnce(data.user, data.session ? supabase : null);
       return data;
     } catch (err) {
       captureException(err, { screen: 'Register', action: 'signUp' });
