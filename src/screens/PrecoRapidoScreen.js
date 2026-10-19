@@ -115,6 +115,28 @@ export default function PrecoRapidoScreen({ navigation, route }) {
     setNome(v);
   }
 
+  // 1º preço de quem já tem Financeiro (conta antiga, outro aparelho): usa o
+  // lucro/taxas/margem de segurança da conta. Conta nova (sem configuração)
+  // fica no padrão de 15%.
+  useEffect(() => {
+    if (proximo) return undefined; // o efeito abaixo já carrega
+    let vivo = true;
+    (async () => {
+      try {
+        const db = await getDatabase();
+        const [cfgs, vars] = await Promise.all([
+          db.getAllAsync('SELECT lucro_desejado, margem_seguranca FROM configuracao LIMIT 1'),
+          db.getAllAsync('SELECT percentual FROM despesas_variaveis'),
+        ]);
+        if (!vivo || !Array.isArray(cfgs) || isDbErrorResult(cfgs) || cfgs.length === 0) return;
+        if (!Array.isArray(vars) || isDbErrorResult(vars)) return;
+        const pc = buildPricingConfig({ cfgs, vars, fixas: [], fat: [] });
+        setContaCfg({ lucro: pc.lucroDesejado, taxasPerc: pc.despVarPerc, margemSeguranca: pc.margemSeguranca });
+      } catch (_) { /* fica o padrão */ }
+    })();
+    return () => { vivo = false; };
+  }, [proximo]);
+
   // Próximo produto: gastos e vendas do mês salvos. Falhou a leitura ou falta
   // algum: volta a perguntar, já com o que tiver (nunca calcula com zero).
   useEffect(() => {

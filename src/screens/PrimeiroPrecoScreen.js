@@ -201,7 +201,7 @@ export default function PrimeiroPrecoScreen({ navigation, route }) {
               <Text style={styles.feito} accessibilityLiveRegion="polite">{whats.texto}</Text>
             ) : (
               <>
-                <Text style={styles.cartaoTexto}>Você recebe sua tabela de preços e lembretes para revisar os preços. Só mandamos com o seu aceite, e você pode parar quando quiser.</Text>
+                <Text style={styles.cartaoTexto}>Você recebe sua tabela de preços e lembretes para revisar os preços. Só mandamos com o seu aceite. Para parar, é só responder SAIR na conversa.</Text>
                 <Text style={styles.label}>Seu WhatsApp</Text>
                 <TextInput
                   style={styles.input}
