@@ -22,19 +22,12 @@ async function linhas(db, sql) {
   return Array.isArray(r) ? r : [];
 }
 
-export async function salvarPrecoRapido(db, entrada) {
-  const nome = String(entrada?.nome || '').trim();
-  const calc = calcularPrecoRapido(entrada || {});
-  if (!nome) throw new Error('Produto sem nome');
-  if (!calc.ok) throw new Error('Preço rápido incompleto');
-
-  const custoReceita = parseValorBR(entrada.custoReceita);
-  const rendimento = parseValorBR(entrada.rendimento);
-  const vendaMes = parseValorBR(entrada.vendaMes);
-  const gastoMes = parseValorBR(entrada.gastoMes);
-  const preco = Math.round(calc.preco * 100) / 100;
-
-  // 1. Financeiro onde estiver vazio
+/**
+ * Financeiro só onde está vazio: configuracao (lucro 15%), as vendas do mês
+ * nos 12 meses e a despesa fixa "Gastos do mês (estimativa)". O que a pessoa
+ * já preencheu fica. Usado pelo Preço rápido e pela receita montada.
+ */
+export async function garantirFinanceiro(db, { vendaMes, gastoMes }) {
   const cfgs = await linhas(db, 'SELECT * FROM configuracao');
   if (cfgs.length === 0) {
     await db.runAsync(`INSERT INTO configuracao (lucro_desejado, margem_seguranca) VALUES (${LUCRO_PADRAO}, 0)`);
@@ -53,6 +46,22 @@ export async function salvarPrecoRapido(db, entrada) {
   if (fixas.length === 0 && gastoMes > 0) {
     await db.runAsync('INSERT INTO despesas_fixas (descricao, valor) VALUES (?, ?)', ['Gastos do mês (estimativa)', gastoMes]);
   }
+}
+
+export async function salvarPrecoRapido(db, entrada) {
+  const nome = String(entrada?.nome || '').trim();
+  const calc = calcularPrecoRapido(entrada || {});
+  if (!nome) throw new Error('Produto sem nome');
+  if (!calc.ok) throw new Error('Preço rápido incompleto');
+
+  const custoReceita = parseValorBR(entrada.custoReceita);
+  const rendimento = parseValorBR(entrada.rendimento);
+  const vendaMes = parseValorBR(entrada.vendaMes);
+  const gastoMes = parseValorBR(entrada.gastoMes);
+  const preco = Math.round(calc.preco * 100) / 100;
+
+  // 1. Financeiro onde estiver vazio
+  await garantirFinanceiro(db, { vendaMes, gastoMes });
 
   // 2 e 3. Custo estimado + produto
   let materiaId = null;

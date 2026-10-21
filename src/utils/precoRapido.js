@@ -22,6 +22,9 @@ export const LUCRO_PADRAO = 0.15;
  */
 export function parseValorBR(v) {
   if (v === null || v === undefined) return null;
+  // Número já calculado (ex.: custo da receita montada): não reler como
+  // texto, senão 8.145 casa com o "ponto de milhar" e vira 8145.
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   let t = String(v).replace(/R\$\s*/i, '').trim();
   if (!t) return null;
   if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(t)) t = t.replace(/\./g, '');

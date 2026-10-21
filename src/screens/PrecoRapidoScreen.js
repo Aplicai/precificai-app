@@ -32,6 +32,7 @@ import { numerosDoMes, valorParaCampo, META_ESCADA } from '../utils/escadaPrecos
 import { mensagemErroSalvar } from '../utils/planGate';
 import { countOrThrow, isErrorResult as isDbErrorResult } from '../database/dbResult';
 import { salvarPrecoRapido } from '../services/precoRapidoService';
+import { salvarPrecoMontado } from '../services/montarReceitaService';
 import { getDatabase } from '../database/database';
 import { clearQueryCache } from '../database/supabaseDb';
 import { notifyDataChanged } from '../utils/dataSync';
@@ -75,6 +76,9 @@ export default function PrecoRapidoScreen({ navigation, route }) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
   const [sugestoes, setSugestoes] = useState(SUGESTOES_PADRAO);
+  // Receita montada tocando nos ingredientes (MontarReceitaScreen, 21/10/2026).
+  const [montada, setMontada] = useState(null);
+  const [segmento, setSegmento] = useState('');
   const salvandoRef = useRef(false);
   // A pessoa já mexeu no nome: a sugestão do segmento (que chega depois) não sobrescreve.
   const nomeTocadoRef = useRef(false);
@@ -101,14 +105,37 @@ export default function PrecoRapidoScreen({ navigation, route }) {
         const db = await getDatabase();
         const rows = await db.getAllAsync('SELECT segmento FROM perfil LIMIT 1');
         if (!vivo || !Array.isArray(rows) || isDbErrorResult(rows)) return;
-        const segmento = rows[0]?.segmento || '';
-        setSugestoes(sugestoesDeProduto(segmento));
-        const produto = produtoDoSegmento(segmento);
+        const seg = rows[0]?.segmento || '';
+        setSegmento(seg);
+        setSugestoes(sugestoesDeProduto(seg));
+        const produto = produtoDoSegmento(seg);
         if (produto && !nomeTocadoRef.current) setNome((atual) => atual || produto);
       } catch (_) { /* fica sem sugestão do segmento */ }
     })();
     return () => { vivo = false; };
   }, [proximo]);
+
+  // Volta da tela de montar: custo e rendimento vêm da receita.
+  useEffect(() => {
+    const m = route?.params?.montada;
+    if (!m || !Array.isArray(m.itens) || !m.itens.length) return;
+    setMontada(m);
+    setCustoReceita(valorParaCampo(Math.round(Number(m.custoReceita) * 100) / 100));
+    setRendimento(String(m.rende || 1));
+    setErro(null);
+  }, [route?.params?.montada]);
+
+  function abrirMontar() {
+    trackEvent('MontarReceitaAbriu', { content_name: proximo ? 'proximo' : 'primeiro' });
+    navigation.navigate('MontarReceita', { nome: nome.trim(), segmento, gastoMes, vendaMes, contaCfg, montada });
+  }
+
+  function digitarCusto() {
+    setMontada(null);
+    setCustoReceita('');
+    setRendimento('');
+    navigation.setParams({ montada: undefined });
+  }
 
   function mudarNome(v) {
     nomeTocadoRef.current = true;
@@ -203,14 +230,17 @@ export default function PrecoRapidoScreen({ navigation, route }) {
     setErro(null);
     try {
       const db = await getDatabase();
-      const res = await salvarPrecoRapido(db, { nome, custoReceita, rendimento, gastoMes, vendaMes, cobraHoje, ...contaCfg });
+      const res = montada
+        ? await salvarPrecoMontado(db, { nome, itens: montada.itens, rende: montada.rende, custoReceita, gastoMes, vendaMes, cobraHoje, ...contaCfg })
+        : await salvarPrecoRapido(db, { nome, custoReceita, rendimento, gastoMes, vendaMes, cobraHoje, ...contaCfg });
       try { clearQueryCache(); } catch (_) {}
       notifyDataChanged('materias_primas');
+      if (montada) notifyDataChanged('embalagens');
       notifyDataChanged('produtos');
       notifyDataChanged('faturamento_mensal');
       notifyDataChanged('despesas_fixas');
       if (!proximo) {
-        trackEvent('PrecoRapido', { content_name: 'preco_rapido', value: res.preco, currency: 'BRL' });
+        trackEvent('PrecoRapido', { content_name: montada ? 'receita_montada' : 'preco_rapido', value: res.preco, currency: 'BRL' });
         // O aviso "Instale o app" agora é liberado na tabela de preços (3º preço).
         await irParaApp(false, { nome: nome.trim(), preco: res.preco, lucro: contaCfg.lucro });
         return;
@@ -242,7 +272,7 @@ export default function PrecoRapidoScreen({ navigation, route }) {
           ) : (
             <>
               <Text style={styles.titulo}>Seu preço em 30 segundos</Text>
-              <Text style={styles.subtitulo}>Só números que você sabe de cabeça. Detalhar a receita fica para depois.</Text>
+              <Text style={styles.subtitulo}>Só números que você sabe de cabeça. Não sabe o custo? O app monta a receita com você.</Text>
               <TouchableOpacity style={styles.videoLink} onPress={() => navigation.navigate('ComoFunciona')} accessibilityRole="button">
                 <Feather name="play-circle" size={15} color={colors.primary} style={{ marginRight: 6 }} />
                 <Text style={styles.linkTexto}>Ver como funciona (1 min)</Text>
@@ -271,6 +301,26 @@ export default function PrecoRapidoScreen({ navigation, route }) {
 
           <View style={styles.cartao}>
             <Text style={styles.pergunta}>2. Quanto custa fazer?</Text>
+            {montada ? (
+              <View style={styles.montada}>
+                <Text style={styles.montadaTitulo}>Sua receita: {montada.itens.length} {montada.itens.length === 1 ? 'ingrediente' : 'ingredientes'}</Text>
+                <Text style={styles.montadaTexto}>Custa {formatCurrency(Number(montada.custoReceita) || 0)} e rende {montada.rende} {montada.rende === 1 ? (montada.porcao?.[0] || 'unidade') : (montada.porcao?.[1] || 'unidades')}.{montada.semPreco ? ` ${montada.semPreco} sem preço.` : ''}</Text>
+                <View style={styles.montadaAcoes}>
+                  <TouchableOpacity onPress={abrirMontar} style={styles.montadaLink} accessibilityRole="button"><Text style={styles.linkTexto}>Ver ou mudar a receita</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={digitarCusto} style={styles.montadaLink} accessibilityRole="button"><Text style={styles.pularTexto}>Prefiro digitar o custo</Text></TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+            <>
+            <TouchableOpacity style={styles.montar} onPress={abrirMontar} accessibilityRole="button" accessibilityLabel="Não sei o custo. Montar a receita tocando nos ingredientes">
+              <Feather name="list" size={18} color="#fff" style={{ marginRight: 10 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.montarTitulo}>Não sei. Montar a receita</Text>
+                <Text style={styles.montarSub}>Toque nos ingredientes que você usa. O preço aparece na hora.</Text>
+              </View>
+              <Feather name="chevron-right" size={18} color="#fff" />
+            </TouchableOpacity>
+            <Text style={[styles.dica, { marginTop: spacing.sm }]}>Ou, se você já sabe:</Text>
             <View style={styles.frase}>
               <Text style={styles.palavra}>A receita custa R$</Text>
               <Campo valor={custoReceita} onChange={setCustoReceita} placeholder="40,00" label="Custo da receita" />
@@ -281,6 +331,8 @@ export default function PrecoRapidoScreen({ navigation, route }) {
               <Text style={styles.palavra}>unidades</Text>
             </View>
             <Text style={styles.dica}>Some ingredientes e embalagem de uma receita. Uma estimativa já serve.</Text>
+            </>
+            )}
           </View>
 
           {numerosMes === 'carregando' ? (
@@ -393,6 +445,14 @@ const styles = StyleSheet.create({
   erro: { fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.error, marginBottom: spacing.sm },
   botao: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, borderRadius: borderRadius.md, minHeight: 52, marginTop: spacing.sm },
   botaoApagado: { opacity: 0.5 },
+  montar: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary, borderRadius: borderRadius.md, padding: 14, minHeight: 56 },
+  montarTitulo: { color: '#fff', fontSize: fonts.regular, fontFamily: fontFamily.bold },
+  montarSub: { color: '#ffffffd9', fontSize: fonts.small, fontFamily: fontFamily.regular, marginTop: 2 },
+  montada: { backgroundColor: colors.surfaceTint, borderRadius: borderRadius.md, padding: 12, gap: 4 },
+  montadaTitulo: { fontSize: fonts.regular, fontFamily: fontFamily.bold, color: colors.text },
+  montadaTexto: { fontSize: fonts.small + 1, fontFamily: fontFamily.regular, color: colors.textSecondary },
+  montadaAcoes: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8, marginTop: 4 },
+  montadaLink: { minHeight: 40, justifyContent: 'center' },
   botaoTexto: { color: '#fff', fontSize: fonts.medium, fontFamily: fontFamily.bold },
   pular: { alignItems: 'center', paddingVertical: spacing.md },
   pularTexto: { color: colors.textSecondary, fontSize: fonts.small, fontFamily: fontFamily.medium, textDecorationLine: 'underline' },

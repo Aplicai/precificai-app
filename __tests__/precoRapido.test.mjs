@@ -6,7 +6,7 @@
  */
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { calcularPrecoRapido, LUCRO_PADRAO } from '../src/utils/precoRapido.js';
+import { calcularPrecoRapido, parseValorBR, LUCRO_PADRAO } from '../src/utils/precoRapido.js';
 import { salvarPrecoRapido, MESES } from '../src/services/precoRapidoService.js';
 import { calcMarkup, buildPricingConfig } from '../src/utils/calculations.js';
 
@@ -148,4 +148,14 @@ test('2º produto: usa lucro, taxas e margem de segurança da conta (mesma conta
   // As partes somam o preço.
   const soma = r.partes.custo + r.partes.seguranca + r.partes.gastos + r.partes.taxas + r.partes.lucro;
   assert.ok(Math.abs(soma - r.preco) < 1e-9);
+});
+
+test('número já calculado não é relido como texto (8.145 não vira 8145)', () => {
+  assert.equal(parseValorBR(8.145), 8.145);
+  assert.equal(parseValorBR(1234.5), 1234.5);
+  assert.equal(parseValorBR(NaN), null);
+  const a = calcularPrecoRapido({ custoReceita: 8.145, rendimento: 12, gastoMes: '2.000', vendaMes: '8.000' });
+  const b = calcularPrecoRapido({ custoReceita: '8,145', rendimento: '12', gastoMes: '2.000', vendaMes: '8.000' });
+  assert.ok(Math.abs(a.preco - b.preco) < 1e-9);
+  assert.ok(a.preco < 2);
 });

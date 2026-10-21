@@ -88,6 +88,7 @@ const ComoFuncionaScreen = lazyScreen(() => import('../screens/ComoFuncionaScree
 const PrecoRapidoScreen = lazyScreen(() => import('../screens/PrecoRapidoScreen'));
 const TabelaPrecosScreen = lazyScreen(() => import('../screens/TabelaPrecosScreen'));
 const PrimeiroPrecoScreen = lazyScreen(() => import('../screens/PrimeiroPrecoScreen'));
+const MontarReceitaScreen = lazyScreen(() => import('../screens/MontarReceitaScreen'));
 const SimuladorScreen = lazyScreen(() => import('../screens/SimuladorScreen'));
 const SimuladorLoteScreen = lazyScreen(() => import('../screens/SimuladorLoteScreen'));
 const FluxoCaixaDREScreen = lazyScreen(() => import('../screens/FluxoCaixaDREScreen'));
@@ -748,6 +749,8 @@ function AppContent() {
       <RootStack.Screen name="TabelaPrecos" component={TabelaPrecosScreen} options={{ headerShown: false, title: 'Tabela de preços' }} />
       {/* Momento de valor logo depois do 1º Preço rápido salvo (19/10/2026). */}
       <RootStack.Screen name="PrimeiroPreco" component={PrimeiroPrecoScreen} options={{ headerShown: false, title: 'Preço salvo' }} />
+      {/* Montar a receita tocando nos ingredientes, aberta pelo Preço rápido (21/10/2026). */}
+      <RootStack.Screen name="MontarReceita" component={MontarReceitaScreen} options={{ headerShown: false, title: 'Montar a receita' }} />
       <RootStack.Screen name="MainTabs" component={MainTabs} initialParams={{ initialTab: savedTab }} />
       {initialRoute === 'MainTabs' && (
         <RootStack.Screen name="Onboarding" component={OnboardingScreen} options={{
