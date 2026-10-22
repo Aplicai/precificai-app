@@ -17,7 +17,7 @@
  */
 import { calcularPrecoRapido, parseValorBR } from '../utils/precoRapido';
 import { normTexto, acharReceita, validarRespostaIA, montarSugestao, nichoDoSegmento, nichoDoProduto, canonizarReceita, receitaCobreNome, precoMedio, garantirOleoFritura } from '../utils/montarReceita';
-import { RECEITAS_SUGERIDAS, INGREDIENTES_POR_NICHO, EMBALAGEM_POR_NICHO, EMBALAGENS as E } from '../data/receitasSugeridas';
+import { RECEITAS_SUGERIDAS, INGREDIENTES_POR_NICHO, EMBALAGEM_POR_NICHO, EMBALAGENS as E, PORCAO_POR_NICHO } from '../data/receitasSugeridas';
 import { garantirFinanceiro } from './precoRapidoService';
 import { rowsOrThrow } from '../database/dbResult';
 import { converterParaBase, converterDeBase } from '../utils/calculations';
@@ -127,7 +127,7 @@ const DOCINHO = /\b(brigadeiros?|beijinhos?|trufas?|bombons?|bombom|docinhos?|ca
  * forminha. Nada disso: fica o nome da IA sem preço (a pessoa põe), nunca o
  * pote do ramo para tudo.
  */
-function embalagemDoNicho(receita, ramo, nomeProduto = '') {
+function embalagemDoNicho(receita, ramo, nomeProduto = '', daBiblioteca = null) {
   if (!receita) return receita;
   const e = receita.embalagem?.[0] || '';
   if (e && precoMedio(e, 'un') != null) return receita;
@@ -138,18 +138,29 @@ function embalagemDoNicho(receita, ramo, nomeProduto = '') {
   const prod = normTexto(nomeProduto);
   const fino = /\b(gourmet|fino|finos|fina|finas|casamento)\b/.test(prod);
   const forminha = fino ? E.FORMINHA_GOURMET : E.FORMINHA_5;
+  const pizza = () => (/\b(broto|brotinho|pequena|individual)\b/.test(prod) ? E.CAIXA_PIZZA_25 : E.CAIXA_PIZZA);
   const porPalavra = [
-    [/empad|aluminio para empada|forma de aluminio|forminha de aluminio/, () => E.FORMINHA_EMPADA],
+    [/empad|forma de aluminio|forminha de aluminio/, () => E.FORMINHA_EMPADA],
     [/forminha|papel chumbo/, () => forminha],
     [/congelad/, () => E.SACO_CONGELADOS],
-    [/celofane|saquinho|\bsaco\b|sacola/, () => (ramo === 'salgados' ? E.SAQUINHO_SALGADO : ramo === 'padaria' ? E.SACO_PAO : E.SAQUINHO_DOCE)],
-    [/pizza/, () => E.CAIXA_PIZZA],
+    [/hot ?dog|cachorro/, () => E.HOT_DOG],
     [/hamburg|\blanche/, () => E.CAIXA_HAMBURGUER],
-    [/marmit|quentinha/, () => E.MARMITEX],
+    [/frit|batata|\bporcao\b/, () => E.BATATA],
+    [/picol/, () => E.PICOLE],
+    [/geladinho|sacole|chup/, () => E.GELADINHO],
+    [/temaki|\bcone\b/, () => ['Cone para temaki', 0.25]],
+    [/sushi|\bbarca\b/, () => ['Barca para sushi', 3.00]],
+    [/sopa|caldo|termic/, () => ['Pote térmico 500 ml', 0.80]],
+    [/pizza/, () => (ramo === 'pizzaria' || /^pizza/.test(porc) ? pizza() : null)],
+    [/\b(1|2) ?l\b|litro/, () => E.POTE_SORVETE],
+    [/espresso|expresso|80 ?ml|copo pequeno|cafezinho/, () => E.COPO_PEQUENO],
     [/copo|\btaca\b/, () => (ramo === 'acai_sorvete' ? E.COPO_ACAI : E.COPO)],
+    [/celofane|saquinho|\bsaco\b|sacola/, () => (ramo === 'salgados' ? E.SAQUINHO_SALGADO : ramo === 'padaria' ? E.SACO_PAO : E.SAQUINHO_DOCE)],
+    [/marmit|quentinha/, () => E.MARMITEX],
     [/\bpote\b/, () => E.POTE_250],
     [/fatia|acetato/, () => E.EMB_FATIA],
     [/caixa.*bolo|disco/, () => E.CAIXA_BOLO],
+    [/sanduiche/, () => E.SANDUICHE],
   ];
   const porPorcao = [
     [/^(cento|centos)$/, () => (ramo === 'salgados' ? E.CAIXA_CENTO : fino ? E.FORMINHAS_GOURMET_CENTO : E.FORMINHAS_CENTO)],
@@ -158,14 +169,19 @@ function embalagemDoNicho(receita, ramo, nomeProduto = '') {
     [/^pote/, () => E.POTE_250],
     [/^(copo|taca|dose)/, () => (ramo === 'acai_sorvete' ? E.COPO_ACAI : E.COPO)],
     [/^(marmita|quentinha|prato)/, () => E.MARMITEX],
-    [/^pizza/, () => E.CAIXA_PIZZA],
-    [/^(lanche|hamburguer|sanduiche)/, () => E.CAIXA_HAMBURGUER],
+    [/^pizza/, () => pizza()],
+    [/^porcao/, () => (ramo === 'petiscos' ? E.BANDEJA : null)],
   ];
-  for (const [re, f] of porPalavra) if (k && re.test(k)) return { ...receita, embalagem: f() };
-  for (const [re, f] of porPorcao) if (re.test(porc)) return { ...receita, embalagem: f() };
+  // Sopa e caldo: pote térmico, mesmo que a IA diga só "pote".
+  if (/\b(sopa|caldo|canja)\b/.test(prod) && (!k || /pote|copo|marmit/.test(k))) return { ...receita, embalagem: ['Pote térmico 500 ml', 0.80] };
+  for (const [re, f] of porPalavra) if (k && re.test(k)) { const x = f(); if (x) return { ...receita, embalagem: x }; }
+  for (const [re, f] of porPorcao) if (re.test(porc)) { const x = f(); if (x) return { ...receita, embalagem: x }; }
+  // A receita parecida da biblioteca, do mesmo ramo, sabe a embalagem certa
+  // (cachorro-quente prensado → embalagem de cachorro-quente).
+  if (daBiblioteca?.embalagem && daBiblioteca.nicho === ramo) return { ...receita, embalagem: daBiblioteca.embalagem };
+  if (/^(lanche|hamburguer|sanduiche)/.test(porc)) return { ...receita, embalagem: E.CAIXA_HAMBURGUER };
   if (ramo === 'confeitaria' && DOCINHO.test(prod)) return { ...receita, embalagem: forminha };
-  if (e) return receita; // a da IA, sem preço
-  return receita;
+  return receita; // a da IA, sem preço (ou nenhuma)
 }
 
 /**
@@ -176,26 +192,26 @@ export async function buscarSugestao({ db, nomeProduto, segmento, invocar }) {
   // O produto diz mais que o perfil: coxinha numa confeitaria é salgado.
   // Ramo de verdade (ou null): só ele vai para a IA e escolhe a embalagem.
   const ramo = nichoDoProduto(nomeProduto) || nichoDoSegmento(segmento) || nichoDoSegmento(nomeProduto);
-  const nicho = ramo || 'confeitaria'; // lista de reserva quando nada responde
+  const nicho = ramo || 'geral'; // lista de reserva quando nada responde (sem ramo: itens básicos)
   const precosConta = db ? await carregarPrecosConta(db) : new Map();
-  let receita = acharReceita(nomeProduto, RECEITAS_SUGERIDAS);
+  let receita = acharReceita(nomeProduto, RECEITAS_SUGERIDAS, nichoDoProduto(nomeProduto));
   let parecida = false;
   // Nome mais específico que a receita da biblioteca ("de carne seca" x
   // carne moída): a IA monta a certa; se falhar, fica a da biblioteca.
-  if ((!receita || !receitaCobreNome(nomeProduto, receita)) && String(nomeProduto || '').trim().length >= 2) {
+  if ((!receita || !receitaCobreNome(nomeProduto, receita)) && normTexto(nomeProduto).replace(/[^a-z]/g, '').length >= 2) {
     const chave = `${normTexto(nomeProduto)}|${ramo || ''}`;
     let ia = cacheIA.get(chave) || null;
     if (!ia) {
       ia = await pedirReceitaIA(invocar, String(nomeProduto || '').trim().slice(0, 80), ramo);
       if (ia) cacheIA.set(chave, ia);
     }
-    if (ia) receita = embalagemDoNicho(garantirOleoFritura(ia, nomeProduto), ramo, nomeProduto);
+    if (ia) receita = embalagemDoNicho(garantirOleoFritura(ia, nomeProduto), ramo, nomeProduto, receita);
     // A IA falhou: a receita parecida da biblioteca só serve se for do mesmo
     // ramo ("Paleta suína" não pode virar picolé); senão, a lista do ramo.
     else if (receita && (!receita.nicho || receita.nicho === nicho)) parecida = true;
     else receita = null;
   }
-  const s = montarSugestao({ receita, nicho, ingredientesPorNicho: INGREDIENTES_POR_NICHO, embalagemPorNicho: EMBALAGEM_POR_NICHO, precosConta });
+  const s = montarSugestao({ receita, nicho, ingredientesPorNicho: INGREDIENTES_POR_NICHO, embalagemPorNicho: EMBALAGEM_POR_NICHO, porcaoPorNicho: PORCAO_POR_NICHO, precosConta });
   return { ...s, nicho, parecida: parecida ? receita.nome : null, conta: precosConta };
 }
 

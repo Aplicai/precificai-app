@@ -32,10 +32,11 @@ const PROJETO_ID = '00000000-0000-0000-0000-000000000000';
 // (503 "high demand" é comum no plano grátis), tenta o modelo reserva.
 const PRAZO_TOTAL_MS = 11000;
 const PRAZO_TENTATIVA_MS = 6000;
-const NICHOS = new Set(['confeitaria', 'salgados', 'marmitas', 'hamburgueria', 'pizzaria', 'padaria', 'acai_sorvete', 'bebidas']);
+const NICHOS = new Set(['confeitaria', 'salgados', 'marmitas', 'hamburgueria', 'pizzaria', 'padaria', 'acai_sorvete', 'bebidas', 'petiscos']);
 const NOME_NICHO: Record<string, string> = {
   confeitaria: 'confeitaria (doces e bolos)', salgados: 'salgados', marmitas: 'marmitas e refeições',
   hamburgueria: 'lanches e hambúrgueres', pizzaria: 'pizzaria', padaria: 'padaria', acai_sorvete: 'açaí e sorvetes', bebidas: 'bebidas',
+  petiscos: 'petiscos, porções de bar e espetinhos',
 };
 
 const ALLOWED_ORIGINS = new Set<string>([

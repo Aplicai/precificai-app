@@ -49,7 +49,13 @@ function expandir(t) {
   return ` ${t} `.replace(/ (d|q) /g, ' de ').replace(/ c /g, ' com ').trim();
 }
 
-export function acharReceita(nomeProduto, biblioteca) {
+export function acharReceita(nomeProduto, biblioteca, ramo) {
+  // Com o ramo do produto, prefere receita do mesmo ramo ("Pizza de chocolate
+  // com morango" é pizza, não o bolo de pote "chocolate com morango").
+  if (ramo && Array.isArray(biblioteca)) {
+    const doRamo = acharReceita(nomeProduto, biblioteca.filter((r) => r?.nicho === ramo));
+    if (doRamo) return doRamo;
+  }
   const t = expandir(normTexto(nomeProduto));
   if (!t || !Array.isArray(biblioteca)) return null;
   let melhor = null;
@@ -76,7 +82,8 @@ export function acharReceita(nomeProduto, biblioteca) {
 const PALAVRAS_NEUTRAS = new Set(('de da do das dos com e no na em para p sabor recheio recheado recheada cobertura massa ' +
   'caseiro caseira tradicional gourmet especial simples fofinho fofinha molhadinho molhadinha artesanal fit delicioso deliciosa ' +
   'kg g gr grama gramas ml l litro litros un unidade unidades fatia fatias pedaco pedacos pote potes cento pequeno pequena ' +
-  'medio media grande familia individual porcao porcoes marmita marmitas inteiro inteira d q c').split(' '));
+  'medio media grande familia individual porcao porcoes marmita marmitas inteiro inteira d q c ' +
+  'casa completo completa aberta aberto forno lenha prensado congelado congelada congelados gelado gelada tigela copo n no kit kits tamanho').split(' '));
 /** Formas de uma palavra sem o plural: "doces" → doce/doc, "pastéis" → pastel, "bombons" → bombom. */
 function semPlural(w) {
   const v = [w];
@@ -112,18 +119,22 @@ export function receitaCobreNome(nomeProduto, receita) {
 /** Segmento livre do perfil → nicho da biblioteca. null = não dá para dizer. */
 const NICHO_POR_PALAVRA = [
   ['cafe da manha', 'padaria'], ['coffee', 'padaria'], ['tapioc', 'salgados'], ['cuscuz', 'salgados'],
-  ['acai', 'acai_sorvete'], ['sorvet', 'acai_sorvete'], ['gelad', 'acai_sorvete'], ['picol', 'acai_sorvete'],
+  ['espet', 'petiscos'], ['churras', 'petiscos'], ['boteco', 'petiscos'], ['petisc', 'petiscos'], [' bar ', 'petiscos'], ['porcoes', 'petiscos'],
+  ['drink', 'bebidas'], ['cafeter', 'bebidas'], ['food truck', 'hamburgueria'],
+  ['acai', 'acai_sorvete'], ['sorvet', 'acai_sorvete'], ['geladinho', 'acai_sorvete'], ['sacole', 'acai_sorvete'], ['picol', 'acai_sorvete'],
   ['pizz', 'pizzaria'],
-  ['hamburg', 'hamburgueria'], ['burger', 'hamburgueria'], ['lanch', 'hamburgueria'], ['hot dog', 'hamburgueria'], ['cachorro', 'hamburgueria'],
+  ['hamburg', 'hamburgueria'], ['burger', 'hamburgueria'], ['lanch', 'hamburgueria'], ['hot dog', 'hamburgueria'], ['cachorro quente', 'hamburgueria'],
   ['marmit', 'marmitas'], ['quentinha', 'marmitas'], ['restaur', 'marmitas'], ['comida', 'marmitas'], ['refei', 'marmitas'],
+  ['buffet', 'marmitas'], ['sopa', 'marmitas'], ['caldo', 'marmitas'], ['massas', 'marmitas'], ['vegan', 'marmitas'], ['vegetarian', 'marmitas'],
+  ['japones', 'marmitas'], ['sushi', 'marmitas'], ['frutos do mar', 'marmitas'],
   ['salgad', 'salgados'], ['coxinha', 'salgados'], ['pastel', 'salgados'], ['empad', 'salgados'],
   ['padar', 'padaria'], ['panifica', 'padaria'], ['pao', 'padaria'],
   ['confeit', 'confeitaria'], ['bolo', 'confeitaria'], ['doce', 'confeitaria'], ['brigadeir', 'confeitaria'], ['trufa', 'confeitaria'], ['encomenda', 'confeitaria'], ['chocolat', 'confeitaria'],
   ['suco', 'bebidas'], ['cafe', 'bebidas'], ['bebida', 'bebidas'],
 ];
 export function nichoDoSegmento(segmento) {
-  const t = normTexto(segmento);
-  if (!t) return null;
+  const t = ` ${normTexto(segmento)} `;
+  if (!t.trim()) return null;
   // Vale a palavra que aparece primeiro ("Confeitaria e salgados" = confeitaria).
   let melhor = null;
   let pos = Infinity;
@@ -140,15 +151,18 @@ const RAMO_DA_PALAVRA = {};
 for (const [ramo, palavras] of Object.entries({
   confeitaria: 'bolo brigadeiro trufa doce pudim brownie cupcake cookie bombom mousse pave cheesecake beijinho alfajor palha docinho',
   salgados: 'coxinha pastel empada empadinha empadao esfiha esfirra kibe quibe risole salgado enroladinho croquete joelho bolinha acaraje abara tapioca cuscuz beiju quiche croissant folhado fogazza',
-  marmitas: 'marmita quentinha escondidinho feijoada lasanha strogonoff estrogonofe parmegiana galinhada moqueca yakisoba picadinho baiao',
-  hamburgueria: 'hamburguer burger x lanche sanduiche cachorro hotdog wrap misto',
-  pizzaria: 'pizza calzone',
+  marmitas: 'marmita marmitex quentinha escondidinho feijoada lasanha strogonoff strogonof estrogonofe parmegiana galinhada moqueca yakisoba yakissoba picadinho baiao ' +
+    'sopa caldo canja nhoque rondelli canelone espaguete macarronada fricasse salpicao risoto panqueca omelete tutu tropeiro carreteiro sarapatel buchada vatapa bobo ' +
+    'tacaca manicoba temaki sushi sashimi poke prato pf almoco jantar refeicao comida feijao arroz bife peixe galinha rabada dobradinha',
+  hamburgueria: 'hamburguer burger x lanche sanduiche hotdog wrap misto choripan burrito taco beirute bauru prensado smash',
+  pizzaria: 'pizza calzone broto brotinho',
   padaria: 'pao rosca sonho broa',
   acai_sorvete: 'acai sorvete picole geladinho sacole chup',
-  bebidas: 'suco cafe limonada vitamina milkshake refrigerante cha',
+  bebidas: 'suco cafe limonada vitamina milkshake refrigerante cha caipirinha caipiroska drink gin mojito soda smoothie batida quentao kombucha cappuccino latte frappuccino espresso expresso refri agua',
+  petiscos: 'espetinho espeto kafta porcao petisco torresmo isca passarinho acebolada polenta frita fritas churrasco',
 })) for (const w of palavras.split(' ')) RAMO_DA_PALAVRA[w] = ramo;
 
-const RAMO_DA_EXPRESSAO = [['pao de mel', 'confeitaria'], ['bolo de pote', 'confeitaria'], ['cafe da manha', 'padaria']];
+const RAMO_DA_EXPRESSAO = [['pao de mel', 'confeitaria'], ['bolo de pote', 'confeitaria'], ['cafe da manha', 'padaria'], ['cachorro quente', 'hamburgueria'], ['hot dog', 'hamburgueria'], ['frango a passarinho', 'petiscos'], ['batata frita', 'petiscos'], ['mandioca frita', 'petiscos']];
 export function nichoDoProduto(nomeProduto) {
   const t = normTexto(nomeProduto);
   for (const [e, r] of RAMO_DA_EXPRESSAO) if ((` ${t} `).includes(` ${e} `)) return r;
@@ -184,7 +198,8 @@ const pesoUn = (n) => { for (const w of [n, ...semPlural(n).slice(1)]) if (PESO_
 const PESO_UN = {
   cebola: 150, 'cebola roxa': 150, tomate: 120, alho: 5, limao: 100, banana: 120, laranja: 200,
   cenoura: 150, batata: 200, 'batata-doce': 250, 'batata doce': 250, maca: 150, maracuja: 150,
-  'cravo da india': 0.1, 'canela em pau': 3, abobrinha: 250, pimentao: 150, 'pimentao verde': 150, 'pimentao vermelho': 150, 'pimentao amarelo': 150, morango: 15, 'morango fresco': 15, 'cheiro-verde': 100, 'cheiro verde': 100, salsinha: 100, coentro: 100, cebolinha: 100,
+  'cravo da india': 0.1, 'canela em pau': 3, abobrinha: 250, pimentao: 150, salsicha: 50, bacon: 15, 'cheddar fatiado': 20,
+  mussarela: 20, presunto: 15, berinjela: 300, louro: 0.3, 'pimenta dedo de moca': 10, 'pimenta de cheiro': 5, 'pao de forma': 25, abacaxi: 1500, couve: 200, pacoca: 20, 'limao siciliano': 150, 'alga nori': 2.5, 'folha de alga nori': 2.5, 'pimentao verde': 150, 'pimentao vermelho': 150, 'pimentao amarelo': 150, morango: 15, 'morango fresco': 15, 'cheiro-verde': 100, 'cheiro verde': 100, salsinha: 100, coentro: 100, cebolinha: 100,
 };
 
 /** Custo da linha: preço por kg/L/un × quantidade (g/ml/un). Sem preço = 0. */
@@ -252,9 +267,13 @@ export function validarRespostaIA(json, nomeProduto) {
     ingredientes.push(l);
     if (ingredientes.length >= MAX_ITENS) break;
   }
-  if (ingredientes.length < 2) return null;
-  const r = Math.round(Number(json.rende));
-  const porcao = singularPorcao(json.porcao);
+  // 1 item só serve quando é o próprio produto (revenda: "Água de coco").
+  const palavrasProduto = new Set(normTexto(nomeProduto).split(' ').filter((w) => w.length > 2));
+  const ehOProduto = ingredientes.length === 1 && normTexto(ingredientes[0][0]).split(' ').some((w) => palavrasProduto.has(w));
+  if (ingredientes.length < 2 && !ehOProduto) return null;
+  const kit = /\b(kit|kits|combo|combos|cesta|cestas)\b/.test(normTexto(nomeProduto));
+  const r = kit ? 1 : Math.round(Number(json.rende));
+  const porcao = kit ? 'kit' : singularPorcao(json.porcao);
   return {
     id: 'ia',
     nome: capitalizar(nomeProduto),
@@ -314,10 +333,26 @@ const APELIDOS = {
   'cravo em po': 'Cravo da índia', cravo: 'Cravo da índia', 'po para sabor morango': 'Gelatina de morango', gema: 'Ovos', gemas: 'Ovos',
   'gema de ovo': 'Ovos', 'gemas de ovo': 'Ovos', clara: 'Ovos', claras: 'Ovos', 'clara de ovo': 'Ovos', 'claras de ovo': 'Ovos',
   'leite de vaca': 'Leite integral', 'fuba de milho': 'Fubá', 'pao para hamburguer': 'Pão de hambúrguer', 'camarao fresco': 'Camarão',
-  oregao: 'Orégano', 'pao frances': 'Pão francês', 'paes franceses': 'Pão francês', 'peito de frango desfiado': 'Peito de frango', 'limao tahiti': 'Limão',
+  oregao: 'Orégano', 'pao frances': 'Pão francês', 'paes franceses': 'Pão francês',
+  'carne bovina moida': 'Carne moída', 'hamburguer bovino': 'Carne moída', 'hamburguer de carne': 'Carne moída', 'blend bovino': 'Carne moída',
+  'carne moida de picanha': 'Picanha', 'carne de picanha moida': 'Picanha', 'pao de hamburger': 'Pão de hambúrguer',
+  'pao de cachorro': 'Pão de hot dog', 'pao de cachorro quente': 'Pão de hot dog', 'pao para hot dog': 'Pão de hot dog', 'pao para cachorro quente': 'Pão de hot dog',
+  'queijo mozarela': 'Mussarela', mozarela: 'Mussarela', mozzarella: 'Mussarela', muzzarela: 'Mussarela', 'queijo catupiry': 'Requeijão cremoso',
+  'queijo cheddar cremoso': 'Cheddar cremoso', 'fatia de queijo cheddar': 'Cheddar fatiado', 'queijo cheddar fatiado': 'Cheddar fatiado',
+  'queijo cheddar': 'Cheddar fatiado', 'fatia de queijo': 'Mussarela', 'bacon em fatias': 'Bacon', 'fatia de bacon': 'Bacon', 'fatias de bacon': 'Bacon',
+  azeitona: 'Azeitona verde', 'linguica calabresa fresca': 'Linguiça toscana', salmao: 'Salmão fresco', 'creme cheese': 'Cream cheese',
+  'pepino japones': 'Pepino', 'manjericao fresco': 'Manjericão', 'bife de alcatra': 'Alcatra', 'bacalhau dessalgado': 'Bacalhau', origanos: 'Orégano',
+  'contrafile bovino': 'Contrafilé', 'contra file': 'Contrafilé', champignon: 'Champignon em conserva', 'frango em pedacos': 'Coxa e sobrecoxa',
+  'feijao carioquinha': 'Feijão carioca', 'massa de lasanha': 'Massa para lasanha', trigo: 'Farinha de trigo', atum: 'Atum em lata',
+  'macarrao para yakissoba': 'Macarrão para yakisoba', 'goma de mandioca': 'Goma de tapioca', 'patinho moido': 'Patinho', espaguete: 'Macarrão',
+  'polpa de tomate': 'Molho de tomate', pomodoro: 'Molho de tomate', 'queijo mucarela ralado': 'Mussarela', 'queijo mucarela': 'Mussarela',
+  'mucarela ralada': 'Mussarela', mucarela: 'Mussarela', 'cominho em po': 'Cominho', 'louro em folha': 'Louro', 'folha de louro': 'Louro',
+  'trigo para quibe': 'Trigo para kibe', 'hortela fresca': 'Hortelã', 'file de peito de frango': 'Peito de frango', 'file de frango': 'Peito de frango',
+  acai: 'Polpa de açaí', 'acai polpa': 'Polpa de açaí', 'sorvete de creme': 'Sorvete cremoso', aveia: 'Aveia em flocos', 'farinha de aveia': 'Aveia em flocos',
+  refrigerante: 'Refrigerante 2L', 'molho de soja': 'Molho shoyu', 'arroz para sushi': 'Arroz japonês', 'gengibre fresco': 'Gengibre', 'peito de frango desfiado': 'Peito de frango', 'limao tahiti': 'Limão',
   salsa: 'Salsinha', 'file de tilapia': 'Tilápia', 'costela bovina moida': 'Costela bovina',
 };
-const PREPARO = /\b(?:e )?(morno|morna|gelado|gelada|quente|derretido|derretida|amolecido|amolecida|picado|picada|picadinho|em cubos|em tiras|em rodelas|fatiado|fatiada|cozido|cozida|refogado|refogada|sem pele|sem semente|sem sementes|em temperatura ambiente|peneirado|peneirada|a gosto|bem gelado|bem gelada|para fritura|para fritar|para untar|para polvilhar|para pincelar|triturado|triturada)(?: e(?= |$))?/g;
+const PREPARO = /\b(?:e )?(morno|morna|gelado|gelada|quente|derretido|derretida|amolecido|amolecida|picado|picada|picadinho|em cubos|em tiras|em rodelas|fatiado|fatiada|cozido|cozida|refogado|refogada|sem pele|sem semente|sem sementes|em temperatura ambiente|peneirado|peneirada|a gosto|bem gelado|bem gelada|para fritura|para fritar|para untar|para polvilhar|para pincelar|triturado|triturada|cru|crua)(?: e(?= |$))?/g;
 /** Palavras que a IA às vezes escreve sem acento. */
 const ACENTOS = {
   camarao: 'camarão', pimentao: 'pimentão', dende: 'dendê', acucar: 'açúcar', limao: 'limão', feijao: 'feijão',
@@ -327,10 +362,12 @@ const ACENTOS = {
   linguica: 'linguiça', calabresa: 'calabresa', requeijao: 'requeijão', parmesao: 'parmesão', avela: 'avelã', amendoa: 'amêndoa',
   amendoas: 'amêndoas', pacoca: 'paçoca', acafrao: 'açafrão', oleo: 'óleo', maca: 'maçã', cachaca: 'cachaça', poro: 'poró', mae: 'mãe',
   padrao: 'padrão', hortela: 'hortelã', fuba: 'fubá', acucarado: 'açucarado', frances: 'francês', suino: 'suíno', suina: 'suína',
+  salmao: 'salmão', japones: 'japonês', pure: 'purê', mocoto: 'mocotó', abobora: 'abóbora', file: 'filé', sirio: 'sírio', cha: 'chá', soluvel: 'solúvel', cupuacu: 'cupuaçu', gas: 'gás', tonica: 'tônica',
+  macarrao: 'macarrão', essencia: 'essência', algodao: 'algodão', limao: 'limão',
 };
 function acentuar(nome) {
   return String(nome).split(' ').map((w) => {
-    const r = ACENTOS[w.toLowerCase()];
+    const r = ACENTOS[normTexto(w)];
     if (!r || r === w.toLowerCase()) return w;
     return w[0] === w[0].toUpperCase() ? r[0].toUpperCase() + r.slice(1) : r;
   }).join(' ');
@@ -502,13 +539,14 @@ export function garantirOleoFritura(receita, nomeProduto) {
  * nicho. Cada ingrediente já com o preço (conta > base > null).
  * precosConta: Map normTexto(nome) → { id, preco, un } dos ingredientes da conta.
  */
-export function montarSugestao({ receita, nicho, ingredientesPorNicho, embalagemPorNicho, precosConta }) {
+export function montarSugestao({ receita, nicho, ingredientesPorNicho, embalagemPorNicho, precosConta, porcaoPorNicho }) {
   const conta = precosConta instanceof Map ? precosConta : new Map();
+  const [porcaoNicho, rendeNicho] = (porcaoPorNicho && porcaoPorNicho[nicho]) || [['unidade', 'unidades'], 10];
   const base = receita || {
     id: 'nicho',
     nome: '',
-    porcao: ['unidade', 'unidades'],
-    rende: 10,
+    porcao: porcaoNicho,
+    rende: rendeNicho,
     ingredientes: (ingredientesPorNicho && ingredientesPorNicho[nicho]) || [],
     embalagem: (embalagemPorNicho && embalagemPorNicho[nicho]) || null,
   };
@@ -520,6 +558,9 @@ export function montarSugestao({ receita, nicho, ingredientesPorNicho, embalagem
   };
   const itens = (base.ingredientes || []).map(([n, q, un]) => {
     // "2 cebolas": a base vende por kg; vira gramas pelo peso médio.
+    // Café pronto em ml: café em pó (coado ~70 g por litro; espresso ~9 g em 30 ml).
+    if (un === 'ml' && /^cafe( coado| passado| forte| preto)?$/.test(normTexto(n))) return item('Café em pó', Math.max(1, Math.round(q * 0.07)), 'g', false);
+    if (un === 'ml' && /^cafe (espresso|expresso)$/.test(normTexto(n))) return item('Café em pó', Math.max(1, Math.round(q * 0.3)), 'g', false);
     // "Caldo de carne 1000 ml" é o caldo pronto: 1 tablete de 10 g faz 500 ml.
     if (un === 'ml' && /^caldo (de )?(carne|galinha|legumes|frango|peixe)/.test(normTexto(n))) {
       return item(n, Math.max(1, Math.round(q / 50)), 'g', false);

@@ -11,7 +11,7 @@ import {
 } from '../src/data/receitasSugeridas.js';
 import { getMarketPrice } from '../src/data/marketPrices.js';
 
-const NICHOS = ['confeitaria', 'salgados', 'marmitas', 'hamburgueria', 'pizzaria', 'padaria', 'acai_sorvete', 'bebidas'];
+const NICHOS = ['confeitaria', 'salgados', 'marmitas', 'hamburgueria', 'pizzaria', 'padaria', 'acai_sorvete', 'bebidas', 'petiscos'];
 const UNIDADES = ['g', 'ml', 'un'];
 const SEM_ACENTO_MINUSCULO = (s) => s === s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 

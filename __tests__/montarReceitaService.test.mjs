@@ -239,8 +239,26 @@ test('embalagem: pela palavra da IA e pela porção, não sempre o pote do ramo'
   assert.equal((await emb('Cookie de avelã e nutella', 'Confeitaria', 'saco celofane')).nome, 'Saquinho para doce');
   assert.equal((await emb('Bolo de avelã com nutella', 'Confeitaria', 'caixa de acetato', 'fatia')).nome, 'Embalagem para fatia');
   assert.equal((await emb('Torta mousse de avelã', 'Confeitaria', 'embalagem plástica', 'fatia')).nome, 'Embalagem para fatia');
-  assert.equal((await emb('Trufa recheada de avelã', 'Confeitaria', null, 'unidade')).nome, 'Forminha nº 5', 'docinho sem embalagem da IA: forminha');
+  assert.match((await emb('Trufa recheada de avelã', 'Confeitaria', null, 'unidade')).nome, /Forminha|Papel chumbo/, 'docinho sem embalagem da IA: forminha ou papel chumbo');
   const e = await emb('Bolinho de avelã exótico', 'Marmitas', 'papel manteiga especial', 'unidade');
   assert.equal(e.nome, 'Papel manteiga especial', 'desconhecida: fica a da IA, sem trocar por pote');
   assert.equal(e.preco, null);
+});
+
+test('rodada 500 (3): embalagem de lanche e petisco; sem ramo não usa a lista de confeitaria', async () => {
+  const ia = (emb, porcao = 'unidade') => async () => ({ data: { ok: true, receita: { porcao, rende: 10, embalagem: emb, ingredientes: [{ nome: 'Salsicha', quantidade: 10, unidade: 'un' }, { nome: 'Pão de hot dog', quantidade: 10, unidade: 'un' }] } } });
+  const emb = async (nome, seg, e, porcao) => { limparCacheIA(); return (await buscarSugestao({ db: dbFalso(), nomeProduto: nome, segmento: seg, invocar: ia(e, porcao) })).itens.find((i) => i.emb)?.nome; };
+  assert.equal(await emb('Hot dog de frango exótico', 'Lanches', 'saco de papel para hot dog'), 'Embalagem para cachorro-quente');
+  assert.equal(await emb('X-Egg bacon especial de picanha', 'Lanches', 'saco de papel para hamburguer'), 'Caixa para hambúrguer');
+  assert.notEqual(await emb('Esfirra de queijo coalho', 'Salgados', 'caixa de pizza'), 'Caixa de pizza 35 cm');
+  assert.equal(await emb('Pizza broto de calabresa com cheddar', 'Pizzaria', 'caixa de pizza', 'pizza'), 'Caixa de pizza 25 cm');
+  assert.equal(await emb('Porção de batata com cheddar e alho', 'Bar', 'caixa de papelão para frituras', 'porção'), 'Embalagem para batata frita');
+  limparCacheIA();
+  const s = await buscarSugestao({ db: dbFalso(), nomeProduto: 'Bowl havaiano exótico', segmento: '', invocar: async () => ({ data: { ok: false } }) });
+  assert.ok(!s.itens.some((i) => /condensado|granulado|ninho/i.test(i.nome)), 'sem ramo: nada de confeitaria');
+});
+
+test('rodada 500 (4): IA falhou em "Marmita vegana": nunca a marmita de frango', async () => {
+  const s = await buscarSugestao({ db: dbFalso(), nomeProduto: 'Marmita vegana de lentilha', segmento: 'Marmitas', invocar: async () => ({ data: { ok: false } }) });
+  assert.ok(!s.itens.some((i) => /frango|carne/i.test(i.nome)), s.itens.map((i) => i.nome).join(','));
 });

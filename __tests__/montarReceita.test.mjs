@@ -341,3 +341,52 @@ test('garantirOleoFritura: frito sem óleo ganha 500 ml; assado ou com óleo nã
   assert.deepEqual(garantirOleoFritura(r([['Óleo de soja', 50, 'ml']]), 'Kibe frito').ingredientes[0], ['Óleo de soja', 500, 'ml'], 'pouco óleo vira o da fritura');
   assert.equal(garantirOleoFritura(r([['Farinha', 1, 'g']]), 'Bolo de cenoura').ingredientes.length, 1);
 });
+
+test('rodada 500 (3): lanches, pizza e petiscos', async () => {
+  const m = await import('../src/utils/montarReceita.js');
+  const { RECEITAS_SUGERIDAS, INGREDIENTES_POR_NICHO, PORCAO_POR_NICHO } = await import('../src/data/receitasSugeridas.js');
+  for (const [n, r] of [['Espetinho de coração', 'petiscos'], ['Porção de calabresa acebolada', 'petiscos'], ['Isca de peixe', 'petiscos'], ['Brotinho de mussarela', 'pizzaria'], ['Hot dog completo', 'hamburgueria']]) assert.equal(m.nichoDoProduto(n), r, n);
+  assert.equal(m.nichoDoSegmento('Espetinho e churrasco'), 'petiscos');
+  assert.equal(m.nichoDoSegmento('Bar do Zé'), 'petiscos');
+  const s = m.montarSugestao({ receita: null, nicho: 'hamburgueria', ingredientesPorNicho: INGREDIENTES_POR_NICHO, porcaoPorNicho: PORCAO_POR_NICHO });
+  assert.equal(s.rende, 1); assert.deepEqual(s.porcao, ['lanche', 'lanches']);
+  const k = ['Carne moída', 'Mussarela', 'Cheddar fatiado', 'Pão de hot dog', 'Bacon', 'Salsicha', 'Requeijão cremoso'];
+  const c = m.canonizarReceita({ ingredientes: [['Hamburguer bovino', 180, 'g'], ['Queijo mozarela', 100, 'g'], ['Fatia de queijo cheddar', 2, 'un'], ['Pao de cachorro quente', 1, 'un'], ['Fatia de bacon', 4, 'un'], ['Queijo catupiry', 50, 'g']] }, k);
+  assert.deepEqual(c.ingredientes.map((i) => i[0]), ['Carne moída', 'Mussarela', 'Cheddar fatiado', 'Pão de hot dog', 'Bacon', 'Requeijão cremoso']);
+  const u = m.montarSugestao({ receita: { id: 'ia', porcao: ['lanche', 'lanches'], rende: 1, embalagem: null, ingredientes: [['Salsicha', 10, 'un'], ['Bacon', 4, 'un'], ['Cheddar fatiado', 2, 'un']] } });
+  assert.deepEqual(u.itens.map((i) => [i.q, i.un]), [[500, 'g'], [60, 'g'], [40, 'g']]);
+  assert.ok(u.itens.every((i) => i.preco > 0));
+  const a = (n) => m.acharReceita(n, RECEITAS_SUGERIDAS, m.nichoDoProduto(n))?.nome || '';
+  assert.match(a('Pizza de chocolate com morango'), /Pizza/);
+  assert.match(a('Pizza grande 8 fatias calabresa'), /calabresa/i);
+  assert.match(a('Batata frita com cheddar e bacon'), /[Bb]atata/);
+  assert.match(a('Espetinho de carne'), /[Ee]spetinho/);
+  assert.match(a('Calabresa acebolada'), /[Cc]alabresa acebolada/);
+  const cobre = (n) => m.receitaCobreNome(n, m.acharReceita(n, RECEITAS_SUGERIDAS, m.nichoDoProduto(n)));
+  assert.equal(cobre('X-Tudo da Casa'), true);
+  assert.equal(cobre('Hot dog completo'), true);
+  assert.equal(cobre('Cachorro-quente prensado'), true);
+  assert.ok(m.precoMedio('Atum em lata', 'g') > 40, 'atum não é R$ 14/kg');
+  assert.ok(m.precoMedio('Picanha', 'g') > 0 && m.precoMedio('Coração de frango', 'g') > 0 && m.precoMedio('Mortadela', 'g') > 0);
+});
+
+test('rodada 500 (4): marmitas e restaurante', async () => {
+  const m = await import('../src/utils/montarReceita.js');
+  const { RECEITAS_SUGERIDAS, INGREDIENTES_POR_NICHO } = await import('../src/data/receitasSugeridas.js');
+  for (const n of ['Nhoque à bolonhesa', 'Sopa de legumes', 'Temaki de salmão', 'Fricassê de frango', 'Tutu de feijão', 'Canja de galinha']) assert.equal(m.nichoDoProduto(n), 'marmitas', n);
+  assert.equal(m.nichoDoSegmento('Buffet e eventos'), 'marmitas');
+  assert.equal(m.nichoDoSegmento('Comida japonesa'), 'marmitas');
+  const a = (n) => m.acharReceita(n, RECEITAS_SUGERIDAS, m.nichoDoProduto(n))?.nome || '';
+  assert.match(a('Marmita vegana'), /vegetariana/i);
+  assert.match(a('strogonof de frango'), /[Ss]trogonoff/);
+  assert.match(a('Marmita fitness de frango'), /fit/i);
+  const cobre = (n) => m.receitaCobreNome(n, m.acharReceita(n, RECEITAS_SUGERIDAS, m.nichoDoProduto(n)));
+  assert.equal(cobre('Marmitex nº 8 de frango grelhado'), true);
+  assert.equal(cobre('Kit 10 marmitas fit'), true);
+  const prot = INGREDIENTES_POR_NICHO.marmitas.filter(([n]) => /frango|carne/i.test(n));
+  assert.equal(prot.length, 1, 'lista do ramo com uma proteína só');
+  const k = ['Contrafilé', 'Champignon em conserva', 'Coxa e sobrecoxa', 'Feijão carioca', 'Massa para lasanha', 'Arroz', 'Mussarela', 'Molho de tomate', 'Macarrão'];
+  const c = m.canonizarReceita({ ingredientes: [['Contrafile bovino', 1, 'g'], ['Champignon', 1, 'g'], ['Frango em pedaços', 1, 'g'], ['Feijão carioquinha', 1, 'g'], ['Massa de lasanha', 1, 'g'], ['Arroz cru', 1, 'g'], ['Queijo muçarela ralado', 1, 'g'], ['Polpa de tomate', 1, 'g'], ['Espaguete', 1, 'g']] }, k);
+  assert.deepEqual(c.ingredientes.map((i) => i[0]), ['Contrafilé', 'Champignon em conserva', 'Coxa e sobrecoxa', 'Feijão carioca', 'Massa para lasanha', 'Arroz', 'Mussarela', 'Molho de tomate', 'Macarrão']);
+  for (const n of ['Lentilha', 'Abóbora', 'Chuchu', 'Quiabo', 'Berinjela', 'Pimenta de cheiro', 'Pato', 'Tucupi', 'Jambu', 'Tofu', 'Louro', 'Mocotó', 'Vinagre de arroz']) assert.ok(m.precoMedio(n, n === 'Tucupi' || n === 'Vinagre de arroz' ? 'ml' : 'g') > 0, n);
+});
