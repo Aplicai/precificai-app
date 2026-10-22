@@ -97,13 +97,35 @@ const NICHO_POR_PALAVRA = [
   ['marmit', 'marmitas'], ['quentinha', 'marmitas'], ['restaur', 'marmitas'], ['comida', 'marmitas'], ['refei', 'marmitas'],
   ['salgad', 'salgados'], ['coxinha', 'salgados'], ['pastel', 'salgados'], ['empad', 'salgados'],
   ['padar', 'padaria'], ['panifica', 'padaria'], ['pao', 'padaria'],
+  ['confeit', 'confeitaria'], ['bolo', 'confeitaria'], ['doce', 'confeitaria'], ['brigadeir', 'confeitaria'], ['trufa', 'confeitaria'], ['encomenda', 'confeitaria'], ['chocolat', 'confeitaria'],
   ['suco', 'bebidas'], ['cafe', 'bebidas'], ['bebida', 'bebidas'],
-  ['confeit', 'confeitaria'], ['bolo', 'confeitaria'], ['doce', 'confeitaria'], ['brigadeir', 'confeitaria'], ['encomenda', 'confeitaria'], ['chocolat', 'confeitaria'],
 ];
 export function nichoDoSegmento(segmento) {
   const t = normTexto(segmento);
   if (!t) return null;
   for (const [p, nicho] of NICHO_POR_PALAVRA) if (t.includes(p)) return nicho;
+  return null;
+}
+
+/** Palavra do produto → ramo. Vale a 1ª palavra conhecida do nome ("Bolo de
+ * coco gelado" é bolo; "Lasanha à bolonhesa" é marmita). Palavra inteira. */
+const RAMO_DA_PALAVRA = {};
+for (const [ramo, palavras] of Object.entries({
+  confeitaria: 'bolo brigadeiro trufa doce pudim brownie cupcake cookie bombom mousse pave cheesecake beijinho alfajor palha docinho',
+  salgados: 'coxinha pastel empada empadao esfiha kibe quibe risole salgado enroladinho croquete joelho bolinha',
+  marmitas: 'marmita quentinha escondidinho feijoada lasanha strogonoff estrogonofe parmegiana galinhada moqueca yakisoba picadinho baiao',
+  hamburgueria: 'hamburguer burger x lanche sanduiche cachorro hotdog wrap misto',
+  pizzaria: 'pizza calzone esfirra',
+  padaria: 'pao rosca sonho broa',
+  acai_sorvete: 'acai sorvete picole geladinho sacole chup',
+  bebidas: 'suco cafe limonada vitamina milkshake refrigerante cha',
+})) for (const w of palavras.split(' ')) RAMO_DA_PALAVRA[w] = ramo;
+
+export function nichoDoProduto(nomeProduto) {
+  for (const w of normTexto(nomeProduto).split(' ')) {
+    const r = RAMO_DA_PALAVRA[w] || RAMO_DA_PALAVRA[w.replace(/(es|s)$/, '')] || RAMO_DA_PALAVRA[w.replace(/oes$/, 'ao').replace(/aes$/, 'ao')];
+    if (r) return r;
+  }
   return null;
 }
 
@@ -131,7 +153,7 @@ export function precoMedio(nome, un) {
 const PESO_UN = {
   cebola: 150, 'cebola roxa': 150, tomate: 120, alho: 5, limao: 100, banana: 120, laranja: 200,
   cenoura: 150, batata: 200, 'batata-doce': 250, 'batata doce': 250, maca: 150, maracuja: 150,
-  abobrinha: 250, pimentao: 150, morango: 15, 'morango fresco': 15, 'cheiro-verde': 100, salsinha: 100,
+  abobrinha: 250, pimentao: 150, 'pimentao verde': 150, 'pimentao vermelho': 150, 'pimentao amarelo': 150, morango: 15, 'morango fresco': 15, 'cheiro-verde': 100, salsinha: 100,
 };
 
 /** Custo da linha: preço por kg/L/un × quantidade (g/ml/un). Sem preço = 0. */
@@ -225,7 +247,36 @@ const APELIDOS = {
   'creme de leite de caixinha': 'Creme de leite', 'essencia de baunilha': 'Essência de baunilha',
   requeijao: 'Requeijão cremoso', 'queijo mussarela ralado': 'Mussarela', 'mussarela ralada': 'Mussarela',
   'queijo ralado': 'Queijo parmesão', 'cheiro verde': 'Cheiro-verde', aipim: 'Mandioca', macaxeira: 'Mandioca',
+  'queijo parmesao ralado': 'Queijo parmesão', 'parmesao ralado': 'Queijo parmesão', parmesao: 'Queijo parmesão',
+  'cacau em po': 'Cacau em pó 100%', 'creme de avela': 'Nutella', 'creme de avela com cacau': 'Nutella',
+  catupiry: 'Requeijão cremoso', 'requeijao tipo catupiry': 'Requeijão cremoso', azeite: 'Azeite de oliva',
+  'azeite extra virgem': 'Azeite de oliva', 'azeite de oliva extra virgem': 'Azeite de oliva',
+  'fermento biologico': 'Fermento biológico seco', 'fermento biologico instantaneo': 'Fermento biológico seco',
+  'arroz branco': 'Arroz', 'arroz agulhinha': 'Arroz', feijao: 'Feijão carioca', 'milho verde': 'Milho em conserva',
+  ervilha: 'Ervilha em conserva', 'ervilha fresca': 'Ervilha em conserva',
+  'oleo para fritar': 'Óleo de soja', 'oleo para fritura': 'Óleo de soja',
+  morango: 'Morango fresco', morangos: 'Morango fresco', calabresa: 'Linguiça calabresa', 'linguica': 'Linguiça calabresa',
+  'carne bovina': 'Carne bovina (paleta)', 'peito de frango desfiado': 'Peito de frango', 'limao tahiti': 'Limão',
+  salsa: 'Salsinha', 'file de tilapia': 'Tilápia', 'costela bovina moida': 'Costela bovina',
 };
+const PREPARO = /\b(?:e )?(morno|morna|gelado|gelada|quente|derretido|derretida|amolecido|amolecida|picado|picada|picadinho|em cubos|em tiras|em rodelas|fatiado|fatiada|cozido|cozida|refogado|refogada|sem pele|sem semente|sem sementes|em temperatura ambiente|peneirado|peneirada|a gosto|bem gelado|bem gelada)(?: e(?= |$))?/g;
+/** Palavras que a IA às vezes escreve sem acento. */
+const ACENTOS = {
+  camarao: 'camarão', pimentao: 'pimentão', dende: 'dendê', acucar: 'açúcar', limao: 'limão', feijao: 'feijão',
+  mamao: 'mamão', pao: 'pão', paes: 'pães', po: 'pó', file: 'filé', acem: 'acém', oregano: 'orégano', cafe: 'café',
+  tilapia: 'tilápia', maracuja: 'maracujá', acai: 'açaí', pessego: 'pêssego', abobora: 'abóbora', brocolis: 'brócolis',
+  agriao: 'agrião', alcaparra: 'alcaparra', gengibre: 'gengibre', pure: 'purê', creme: 'creme', graos: 'grãos', grao: 'grão',
+  linguica: 'linguiça', calabresa: 'calabresa', requeijao: 'requeijão', parmesao: 'parmesão', avela: 'avelã', amendoa: 'amêndoa',
+  amendoas: 'amêndoas', castanha: 'castanha', pacoca: 'paçoca', canela: 'canela', baunilha: 'baunilha', coco: 'coco', acafrao: 'açafrão',
+};
+function acentuar(nome) {
+  return String(nome).split(' ').map((w) => {
+    const r = ACENTOS[w.toLowerCase()];
+    if (!r || r === w.toLowerCase()) return w;
+    return w[0] === w[0].toUpperCase() ? r[0].toUpperCase() + r.slice(1) : r;
+  }).join(' ');
+}
+
 const AGUA = /^(agua|gelo)( (filtrada|morna|quente|fria|gelada|potavel|natural|em temperatura ambiente))?$/;
 
 /**
@@ -239,9 +290,16 @@ export function canonizarReceita(receita, conhecidos) {
   if (!receita || !Array.isArray(receita.ingredientes)) return receita || null;
   const porChave = new Map();
   for (const n of conhecidos || []) { const k = normTexto(n); if (k && !porChave.has(k)) porChave.set(k, n); }
+  const procurar = (k) => porChave.get(k) || APELIDOS[k] || porChave.get(`${k}s`) || (k.endsWith('s') ? porChave.get(k.slice(0, -1)) : null);
   const achar = (nome) => {
     const k = normTexto(nome);
-    return porChave.get(k) || APELIDOS[k] || porChave.get(`${k}s`) || (k.endsWith('s') ? porChave.get(k.slice(0, -1)) : null) || nome;
+    const direto = procurar(k);
+    if (direto) return direto;
+    // "Leite morno", "Frango em cubos", "Manteiga derretida": o jeito de
+    // preparar não muda o que se compra.
+    const limpo = k.replace(PREPARO, ' ').replace(/\s+/g, ' ').trim();
+    if (limpo && limpo !== k) return procurar(limpo) || acentuar(capitalizar(limpo));
+    return acentuar(nome);
   };
   const saida = [];
   for (const [nome, q, un] of receita.ingredientes) {
@@ -264,16 +322,60 @@ export function pluralSimples(p) {
   return t + 's';
 }
 
+const LIQUIDO = /^(leite|agua|oleo|azeite|suco|leite de coco|creme de leite fresco|vinagre|cafe)( |$)/;
+/** Medidas de casa → [quantidade, unidade] para 1 medida, pelo ingrediente. */
+const MEDIDAS = [
+  [/^latas?$/, (n) => (/creme de leite/.test(n) ? [300, 'g'] : /(milho|ervilha|seleta)/.test(n) ? [200, 'g'] : [395, 'g'])],
+  [/^caix(a|inha)s?$/, (n) => (/^leite( integral| desnatado)?$/.test(n) ? [1000, 'ml'] : [200, 'g'])],
+  [/^xic(ara)?s?$/, (n) => (LIQUIDO.test(n) ? [240, 'ml'] : /acucar/.test(n) ? [180, 'g'] : /(farinha|amido|fuba|chocolate|cacau|aveia|coco)/.test(n) ? [120, 'g'] : [150, 'g'])],
+  [/^colher(es)? de cha$/, (n) => [5, LIQUIDO.test(n) ? 'ml' : 'g']],
+  [/^colher(es)?( de sopa)?$/, (n) => [15, LIQUIDO.test(n) ? 'ml' : 'g']],
+  [/^dentes?$/, () => [5, 'g']],
+  [/^pitadas?$/, () => [1, 'g']],
+];
+const UNIDADE_TEXTO = /^(kg|g|gr|gramas?|ml|l|litros?|un|unid|unidades?)\.?(?=\s|$)/i;
+const MEDIDA_TEXTO = /^(latas?|caix(?:a|inha)s?|x[ií]c(?:aras?)?\.?|colher(?:es)?(?: de (?:sopa|ch[aá]))?|dentes?|pitadas?)(?=\s|$)/i;
+
+/** "1/2", "1.000", "1,5" → número. */
+function lerNumero(t) {
+  const f = t.match(/^(\d+)\/(\d+)$/);
+  if (f) return Number(f[2]) > 0 ? Number(f[1]) / Number(f[2]) : NaN;
+  const x = /^\d{1,3}(\.\d{3})+$/.test(t) ? t.replace(/\./g, '') : t.replace(',', '.');
+  return Number(x);
+}
+
 /**
- * "+ Outro ingrediente": "100 g de coco ralado", "2 ovos", "1 kg farinha".
+ * "+ Outro ingrediente": "100 g de coco ralado", "2 ovos", "1/2 kg de carne",
+ * "2 xícaras de açúcar", "1 lata de leite condensado", "2 cebolas".
+ * conhecidos (opcional): nomes da biblioteca, para o nome casar com o preço
+ * médio ("farinha" → "Farinha de trigo", "cebolas" → "Cebola").
  * @returns {[nome, q, un]|null}
  */
-export function lerOutro(texto) {
-  const t = String(texto ?? '').trim();
-  const m = t.match(/^(\d+(?:[.,]\d+)?)\s*(kg|g|gramas?|ml|l|litros?|un|unidades?)?\s+(?:de\s+|do\s+|da\s+)?(.+)$/i);
+export function lerOutro(texto, conhecidos) {
+  const m = String(texto ?? '').trim().match(/^(\d+(?:[.,]\d+)*(?:\/\d+)?)\s*(.+)$/);
   if (!m) return null;
-  const q = Number(m[1].replace(',', '.'));
-  return limparLinha(m[3], q, m[2] || (/(ovo|unidade)/i.test(m[3]) ? 'un' : 'g'));
+  let q = lerNumero(m[1]);
+  let resto = m[2].trim();
+  let un = null;
+  let medida = null;
+  const u = resto.match(UNIDADE_TEXTO);
+  const md = u ? null : resto.match(MEDIDA_TEXTO);
+  if (u) { un = u[1]; resto = resto.slice(u[0].length); } else if (md) { medida = normTexto(md[1]); resto = resto.slice(md[0].length); }
+  resto = resto.trim().replace(/^(de|do|da|dos|das)\s+/i, '');
+  if (!resto) return null;
+  const nome = conhecidos ? (canonizarReceita({ ingredientes: [[resto, 1, 'g']] }, conhecidos).ingredientes[0]?.[0] || resto) : resto;
+  const n = normTexto(nome);
+  if (medida) {
+    const regra = MEDIDAS.find(([re]) => re.test(medida));
+    const [qtd, u2] = regra ? regra[1](n) : [1, 'g'];
+    q *= qtd; un = u2;
+  } else if (!un) {
+    if (/(ovo|unidade)/i.test(resto)) un = 'un';
+    else if (PESO_UN[n]) { q *= PESO_UN[n]; un = 'g'; }
+    else if (precoMedio(nome, 'un') != null) un = 'un';
+    else un = q <= 20 ? 'un' : 'g';
+  }
+  return limparLinha(nome, Math.round(q * 100) / 100, un);
 }
 
 /**
@@ -299,6 +401,10 @@ export function montarSugestao({ receita, nicho, ingredientesPorNicho, embalagem
   };
   const itens = (base.ingredientes || []).map(([n, q, un]) => {
     // "2 cebolas": a base vende por kg; vira gramas pelo peso médio.
+    // "Caldo de carne 1000 ml" é o caldo pronto: 1 tablete de 10 g faz 500 ml.
+    if (un === 'ml' && /^caldo (de )?(carne|galinha|legumes|frango|peixe)/.test(normTexto(n))) {
+      return item(n, Math.max(1, Math.round(q / 50)), 'g', false);
+    }
     const peso = PESO_UN[normTexto(n)];
     const daConta = conta.get(normTexto(n));
     if (un === 'un' && peso && !(daConta && daConta.un === 'un') && precoMedio(n, 'un') == null) {

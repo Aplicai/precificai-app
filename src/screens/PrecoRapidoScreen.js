@@ -75,6 +75,7 @@ export default function PrecoRapidoScreen({ navigation, route }) {
   const [cobraHoje, setCobraHoje] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
+  const [avisoMontar, setAvisoMontar] = useState(false);
   const [sugestoes, setSugestoes] = useState(SUGESTOES_PADRAO);
   // Receita montada tocando nos ingredientes (MontarReceitaScreen, 21/10/2026).
   const [montada, setMontada] = useState(null);
@@ -126,6 +127,9 @@ export default function PrecoRapidoScreen({ navigation, route }) {
   }, [route?.params?.montada]);
 
   function abrirMontar() {
+    // Sem nome a busca não tem por onde começar (e gastaria uma ida à IA).
+    if (!nome.trim()) { setAvisoMontar(true); return; }
+    setAvisoMontar(false);
     trackEvent('MontarReceitaAbriu', { content_name: proximo ? 'proximo' : 'primeiro' });
     navigation.navigate('MontarReceita', { nome: nome.trim(), segmento, gastoMes, vendaMes, contaCfg, montada });
   }
@@ -139,6 +143,7 @@ export default function PrecoRapidoScreen({ navigation, route }) {
 
   function mudarNome(v) {
     nomeTocadoRef.current = true;
+    if (v.trim()) setAvisoMontar(false);
     setNome(v);
   }
 
@@ -320,6 +325,7 @@ export default function PrecoRapidoScreen({ navigation, route }) {
               </View>
               <Feather name="chevron-right" size={18} color="#fff" />
             </TouchableOpacity>
+            {avisoMontar ? <Text style={[styles.erro, { marginTop: spacing.sm, marginBottom: 0 }]} accessibilityLiveRegion="polite">Escreva antes o nome do produto, no passo 1.</Text> : null}
             <Text style={[styles.dica, { marginTop: spacing.sm }]}>Ou, se você já sabe:</Text>
             <View style={styles.frase}>
               <Text style={styles.palavra}>A receita custa R$</Text>

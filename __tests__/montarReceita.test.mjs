@@ -184,3 +184,70 @@ test('precoMedio: unidade diferente da base não usa o preço do pacote', async 
   assert.equal(por['Farinha de trigo'].preco, null, 'sem peso conhecido: sem preço, nunca o do pacote');
   for (const i of s.itens) if (i.preco != null) assert.ok(i.preco < 200, i.nome);
 });
+
+test('lerOutro: medidas de casa, plural e nomes da base', () => {
+  const k = ['Cebola', 'Tomate', 'Farinha de trigo', 'Carne moída', 'Leite condensado', 'Creme de leite', 'Açúcar refinado', 'Leite integral', 'Manteiga sem sal', 'Alho', 'Sal', 'Ovos', 'Pão de hambúrguer', 'Fermento químico'];
+  const casos = [
+    ['2 cebolas', ['Cebola', 300, 'g']],
+    ['3 tomates', ['Tomate', 360, 'g']],
+    ['1.000 g de farinha', ['Farinha de trigo', 1000, 'g']],
+    ['1/2 kg de carne moída', ['Carne moída', 500, 'g']],
+    ['1 lata de leite condensado', ['Leite condensado', 395, 'g']],
+    ['1 caixinha de creme de leite', ['Creme de leite', 200, 'g']],
+    ['2 xícaras de açúcar', ['Açúcar refinado', 360, 'g']],
+    ['2 xícaras de farinha de trigo', ['Farinha de trigo', 240, 'g']],
+    ['1 xícara de leite', ['Leite integral', 240, 'ml']],
+    ['2 colheres de manteiga', ['Manteiga sem sal', 30, 'g']],
+    ['1 colher de chá de fermento em pó', ['Fermento químico', 5, 'g']],
+    ['2 dentes de alho', ['Alho', 10, 'g']],
+    ['1 pitada de sal', ['Sal', 1, 'g']],
+    ['500ml leite', ['Leite integral', 500, 'ml']],
+    ['2 ovos', ['Ovos', 2, 'un']],
+    ['10 un pão de hambúrguer', ['Pão de hambúrguer', 10, 'un']],
+    ['100 coco ralado', ['Coco ralado', 100, 'g']],
+  ];
+  for (const [t, esperado] of casos) assert.deepEqual(lerOutro(t, k), esperado, t);
+  assert.equal(lerOutro('0 g de sal', k), null);
+  assert.equal(lerOutro('sal', k), null);
+});
+
+test('canonizar: tira "morno", "em cubos"; apelidos comuns da IA; preços que faltavam', async () => {
+  const { canonizarReceita, precoMedio } = await import('../src/utils/montarReceita.js');
+  const k = ['Leite integral', 'Queijo parmesão', 'Nutella', 'Requeijão cremoso', 'Azeite de oliva', 'Fermento biológico seco', 'Cacau em pó 100%', 'Arroz', 'Feijão carioca', 'Milho em conserva', 'Ervilha em conserva'];
+  const ia = [['Leite morno', 150, 'ml'], ['Frango em cubos', 500, 'g'], ['Queijo parmesão ralado', 50, 'g'], ['Creme de avelã com cacau', 300, 'g'], ['Catupiry', 150, 'g'],
+    ['Azeite', 15, 'ml'], ['Fermento biologico', 5, 'g'], ['Cacau em po', 50, 'g'], ['Arroz branco', 750, 'g'], ['Feijão', 500, 'g'], ['Milho verde', 200, 'g'], ['Ervilha', 100, 'g'], ['Manteiga derretida', 50, 'g']];
+  const nomes = canonizarReceita({ ingredientes: ia }, k).ingredientes.map((i) => i[0]);
+  assert.deepEqual(nomes, ['Leite integral', 'Frango', 'Queijo parmesão', 'Nutella', 'Requeijão cremoso', 'Azeite de oliva', 'Fermento biológico seco', 'Cacau em pó 100%', 'Arroz', 'Feijão carioca', 'Milho em conserva', 'Ervilha em conserva', 'Manteiga sem sal']);
+  for (const n of ['Frango', 'Contrafilé', 'Acém', 'Camarão', 'Pimentão verde', 'Coentro', 'Cebolinha', 'Queijo coalho', 'Costela bovina', 'Peixe em posta', 'Molho shoyu', 'Colorau', 'Palmito']) {
+    assert.ok(precoMedio(n, n === 'Molho shoyu' ? 'ml' : 'g') > 0, n);
+  }
+  assert.ok(precoMedio('Queijo gorgonzola', 'g') < 150, 'gorgonzola não é R$ 450/kg');
+  assert.ok(precoMedio('Pimenta do reino', 'g') < 200);
+});
+
+test('canonizar: palavra de preparo com "e" não deixa sobra', async () => {
+  const { canonizarReceita } = await import('../src/utils/montarReceita.js');
+  const r = canonizarReceita({ ingredientes: [['Jaca cozida e desfiada', 500, 'g'], ['Cebola picada e refogada', 100, 'g'], ['Tomate sem pele e picado', 200, 'g']] }, ['Cebola', 'Tomate']);
+  assert.deepEqual(r.ingredientes.map((i) => i[0]), ['Jaca desfiada', 'Cebola', 'Tomate']);
+});
+
+test('caldo pronto em ml vira tablete em g (1 tablete de 10 g faz 500 ml)', async () => {
+  const { montarSugestao } = await import('../src/utils/montarReceita.js');
+  const s = montarSugestao({ receita: { id: 'ia', porcao: ['un', 'un'], rende: 50, embalagem: null, ingredientes: [['Caldo de carne', 1000, 'ml'], ['Caldo de galinha', 20, 'g']] } });
+  assert.deepEqual([s.itens[0].q, s.itens[0].un], [20, 'g']);
+  assert.ok(s.itens[0].preco * 20 / 1000 < 3, 'caldo custa centavos, não R$ 61');
+  assert.deepEqual([s.itens[1].q, s.itens[1].un], [20, 'g']);
+});
+
+test('canonizar: devolve acento às palavras comuns que a IA escreve sem', async () => {
+  const { canonizarReceita } = await import('../src/utils/montarReceita.js');
+  const r = canonizarReceita({ ingredientes: [['Camarao', 1, 'g'], ['Azeite de dende', 1, 'ml'], ['Pimentao vermelho', 1, 'g'], ['Pao de alho', 1, 'un'], ['File de peito', 1, 'g']] }, []);
+  assert.deepEqual(r.ingredientes.map((i) => i[0]), ['Camarão', 'Azeite de dendê', 'Pimentão vermelho', 'Pão de alho', 'Filé de peito']);
+});
+
+test('nichoDoProduto: 1ª palavra conhecida, palavra inteira', async () => {
+  const { nichoDoProduto } = await import('../src/utils/montarReceita.js');
+  const casos = { 'Lasanha à bolonhesa': 'marmitas', 'Bolo de coco gelado': 'confeitaria', 'Café gelado': 'bebidas', 'Coxinha de costela': 'salgados',
+    'Pães de queijo': 'padaria', 'X-bacon': 'hamburgueria', 'Brigadeiro de café': 'confeitaria', 'Mini pizza': 'pizzaria', 'Geladinho de ninho': 'acai_sorvete', 'Torta exótica': null };
+  for (const [n, r] of Object.entries(casos)) assert.equal(nichoDoProduto(n), r, n);
+});

@@ -16,15 +16,15 @@
  * Sem transação no wrapper: se algo falha, apaga o que esta gravação criou.
  */
 import { calcularPrecoRapido, parseValorBR } from '../utils/precoRapido';
-import { normTexto, acharReceita, validarRespostaIA, montarSugestao, nichoDoSegmento, canonizarReceita, receitaCobreNome, precoMedio } from '../utils/montarReceita';
+import { normTexto, acharReceita, validarRespostaIA, montarSugestao, nichoDoSegmento, nichoDoProduto, canonizarReceita, receitaCobreNome, precoMedio } from '../utils/montarReceita';
 import { RECEITAS_SUGERIDAS, INGREDIENTES_POR_NICHO, EMBALAGEM_POR_NICHO } from '../data/receitasSugeridas';
 import { garantirFinanceiro } from './precoRapidoService';
 
-const PRAZO_IA_MS = 9000;
+const PRAZO_IA_MS = 13000; // a edge function desiste em 11 s
 
 let nomesBiblioteca = null;
 /** Nomes de ingredientes da biblioteca (para casar os nomes da IA). */
-function nomesConhecidos() {
+export function nomesConhecidos() {
   if (!nomesBiblioteca) {
     const s = new Set();
     for (const r of RECEITAS_SUGERIDAS) for (const [n] of r.ingredientes || []) s.add(n);
@@ -51,14 +51,14 @@ function unCurta(u) {
 export async function carregarPrecosConta(db) {
   const mapa = new Map();
   try {
-    for (const m of await linhas(db, 'SELECT id, nome, preco_por_kg, unidade_medida FROM materias_primas')) {
+    for (const m of await linhas(db, 'SELECT id, nome, preco_por_kg, unidade_medida, quantidade_bruta FROM materias_primas')) {
       const un = unCurta(m.unidade_medida);
       const k = normTexto(m.nome);
-      if (k && un && !mapa.has(k)) mapa.set(k, { id: m.id, preco: Number(m.preco_por_kg) || 0, un, tabela: 'materias_primas' });
+      if (k && un && !mapa.has(k)) mapa.set(k, { id: m.id, preco: Number(m.preco_por_kg) || 0, un, tabela: 'materias_primas', qtd: Number(m.quantidade_bruta) || 0 });
     }
-    for (const e of await linhas(db, 'SELECT id, nome, preco_unitario FROM embalagens')) {
+    for (const e of await linhas(db, 'SELECT id, nome, preco_unitario, quantidade FROM embalagens')) {
       const k = normTexto(e.nome);
-      if (k && !mapa.has(k)) mapa.set(k, { id: e.id, preco: Number(e.preco_unitario) || 0, un: 'un', tabela: 'embalagens' });
+      if (k && !mapa.has(k)) mapa.set(k, { id: e.id, preco: Number(e.preco_unitario) || 0, un: 'un', tabela: 'embalagens', qtd: Number(e.quantidade) || 0 });
     }
   } catch (_) { /* sem a conta: só preços médios */ }
   return mapa;
@@ -87,10 +87,24 @@ export async function pedirReceitaIA(invocar, produto, nicho) {
  * tampa"): usa a do ramo, que já tem preço médio. Sem embalagem do ramo,
  * fica a da IA (a pessoa põe o preço).
  */
+let embalagensBiblioteca = null;
+function embalagemConhecida(nome) {
+  if (!embalagensBiblioteca) {
+    embalagensBiblioteca = new Map();
+    const por = (e) => { if (Array.isArray(e) && e[0] && Number(e[1]) > 0 && !embalagensBiblioteca.has(normTexto(e[0]))) embalagensBiblioteca.set(normTexto(e[0]), e); };
+    Object.values(EMBALAGEM_POR_NICHO).forEach(por);
+    RECEITAS_SUGERIDAS.forEach((r) => por(r.embalagem));
+  }
+  return embalagensBiblioteca.get(normTexto(nome)) || null;
+}
+
 function embalagemDoNicho(receita, nicho) {
+  if (!receita?.embalagem) return receita;
+  if (precoMedio(receita.embalagem[0], 'un') != null) return receita;
+  const conhecida = embalagemConhecida(receita.embalagem[0]);
+  if (conhecida) return { ...receita, embalagem: conhecida };
   const doNicho = EMBALAGEM_POR_NICHO[nicho];
-  if (!receita?.embalagem || !doNicho || precoMedio(receita.embalagem[0], 'un') != null) return receita;
-  return { ...receita, embalagem: doNicho };
+  return doNicho ? { ...receita, embalagem: doNicho } : receita;
 }
 
 /**
@@ -98,17 +112,20 @@ function embalagemDoNicho(receita, nicho) {
  * @returns {{ fonte, porcao, rende, itens, nicho }}
  */
 export async function buscarSugestao({ db, nomeProduto, segmento, invocar }) {
-  const nicho = nichoDoSegmento(segmento) || nichoDoSegmento(nomeProduto) || 'confeitaria';
+  // O produto diz mais que o perfil: coxinha numa confeitaria é salgado.
+  const nicho = nichoDoProduto(nomeProduto) || nichoDoSegmento(segmento) || nichoDoSegmento(nomeProduto) || 'confeitaria';
   const precosConta = db ? await carregarPrecosConta(db) : new Map();
   let receita = acharReceita(nomeProduto, RECEITAS_SUGERIDAS);
+  let parecida = false;
   // Nome mais específico que a receita da biblioteca ("de carne seca" x
   // carne moída): a IA monta a certa; se falhar, fica a da biblioteca.
-  if (!receita || !receitaCobreNome(nomeProduto, receita)) {
+  if ((!receita || !receitaCobreNome(nomeProduto, receita)) && String(nomeProduto || '').trim().length >= 2) {
     const ia = await pedirReceitaIA(invocar, String(nomeProduto || '').trim(), nicho);
     if (ia) receita = embalagemDoNicho(ia, nicho);
+    else if (receita) parecida = true; // a IA falhou: receita parecida da biblioteca
   }
   const s = montarSugestao({ receita, nicho, ingredientesPorNicho: INGREDIENTES_POR_NICHO, embalagemPorNicho: EMBALAGEM_POR_NICHO, precosConta });
-  return { ...s, nicho };
+  return { ...s, nicho, parecida: parecida ? receita.nome : null };
 }
 
 /**
@@ -127,13 +144,35 @@ export async function salvarPrecoMontado(db, entrada) {
 
   await garantirFinanceiro(db, { vendaMes: parseValorBR(entrada.vendaMes), gastoMes: parseValorBR(entrada.gastoMes) });
 
+  // Ingrediente posto à mão ("+ Outro") com o nome de um que a conta já tem:
+  // reaproveita (mesma unidade), nunca duplica.
+  const conta = await carregarPrecosConta(db);
+  const daConta = (it, tabela) => {
+    const c = conta.get(normTexto(it.nome));
+    return c && c.tabela === tabela && (tabela === 'embalagens' || c.un === it.un) ? c : null;
+  };
+  // Reaproveitado sem preço na conta: grava o preço que a pessoa viu (só
+  // onde está vazio), senão o produto sai mais barato do que a tela mostrou.
+  const completarPreco = async (c, preco1) => {
+    if (!c || Number(c.preco) > 0 || !(preco1 > 0)) return;
+    const qtd = c.qtd > 0 ? c.qtd : (c.un === 'un' ? 1 : 1000);
+    if (c.tabela === 'embalagens') {
+      await db.runAsync('UPDATE embalagens SET preco_embalagem = ?, preco_unitario = ? WHERE id = ?', [Math.round(preco1 * qtd * 100) / 100, preco1, c.id]);
+    } else {
+      const valor = c.un === 'un' ? preco1 * qtd : (preco1 * qtd) / 1000;
+      await db.runAsync('UPDATE materias_primas SET valor_pago = ?, preco_por_kg = ? WHERE id = ?', [Math.round(valor * 100) / 100, preco1, c.id]);
+    }
+  };
+
   const criados = { materias: [], embalagens: [], produto: null };
   try {
     const ligacoes = [];
     for (const it of itens) {
       const preco1 = Number(it.preco) > 0 ? Number(it.preco) : 0;
       if (it.emb) {
-        let embId = it.contaId && it.contaTabela !== 'materias_primas' ? it.contaId : null;
+        const cEmb = it.contaId ? null : daConta(it, 'embalagens');
+        let embId = (it.contaId && it.contaTabela !== 'materias_primas' ? it.contaId : null) || cEmb?.id || null;
+        await completarPreco(cEmb, preco1);
         if (!embId) {
           const r = await db.runAsync(
             'INSERT INTO embalagens (nome, marca, categoria_id, quantidade, unidade_medida, preco_embalagem, preco_unitario) VALUES (?,?,?,?,?,?,?)',
@@ -146,7 +185,9 @@ export async function salvarPrecoMontado(db, entrada) {
         ligacoes.push({ tipo: 'emb', id: embId, q: Number(it.q) * rende });
         continue;
       }
-      let mpId = it.contaId && it.contaTabela !== 'embalagens' ? it.contaId : null;
+      const cMp = it.contaId ? null : daConta(it, 'materias_primas');
+      let mpId = (it.contaId && it.contaTabela !== 'embalagens' ? it.contaId : null) || cMp?.id || null;
+      await completarPreco(cMp, preco1);
       if (!mpId) {
         const unidade = it.un === 'ml' ? 'mL' : it.un;
         const qtd = it.un === 'un' ? 1 : 1000;

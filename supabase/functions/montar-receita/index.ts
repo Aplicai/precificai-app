@@ -8,7 +8,8 @@
 //     nome, e-mail, telefone ou ID da pessoa (plano grátis do Gemini);
 //   - limite: 10 por conta por dia e 800 por dia no projeto inteiro
 //     (public.montar_receita_reservar, migration 20261021120000);
-//   - 8 s no total, 1 nova tentativa em 5xx; qualquer falha devolve
+//   - 11 s no total, 6 s por tentativa; se o modelo falhar, tenta o reserva
+//     (GEMINI_MODEL_RESERVA, padrão gemini-flash-lite-latest); qualquer falha devolve
 //     { ok: false, error } e o app usa a lista do nicho (nunca trava);
 //   - a resposta da IA é validada de novo no app (validarRespostaIA). A IA
 //     não dá preço: os preços vêm da conta ou da base do app.
@@ -27,7 +28,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const MAX_POR_CONTA = 10;
 const MAX_PROJETO = 800;
 const PROJETO_ID = '00000000-0000-0000-0000-000000000000';
-const PRAZO_MS = 8000;
+// Prazo total e por tentativa. Se o 1º modelo travar ou estiver ocupado
+// (503 "high demand" é comum no plano grátis), tenta o modelo reserva.
+const PRAZO_TOTAL_MS = 11000;
+const PRAZO_TENTATIVA_MS = 6000;
 const NICHOS = new Set(['confeitaria', 'salgados', 'marmitas', 'hamburgueria', 'pizzaria', 'padaria', 'acai_sorvete', 'bebidas']);
 const NOME_NICHO: Record<string, string> = {
   confeitaria: 'confeitaria (doces e bolos)', salgados: 'salgados', marmitas: 'marmitas e refeições',
@@ -112,6 +116,7 @@ async function chamarGemini(texto: string, chave: string, modelo: string, sinal:
 }
 
 serve(async (req) => {
+  const tReq = Date.now();
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders(req) });
   if (req.method !== 'POST') return json({ ok: false, error: 'method_not_allowed' }, 405, req);
 
@@ -133,7 +138,10 @@ serve(async (req) => {
 
   const chave = Deno.env.get('GEMINI_API_KEY');
   if (!chave) { console.error('[montar-receita] sem GEMINI_API_KEY'); return json({ ok: false, error: 'ia' }, 503, req); }
-  const modelo = Deno.env.get('GEMINI_MODEL') || 'gemini-3.5-flash-lite';
+  const modelos = [
+    Deno.env.get('GEMINI_MODEL') || 'gemini-3.5-flash-lite',
+    Deno.env.get('GEMINI_MODEL_RESERVA') || 'gemini-flash-lite-latest',
+  ];
 
   // Conta antes de chamar o Google: por pessoa e no projeto inteiro.
   const [conta, projeto] = await Promise.all([
@@ -146,29 +154,35 @@ serve(async (req) => {
   }
   if (conta.data !== true || projeto.data !== true) return json({ ok: false, error: 'limite' }, 429, req);
 
-  const controle = new AbortController();
-  const prazo = setTimeout(() => controle.abort(), PRAZO_MS);
-  try {
-    const texto = pedido(produto, nicho, porcao);
-    let r = await chamarGemini(texto, chave, modelo, controle.signal);
-    if (r.status >= 500) {
-      await new Promise((ok) => setTimeout(ok, 600));
-      r = await chamarGemini(texto, chave, modelo, controle.signal);
+  const texto = pedido(produto, nicho, porcao);
+  const inicio = Date.now();
+  console.log(JSON.stringify({ ev: 'antes_da_ia', ms: inicio - tReq }));
+  let ultimoStatus = 0;
+  for (const modelo of modelos) {
+    const resta = PRAZO_TOTAL_MS - (Date.now() - inicio);
+    if (resta < 1500) break;
+    const controle = new AbortController();
+    const prazo = setTimeout(() => controle.abort(), Math.min(PRAZO_TENTATIVA_MS, resta));
+    const t0 = Date.now();
+    try {
+      const r = await chamarGemini(texto, chave, modelo, controle.signal);
+      ultimoStatus = r.status;
+      if (!r.ok) {
+        console.log(JSON.stringify({ ev: 'gemini', modelo, status: r.status, ms: Date.now() - t0 }));
+        continue;
+      }
+      const d = await r.json();
+      const parte = d?.candidates?.[0]?.content?.parts?.[0]?.text;
+      let receita: unknown = null;
+      try { receita = JSON.parse(String(parte ?? '')); } catch (_) { receita = null; }
+      console.log(JSON.stringify({ ev: 'gemini', modelo, status: 200, ms: Date.now() - t0, ok: !!receita }));
+      if (receita && typeof receita === 'object') return json({ ok: true, receita }, 200, req);
+    } catch (e) {
+      ultimoStatus = (e as Error)?.name === 'AbortError' ? 504 : 0;
+      console.log(JSON.stringify({ ev: 'gemini', modelo, erro: (e as Error)?.name === 'AbortError' ? 'prazo' : (e as Error)?.message, ms: Date.now() - t0 }));
+    } finally {
+      clearTimeout(prazo);
     }
-    if (!r.ok) {
-      console.error('[montar-receita] gemini', r.status);
-      return json({ ok: false, error: r.status === 429 ? 'limite' : 'ia' }, r.status === 429 ? 429 : 502, req);
-    }
-    const d = await r.json();
-    const parte = d?.candidates?.[0]?.content?.parts?.[0]?.text;
-    let receita: unknown = null;
-    try { receita = JSON.parse(String(parte ?? '')); } catch (_) { receita = null; }
-    if (!receita || typeof receita !== 'object') return json({ ok: false, error: 'ia' }, 502, req);
-    return json({ ok: true, receita }, 200, req);
-  } catch (e) {
-    console.error('[montar-receita]', (e as Error)?.name === 'AbortError' ? 'prazo' : (e as Error)?.message);
-    return json({ ok: false, error: 'ia' }, 504, req);
-  } finally {
-    clearTimeout(prazo);
   }
+  return json({ ok: false, error: ultimoStatus === 429 ? 'limite' : 'ia' }, ultimoStatus === 429 ? 429 : 502, req);
 });

@@ -88,7 +88,7 @@ test('carregarPrecosConta: unidades da conta viram g/ml/un', async () => {
     materias: [{ id: 1, nome: 'Açúcar Refinado', preco_por_kg: 5, unidade_medida: 'kg' }, { id: 2, nome: 'Leite', preco_por_kg: 5.5, unidade_medida: 'L' }, { id: 3, nome: 'Ovos', preco_por_kg: 0.8, unidade_medida: 'un' }],
     embalagens: [{ id: 7, nome: 'Pote 250 ml com tampa', preco_unitario: 0.9 }],
   }));
-  assert.deepEqual(m.get('acucar refinado'), { id: 1, preco: 5, un: 'g', tabela: 'materias_primas' });
+  assert.deepEqual(m.get('acucar refinado'), { id: 1, preco: 5, un: 'g', tabela: 'materias_primas', qtd: 0 });
   assert.equal(m.get('leite').un, 'ml');
   assert.equal(m.get('pote 250 ml com tampa').tabela, 'embalagens');
 });
@@ -126,4 +126,45 @@ test('buscarSugestao: nome mais específico que a biblioteca usa a IA; IA falhou
   assert.ok(emb && emb.preco > 0 && emb.nome !== 'Marmita de aluminio com tampa', 'embalagem sem preço vira a do ramo');
   const falhou = await buscarSugestao({ db: dbFalso(), nomeProduto: 'Escondidinho de carne seca', segmento: 'Marmitas', invocar: async () => ({ data: { ok: false } }) });
   assert.equal(falhou.fonte, 'biblioteca');
+  assert.ok(/escondidinho/i.test(falhou.parecida), 'avisa que é a receita parecida');
+  assert.equal(ok.parecida, null);
+});
+
+test('salvarPrecoMontado: ingrediente que a conta já tem (mesmo nome e unidade) não duplica', async () => {
+  const db = dbFalso({
+    materias: [{ id: 77, nome: 'Farinha de Trigo', preco_por_kg: 6, unidade_medida: 'g' }, { id: 78, nome: 'Leite integral', preco_por_kg: 5, unidade_medida: 'un' }],
+    embalagens: [{ id: 55, nome: 'Embalagem para fatia', preco_unitario: 0.5 }],
+  });
+  await salvarPrecoMontado(db, { ...base, custoReceita: 30 });
+  const mps = db.chamadas.filter((x) => x.sql.startsWith('INSERT INTO materias_primas')).map((x) => x.params[0]);
+  assert.deepEqual(mps, ['Leite integral', 'Coco ralado'], 'farinha reaproveitada; leite em un na conta não serve para ml');
+  assert.ok(!db.chamadas.some((x) => x.sql.startsWith('INSERT INTO embalagens')), 'embalagem reaproveitada');
+  const ligs = db.chamadas.filter((x) => x.sql.startsWith('INSERT INTO produto_ingredientes'));
+  assert.ok(ligs.some((l) => l.params[1] === 77 && l.params[2] === 360));
+  assert.ok(db.chamadas.some((x) => x.sql.startsWith('INSERT INTO produto_embalagens') && x.params[1] === 55));
+});
+
+test('salvarPrecoMontado: item da conta sem preço reaproveitado ganha o preço mostrado (só onde está vazio)', async () => {
+  const db = dbFalso({
+    materias: [{ id: 81, nome: 'Farinha de trigo', preco_por_kg: 0, unidade_medida: 'g', quantidade_bruta: 1000 }, { id: 82, nome: 'Leite integral', preco_por_kg: 4, unidade_medida: 'mL', quantidade_bruta: 1000 }],
+    embalagens: [{ id: 56, nome: 'Embalagem para fatia', preco_unitario: 0, quantidade: 50 }],
+  });
+  await salvarPrecoMontado(db, { ...base, custoReceita: 30 });
+  const ups = db.chamadas.filter((x) => x.sql.startsWith('UPDATE'));
+  assert.equal(ups.length, 2, 'farinha e embalagem sem preço; leite já tinha preço e não muda');
+  const far = ups.find((u) => u.sql.includes('materias_primas'));
+  assert.deepEqual(far.params, [6.5, 6.5, 81]);
+  const emb = ups.find((u) => u.sql.includes('embalagens'));
+  assert.deepEqual(emb.params, [30, 0.6, 56], '50 un a R$ 0,60');
+});
+
+test('buscarSugestao: o produto decide o ramo da embalagem; embalagem da IA conhecida na biblioteca fica', async () => {
+  const ia = (emb) => async () => ({ data: { ok: true, receita: { porcao: 'unidade', rende: 50, embalagem: emb, ingredientes: [{ nome: 'Costela bovina', quantidade: 1500, unidade: 'g' }, { nome: 'Farinha de trigo', quantidade: 1000, unidade: 'g' }] } } });
+  const a = await buscarSugestao({ db: dbFalso(), nomeProduto: 'Coxinha de costela', segmento: 'Confeitaria', invocar: ia('saquinho para salgado') });
+  const ea = a.itens.find((i) => i.emb);
+  assert.equal(ea.nome, 'Saquinho para salgado');
+  assert.ok(ea.preco > 0);
+  const b = await buscarSugestao({ db: dbFalso(), nomeProduto: 'Coxinha de costela', segmento: 'Confeitaria', invocar: ia('caixinha qualquer') });
+  assert.equal(b.nicho, 'salgados');
+  assert.ok(!/pote/i.test(b.itens.find((i) => i.emb).nome), 'coxinha não vai em pote de bolo');
 });

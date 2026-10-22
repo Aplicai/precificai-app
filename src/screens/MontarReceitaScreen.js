@@ -16,8 +16,8 @@ import { Feather } from '@expo/vector-icons';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency } from '../utils/calculations';
 import { calcularPrecoRapido, parseValorBR, LUCRO_PADRAO } from '../utils/precoRapido';
-import { custoReceita, custoLinha, lerOutro, precoMedio } from '../utils/montarReceita';
-import { buscarSugestao } from '../services/montarReceitaService';
+import { custoReceita, custoLinha, lerOutro, precoMedio, normTexto } from '../utils/montarReceita';
+import { buscarSugestao, nomesConhecidos } from '../services/montarReceitaService';
 import { getDatabase } from '../database/database';
 import { supabase } from '../config/supabase';
 import { trackEvent } from '../utils/marketing';
@@ -89,9 +89,10 @@ export default function MontarReceitaScreen({ navigation, route }) {
     setAberto(-1); setMsg(`Tirei ${it.nome} da receita.`);
   }
   function porOutro() {
-    const l = lerOutro(outro || '');
+    const l = lerOutro(outro || '', nomesConhecidos());
     if (!l) { setMsg('Escreva assim: 100 g de coco ralado.'); return; }
     const [n, q, un] = l;
+    if (add.some((a) => normTexto(a.nome) === normTexto(n))) { setOutro(null); setMsg(`${n} já está na receita. Toque nele para mudar a quantidade.`); return; }
     const preco1 = precoMedio(n, un);
     adicionar({ nome: n, q, un, emb: false, preco: preco1, contaId: null, estimado: preco1 != null });
     setOutro(null);
@@ -136,6 +137,7 @@ export default function MontarReceitaScreen({ navigation, route }) {
             <>
               {faltam.length ? (
                 <>
+                  {sug.parecida && !n ? <Text style={styles.dica}>Não achei a receita exata de {nome}. Esta é a de {sug.parecida.toLowerCase()}: toque nos que você usa e ponha os outros em "+ Outro ingrediente".</Text> : null}
                   <Text style={styles.dica}>{n ? 'Continue tocando nos que você usa.' : 'Toque nos ingredientes que você usa.'}</Text>
                   <View style={styles.chips}>
                     {faltam.map((f) => (
