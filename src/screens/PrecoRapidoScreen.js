@@ -30,6 +30,7 @@ import { formatCurrency, buildPricingConfig } from '../utils/calculations';
 import { calcularPrecoRapido, parseValorBR, LUCRO_PADRAO } from '../utils/precoRapido';
 import { numerosDoMes, valorParaCampo, META_ESCADA } from '../utils/escadaPrecos';
 import { mensagemErroSalvar } from '../utils/planGate';
+import { normTexto } from '../utils/montarReceita';
 import { countOrThrow, isErrorResult as isDbErrorResult } from '../database/dbResult';
 import { salvarPrecoRapido } from '../services/precoRapidoService';
 import { salvarPrecoMontado } from '../services/montarReceitaService';
@@ -75,7 +76,7 @@ export default function PrecoRapidoScreen({ navigation, route }) {
   const [cobraHoje, setCobraHoje] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState(null);
-  const [avisoMontar, setAvisoMontar] = useState(false);
+  const [avisoMontar, setAvisoMontar] = useState(null);
   const [sugestoes, setSugestoes] = useState(SUGESTOES_PADRAO);
   // Receita montada tocando nos ingredientes (MontarReceitaScreen, 21/10/2026).
   const [montada, setMontada] = useState(null);
@@ -128,8 +129,8 @@ export default function PrecoRapidoScreen({ navigation, route }) {
 
   function abrirMontar() {
     // Sem nome a busca não tem por onde começar (e gastaria uma ida à IA).
-    if (!nome.trim()) { setAvisoMontar(true); return; }
-    setAvisoMontar(false);
+    if (!nome.trim()) { setAvisoMontar('Escreva antes o nome do produto, no passo 1.'); return; }
+    setAvisoMontar(null);
     trackEvent('MontarReceitaAbriu', { content_name: proximo ? 'proximo' : 'primeiro' });
     navigation.navigate('MontarReceita', { nome: nome.trim(), segmento, gastoMes, vendaMes, contaCfg, montada });
   }
@@ -143,7 +144,12 @@ export default function PrecoRapidoScreen({ navigation, route }) {
 
   function mudarNome(v) {
     nomeTocadoRef.current = true;
-    if (v.trim()) setAvisoMontar(false);
+    if (v.trim()) setAvisoMontar(null);
+    // Trocou o produto depois de montar: a receita era do outro.
+    if (montada && montada.nome && v.trim() && normTexto(v) !== normTexto(montada.nome)) {
+      digitarCusto();
+      setAvisoMontar(`A receita montada era de ${montada.nome}. Monte de novo para ${v.trim()}.`);
+    }
     setNome(v);
   }
 
@@ -229,7 +235,11 @@ export default function PrecoRapidoScreen({ navigation, route }) {
   async function salvar() {
     if (salvandoRef.current) return;
     if (!nome.trim()) { setErro('Diga o nome do produto lá em cima.'); return; }
-    if (!r.ok) { setErro(Object.values(r.erros)[0] || 'Complete os números.'); return; }
+    if (!r.ok) {
+      const semCusto = montada && r.erros.custoReceita;
+      setErro(semCusto ? 'Ponha o preço de pelo menos 1 ingrediente em "Ver ou mudar a receita".' : (Object.values(r.erros)[0] || 'Complete os números.'));
+      return;
+    }
     salvandoRef.current = true;
     setSalvando(true);
     setErro(null);
@@ -325,7 +335,7 @@ export default function PrecoRapidoScreen({ navigation, route }) {
               </View>
               <Feather name="chevron-right" size={18} color="#fff" />
             </TouchableOpacity>
-            {avisoMontar ? <Text style={[styles.erro, { marginTop: spacing.sm, marginBottom: 0 }]} accessibilityLiveRegion="polite">Escreva antes o nome do produto, no passo 1.</Text> : null}
+            {avisoMontar ? <Text style={[styles.erro, { marginTop: spacing.sm, marginBottom: 0 }]} accessibilityLiveRegion="polite">{avisoMontar}</Text> : null}
             <Text style={[styles.dica, { marginTop: spacing.sm }]}>Ou, se você já sabe:</Text>
             <View style={styles.frase}>
               <Text style={styles.palavra}>A receita custa R$</Text>

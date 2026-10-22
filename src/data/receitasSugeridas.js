@@ -95,7 +95,7 @@ export const RECEITAS_SUGERIDAS = [
   {
     id: 'bolo_pote_prestigio',
     nome: 'Bolo de pote de prestígio',
-    termos: ['bolo de prestigio', 'bolo prestigio', 'pote de prestigio', 'bolo de pote de prestigio', 'bolo de pote prestigio'],
+    termos: ['pote de prestigio', 'bolo de pote de prestigio', 'bolo de pote prestigio'],
     nicho: 'confeitaria',
     porcao: ['pote', 'potes'],
     rende: 10,
@@ -110,7 +110,7 @@ export const RECEITAS_SUGERIDAS = [
   {
     id: 'bolo_pote_red_velvet',
     nome: 'Bolo de pote red velvet',
-    termos: ['red velvet', 'pote red velvet', 'bolo de pote de red velvet'],
+    termos: ['pote red velvet', 'bolo de pote de red velvet', 'bolo de pote red velvet'],
     nicho: 'confeitaria',
     porcao: ['pote', 'potes'],
     rende: 10,
@@ -197,7 +197,7 @@ export const RECEITAS_SUGERIDAS = [
   {
     id: 'bolo_pote_abacaxi_coco',
     nome: 'Bolo de pote de abacaxi com coco',
-    termos: ['abacaxi com coco', 'pote de abacaxi', 'bolo de pote de abacaxi'],
+    termos: ['pote de abacaxi', 'bolo de pote de abacaxi', 'bolo de pote de abacaxi com coco'],
     nicho: 'confeitaria',
     porcao: ['pote', 'potes'],
     rende: 10,
@@ -466,7 +466,7 @@ export const RECEITAS_SUGERIDAS = [
   {
     id: 'brigadeiro_ninho',
     nome: 'Brigadeiro de leite Ninho',
-    termos: ['brigadeiro de ninho', 'brigadeiro de leite ninho', 'brigadeiro ninho', 'docinho de ninho'],
+    termos: ['brigadeiro de ninho', 'brigadeiro de leite ninho', 'brigadeiro ninho', 'docinho de ninho', 'docinho de leite em po', 'brigadeiro de leite em po'],
     nicho: 'confeitaria',
     porcao: ['unidade', 'unidades'],
     rende: 25,
@@ -717,7 +717,7 @@ export const RECEITAS_SUGERIDAS = [
   {
     id: 'pave',
     nome: 'Pavê de chocolate',
-    termos: ['pave', 'pave de chocolate', 'pave de bis'],
+    termos: ['pave', 'pave de chocolate', 'pave de bis', 'pave de sonho de valsa', 'sonho de valsa'],
     nicho: 'confeitaria',
     porcao: ['pote', 'potes'],
     rende: 10,
@@ -1024,14 +1024,27 @@ export const RECEITAS_SUGERIDAS = [
   },
   {
     id: 'pastel_frito',
-    nome: 'Pastel frito de carne e queijo',
-    termos: ['pastel', 'pasteis', 'pastel frito', 'pastel de feira'],
+    nome: 'Pastel frito de carne',
+    termos: ['pastel', 'pasteis', 'pastel frito', 'pastel de feira', 'pastel de carne', 'pasteis de carne'],
     nicho: 'salgados',
     porcao: ['unidade', 'unidades'],
     rende: 20,
     ingredientes: [
-      ['Farinha de trigo', 700, 'g'], ['Óleo de soja', 850, 'ml'], ['Sal', 10, 'g'], ['Ovos', 1, 'un'],
-      ['Carne moída', 500, 'g'], ['Mussarela', 400, 'g'], ['Cebola', 100, 'g'],
+      ['Farinha de trigo', 700, 'g'], ['Óleo de soja', 500, 'ml'], ['Sal', 10, 'g'], ['Ovos', 1, 'un'],
+      ['Carne moída', 600, 'g'], ['Cebola', 100, 'g'], ['Cheiro-verde', 20, 'g'],
+    ],
+    embalagem: SAQUINHO_SALGADO,
+  },
+  {
+    id: 'pastel_queijo',
+    nome: 'Pastel frito de queijo',
+    termos: ['pastel de queijo', 'pasteis de queijo', 'pastel de mussarela', 'pastel de mucarela'],
+    nicho: 'salgados',
+    porcao: ['unidade', 'unidades'],
+    rende: 20,
+    ingredientes: [
+      ['Farinha de trigo', 700, 'g'], ['Óleo de soja', 500, 'ml'], ['Sal', 10, 'g'], ['Ovos', 1, 'un'],
+      ['Mussarela', 800, 'g'], ['Orégano', 2, 'g'],
     ],
     embalagem: SAQUINHO_SALGADO,
   },
@@ -1113,7 +1126,7 @@ export const RECEITAS_SUGERIDAS = [
     rende: 8,
     ingredientes: [
       ['Farinha de trigo', 250, 'g'], ['Manteiga sem sal', 125, 'g'], ['Ovos', 4, 'un'], ['Sal', 4, 'g'],
-      ['Bacon', 200, 'g'], ['Creme de leite', 400, 'g'], ['Queijo mussarela', 150, 'g'],
+      ['Bacon', 200, 'g'], ['Creme de leite', 400, 'g'], ['Mussarela', 150, 'g'],
       ['Queijo parmesão', 50, 'g'], ['Cebola', 80, 'g'], ['Noz moscada', 1, 'g'],
     ],
     embalagem: EMB_FATIA,
@@ -1121,7 +1134,7 @@ export const RECEITAS_SUGERIDAS = [
   {
     id: 'torta_salgada_frango',
     nome: 'Torta salgada de frango',
-    termos: ['torta salgada', 'torta de frango', 'empadao', 'torta de liquidificador'],
+    termos: ['torta salgada', 'torta de frango', 'torta de liquidificador'],
     nicho: 'salgados',
     porcao: ['fatia', 'fatias'],
     rende: 12,
@@ -1130,6 +1143,20 @@ export const RECEITAS_SUGERIDAS = [
       ['Fermento químico', 15, 'g'], ['Queijo parmesão', 50, 'g'], ['Peito de frango', 600, 'g'],
       ['Tomate', 150, 'g'], ['Cebola', 100, 'g'], ['Milho em conserva', 200, 'g'], ['Ervilha em conserva', 100, 'g'],
       ['Requeijão cremoso', 200, 'g'], ['Sal', 10, 'g'],
+    ],
+    embalagem: EMB_FATIA,
+  },
+  {
+    id: 'empadao_frango',
+    nome: 'Empadão de frango',
+    termos: ['empadao', 'empadao de frango'],
+    nicho: 'salgados',
+    porcao: ['fatia', 'fatias'],
+    rende: 10,
+    ingredientes: [
+      ['Farinha de trigo', 500, 'g'], ['Margarina culinária', 250, 'g'], ['Ovos', 3, 'un'], ['Sal', 8, 'g'],
+      ['Peito de frango', 800, 'g'], ['Cebola', 100, 'g'], ['Tomate', 150, 'g'], ['Milho em conserva', 200, 'g'],
+      ['Requeijão cremoso', 200, 'g'], ['Azeitona verde', 80, 'g'],
     ],
     embalagem: EMB_FATIA,
   },
@@ -1713,6 +1740,32 @@ export const RECEITAS_SUGERIDAS = [
     embalagem: SACO_PAO,
   },
   {
+    id: 'pao_hamburguer',
+    nome: 'Pão de hambúrguer (brioche)',
+    termos: ['pao de hamburguer', 'paes de hamburguer', 'pao brioche', 'pao de hamburguer brioche', 'pao para hamburguer'],
+    nicho: 'padaria',
+    porcao: ['unidade', 'unidades'],
+    rende: 12,
+    ingredientes: [
+      ['Farinha de trigo', 500, 'g'], ['Leite integral', 200, 'ml'], ['Ovos', 2, 'un'], ['Manteiga sem sal', 60, 'g'],
+      ['Açúcar refinado', 50, 'g'], ['Fermento biológico seco', 10, 'g'], ['Sal', 8, 'g'],
+    ],
+    embalagem: SACO_PAO,
+  },
+  {
+    id: 'pao_integral',
+    nome: 'Pão integral',
+    termos: ['pao integral', 'paes integrais'],
+    nicho: 'padaria',
+    porcao: ['unidade', 'unidades'],
+    rende: 2,
+    ingredientes: [
+      ['Farinha de trigo integral', 500, 'g'], ['Farinha de trigo', 500, 'g'], ['Leite integral', 300, 'ml'],
+      ['Óleo de soja', 80, 'ml'], ['Açúcar mascavo', 60, 'g'], ['Fermento biológico seco', 10, 'g'], ['Sal', 15, 'g'],
+    ],
+    embalagem: SACO_PAO,
+  },
+  {
     id: 'pao_de_forma',
     nome: 'Pão de forma caseiro',
     termos: ['pao de forma', 'pao de forma caseiro', 'pao de sanduiche'],
@@ -1937,6 +1990,18 @@ export const INGREDIENTES_POR_NICHO = {
 };
 
 /** Embalagem padrão por nicho: [nome, preço médio por unidade em R$]. */
+/** Embalagens com preço médio, para escolher pela porção ou pelo que a IA disse. */
+export const EMBALAGENS = {
+  POTE_250, POTE_150, EMB_FATIA, FORMINHA_5, FORMINHAS_CENTO, FORMINHA_GOURMET, FORMINHAS_GOURMET_CENTO,
+  SAQUINHO_DOCE, SAQUINHO_SALGADO, CAIXA_CENTO, MARMITEX, CAIXA_HAMBURGUER, CAIXA_PIZZA, SACO_PAO,
+  FORMINHA_EMPADA: ['Forminha de alumínio para empada', 0.15],
+  CAIXA_BOLO: ['Caixa para bolo 15x15', 2.50],
+  COPO: ['Copo 300 ml com tampa', 0.50],
+  COPO_ACAI: ['Copo para açaí 300 ml com tampa', 0.70],
+  SACO_CONGELADOS: ['Saco para congelados', 0.30],
+  PAPEL_LANCHE: ['Papel acoplado para lanche', 0.10],
+};
+
 export const EMBALAGEM_POR_NICHO = {
   confeitaria: POTE_250,
   salgados: SAQUINHO_SALGADO,

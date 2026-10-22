@@ -30,6 +30,33 @@ const fmtQ = (q) => String(Math.round(Number(q) * 100) / 100).replace('.', ',');
 const passo = (un, q) => (un === 'un' ? 1 : q < 30 ? 1 : q < 200 ? 5 : 10);
 const porUnidade = (un) => (un === 'un' ? 'por unidade' : un === 'ml' ? 'por litro' : 'por kg');
 
+/**
+ * Campo numérico que não reescreve o texto enquanto a pessoa digita ("1," fica
+ * "1,", apagar tudo deixa vazio). Manda o número a cada tecla válida; ao sair
+ * do campo, mostra o valor formatado. vazio: o que mandar com o campo vazio.
+ */
+function CampoNumero({ valor, onValor, fmt, vazio, ...props }) {
+  const [texto, setTexto] = useState(() => fmt(valor));
+  const foco = useRef(false);
+  useEffect(() => { if (!foco.current) setTexto(fmt(valor)); }, [valor]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <TextInput
+      {...props}
+      value={texto}
+      onFocus={() => { foco.current = true; }}
+      onChangeText={(v) => {
+        setTexto(v);
+        if (!v.trim()) { if (vazio !== undefined) onValor(vazio); return; }
+        if (/[.,]$/.test(v.trim())) return;
+        const x = parseValorBR(v);
+        if (x !== null && x > 0) onValor(x);
+      }}
+      onBlur={() => { foco.current = false; setTexto(fmt(valor)); }}
+    />
+  );
+}
+const fmtPreco = (v) => (Number(v) > 0 ? Number(v).toFixed(2).replace('.', ',') : '');
+
 export default function MontarReceitaScreen({ navigation, route }) {
   const p = route?.params || {};
   const nome = String(p.nome || '').trim() || 'Seu produto';
@@ -93,15 +120,21 @@ export default function MontarReceitaScreen({ navigation, route }) {
     if (!l) { setMsg('Escreva assim: 100 g de coco ralado.'); return; }
     const [n, q, un] = l;
     if (add.some((a) => normTexto(a.nome) === normTexto(n))) { setOutro(null); setMsg(`${n} já está na receita. Toque nele para mudar a quantidade.`); return; }
-    const preco1 = precoMedio(n, un);
-    adicionar({ nome: n, q, un, emb: false, preco: preco1, contaId: null, estimado: preco1 != null });
+    // Mesmo ingrediente sugerido (chip) ou que a pessoa já tem: usa esse
+    // (preço dela, "já é seu"), só com a quantidade digitada.
+    const k = normTexto(n);
+    const sugerido = sug.itens.find((x) => !x.emb && normTexto(x.nome) === k && x.un === un);
+    const c = sug.conta instanceof Map ? sug.conta.get(k) : null;
+    const daConta = !sugerido && c && c.tabela === 'materias_primas' && c.un === un && Number(c.preco) > 0;
+    const preco1 = sugerido ? sugerido.preco : daConta ? Number(c.preco) : precoMedio(n, un);
+    adicionar(sugerido ? { ...sugerido, q } : { nome: n, q, un, emb: false, preco: preco1, contaId: daConta ? c.id : null, contaTabela: daConta ? 'materias_primas' : null, estimado: !daConta && preco1 != null });
     setOutro(null);
-    setMsg(preco1 == null ? `Coloquei ${n}. Toque nele para pôr quanto você paga.` : `Coloquei ${n} com o preço médio do mercado.`);
+    setMsg(preco1 == null ? `Coloquei ${n}. Toque nele para pôr quanto você paga.` : (sugerido?.contaId || daConta) ? `Coloquei ${n} com o preço que você já tem.` : `Coloquei ${n} com o preço médio do mercado.`);
   }
   function usar() {
     if (!add.length) { setErroVer(true); return; }
     trackEvent('MontarReceitaUsada', { content_name: sug.fonte, value: add.length });
-    navigation.navigate({ name: 'PrecoRapido', params: { montada: { itens: add, rende, porcao: sug.porcao, custoReceita: custo.custoReceita, semPreco: custo.semPreco } }, merge: true });
+    navigation.navigate({ name: 'PrecoRapido', params: { montada: { nome, itens: add, rende, porcao: sug.porcao, custoReceita: custo.custoReceita, semPreco: custo.semPreco } }, merge: true });
   }
 
   const n = add.length;
@@ -180,7 +213,7 @@ export default function MontarReceitaScreen({ navigation, route }) {
                           <Text style={styles.campoLabel}>{it.emb ? `Em cada ${porcao}` : 'Na receita inteira'}</Text>
                           <View style={styles.stepper}>
                             <TouchableOpacity style={styles.stepBotao} onPress={() => mudar(i, 'q', Math.max(0, Math.round((it.q - passo(it.un, it.q - 0.001)) * 100) / 100))} accessibilityLabel="Menos"><Text style={styles.stepSinal}>−</Text></TouchableOpacity>
-                            <TextInput style={styles.stepInput} value={fmtQ(it.q)} keyboardType="decimal-pad" inputMode="decimal" onChangeText={(v) => { const x = parseValorBR(v); if (x !== null && x >= 0) mudar(i, 'q', x); }} accessibilityLabel={`Quantidade de ${it.nome}`} />
+                            <CampoNumero style={styles.stepInput} valor={it.q} fmt={fmtQ} onValor={(x) => mudar(i, 'q', x)} keyboardType="decimal-pad" inputMode="decimal" accessibilityLabel={`Quantidade de ${it.nome}`} />
                             <Text style={styles.stepUn}>{it.un}</Text>
                             <TouchableOpacity style={styles.stepBotao} onPress={() => mudar(i, 'q', Math.round((it.q + passo(it.un, it.q)) * 100) / 100)} accessibilityLabel="Mais"><Text style={styles.stepSinal}>+</Text></TouchableOpacity>
                           </View>
@@ -189,7 +222,7 @@ export default function MontarReceitaScreen({ navigation, route }) {
                           <Text style={styles.campoLabel}>Você paga {porUnidade(it.un)}{it.estimado ? ' (média)' : ''}</Text>
                           <View style={styles.dinheiro}>
                             <Text style={styles.cifrao}>R$</Text>
-                            <TextInput style={styles.dinheiroInput} defaultValue={Number(it.preco) > 0 ? Number(it.preco).toFixed(2).replace('.', ',') : ''} placeholder="0,00" placeholderTextColor={colors.placeholder} keyboardType="decimal-pad" inputMode="decimal" onEndEditing={(e) => { const x = parseValorBR(e.nativeEvent.text); mudar(i, 'preco', x !== null && x > 0 ? x : null); }} onBlur={(e) => { const t = e?.nativeEvent?.text ?? e?.target?.value; if (t !== undefined) { const x = parseValorBR(t); mudar(i, 'preco', x !== null && x > 0 ? x : null); } }} accessibilityLabel={`Quanto você paga ${porUnidade(it.un)}`} />
+                            <CampoNumero style={styles.dinheiroInput} valor={it.preco} fmt={fmtPreco} vazio={null} onValor={(x) => mudar(i, 'preco', x)} placeholder="0,00" placeholderTextColor={colors.placeholder} keyboardType="decimal-pad" inputMode="decimal" accessibilityLabel={`Quanto você paga ${porUnidade(it.un)}`} />
                           </View>
                         </View>
                       </View>
@@ -215,7 +248,7 @@ export default function MontarReceitaScreen({ navigation, route }) {
                 <Text style={styles.rendeTexto}>A receita inteira rende</Text>
                 <View style={[styles.stepper, { width: 190 }]}>
                   <TouchableOpacity style={styles.stepBotao} onPress={() => setRende((r) => Math.max(1, r - 1))} accessibilityLabel="Menos"><Text style={styles.stepSinal}>−</Text></TouchableOpacity>
-                  <TextInput style={styles.stepInput} value={String(rende)} keyboardType="number-pad" inputMode="numeric" onChangeText={(v) => { const x = Math.round(parseValorBR(v) || 0); if (x >= 1) setRende(Math.min(x, 1000)); }} accessibilityLabel={`Quantas ${porcoes} a receita rende`} />
+                  <CampoNumero style={styles.stepInput} valor={rende} fmt={(v) => String(v || '')} onValor={(x) => { const r = Math.round(x); if (r >= 1) setRende(Math.min(r, 1000)); }} keyboardType="number-pad" inputMode="numeric" accessibilityLabel={`Quantas ${porcoes} a receita rende`} />
                   <Text style={styles.stepUn}>{porcoes}</Text>
                   <TouchableOpacity style={styles.stepBotao} onPress={() => setRende((r) => Math.min(1000, r + 1))} accessibilityLabel="Mais"><Text style={styles.stepSinal}>+</Text></TouchableOpacity>
                 </View>

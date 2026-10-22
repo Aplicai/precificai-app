@@ -97,8 +97,10 @@ function pedido(produto: string, nicho: string | null, porcao: string | null): s
     `Produto: "${produto}"${porcao ? `, vendido por ${porcao}` : ''}.`,
     'Liste os ingredientes da RECEITA INTEIRA, do jeito que a pessoa faz em casa para vender,',
     'com quantidade e unidade (g, ml ou un). Ovos em un. Líquidos em ml.',
-    'Diga em "porcao" a unidade de venda no singular (fatia, pote, unidade, cento, marmita, lanche, pizza, copo)',
-    'e em "rende" quantas porções a receita inteira faz. Em "embalagem", a embalagem de UMA porção (ou "nenhuma").',
+    'Diga em "porcao" a unidade de venda no singular (fatia, pote, unidade, cento, marmita, lanche, pizza, copo, pacote, kg, porção)',
+    'e em "rende" quantas porções a receita inteira faz. Se o nome trouxer tamanho ou quantidade (2kg, 500 ml, pacote com 20, mini), respeite.',
+    'Em "embalagem", a embalagem de UMA porção (ou "nenhuma").',
+    'Se o produto for frito, inclua o óleo de fritura em ml. Não liste água nem gelo.',
     'Nomes simples de supermercado, em português do Brasil com acentos, sem marcas. No máximo 15 ingredientes. Não informe preços.',
   ].join(' ');
 }
@@ -143,20 +145,20 @@ serve(async (req) => {
     Deno.env.get('GEMINI_MODEL_RESERVA') || 'gemini-flash-lite-latest',
   ];
 
-  // Conta antes de chamar o Google: por pessoa e no projeto inteiro.
-  const [conta, projeto] = await Promise.all([
-    admin.rpc('montar_receita_reservar', { p_user_id: u.user.id, p_max: MAX_POR_CONTA }),
-    admin.rpc('montar_receita_reservar', { p_user_id: PROJETO_ID, p_max: MAX_PROJETO }),
-  ]);
-  if (conta.error || projeto.error) {
-    console.error('[montar-receita] limite', conta.error?.message ?? projeto.error?.message);
-    return json({ ok: false, error: 'erro' }, 500, req);
-  }
-  if (conta.data !== true || projeto.data !== true) return json({ ok: false, error: 'limite' }, 429, req);
+  // Conta antes de chamar o Google: primeiro a da pessoa; o projeto só conta
+  // quem ainda tem cota (senão uma conta sozinha gastaria as 800 do dia).
+  const conta = await admin.rpc('montar_receita_reservar', { p_user_id: u.user.id, p_max: MAX_POR_CONTA });
+  if (conta.error) { console.error('[montar-receita] limite', conta.error.message); return json({ ok: false, error: 'erro' }, 500, req); }
+  if (conta.data !== true) return json({ ok: false, error: 'limite' }, 429, req);
+  const projeto = await admin.rpc('montar_receita_reservar', { p_user_id: PROJETO_ID, p_max: MAX_PROJETO });
+  if (projeto.error) { console.error('[montar-receita] limite', projeto.error.message); return json({ ok: false, error: 'erro' }, 500, req); }
+  if (projeto.data !== true) return json({ ok: false, error: 'limite' }, 429, req);
 
   const texto = pedido(produto, nicho, porcao);
-  const inicio = Date.now();
-  console.log(JSON.stringify({ ev: 'antes_da_ia', ms: inicio - tReq }));
+  // Prazo contado desde a chegada do pedido (login e cotas incluídos), para
+  // terminar antes de o app desistir (13 s).
+  const inicio = tReq;
+  console.log(JSON.stringify({ ev: 'antes_da_ia', ms: Date.now() - tReq }));
   let ultimoStatus = 0;
   for (const modelo of modelos) {
     const resta = PRAZO_TOTAL_MS - (Date.now() - inicio);

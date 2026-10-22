@@ -34,7 +34,7 @@ test('acharReceita: termo mais longo ganha; palavra inteira antes de pedaço', (
 test('nichoDoSegmento: texto livre do perfil', () => {
   assert.equal(nichoDoSegmento('Confeitaria'), 'confeitaria');
   assert.equal(nichoDoSegmento('Hambúrgueria'), 'hamburgueria');
-  assert.equal(nichoDoSegmento('Doces e salgados'), 'salgados');
+  assert.equal(nichoDoSegmento('Doces e salgados'), 'confeitaria', 'vale o que vem primeiro');
   assert.equal(nichoDoSegmento('marmitex'), 'marmitas');
   assert.equal(nichoDoSegmento('Açaí'), 'acai_sorvete');
   assert.equal(nichoDoSegmento('Panificação'), 'padaria');
@@ -96,7 +96,7 @@ test('validarRespostaIA: limpa, tira repetidos, precisa de 2', () => {
   assert.deepEqual(r.embalagem, ['Pote de plástico 200 ml', null]);
   assert.equal(validarRespostaIA({ ingredientes: [{ nome: 'x', quantidade: 1, unidade: 'g' }] }, 'x'), null);
   assert.equal(validarRespostaIA(null, 'x'), null);
-  assert.equal(validarRespostaIA({ rende: 99999, ingredientes: [{ nome: 'a', quantidade: 1, unidade: 'g' }, { nome: 'b', quantidade: 1, unidade: 'g' }] }, 'x').rende, 1);
+  assert.equal(validarRespostaIA({ rende: 99999, ingredientes: [{ nome: 'a', quantidade: 1, unidade: 'g' }, { nome: 'b', quantidade: 1, unidade: 'g' }] }, 'x').rende, 1000, 'acima do teto vira o teto');
   assert.equal(validarRespostaIA({ embalagem: 'nenhuma', ingredientes: [{ nome: 'a', quantidade: 1, unidade: 'g' }, { nome: 'b', quantidade: 1, unidade: 'g' }] }, 'x').embalagem, null);
 });
 
@@ -250,4 +250,94 @@ test('nichoDoProduto: 1ª palavra conhecida, palavra inteira', async () => {
   const casos = { 'Lasanha à bolonhesa': 'marmitas', 'Bolo de coco gelado': 'confeitaria', 'Café gelado': 'bebidas', 'Coxinha de costela': 'salgados',
     'Pães de queijo': 'padaria', 'X-bacon': 'hamburgueria', 'Brigadeiro de café': 'confeitaria', 'Mini pizza': 'pizzaria', 'Geladinho de ninho': 'acai_sorvete', 'Torta exótica': null };
   for (const [n, r] of Object.entries(casos)) assert.equal(nichoDoProduto(n), r, n);
+});
+
+test('rodada 500: acharReceita só por início de palavra; plural no ramo; porção com acento; embalagem falsa', async () => {
+  const m = await import('../src/utils/montarReceita.js');
+  const { RECEITAS_SUGERIDAS } = await import('../src/data/receitasSugeridas.js');
+  for (const n of ['Espaguete à bolonhesa', 'Scones', 'Capão assado', 'Japão roll']) {
+    const r = m.acharReceita(n, RECEITAS_SUGERIDAS);
+    assert.ok(!r || !/(bolo de chocolate|picol|cone|p[aã]o caseiro)/i.test(r.nome), `${n} -> ${r?.nome}`);
+  }
+  assert.ok(/brigadeiro/i.test(m.acharReceita('brigadeiros', RECEITAS_SUGERIDAS)?.nome || ''), 'plural ainda acha');
+  for (const [n, r] of [['Doces', 'confeitaria'], ['Brownies', 'confeitaria'], ['Cookies', 'confeitaria'], ['Pastéis', 'salgados'], ['Lanches', 'hamburgueria'], ['Picolés', 'acai_sorvete'], ['Sanduíches', 'hamburgueria'], ['Bombons', 'confeitaria'], ['Esfirra', 'salgados']]) assert.equal(m.nichoDoProduto(n), r, n);
+  const v = (j) => m.validarRespostaIA({ ingredientes: [{ nome: 'Leite condensado', quantidade: 395, unidade: 'g' }, { nome: 'leite condensado', quantidade: 395, unidade: 'g' }, { nome: 'Farinha', quantidade: 100, unidade: 'g' }], ...j }, 'X');
+  assert.equal(v({}).ingredientes.find((i) => /condensado/i.test(i[0]))[1], 790, 'massa + cobertura somam');
+  assert.equal(v({ rende: 1200 }).rende, 1000);
+  assert.deepEqual(v({ porcao: 'porção' }).porcao, ['porção', 'porções']);
+  assert.deepEqual(v({ porcao: '1 fatia' }).porcao, ['fatia', 'fatias']);
+  assert.deepEqual(v({ porcao: 'fatias' }).porcao, ['fatia', 'fatias']);
+  assert.deepEqual(v({ porcao: 'pão' }).porcao, ['pão', 'pães']);
+  assert.deepEqual(v({ porcao: 'pastel' }).porcao, ['pastel', 'pastéis']);
+  for (const e of ['N/A', '-', 'nada', 5, { a: 1 }, 'nenhuma embalagem']) assert.equal(v({ embalagem: e }).embalagem, null, String(e));
+  assert.ok(v({ embalagem: 'Sementeira de papel' }).embalagem);
+  const s = m.montarSugestao({ receita: { id: 'ia', porcao: ['un', 'un'], rende: 10, embalagem: null, ingredientes: [['Cheiro-verde', 1, 'un']] } });
+  assert.deepEqual([s.itens[0].q, s.itens[0].un], [100, 'g']);
+  const c = m.canonizarReceita({ ingredientes: [['Farinha de trigo', 15000, 'g'], ['Farinha de trigo', 15000, 'g']] }, ['Farinha de trigo']);
+  assert.ok(c.ingredientes[0][1] <= m.MAX_QTD.g);
+});
+
+test('rodada 500: lerOutro com medidas reais de casa', () => {
+  const k = ['Óleo de soja', 'Farinha de trigo', 'Carne moída', 'Ovos', 'Açúcar refinado', 'Manteiga sem sal', 'Canela em pó', 'Leite condensado', 'Leite em pó', 'Queijo mussarela', 'Cheiro-verde'];
+  const casos = [
+    ['1/4 de xícara de óleo', ['Óleo de soja', 60, 'ml']],
+    ['1 e 1/2 xícara de farinha', ['Farinha de trigo', 180, 'g']],
+    ['meia xícara de açúcar', ['Açúcar refinado', 90, 'g']],
+    ['2 kg e 500 g de carne moída', ['Carne moída', 2500, 'g']],
+    ['1 dz de ovos', ['Ovos', 12, 'un']],
+    ['1 dúzia de ovos', ['Ovos', 12, 'un']],
+    ['1 bandeja de ovos', ['Ovos', 30, 'un']],
+    ['1 kilo de farinha', ['Farinha de trigo', 1000, 'g']],
+    ['meio quilo de carne moída', ['Carne moída', 500, 'g']],
+    ['2 xícaras (chá) de açúcar', ['Açúcar refinado', 360, 'g']],
+    ['2 xícaras de chá de açúcar', ['Açúcar refinado', 360, 'g']],
+    ['3 colheres de sopa rasas de manteiga', ['Manteiga sem sal', 45, 'g']],
+    ['1 colher de café de canela', ['Canela em pó', 2, 'g']],
+    ['1 xícara de leite condensado', ['Leite condensado', 300, 'g']],
+    ['1 xícara de leite em pó', ['Leite em pó', 100, 'g']],
+    ['200gr de queijo mussarela', ['Queijo mussarela', 200, 'g']],
+    ['2 unid ovos', ['Ovos', 2, 'un']],
+    ['uma lata de leite condensado', ['Leite condensado', 395, 'g']],
+    ['1 maço de cheiro verde', ['Cheiro-verde', 100, 'g']],
+  ];
+  for (const [t, e] of casos) assert.deepEqual(lerOutro(t, k), e, t);
+  assert.equal(lerOutro('30 forminhas', k)[2], 'un');
+  assert.equal(lerOutro('50 bombons', k)[2], 'un');
+});
+
+test('rodada 500 (2): ramo, cobertura do nome e abreviações', async () => {
+  const m = await import('../src/utils/montarReceita.js');
+  const { RECEITAS_SUGERIDAS } = await import('../src/data/receitasSugeridas.js');
+  assert.equal(m.nichoDoSegmento('Café da manhã'), 'padaria');
+  assert.equal(m.nichoDoSegmento('Coffee break'), 'padaria');
+  assert.equal(m.nichoDoSegmento('Confeitaria e salgados'), 'confeitaria', 'vale o que vem primeiro no texto');
+  assert.equal(m.nichoDoSegmento('Bolos gelados'), 'confeitaria');
+  assert.equal(m.nichoDoSegmento('Tapiocaria'), 'salgados');
+  assert.equal(m.nichoDoProduto('Pão de mel recheado'), 'confeitaria');
+  for (const n of ['Acarajé', 'Tapioca de frango', 'Cuscuz nordestino', 'Quiche de alho-poró', 'Croissant de presunto']) assert.ok(m.nichoDoProduto(n), n);
+  const cobre = (n) => m.receitaCobreNome(n, m.acharReceita(n, RECEITAS_SUGERIDAS));
+  assert.equal(cobre('Cupcake de baunilha'), false, 'essência não cobre o sabor');
+  assert.match(m.acharReceita('Pão de hambúrguer brioche', RECEITAS_SUGERIDAS).nome, /Pão de hambúrguer/);
+  assert.match(m.acharReceita('Docinho de leite em pó', RECEITAS_SUGERIDAS).nome, /Ninho/);
+  assert.match(m.acharReceita('Pastel de queijo', RECEITAS_SUGERIDAS).nome, /queijo/);
+  assert.match(m.acharReceita('Empadão de frango', RECEITAS_SUGERIDAS).nome, /Empadão/);
+  assert.match(m.acharReceita('Pão integral', RECEITAS_SUGERIDAS).nome, /integral/);
+  assert.equal(m.acharReceita('Bolo prestígio', RECEITAS_SUGERIDAS)?.porcao?.[0] === 'pote', false, 'bolo prestígio não é de pote');
+  assert.equal(cobre('Mini cachorro quente'), false, 'mini muda o produto');
+  assert.equal(cobre('coxinha d frango'), true, '"d" = de');
+  assert.equal(cobre('pastel q queijo'), true);
+  assert.equal(cobre('Bolo de cenoura com cobertura de chocolate'), true);
+  assert.equal(cobre('Brigadeiro gourmet'), true);
+  const c = m.canonizarReceita({ ingredientes: [['Oleo de soja para fritura', 1000, 'ml'], ['Manteiga para untar', 20, 'g'], ['Açúcar para polvilhar', 30, 'g']] }, ['Óleo de soja', 'Manteiga sem sal', 'Açúcar refinado']);
+  assert.deepEqual(c.ingredientes.map((i) => i[0]), ['Óleo de soja', 'Manteiga sem sal', 'Açúcar refinado']);
+});
+
+test('garantirOleoFritura: frito sem óleo ganha 500 ml; assado ou com óleo não muda', async () => {
+  const { garantirOleoFritura } = await import('../src/utils/montarReceita.js');
+  const r = (ing) => ({ id: 'ia', ingredientes: ing });
+  assert.deepEqual(garantirOleoFritura(r([['Farinha de trigo', 500, 'g']]), 'Pastel de vento').ingredientes.at(-1), ['Óleo de soja', 500, 'ml']);
+  assert.equal(garantirOleoFritura(r([['Farinha de trigo', 500, 'g']]), 'Coxinha assada').ingredientes.length, 1);
+  assert.equal(garantirOleoFritura(r([['Óleo de soja', 800, 'ml']]), 'Coxinha').ingredientes[0][1], 800);
+  assert.deepEqual(garantirOleoFritura(r([['Óleo de soja', 50, 'ml']]), 'Kibe frito').ingredientes[0], ['Óleo de soja', 500, 'ml'], 'pouco óleo vira o da fritura');
+  assert.equal(garantirOleoFritura(r([['Farinha', 1, 'g']]), 'Bolo de cenoura').ingredientes.length, 1);
 });
