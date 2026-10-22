@@ -153,3 +153,34 @@ test('canonizarReceita: nomes da IA viram os da biblioteca, água sai, repetidos
   assert.equal(r.ingredientes.find((i) => i[0] === 'Leite integral')[1], 300, 'leite + leite integral somam');
   assert.equal(canonizarReceita(null, conhecidos), null);
 });
+
+test('receitaCobreNome: sabor ou recheio diferente no nome pede a IA', async () => {
+  const { receitaCobreNome } = await import('../src/utils/montarReceita.js');
+  const esc = { nome: 'Escondidinho de carne moída com mandioca', termos: ['escondidinho', 'escondidinho de carne'], ingredientes: [['Mandioca', 1500, 'g'], ['Carne moída', 1000, 'g'], ['Requeijão cremoso', 200, 'g']] };
+  assert.equal(receitaCobreNome('Escondidinho de carne seca', esc), false);
+  assert.equal(receitaCobreNome('Escondidinho de frango', esc), false);
+  assert.equal(receitaCobreNome('Escondidinho', esc), true);
+  assert.equal(receitaCobreNome('Escondidinho de carne moída', esc), true);
+  assert.equal(receitaCobreNome('escondidinhos de mandioca caseiro', esc), true, 'plural e palavra de enfeite não contam');
+  const bolo = { nome: 'Bolo de cenoura', termos: ['bolo de cenoura'], ingredientes: [['Cenoura', 300, 'g'], ['Chocolate em pó 50%', 40, 'g']] };
+  assert.equal(receitaCobreNome('Bolo de cenoura com cobertura de chocolate', bolo), true);
+  assert.equal(receitaCobreNome('Bolo de cenoura fit 1kg', bolo), true);
+  assert.equal(receitaCobreNome('Bolo de cenoura com nozes', bolo), false);
+});
+
+test('precoMedio: unidade diferente da base não usa o preço do pacote', async () => {
+  const { precoMedio, montarSugestao } = await import('../src/utils/montarReceita.js');
+  assert.ok(Math.abs(precoMedio('Creme de leite', 'g') - 25) < 0.01, 'caixinha 200 g por R$ 5 = R$ 25/kg (g e ml valem igual)');
+  assert.ok(Math.abs(precoMedio('Leite integral', 'g') - 5) < 0.01);
+  assert.equal(precoMedio('Farinha de trigo', 'un'), null, 'farinha por unidade não existe');
+  assert.ok(Math.abs(precoMedio('Ovos', 'un') - 22 / 30) < 0.01);
+  const s = montarSugestao({ receita: { id: 'ia', porcao: ['marmita', 'marmitas'], rende: 10, embalagem: null,
+    ingredientes: [['Cebola', 2, 'un'], ['Alho', 4, 'un'], ['Tomate', 2, 'un'], ['Ovos', 3, 'un'], ['Farinha de trigo', 2, 'un']] } });
+  const por = Object.fromEntries(s.itens.map((i) => [i.nome, i]));
+  assert.deepEqual([por.Cebola.q, por.Cebola.un], [300, 'g'], 'cebola média 150 g');
+  assert.deepEqual([por.Alho.q, por.Alho.un], [20, 'g'], 'alho em un = dentes de 5 g');
+  assert.deepEqual([por.Tomate.q, por.Tomate.un], [240, 'g']);
+  assert.equal(por.Ovos.un, 'un');
+  assert.equal(por['Farinha de trigo'].preco, null, 'sem peso conhecido: sem preço, nunca o do pacote');
+  for (const i of s.itens) if (i.preco != null) assert.ok(i.preco < 200, i.nome);
+});

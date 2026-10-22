@@ -15,7 +15,7 @@
  * Quantidades da receita inteira em g, ml ou un; a embalagem vai 1 por porção.
  * Puro, sem React/RN (testado em __tests__/montarReceita.test.mjs).
  */
-import { getMarketPrice } from '../data/marketPrices';
+import { getMarketPriceInfo } from '../data/marketPrices';
 
 export const UNIDADES = ['g', 'ml', 'un'];
 export const MAX_QTD = { g: 20000, ml: 20000, un: 200 };
@@ -66,6 +66,29 @@ export function acharReceita(nomeProduto, biblioteca) {
   return melhor;
 }
 
+/** Palavras do nome que não mudam a receita (ligação, tamanho, enfeite). */
+const PALAVRAS_NEUTRAS = new Set(('de da do das dos com e no na em para p sabor recheio recheado recheada cobertura massa ' +
+  'caseiro caseira tradicional gourmet especial simples fofinho fofinha molhadinho molhadinha artesanal fit delicioso deliciosa ' +
+  'kg g gr grama gramas ml l litro litros un unidade unidades fatia fatias pedaco pedacos pote potes cento mini pequeno pequena ' +
+  'medio media grande familia individual porcao porcoes marmita marmitas inteiro inteira').split(' '));
+const raiz = (w) => (w.length > 3 ? w.replace(/(es|s)$/, '') : w);
+
+/**
+ * A receita da biblioteca cobre o nome digitado? Falso quando o nome traz
+ * palavra que a receita não tem no nome, nos termos nem nos ingredientes
+ * ("Escondidinho de carne seca" x receita de carne moída: "seca" sobra).
+ * Aí vale perguntar à IA; se ela falhar, a receita da biblioteca serve.
+ */
+export function receitaCobreNome(nomeProduto, receita) {
+  if (!receita) return false;
+  const vocab = new Set();
+  const juntar = (t) => normTexto(t).split(' ').forEach((w) => { if (w) vocab.add(raiz(w)); });
+  juntar(receita.nome);
+  (receita.termos || []).forEach(juntar);
+  (receita.ingredientes || []).forEach((i) => juntar(i?.[0]));
+  return normTexto(nomeProduto).split(' ').every((w) => !w || /^\d/.test(w) || PALAVRAS_NEUTRAS.has(w) || vocab.has(raiz(w)));
+}
+
 /** Segmento livre do perfil → nicho da biblioteca. null = não dá para dizer. */
 const NICHO_POR_PALAVRA = [
   ['acai', 'acai_sorvete'], ['sorvet', 'acai_sorvete'], ['gelad', 'acai_sorvete'], ['picol', 'acai_sorvete'],
@@ -86,16 +109,30 @@ export function nichoDoSegmento(segmento) {
 
 /**
  * Preço médio da base por kg (g), por litro (ml) ou por unidade (un).
+ * g e ml valem igual (densidade 1, boa o bastante para comida). Pedido em
+ * unidade que a base não vende assim (farinha "por unidade") = null: nunca
+ * o preço do pacote inteiro como se fosse por kg.
  * null = a base não conhece.
  */
 export function precoMedio(nome, un) {
   try {
-    const v = un === 'un' ? getMarketPrice(nome, 1, 'un') : getMarketPrice(nome, 1000, un === 'ml' ? 'ml' : 'g');
-    return Number.isFinite(v) && v > 0 ? v : null;
+    const b = getMarketPriceInfo(nome);
+    if (!b || !(b.valor > 0) || !(b.qty > 0)) return null;
+    const porUn = un === 'un';
+    if (porUn !== (b.unit === 'un')) return null;
+    const v = porUn ? b.valor / b.qty : (b.valor / b.qty) * 1000;
+    return Math.round(v * 100) / 100;
   } catch (_) {
     return null;
   }
 }
+
+/** Peso médio (g) de 1 unidade do que a base vende por kg ("2 cebolas"). */
+const PESO_UN = {
+  cebola: 150, 'cebola roxa': 150, tomate: 120, alho: 5, limao: 100, banana: 120, laranja: 200,
+  cenoura: 150, batata: 200, 'batata-doce': 250, 'batata doce': 250, maca: 150, maracuja: 150,
+  abobrinha: 250, pimentao: 150, morango: 15, 'morango fresco': 15, 'cheiro-verde': 100, salsinha: 100,
+};
 
 /** Custo da linha: preço por kg/L/un × quantidade (g/ml/un). Sem preço = 0. */
 export function custoLinha(preco, q, un) {
@@ -186,6 +223,8 @@ const APELIDOS = {
   'chocolate em po': 'Chocolate em pó 50%', maizena: 'Amido de milho', 'sal refinado': 'Sal',
   mucarela: 'Mussarela', 'queijo mucarela': 'Mussarela', 'queijo mussarela': 'Mussarela',
   'creme de leite de caixinha': 'Creme de leite', 'essencia de baunilha': 'Essência de baunilha',
+  requeijao: 'Requeijão cremoso', 'queijo mussarela ralado': 'Mussarela', 'mussarela ralada': 'Mussarela',
+  'queijo ralado': 'Queijo parmesão', 'cheiro verde': 'Cheiro-verde', aipim: 'Mandioca', macaxeira: 'Mandioca',
 };
 const AGUA = /^(agua|gelo)( (filtrada|morna|quente|fria|gelada|potavel|natural|em temperatura ambiente))?$/;
 
@@ -258,7 +297,15 @@ export function montarSugestao({ receita, nicho, ingredientesPorNicho, embalagem
     const medio = emb ? (Number(precoSugerido) > 0 ? Number(precoSugerido) : precoMedio(nome, 'un')) : precoMedio(nome, un);
     return { nome, q, un, emb, preco: daConta ? Number(c.preco) : medio, contaId: daConta ? c.id : null, contaTabela: daConta ? (c.tabela || null) : null, estimado: !daConta && medio != null };
   };
-  const itens = (base.ingredientes || []).map(([n, q, un]) => item(n, q, un, false));
+  const itens = (base.ingredientes || []).map(([n, q, un]) => {
+    // "2 cebolas": a base vende por kg; vira gramas pelo peso médio.
+    const peso = PESO_UN[normTexto(n)];
+    const daConta = conta.get(normTexto(n));
+    if (un === 'un' && peso && !(daConta && daConta.un === 'un') && precoMedio(n, 'un') == null) {
+      return item(n, Math.round(q * peso), 'g', false);
+    }
+    return item(n, q, un, false);
+  });
   if (base.embalagem) itens.push(item(base.embalagem[0], 1, 'un', true, base.embalagem[1]));
   return { fonte: receita ? (receita.id === 'ia' ? 'ia' : 'biblioteca') : 'nicho', porcao: base.porcao, rende: base.rende, itens };
 }

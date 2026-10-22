@@ -254,6 +254,37 @@ const PRICES = {
   'gergelim':                            { valor: 28.00, qty: 250, unidade: 'kg' },
   'wasabi em pasta':                     { valor: 18.00, qty: 200, unidade: 'kg' },
   'gengibre em conserva':                { valor: 14.00, qty: 200, unidade: 'kg' },
+
+  // ── MONTAR A RECEITA (21/10/2026): itens comuns em receitas sugeridas
+  // pela biblioteca e pela IA que ficavam sem preço. Varejo médio. ──────
+  'carne seca':                          { valor: 55.00, qty: 1000, unidade: 'kg' },
+  'charque':                             { valor: 45.00, qty: 1000, unidade: 'kg' },
+  'mandioca':                            { valor: 7.00, qty: 1000, unidade: 'kg' },
+  'aipim':                               { valor: 7.00, qty: 1000, unidade: 'kg' },
+  'macaxeira':                           { valor: 7.00, qty: 1000, unidade: 'kg' },
+  'requeijao':                           { valor: 13.00, qty: 400, unidade: 'kg' },
+  'mussarela ralada':                    { valor: 30.00, qty: 500, unidade: 'kg' },
+  'queijo mussarela ralado':             { valor: 30.00, qty: 500, unidade: 'kg' },
+  'alcatra':                             { valor: 48.00, qty: 1000, unidade: 'kg' },
+  'coxao mole':                          { valor: 45.00, qty: 1000, unidade: 'kg' },
+  'paio':                                { valor: 40.00, qty: 1000, unidade: 'kg' },
+  'costelinha suina defumada':           { valor: 38.00, qty: 1000, unidade: 'kg' },
+  'batata-doce':                         { valor: 6.00, qty: 1000, unidade: 'kg' },
+  'batata doce':                         { valor: 6.00, qty: 1000, unidade: 'kg' },
+  'abobrinha':                           { valor: 6.00, qty: 1000, unidade: 'kg' },
+  'brocolis':                            { valor: 14.00, qty: 1000, unidade: 'kg' },
+  'couve':                               { valor: 15.00, qty: 1000, unidade: 'kg' },
+  'laranja':                             { valor: 5.00, qty: 1000, unidade: 'kg' },
+  'grao-de-bico':                        { valor: 14.00, qty: 1000, unidade: 'kg' },
+  'grao de bico':                        { valor: 14.00, qty: 1000, unidade: 'kg' },
+  'leite de coco':                       { valor: 5.00, qty: 200, unidade: 'L' },
+  'batata palha':                        { valor: 8.00, qty: 120, unidade: 'kg' },
+  'biscoito maisena':                    { valor: 5.00, qty: 200, unidade: 'kg' },
+  'pao de forma':                        { valor: 9.00, qty: 500, unidade: 'kg' },
+  'massa para lasanha':                  { valor: 8.00, qty: 500, unidade: 'kg' },
+  'cheiro-verde':                        { valor: 3.00, qty: 100, unidade: 'kg' },
+  'cheiro verde':                        { valor: 3.00, qty: 100, unidade: 'kg' },
+  'salsinha':                            { valor: 3.00, qty: 100, unidade: 'kg' },
 };
 
 /**
@@ -303,6 +334,19 @@ export function getMarketPrice(nome, qtdBruta, unidade) {
   }
   // Unidades incompatíveis (g vs mL vs un) → retorna preço base.
   return entry.valor;
+}
+
+/**
+ * Entrada da base com a unidade-base (g, mL ou un), para quem precisa saber
+ * se a unidade bate antes de usar o preço (getMarketPrice devolve o preço do
+ * pacote quando não bate). null = a base não conhece.
+ */
+export function getMarketPriceInfo(nome) {
+  if (!nome) return null;
+  const key = _norm(nome);
+  const entry = PRICES[key] || PRICES[key.replace(/\s*\([^)]*\)\s*/g, '').trim()];
+  if (!entry) return null;
+  return { valor: Number(entry.valor) || 0, qty: Number(entry.qty) || 0, unit: _toBase(1, entry.unidade).unit };
 }
 
 /**

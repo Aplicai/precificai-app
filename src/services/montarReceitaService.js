@@ -16,7 +16,7 @@
  * Sem transação no wrapper: se algo falha, apaga o que esta gravação criou.
  */
 import { calcularPrecoRapido, parseValorBR } from '../utils/precoRapido';
-import { normTexto, acharReceita, validarRespostaIA, montarSugestao, nichoDoSegmento, canonizarReceita } from '../utils/montarReceita';
+import { normTexto, acharReceita, validarRespostaIA, montarSugestao, nichoDoSegmento, canonizarReceita, receitaCobreNome, precoMedio } from '../utils/montarReceita';
 import { RECEITAS_SUGERIDAS, INGREDIENTES_POR_NICHO, EMBALAGEM_POR_NICHO } from '../data/receitasSugeridas';
 import { garantirFinanceiro } from './precoRapidoService';
 
@@ -83,14 +83,30 @@ export async function pedirReceitaIA(invocar, produto, nicho) {
 }
 
 /**
- * Sugestão para a tela: biblioteca > IA > nicho.
+ * Embalagem que a IA disse sem preço na base ("Marmita de aluminio com
+ * tampa"): usa a do ramo, que já tem preço médio. Sem embalagem do ramo,
+ * fica a da IA (a pessoa põe o preço).
+ */
+function embalagemDoNicho(receita, nicho) {
+  const doNicho = EMBALAGEM_POR_NICHO[nicho];
+  if (!receita?.embalagem || !doNicho || precoMedio(receita.embalagem[0], 'un') != null) return receita;
+  return { ...receita, embalagem: doNicho };
+}
+
+/**
+ * Sugestão para a tela: biblioteca (se cobre o nome) > IA > biblioteca > nicho.
  * @returns {{ fonte, porcao, rende, itens, nicho }}
  */
 export async function buscarSugestao({ db, nomeProduto, segmento, invocar }) {
   const nicho = nichoDoSegmento(segmento) || nichoDoSegmento(nomeProduto) || 'confeitaria';
   const precosConta = db ? await carregarPrecosConta(db) : new Map();
   let receita = acharReceita(nomeProduto, RECEITAS_SUGERIDAS);
-  if (!receita) receita = await pedirReceitaIA(invocar, String(nomeProduto || '').trim(), nicho);
+  // Nome mais específico que a receita da biblioteca ("de carne seca" x
+  // carne moída): a IA monta a certa; se falhar, fica a da biblioteca.
+  if (!receita || !receitaCobreNome(nomeProduto, receita)) {
+    const ia = await pedirReceitaIA(invocar, String(nomeProduto || '').trim(), nicho);
+    if (ia) receita = embalagemDoNicho(ia, nicho);
+  }
   const s = montarSugestao({ receita, nicho, ingredientesPorNicho: INGREDIENTES_POR_NICHO, embalagemPorNicho: EMBALAGEM_POR_NICHO, precosConta });
   return { ...s, nicho };
 }

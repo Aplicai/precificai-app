@@ -113,3 +113,17 @@ test('buscarSugestao: biblioteca não chama a IA; desconhecido chama; IA falhou 
   assert.equal(s2.fonte, 'nicho');
   assert.ok(s2.itens.length >= 5, 'lista do nicho tem ingredientes');
 });
+
+test('buscarSugestao: nome mais específico que a biblioteca usa a IA; IA falhou fica a biblioteca', async () => {
+  const receitaIA = { porcao: 'marmita', rende: 6, embalagem: 'Marmita de aluminio com tampa', ingredientes: [{ nome: 'Carne seca', quantidade: 800, unidade: 'g' }, { nome: 'Aipim', quantidade: 1500, unidade: 'g' }, { nome: 'Requeijao', quantidade: 200, unidade: 'g' }] };
+  let chamou = 0;
+  const ok = await buscarSugestao({ db: dbFalso(), nomeProduto: 'Escondidinho de carne seca', segmento: 'Marmitas', invocar: async () => { chamou += 1; return { data: { ok: true, receita: receitaIA } }; } });
+  assert.equal(chamou, 1);
+  assert.equal(ok.fonte, 'ia');
+  assert.ok(ok.itens.some((i) => i.nome === 'Carne seca'));
+  assert.ok(ok.itens.filter((i) => !i.emb).every((i) => i.preco > 0), 'carne seca, mandioca e requeijão com preço médio');
+  const emb = ok.itens.find((i) => i.emb);
+  assert.ok(emb && emb.preco > 0 && emb.nome !== 'Marmita de aluminio com tampa', 'embalagem sem preço vira a do ramo');
+  const falhou = await buscarSugestao({ db: dbFalso(), nomeProduto: 'Escondidinho de carne seca', segmento: 'Marmitas', invocar: async () => ({ data: { ok: false } }) });
+  assert.equal(falhou.fonte, 'biblioteca');
+});
