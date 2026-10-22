@@ -152,8 +152,9 @@ export default function MontarReceitaScreen({ navigation, route }) {
       <View style={styles.live} accessibilityLiveRegion="polite">
         <View style={styles.liveDentro}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.liveLabel}>{n ? `Venda cada ${porcao} por (até agora)` : 'Seu preço aparece aqui'}</Text>
+            <Text style={styles.liveLabel}>{n ? `Venda cada ${porcao} por${mesSalvo ? ' (até agora)' : ' (estimativa)'}` : 'Seu preço aparece aqui'}</Text>
             <Text style={styles.liveValor}>{n && preco.ok ? formatCurrency(preco.preco) : '—'}</Text>
+            {n && !mesSalvo ? <Text style={styles.liveNota}>Com gastos de exemplo. Na próxima tela você põe os seus e o preço fica certo.</Text> : null}
           </View>
           <Text style={styles.liveCont}>{n ? `${n} de ${n + faltam.length}\ningredientes` : 'Toque no 1º\ningrediente'}</Text>
         </View>
@@ -253,7 +254,6 @@ export default function MontarReceitaScreen({ navigation, route }) {
                   <TouchableOpacity style={styles.stepBotao} onPress={() => setRende((r) => Math.min(1000, r + 1))} accessibilityLabel="Mais"><Text style={styles.stepSinal}>+</Text></TouchableOpacity>
                 </View>
               </View>
-              {!mesSalvo && n ? <Text style={styles.legenda}>Preço com gastos médios do mês. Na próxima tela você coloca os seus.</Text> : null}
             </>
           )}
         </View>
@@ -279,6 +279,7 @@ const styles = StyleSheet.create({
   live: { backgroundColor: colors.primary, paddingHorizontal: spacing.md, paddingVertical: 10 },
   liveDentro: { flexDirection: 'row', alignItems: 'center', maxWidth: 560, width: '100%', alignSelf: 'center' },
   liveLabel: { fontSize: fonts.small, fontFamily: fontFamily.medium, color: '#ffffffd9' },
+  liveNota: { fontSize: fonts.tiny + 1, fontFamily: fontFamily.regular, color: '#ffffffcc', marginTop: 2 },
   liveValor: { fontSize: 26, fontFamily: fontFamily.extraBold || fontFamily.bold, color: '#fff' },
   liveCont: { fontSize: fonts.tiny + 1, fontFamily: fontFamily.medium, color: '#ffffffd9', textAlign: 'right' },
   conteudo: { padding: spacing.md, paddingBottom: spacing.xl * 2 },

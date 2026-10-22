@@ -365,7 +365,7 @@ export default function PrecoRapidoScreen({ navigation, route }) {
               <Text style={styles.palavra}>Gasto por mês R$</Text>
               <Campo valor={gastoMes} onChange={setGastoMes} placeholder="2.000" label="Gasto por mês para funcionar" />
             </View>
-            <Text style={styles.dica}>Aluguel, luz, gás, internet, salários (o seu também). Sem os ingredientes.</Text>
+            <Text style={styles.dica}>Aluguel, luz, gás, internet e salários. Inclua quanto você quer tirar para você por mês. Sem os ingredientes.</Text>
             <View style={styles.frase}>
               <Text style={styles.palavra}>Vendo por mês R$</Text>
               <Campo valor={vendaMes} onChange={setVendaMes} placeholder="8.000" label="Quanto vende por mês" />
