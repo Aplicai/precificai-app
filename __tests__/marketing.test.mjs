@@ -68,8 +68,37 @@ test('grava a origem no perfil uma vez, e só quando há campanha', async () => 
   await syncMarketingForUser(user, supabase);
   assert.deepEqual(chamadas[0], { data: { attribution: { utm_source: 'meta', utm_content: 'anuncio-03', consent: 'granted' } } });
 
+  globalThis.window.pcf.attribution = () => ({ utm_source: 'meta', utm_content: 'anuncio-03' });
   await syncMarketingForUser({ ...user, user_metadata: { attribution: { utm_source: 'google' } } }, supabase);
   assert.equal(chamadas.length, 1); // primeira origem vale
+  delete globalThis.window;
+});
+
+test('aceite de cookies dado depois do cadastro chega ao perfil (Purchase do servidor depende dele)', async () => {
+  const chamadas = [];
+  const supabase = { auth: { updateUser: async (p) => { chamadas.push(p); } } };
+  const salva = { utm_source: 'meta', utm_content: 'anuncio-18', fbclid: 'abc', ts: 1 };
+  const user = { id: 'u1', created_at: '2020-01-01T00:00:00Z', user_metadata: { attribution: salva } };
+
+  // Ainda sem resposta: nada muda.
+  globalThis.window = { pcf: { attribution: () => ({ utm_source: 'outro' }), track() {} } };
+  await syncMarketingForUser(user, supabase);
+  assert.equal(chamadas.length, 0);
+
+  // Aceitou depois: grava o aceite e os cookies do Pixel, sem trocar a origem.
+  globalThis.window.pcf.attribution = () => ({ utm_source: 'outro', consent: 'granted', fbp: 'fb.1.2.3', fbc: 'fb.1.1.abc' });
+  await syncMarketingForUser(user, supabase);
+  assert.deepEqual(chamadas[0], { data: { attribution: { ...salva, consent: 'granted', fbp: 'fb.1.2.3', fbc: 'fb.1.1.abc' } } });
+
+  // Já gravado igual: não regrava.
+  const comAceite = { ...user, user_metadata: { attribution: chamadas[0].data.attribution } };
+  await syncMarketingForUser(comAceite, supabase);
+  assert.equal(chamadas.length, 1);
+
+  // Recusou depois de aceitar: grava a recusa e apaga os cookies do Pixel.
+  globalThis.window.pcf.attribution = () => ({ consent: 'denied' });
+  await syncMarketingForUser(comAceite, supabase);
+  assert.deepEqual(chamadas[1], { data: { attribution: { ...salva, consent: 'denied' } } });
   delete globalThis.window;
 });
 

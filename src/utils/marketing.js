@@ -203,6 +203,27 @@ export function trackRegistrationOnce(user, supabase) {
 }
 
 /**
+ * Origem gravada no perfil com o aceite de cookies atual, ou null se nada mudou.
+ * Aceitou: entram os cookies do Pixel (fbp/fbc). Recusou: eles saem.
+ * @param {object} salva atribuição do user_metadata
+ * @param {object|null} atual atribuição da visita (getAttribution)
+ */
+export function atualizarConsentimento(salva, atual) {
+  const consent = atual?.consent;
+  if (consent !== 'granted' && consent !== 'denied') return null;
+  const nova = { ...salva, consent };
+  if (consent === 'granted') {
+    if (atual.fbp && !nova.fbp) nova.fbp = atual.fbp;
+    if (atual.fbc && !nova.fbc) nova.fbc = atual.fbc;
+  } else {
+    delete nova.fbp;
+    delete nova.fbc;
+  }
+  const mudou = Object.keys({ ...salva, ...nova }).some((k) => salva[k] !== nova[k]);
+  return mudou ? nova : null;
+}
+
+/**
  * Primeira sessão de uma conta: registra o cadastro (se for novo) e grava a
  * origem no perfil, para saber depois qual anúncio trouxe quem pagou.
  * @param {object} user usuário do Supabase
@@ -212,7 +233,15 @@ export async function syncMarketingForUser(user, supabase) {
   if (!user?.id) return;
   try {
     if (isFreshSignup(user.created_at)) await trackRegistrationOnce(user, supabase);
-    if (user.user_metadata?.attribution) return; // primeira origem vale; não sobrescreve
+    const salva = user.user_metadata?.attribution;
+    if (salva) {
+      // Primeira origem vale e não é sobrescrita. Só o aceite de cookies muda:
+      // quem respondeu o aviso depois do cadastro ficava sem aceite no perfil, e
+      // a compra (Purchase, no asaas-webhook) não chegava ao Meta.
+      const nova = atualizarConsentimento(salva, getAttribution());
+      if (nova) await supabase.auth.updateUser({ data: { attribution: nova } });
+      return;
+    }
     const attribution = getAttribution();
     // Só campanha de verdade: consentimento sozinho não é origem.
     if (!attribution || !(attribution.utm_source || attribution.fbclid)) return;
