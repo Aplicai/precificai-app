@@ -725,9 +725,9 @@ function AppContent() {
       {initialRoute === 'WelcomeTour' && (
         <RootStack.Screen name="WelcomeTour" component={WelcomeTourScreen} />
       )}
-      {(initialRoute === 'WelcomeTour' || initialRoute === 'ProfileSetup') && (
+      {initialRoute === 'ProfileSetup' && (
         <RootStack.Screen name="ProfileSetup" component={PerfilScreen} options={{
-          ...screenOptions, headerShown: true, title: 'Perfil do Negócio',
+          ...screenOptions, headerShown: true, title: 'Seu negócio',
         }} />
       )}
       {(initialRoute === 'WelcomeTour' || initialRoute === 'Onboarding' || initialRoute === 'ProfileSetup') && (

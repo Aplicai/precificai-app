@@ -143,7 +143,7 @@ export default function MobileOnboardingOverlay({ navigation }) {
         <View style={{ flex: 1 }}>
           <Text style={styles.bannerTitle}>Por onde começar?</Text>
           <Text style={styles.bannerDesc} numberOfLines={2}>
-            Veja a ordem certa de uso em 6 passos rápidos.
+            Veja a ordem certa de uso em 4 passos rápidos.
           </Text>
         </View>
         <TouchableOpacity

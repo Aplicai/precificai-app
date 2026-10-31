@@ -1,8 +1,9 @@
 /**
  * Grava o Preço rápido (src/utils/precoRapido.js):
  *   1. Financeiro, só onde está vazio: configuracao (lucro 15%), as vendas do
- *      mês nos 12 meses (como o assistente do Financeiro faz) e uma despesa
- *      fixa "Gastos do mês (estimativa)". O que a pessoa já preencheu fica.
+ *      mês nos 12 meses (como o assistente do Financeiro faz), uma despesa
+ *      fixa "Gastos do mês (estimativa)" e um custo por venda de 0% (ver
+ *      garantirFinanceiro). O que a pessoa já preencheu fica.
  *   2. Um ingrediente "Receita do X (custo estimado)" em unidade, com o custo
  *      da receita inteira, ligado ao produto com quantidade 1. Assim o custo
  *      do produto bate em todas as telas; trocar pelos ingredientes reais
@@ -23,9 +24,27 @@ async function linhas(db, sql) {
 }
 
 /**
+ * Custo por venda semeado pelo Preço rápido: 0%, com nome que diz que é para
+ * ajustar. Sem "cartão/maquininha" no nome: o Financeiro aceita UMA taxa de
+ * cartão e a pessoa precisa conseguir adicionar a dela depois.
+ */
+export const TAXAS_PADRAO_DESCRICAO = 'Taxas por venda (ajuste depois)';
+
+/**
  * Financeiro só onde está vazio: configuracao (lucro 15%), as vendas do mês
- * nos 12 meses e a despesa fixa "Gastos do mês (estimativa)". O que a pessoa
- * já preencheu fica. Usado pelo Preço rápido e pela receita montada.
+ * nos 12 meses, a despesa fixa "Gastos do mês (estimativa)" e um custo por
+ * venda de 0%. O que a pessoa já preencheu fica. Usado pelo Preço rápido e
+ * pela receita montada.
+ *
+ * Regra "Financeiro completo depois do Preço rápido" (31/10/2026): o status
+ * (financeiroStatus.js, setupStatus.js, Home) exige 1+ linha em cada uma das
+ * 4 partes. O Preço rápido pergunta lucro (padrão), vendas e gastos do mês;
+ * só não pergunta taxas por venda. Então grava a linha de 0% acima, que
+ * aparece no Financeiro como qualquer outra ("Taxas por venda (ajuste
+ * depois)  0%") e não muda o preço. Assim nenhum banner "Configuração
+ * pendente" / "Análises indisponíveis" fica ligado para quem acabou de salvar
+ * o 1º preço. Gasto do mês "0" também vira uma linha (R$ 0): foi a resposta
+ * da pessoa, e sem a linha o Financeiro ficaria "pendente" para sempre.
  */
 export async function garantirFinanceiro(db, { vendaMes, gastoMes }) {
   const cfgs = await linhas(db, 'SELECT * FROM configuracao');
@@ -43,8 +62,12 @@ export async function garantirFinanceiro(db, { vendaMes, gastoMes }) {
     }
   }
   const fixas = await linhas(db, 'SELECT * FROM despesas_fixas');
-  if (fixas.length === 0 && gastoMes > 0) {
+  if (fixas.length === 0 && Number.isFinite(gastoMes) && gastoMes >= 0) {
     await db.runAsync('INSERT INTO despesas_fixas (descricao, valor) VALUES (?, ?)', ['Gastos do mês (estimativa)', gastoMes]);
+  }
+  const vars = await linhas(db, 'SELECT * FROM despesas_variaveis');
+  if (vars.length === 0) {
+    await db.runAsync('INSERT INTO despesas_variaveis (descricao, percentual) VALUES (?, ?)', [TAXAS_PADRAO_DESCRICAO, 0]);
   }
 }
 

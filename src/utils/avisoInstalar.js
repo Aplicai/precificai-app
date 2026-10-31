@@ -5,9 +5,11 @@
  * (perfil, Preço rápido): cobria o topo da tela e, no navegador do Instagram,
  * o "Instalar" levava a pessoa ao Chrome, onde ela não está logada.
  * Regra agora:
- *   - sem conta logada (cadastro/login): pode aparecer;
- *   - logado: só depois do primeiro preço (Preço rápido salvo ou a Home vê
- *     um produto com preço). Fica gravado no aparelho.
+ *   - sem conta logada (cadastro/login): não aparece. Exceção: dentro do
+ *     Instagram/Facebook o "Abrir no Chrome/Safari" aparece, porque o login
+ *     com Google não funciona no navegador interno (31/10/2026);
+ *   - logado: só depois do primeiro preço (a Home vê um produto com preço;
+ *     antes era no 3º). Quem instala volta 4x mais. Fica gravado no aparelho.
  *   - logado e chegou pelo botão "Abrir no Chrome/Safari" (?instalar=1,
  *     `pediu`): pode aparecer. Caso do link de acesso da tela do primeiro
  *     preço (19/10/2026): a pessoa já entra logada no Chrome, onde o aparelho
@@ -16,8 +18,9 @@
 export const CHAVE_AVISO_INSTALAR_LIBERADO = 'pcf_instalar_liberado';
 
 /** Regra pura (testada em __tests__/avisoInstalar.test.mjs). */
-export function avisoInstalarPermitido({ logado, liberado, pediu = false }) {
-  return !logado || !!liberado || !!pediu;
+export function avisoInstalarPermitido({ logado, liberado, pediu = false, navegadorInterno = false }) {
+  if (!logado) return !!navegadorInterno;
+  return !!liberado || !!pediu;
 }
 
 const ouvintes = new Set();

@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import {
-  produtoDoSegmento, sugestoesDeProduto, normalizarTexto, linhaCobertura, lucroEmTexto,
+  produtoDoSegmento, sugestoesDeProduto, normalizarTexto, linhaCobertura, lucroEmTexto, chipMarcado,
   SUGESTOES_PADRAO, MAX_SUGESTOES,
 } from '../src/utils/primeiroPreco.js';
 
@@ -99,4 +99,36 @@ test('textos novos da tela sem travessão', () => {
     const textos = [...(src.match(/'[^'\n]*'/g) || []), ...(src.match(/>[^<>{}\n]+</g) || [])];
     for (const t of textos) assert.ok(!t.includes('—'), `${arq}: ${t}`);
   }
+});
+
+test('chip só fica marcado quando a pessoa escolheu: o nome sugerido pelo segmento não marca nenhum', () => {
+  // Pré-preenchido pelo segmento (ninguém tocou): nenhum chip marcado.
+  assert.equal(chipMarcado({ nome: 'Bolo de chocolate', chip: 'Bolo de chocolate', escolhido: false }), false);
+  // Tocou no chip (ou digitou igual): marcado.
+  assert.equal(chipMarcado({ nome: 'Bolo de chocolate', chip: 'Bolo de chocolate', escolhido: true }), true);
+  assert.equal(chipMarcado({ nome: 'bolo de chocolate ', chip: 'Bolo de chocolate', escolhido: true }), true);
+  assert.equal(chipMarcado({ nome: 'Pizza', chip: 'Bolo de chocolate', escolhido: true }), false);
+  assert.equal(chipMarcado({ nome: '', chip: 'Pizza', escolhido: true }), false);
+});
+
+test('Preço rápido: nenhum número vem preenchido; chips são sugestão, resultado neutro até preencher', () => {
+  const src = readFileSync(new URL('../src/screens/PrecoRapidoScreen.js', import.meta.url), 'utf8');
+  // Os cinco campos começam vazios (os exemplos ficam no placeholder, em cinza).
+  for (const campo of ['nome', 'custoReceita', 'rendimento', 'gastoMes', 'vendaMes', 'cobraHoje']) {
+    const re = new RegExp(`const \\[${campo}, set\\w+\\] = useState\\(''\\)`);
+    assert.match(src, re, `${campo} deve começar vazio`);
+  }
+  assert.ok(!/useState\('(40|20|2\.000|8\.000|3,50|2000|8000)/.test(src), 'nenhum valor de exemplo como estado inicial');
+  // "ex.:" no placeholder: 12 contas da Rodada 1 copiaram o 2.000 como se fosse o valor certo.
+  for (const ph of ['"ex.: 40,00"', '"ex.: 20"', '"ex.: 2.000"', '"ex.: 8.000"', '"ex.: 3,50"', '"Ex.: Bolo de chocolate"']) {
+    assert.ok(src.includes(`placeholder=${ph}`), `placeholder ${ph}`);
+  }
+  // Chip marcado só pela regra chipMarcado (nunca "nome === s" direto no estilo).
+  assert.ok(src.includes('chipMarcado('), 'usa chipMarcado');
+  assert.ok(!/nome === s && styles\.chipAtivo/.test(src), 'chip não marca só por bater com o nome');
+  // Cartão neutro enquanto faltam números.
+  assert.ok(src.includes('TEXTO_RESULTADO_VAZIO'), 'mostra o texto neutro');
+  assert.ok(src.includes('camposDoPrecoPreenchidos('), 'usa a regra pura de "preenchido"');
+  // A receita montada continua sendo a ação principal do passo 2.
+  assert.ok(src.includes('Não sei. Montar a receita'));
 });

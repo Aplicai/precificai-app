@@ -1,99 +1,70 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSetupStatus } from './setupStatus';
+import { CHAVE_PERFIL_SETUP, rotaInicialDoPerfil } from './perfilSetup';
+import { isDbErrorResult } from '../database/supabaseDb';
 
 /** Marcado pela ComoFuncionaScreen (vídeo de 1 min). */
 export const CHAVE_COMO_FUNCIONA = 'como_funciona_visto';
 /** Marcado pela PrecoRapidoScreen: aparece sozinho uma vez só. */
 export const CHAVE_PRECO_RAPIDO = 'preco_rapido_visto';
 
-// Perfil pronto e nenhum ingrediente (16/10/2026): Preço rápido uma vez,
-// depois Home (que oferece de novo). Nunca mais a tela "Configure seu app"
-// com o Financeiro na frente, onde quem caía não cadastrava nada.
-async function rotaSemIngrediente() {
-  const visto = await AsyncStorage.getItem(CHAVE_PRECO_RAPIDO);
-  return visto === 'true' ? 'MainTabs' : 'PrecoRapido';
-}
-import { isDbErrorResult } from '../database/supabaseDb';
-
-/**
- * A conta já tem ingrediente (o Preço rápido grava um)? Quem entra num
- * navegador novo com conta pronta (ex.: link de acesso da tela do primeiro
- * preço, Instagram → Chrome, 19/10/2026) não deve ver o tour de boas-vindas.
- * Erro de leitura: false (mantém o comportamento de antes).
- */
-async function contaJaTemDados() {
+async function flagVista(chave) {
   try {
-    const { getDatabase } = require('../database/database');
-    const db = await getDatabase();
-    const rows = await db.getAllAsync('SELECT id FROM materias_primas LIMIT 1');
-    return Array.isArray(rows) && !isDbErrorResult(rows) && rows.length > 0;
+    return (await AsyncStorage.getItem(chave)) === 'true';
   } catch (_) {
     return false;
   }
 }
 
 /**
+ * Perfil + ingrediente → rota, pela regra pura `rotaInicialDoPerfil`
+ * (31/10/2026: a tela de perfil só aparece para conta sem segmento, sem nome
+ * e que nunca a viu; "Continuar"/"Pular" marcam `perfil_setup_visto`).
+ * Perfil pronto e nenhum ingrediente (16/10/2026): Preço rápido uma vez,
+ * depois Home (que oferece de novo). Nunca mais a tela "Configure seu app"
+ * com o Financeiro na frente, onde quem caía não cadastrava nada.
+ * Devolve null quando a leitura falhou (quem chama decide: MainTabs).
+ */
+async function rotaPeloPerfil(db) {
+  const perfilRows = await db.getAllAsync('SELECT * FROM perfil LIMIT 1');
+  if (isDbErrorResult(perfilRows)) return null;
+  const insumos = await db.getAllAsync('SELECT id FROM materias_primas LIMIT 1');
+  if (isDbErrorResult(insumos)) return null;
+  const temIngredientes = Array.isArray(insumos) && insumos.length > 0;
+  if (temIngredientes) await AsyncStorage.setItem('onboarding_done', 'true');
+  return rotaInicialDoPerfil({
+    perfil: perfilRows?.[0] || null,
+    temIngredientes,
+    setupVisto: await flagVista(CHAVE_PERFIL_SETUP),
+    precoRapidoVisto: await flagVista(CHAVE_PRECO_RAPIDO),
+  });
+}
+
+/**
  * Determina a rota inicial do RootStack para usuários autenticados.
  *
- * Fluxo (audit P1-07):
- *  1. WelcomeTour (4 slides) — apenas para usuários novos sem onboarding feito
- *  2. ProfileSetup — perfil de negócio incompleto
- *  3. MainTabs — usuário já tem dados (onboarding implicitamente completo)
- *  4. Onboarding — fluxo guiado de setup financeiro
- *  5. MainTabs — fallback default
+ * Fluxo (31/10/2026, sem o tour de boas-vindas: conta nova vai direto ao
+ * "O que você vende?"):
+ *  1. MainTabs — `onboarding_done` ou já tem ingrediente
+ *  2. ProfileSetup — conta sem segmento, sem nome e que nunca viu o setup
+ *  3. PrecoRapido uma vez, depois MainTabs
  *
- * @param {Object} opts
- * @param {boolean} [opts.skipWelcomeTour=false] — pula o tour (usado APÓS terminar o tour)
- * @returns {Promise<'WelcomeTour'|'ProfileSetup'|'Onboarding'|'MainTabs'>}
+ * `skipWelcomeTour` é aceito por compatibilidade (WelcomeTourScreen) e ignorado.
+ *
+ * @returns {Promise<'ProfileSetup'|'PrecoRapido'|'MainTabs'>}
  */
-export async function determineInitialRoute({ skipWelcomeTour = false } = {}) {
+export async function determineInitialRoute() {
   try {
     // Se o usuário já completou o onboarding, vai direto para o app
     const onboardingDone = await AsyncStorage.getItem('onboarding_done');
     if (onboardingDone === 'true') return 'MainTabs';
 
-    // Tour interativo apenas para usuários novos.
-    // Mostra no máximo 2 vezes (após isso é sempre pulado, mesmo que nunca
-    // tenham completado — feedback do usuário: "tem que aparecer nas 2 primeiras vezes e só").
-    if (!skipWelcomeTour) {
-      const tourDone = await AsyncStorage.getItem('welcome_tour_done');
-      if (tourDone === 'true') {
-        // já completou: nunca mais mostrar
-      } else {
-        const rawCount = await AsyncStorage.getItem('welcome_tour_count');
-        const count = Number(rawCount) || 0;
-        if (count < 2 && !(await contaJaTemDados())) return 'WelcomeTour';
-        // 2 exibições já consumidas → marca como done permanentemente
-        if (count >= 2) await AsyncStorage.setItem('welcome_tour_done', 'true');
-      }
-    }
-
     const { getDatabase } = require('../database/database');
     const db = await getDatabase();
 
-    // Perfil de negócio incompleto → ProfileSetup
     // Audit M5: `[]`/null por ERRO de rede não é "sem perfil" — um usuário maduro
     // caía no onboarding a cada falha transitória. Erro → MainTabs (seguro).
-    const perfilRows = await db.getAllAsync('SELECT * FROM perfil LIMIT 1');
-    if (isDbErrorResult(perfilRows)) return 'MainTabs';
-    const perfil = perfilRows?.[0];
-    if (!perfil || !perfil.nome_negocio || perfil.nome_negocio.trim() === '') {
-      return 'ProfileSetup';
-    }
-
-    // Já tem insumos cadastrados → considera onboarding implícito
-    const insumos = await db.getAllAsync('SELECT id FROM materias_primas LIMIT 1');
-    if (isDbErrorResult(insumos)) return 'MainTabs';
-    if (insumos && insumos.length > 0) {
-      await AsyncStorage.setItem('onboarding_done', 'true');
-      return 'MainTabs';
-    }
-
-    // Item C (redesenho de ativação): o financeiro NÃO é mais um gate de 1º uso.
-    // Roteamos para 'Onboarding' como passo guiado (não-bloqueante: a tela tem
-    // saída para a Home sempre disponível e etapas desbloqueadas). Quem já tem
-    // financeiro completo pula direto pro app. A robustez de erro abaixo permanece.
-    return await rotaSemIngrediente();
+    return (await rotaPeloPerfil(db)) || 'MainTabs';
   } catch (err) {
     // Audit P1: silent catch original lançava o usuário direto em MainTabs em
     // qualquer falha (DB não montada, perfil corrompido, etc.) — pior UX possível
@@ -112,12 +83,11 @@ export async function determineInitialRoute({ skipWelcomeTour = false } = {}) {
  * silencioso/vazio. Mantém compat: rota fallback continua sendo
  * `ProfileSetup` em caso de erro.
  *
- * @param {Object} opts — mesmo shape de `determineInitialRoute`.
- * @returns {Promise<{route: 'WelcomeTour'|'ProfileSetup'|'Onboarding'|'MainTabs', routeError: Error|null}>}
+ * @returns {Promise<{route: 'ProfileSetup'|'PrecoRapido'|'MainTabs', routeError: Error|null}>}
  */
-export async function determineInitialRouteWithError(opts = {}) {
+export async function determineInitialRouteWithError() {
   try {
-    const route = await determineInitialRoute(opts);
+    const route = await determineInitialRoute();
     return { route, routeError: null };
   } catch (err) {
     // `determineInitialRoute` já tem catch interno e devolve 'ProfileSetup',
@@ -139,37 +109,19 @@ export async function determineInitialRouteWithError(opts = {}) {
  * "DB falhou — não sei se você tem dados". A duplicação é intencional para
  * manter `determineInitialRoute` (callers existentes) com signature String.
  */
-export async function determineInitialRouteSafe({ skipWelcomeTour = false } = {}) {
+export async function determineInitialRouteSafe() {
   try {
-    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
     const onboardingDone = await AsyncStorage.getItem('onboarding_done');
     if (onboardingDone === 'true') return { route: 'MainTabs', routeError: null };
-
-    if (!skipWelcomeTour) {
-      const tourDone = await AsyncStorage.getItem('welcome_tour_done');
-      if (tourDone !== 'true') {
-        const rawCount = await AsyncStorage.getItem('welcome_tour_count');
-        const count = Number(rawCount) || 0;
-        if (count < 2 && !(await contaJaTemDados())) return { route: 'WelcomeTour', routeError: null };
-        if (count >= 2) await AsyncStorage.setItem('welcome_tour_done', 'true');
-      }
-    }
 
     const { getDatabase } = require('../database/database');
     const db = await getDatabase();
 
-    const perfilRows = await db.getAllAsync('SELECT * FROM perfil LIMIT 1');
-    if (isDbErrorResult(perfilRows)) return { route: 'MainTabs', routeError: null };
-    const perfil = perfilRows?.[0];
-    if (!perfil || !perfil.nome_negocio || perfil.nome_negocio.trim() === '') {
-      return { route: 'ProfileSetup', routeError: null };
-    }
-
-    const insumos = await db.getAllAsync('SELECT id FROM materias_primas LIMIT 1');
-    if (isDbErrorResult(insumos)) return { route: 'MainTabs', routeError: null };
-    if (insumos && insumos.length > 0) {
-      await AsyncStorage.setItem('onboarding_done', 'true');
-      return { route: 'MainTabs', routeError: null };
+    // 31/10/2026: sem tour de boas-vindas. Conta nova cai direto no
+    // "O que você vende?" (ProfileSetup) e dali no Preço rápido.
+    const rota = await rotaPeloPerfil(db);
+    if (rota === null || rota === 'MainTabs' || rota === 'ProfileSetup') {
+      return { route: rota || 'MainTabs', routeError: null };
     }
 
     // Erro aqui significa DB acessível mas getSetupStatus quebrou — caso
@@ -177,7 +129,7 @@ export async function determineInitialRouteSafe({ skipWelcomeTour = false } = {}
     try {
       // Continua lendo o status: falha de leitura vira routeError (abaixo).
       await getSetupStatus();
-      return { route: await rotaSemIngrediente(), routeError: null };
+      return { route: rota, routeError: null };
     } catch (statusErr) {
       console.error('[determineInitialRouteSafe.getSetupStatus]', statusErr);
       return { route: 'ProfileSetup', routeError: statusErr };

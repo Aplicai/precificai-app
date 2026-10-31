@@ -35,6 +35,20 @@ export function parseValorBR(v) {
 const num = parseValorBR;
 
 /**
+ * Cartão de resultado neutro (31/10/2026): a tela não traz nenhum número
+ * preenchido (de 90 contas com preço, 55 tinham só o nome do chip e 12 o
+ * "2000" do exemplo). Enquanto faltar custo, rendimento, gasto ou venda do
+ * mês, o cartão mostra este texto em vez de erro ou de um preço inventado.
+ */
+export const TEXTO_RESULTADO_VAZIO = 'Preencha os números acima. O preço aparece aqui na hora.';
+
+/** true quando os quatro números obrigatórios têm algo digitado ("0" conta). */
+export function camposDoPrecoPreenchidos({ custoReceita, rendimento, gastoMes, vendaMes }) {
+  const tem = (v) => v !== null && v !== undefined && String(v).trim() !== '';
+  return tem(custoReceita) && tem(rendimento) && tem(gastoMes) && tem(vendaMes);
+}
+
+/**
  * @returns {{ ok, erros, inviavel, custoUnit, fixosPerc, markup, preco,
  *   partes: {custo, gastos, lucro}, comparacao: null|{situacao:'abaixo'|'cobre', hoje, diferenca} }}
  */

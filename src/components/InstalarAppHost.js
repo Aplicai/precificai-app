@@ -101,7 +101,7 @@ export default function InstalarAppHost() {
   }, []);
 
   if (!modo) return null;
-  if (authCarregando || ocultoNaTela || !avisoInstalarPermitido({ logado: !!user, liberado, pediu })) return null;
+  if (authCarregando || ocultoNaTela || !avisoInstalarPermitido({ logado: !!user, liberado, pediu, navegadorInterno: modo === 'chrome' || modo === 'safari' })) return null;
 
   function fechar() {
     gravarSessao(CHAVE_SESSAO_FECHOU, '1');

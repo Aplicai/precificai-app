@@ -7,6 +7,7 @@ import useListDensity from '../hooks/useListDensity';
 import useRateLimit from '../hooks/useRateLimit';
 import { mapAuthError, classifyAuthError, AUTH_ERROR_KIND } from '../utils/authErrors';
 import { parseRateLimitSeconds } from '../utils/parseRateLimit';
+import { ehCelular } from '../utils/sessaoTimeout';
 
 // Validação simples: nome@dominio.tld (subset de RFC 5322 suficiente para UX antes do backend).
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -26,9 +27,10 @@ export default function LoginScreen({ navigation }) {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  // M-2: "Lembrar de mim" — default DESMARCADO (timeout 2h em vez de 7d).
-  // Marcado = 7 dias, recomendado apenas para dispositivos pessoais.
+  // "Lembrar de mim": só no computador (24 h sem marcar, 30 dias marcado).
+  // No celular a sessão já dura 30 dias (src/utils/sessaoTimeout.js).
   const [rememberMe, setRememberMeLocal] = useState(false);
+  const mostrarLembrar = !(Platform.OS === 'web' && typeof window !== 'undefined' && ehCelular(window.navigator?.userAgent));
   // Countdown (segundos) para rate-limit retornado pelo Supabase.
   // Quando > 0, desabilita o botão e mostra "Aguarde Xs para tentar novamente".
   const [retryIn, setRetryIn] = useState(0);
@@ -277,23 +279,22 @@ export default function LoginScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* M-2: Lembrar de mim — controla timeout de inatividade (2h vs 7d). */}
-          <TouchableOpacity
+          {mostrarLembrar && <TouchableOpacity
             style={styles.rememberRow}
             onPress={() => setRememberMeLocal(v => !v)}
             activeOpacity={0.7}
             accessibilityRole="checkbox"
             accessibilityState={{ checked: rememberMe }}
-            accessibilityLabel="Lembrar de mim por 7 dias"
+            accessibilityLabel="Lembrar de mim por 30 dias"
           >
             <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
               {rememberMe ? <Feather name="check" size={14} color="#fff" /> : null}
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.rememberLabel}>Lembrar de mim por 7 dias</Text>
-              <Text style={styles.rememberHint}>Recomendado apenas em dispositivos pessoais</Text>
+              <Text style={styles.rememberLabel}>Lembrar de mim por 30 dias</Text>
+              <Text style={styles.rememberHint}>Só em computador que é seu</Text>
             </View>
-          </TouchableOpacity>
+          </TouchableOpacity>}
 
           <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')} style={styles.forgotBtn}>
             <Text style={styles.forgotText}>Esqueci minha senha</Text>

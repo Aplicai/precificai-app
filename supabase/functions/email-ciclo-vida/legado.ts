@@ -25,12 +25,12 @@ interface Bloco {
 const ETAPAS: Record<Estagio, Bloco> = {
   sem_perfil: {
     assunto: 'Falta 1 minuto para começar no Precificaí',
-    previa: 'Conte o nome do seu negócio e o app já abre pronto para você.',
+    previa: 'Conte o que você vende e o app já abre pronto para você.',
     selo: 'Passo 1 de 4',
     titulo: 'Falta só 1 minuto para começar',
     paragrafos: [
-      'Você criou sua conta no Precificaí, mas ainda não contou o nome do seu negócio.',
-      'Informe o nome e o segmento. Com isso, o app já abre com os ingredientes mais comuns do seu ramo, prontos para você colocar o preço que paga.',
+      'Você criou sua conta no Precificaí, mas ainda não contou o que você vende.',
+      'Escolha o seu ramo. Com isso, o app sugere a receita e o preço do seu produto, e você só confere.',
     ],
     cta: 'Continuar de onde parei',
     passo: 0,

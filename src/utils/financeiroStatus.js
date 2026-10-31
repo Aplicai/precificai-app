@@ -10,6 +10,11 @@ import { rowsOrThrow, countOrThrow } from '../database/dbResult';
  * Puro (sem DB) — usado aqui, em `setupStatus.js` e no cálculo inline da
  * Home, pra que os três nunca discordem. Testado em
  * `__tests__/financeiroStatus.test.mjs`.
+ *
+ * Preço rápido (31/10/2026): quem salva o 1º preço sai com as 4 etapas
+ * preenchidas (precoRapidoService.garantirFinanceiro grava lucro, vendas,
+ * gastos do mês e um custo por venda de 0%), então nenhum aviso "pendente"
+ * acende depois dele. A regra aqui não muda: continua contando linhas.
  */
 export function montarStatusFinanceiro({ lucroOk, faturamentoOk, fixasOk, variaveisOk }) {
   const etapas = [

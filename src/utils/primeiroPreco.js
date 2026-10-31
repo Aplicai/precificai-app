@@ -92,6 +92,18 @@ export function sugestoesDeProduto(segmento) {
   return lista.slice(0, MAX_SUGESTOES);
 }
 
+/**
+ * Chip do campo "Qual produto?" marcado só quando a pessoa escolheu (tocou no
+ * chip ou digitou o mesmo nome). O nome sugerido pelo segmento NÃO marca
+ * chip nenhum: antes "Bolo de chocolate" aparecia escolhido e 55 de 90 contas
+ * salvaram só o nome do chip, sem mexer em nada.
+ */
+export function chipMarcado({ nome, chip, escolhido }) {
+  if (!escolhido) return false;
+  const n = normalizarTexto(nome);
+  return !!n && n === normalizarTexto(chip);
+}
+
 /** 0.15 → "15"; 0.125 → "12,5". */
 export function lucroEmTexto(lucro) {
   const n = Number(lucro);

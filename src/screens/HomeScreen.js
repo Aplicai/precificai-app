@@ -11,7 +11,7 @@ import { calcSobraMes } from '../utils/breakeven';
 import { getFinanceiroStatus, montarStatusFinanceiro, textoPendenciaFinanceiro, publicarStatusFinanceiro, assinarStatusFinanceiro } from '../utils/financeiroStatus';
 import { liberarAvisoInstalar } from '../utils/avisoInstalar';
 import { askConsent } from '../utils/marketing';
-import { etapaEscada, mostrarInicioSimples, mostrarEscadaNoPainel, CHAVE_PAINEL_ESCOLHIDO, META_ESCADA, LINK_APP } from '../utils/escadaPrecos';
+import { etapaEscada, mostrarInicioSimples, mostrarEscadaNoPainel, CHAVE_PAINEL_ESCOLHIDO, LINK_APP } from '../utils/escadaPrecos';
 import { ehIPhone } from '../utils/navegadorInterno';
 import { resolverMargemMeta, isMargemBaixa, classificarMargem } from '../utils/margemMeta';
 import { avaliarIndicadores, indicadorEmAlerta, CMV_META_PADRAO } from '../utils/painelSaude';
@@ -669,9 +669,9 @@ export default function HomeScreen({ navigation }) {
       let painelEscolhido = false;
       try { painelEscolhido = (await AsyncStorage.getItem(CHAVE_PAINEL_ESCOLHIDO)) === 'true'; } catch (_) {}
       if (seq !== loadSeqRef.current) return;
-      // O aviso "Instale o app" é liberado na tabela de preços (3º preço).
-      // Contas que já tinham 3 ou mais antes da escada não passam por ela.
-      if (prodsComPreco >= META_ESCADA) liberarAvisoInstalar();
+      // O aviso "Instale o app" é liberado no primeiro preço (antes, no 3º):
+      // quem instala volta 4x mais (Rodada 1: 38% contra 10%).
+      if (prodsComPreco >= 1) liberarAvisoInstalar();
       setEscolheuPainel(painelEscolhido);
       produtosComPreco.sort((a, b) => a.id - b.id);
       setD({ totalInsumos, totalEmbalagens, totalPreparos, totalProdutos, margemMedia, custoTotal: somaCustos, impactoDelivery, resultadoFinanceiro, sobraSoFixas, produtosMargBaixa: uniqueProds, produtosSemPreco, primeiroSemPreco, prodsComPreco, produtosComPreco, margemMeta, cmvPercent, pontoEquilibrio, fatMedio, insights, vendasMesBalcao, vendasMesDelivery });

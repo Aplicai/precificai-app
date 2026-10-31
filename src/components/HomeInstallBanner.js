@@ -63,11 +63,13 @@ export default function HomeInstallBanner() {
       } catch (_) {}
     })();
 
-    // Heurística "novo user": tour concluído E 1ª exibição deste card recente.
+    // Heurística "novo user": passou pelo primeiro acesso (tour antigo ou o
+    // "O que você vende?" atual) E 1ª exibição deste card recente.
     (async () => {
       try {
         const tourDone = await AsyncStorage.getItem('welcome_tour_done');
-        if (tourDone !== 'true') return;
+        const setupVisto = await AsyncStorage.getItem('perfil_setup_visto');
+        if (tourDone !== 'true' && setupVisto !== 'true') return;
         const firstSeenRaw = await AsyncStorage.getItem(FIRST_SEEN_KEY);
         if (!firstSeenRaw) return;
         const firstSeen = Number(firstSeenRaw);

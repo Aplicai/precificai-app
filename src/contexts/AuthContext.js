@@ -9,6 +9,7 @@ import { subscribeDataChanged } from '../utils/dataSync';
 import { iniciarRegistroAberturas } from '../utils/aberturas';
 import { migrarRendimentoKit } from '../services/migracaoRendimentoKit';
 import { showToast } from '../utils/toastBus';
+import { timeoutInatividade, ehCelular } from '../utils/sessaoTimeout';
 
 const AuthContext = createContext({});
 
@@ -24,18 +25,22 @@ const AuthContext = createContext({});
 // A escolha é persistida em AsyncStorage chave `auth_remember_me` ('true' | 'false').
 // `getEffectiveTimeout()` lê o valor dinamicamente — o heartbeat e o handler de
 // AppState consultam a cada checagem, então mudanças entram em vigor imediatamente.
-const TIMEOUT_REMEMBER = 30 * 24 * 60 * 60 * 1000; // 30 dias
-const TIMEOUT_DEFAULT = 24 * 60 * 60 * 1000; // 24 horas
+// Desde 31/10/2026 a regra mora em src/utils/sessaoTimeout.js: no celular a
+// sessão dura 30 dias sempre (quem entra pelo Google nunca via a opção).
 const REMEMBER_ME_KEY = 'auth_remember_me';
 
+function aparelhoPessoal() {
+  if (Platform.OS !== 'web') return true; // app instalado no celular
+  try { return ehCelular(window.navigator?.userAgent); } catch { return false; }
+}
+
 async function getEffectiveTimeout() {
+  let lembrar = false;
   try {
     const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-    const raw = await AsyncStorage.getItem(REMEMBER_ME_KEY);
-    return raw === 'true' ? TIMEOUT_REMEMBER : TIMEOUT_DEFAULT;
-  } catch {
-    return TIMEOUT_DEFAULT;
-  }
+    lembrar = (await AsyncStorage.getItem(REMEMBER_ME_KEY)) === 'true';
+  } catch {}
+  return timeoutInatividade({ lembrar, celular: aparelhoPessoal() });
 }
 
 export function AuthProvider({ children }) {
@@ -365,13 +370,9 @@ export function AuthProvider({ children }) {
         : 'https://app.precificaiapp.com';
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: {
-          redirectTo,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-        },
+        // Sem `prompt: 'consent'`: ele forçava a tela de permissão do Google a
+        // cada login de novo. O app não usa o refresh token do Google.
+        options: { redirectTo },
       });
       if (error) throw error;
       return data;

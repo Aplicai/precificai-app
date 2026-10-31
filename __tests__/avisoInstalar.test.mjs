@@ -6,8 +6,12 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { avisoInstalarPermitido } from '../src/utils/avisoInstalar.js';
 
-test('sem conta (cadastro/login) o aviso pode aparecer', () => {
-  assert.equal(avisoInstalarPermitido({ logado: false, liberado: false }), true);
+test('sem conta (cadastro/login) o aviso de instalar não aparece', () => {
+  assert.equal(avisoInstalarPermitido({ logado: false, liberado: false }), false);
+});
+
+test('sem conta, dentro do Instagram/Facebook: o "Abrir no Chrome/Safari" aparece', () => {
+  assert.equal(avisoInstalarPermitido({ logado: false, liberado: false, navegadorInterno: true }), true);
 });
 
 test('logado, só depois do primeiro preço', () => {

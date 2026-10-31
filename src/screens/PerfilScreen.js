@@ -9,6 +9,9 @@ import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme
 import { useAuth } from '../contexts/AuthContext';
 import BackToSettings from '../components/BackToSettings';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
+import {
+  SEGMENTOS_SETUP, SEGMENTO_OUTRO, CHAVE_PERFIL_SETUP, chipDoSegmento, segmentoDoChip,
+} from '../utils/perfilSetup';
 
 // Multi-tenant: cada usuário tem sua chave de avatar (mesmo padrão de
 // usePushPermissions). Sem userId, não persiste nada — evita vazamento entre contas.
@@ -52,8 +55,8 @@ export default function PerfilScreen({ navigation, route }) {
   const [saveStatus, setSaveStatus] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [loaded, setLoaded] = useState(false);
-  // P1: feedback visível quando o usuário tenta avançar sem nome (acessibilidade).
-  const [showNameError, setShowNameError] = useState(false);
+  // Setup (31/10/2026): chip "Outro" aberto mostra o campo de texto livre.
+  const [outroAberto, setOutroAberto] = useState(false);
   // Avatar: uri local (file:// ou data:) persistida em AsyncStorage por usuário.
   const [avatarUri, setAvatarUri] = useState(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
@@ -154,6 +157,8 @@ export default function PerfilScreen({ navigation, route }) {
           segmento: row.segmento || '',
           telefone: row.telefone || '',
         });
+        // Segmento em texto livre (não é nenhum chip): abre o campo "Outro".
+        if (chipDoSegmento(row.segmento) === SEGMENTO_OUTRO) setOutroAberto(true);
       }
     } catch (err) {
       // Audit P0: silent catch original mascarava falhas de DB. Agora loga e
@@ -166,10 +171,6 @@ export default function PerfilScreen({ navigation, route }) {
 
   function updateField(key, value) {
     setPerfil(p => ({ ...p, [key]: value }));
-    // Limpa erro de nome assim que o usuário começa a digitar.
-    if (key === 'nome_negocio' && showNameError && value.trim()) {
-      setShowNameError(false);
-    }
     if (!loaded) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
@@ -204,28 +205,49 @@ export default function PerfilScreen({ navigation, route }) {
     }
   }
 
+  // Setup (31/10/2026): nada é obrigatório. 68 de 326 cadastros paravam aqui
+  // (nome + segmento exigidos) e nenhum voltou. "Continuar" e "Pular por agora"
+  // marcam o setup como visto, então a pessoa nunca é mandada de volta.
+  async function marcarSetupVisto() {
+    try { await AsyncStorage.setItem(CHAVE_PERFIL_SETUP, 'true'); } catch (_) {}
+  }
+
   async function onContinuePress() {
-    // 16/10/2026: telefone virou opcional (menos atrito no primeiro acesso).
-    const faltam = [];
-    if (!perfil.nome_negocio.trim()) faltam.push('Nome do negócio');
-    if (!perfil.segmento.trim()) faltam.push('Segmento');
-    if (faltam.length > 0) {
-      setShowNameError(true);
-      try {
-        if (typeof window !== 'undefined' && window.alert) {
-          window.alert('Preencha para continuar:\n• ' + faltam.join('\n• '));
-        }
-      } catch (_) {}
-      return;
-    }
     // Grava já: o autosave espera 600 ms e o replace desmonta a tela, então a
     // última digitação (às vezes o segmento inteiro) se perdia.
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    await autoSave(perfil);
+    const dados = {
+      ...perfil,
+      nome_negocio: perfil.nome_negocio.trim(),
+      segmento: perfil.segmento.trim(),
+    };
+    // Nada escolhido: não grava nada, só segue.
+    if (dados.nome_negocio || dados.segmento) await autoSave(dados);
+    await marcarSetupVisto();
     // 16/10/2026: o Kit de Início saiu do primeiro acesso (ninguém que pegou
     // chegou a um preço) e ficou em Configurações. No lugar, o Preço rápido.
     navigation.replace('PrecoRapido');
   }
+
+  async function onPularPress() {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    await marcarSetupVisto();
+    navigation.replace('PrecoRapido');
+  }
+
+  // Chip tocado vira a palavra em `perfil.segmento` (o Preço rápido e o
+  // Montar receita já entendem essas palavras). "Outro" abre o texto livre.
+  function onChipPress(chip) {
+    if (chip === SEGMENTO_OUTRO) {
+      setOutroAberto(true);
+      if (chipDoSegmento(perfil.segmento) !== SEGMENTO_OUTRO) updateField('segmento', '');
+      return;
+    }
+    setOutroAberto(false);
+    updateField('segmento', segmentoDoChip(chip));
+  }
+  const chipAtivo = outroAberto ? SEGMENTO_OUTRO : chipDoSegmento(perfil.segmento);
+  const segmentoEscolhido = !!perfil.segmento.trim();
 
   // Sem nome do negócio: ícone neutro (antes aparecia um "N" ao lado de "Seu Negócio").
   const nomeNegocio = String(perfil.nome_negocio || '').trim();
@@ -259,7 +281,16 @@ export default function PerfilScreen({ navigation, route }) {
         </TouchableOpacity>
       ) : null}
 
-      {/* Avatar */}
+      {/* Setup (31/10/2026): um passo só, sem foto nem campos obrigatórios. */}
+      {isSetup && (
+        <View style={styles.setupHeader}>
+          <Text style={styles.setupTitle} accessibilityRole="header">O que você vende?</Text>
+          <Text style={styles.setupLead}>Isso ajuda o app a sugerir receitas e preços do seu ramo.</Text>
+        </View>
+      )}
+
+      {/* Avatar (só no Perfil normal) */}
+      {!isSetup && (
       <View style={styles.avatarSection}>
         {avatarUri ? (
           <Image
@@ -310,50 +341,85 @@ export default function PerfilScreen({ navigation, route }) {
           <Text style={styles.avatarErrorText} accessibilityLiveRegion="polite">{avatarError}</Text>
         ) : null}
       </View>
+      )}
 
       {/* Form */}
       <View style={styles.card}>
+        {isSetup ? (
+          <View style={styles.field}>
+            <View style={styles.chipsWrap} accessibilityRole="radiogroup">
+              {SEGMENTOS_SETUP.map((chip) => {
+                const ativo = chipAtivo === chip;
+                return (
+                  <Pressable
+                    key={chip}
+                    onPress={() => onChipPress(chip)}
+                    style={[styles.chip, ativo && styles.chipAtivo]}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: ativo }}
+                    accessibilityLabel={chip}
+                  >
+                    <Text style={[styles.chipText, ativo && styles.chipTextAtivo]}>{chip}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {outroAberto ? (
+              <TextInput
+                style={[styles.input, { marginTop: spacing.sm }]}
+                value={perfil.segmento}
+                onChangeText={(v) => updateField('segmento', v)}
+                placeholder="Ex.: Açaí, Sushi, Petiscos"
+                placeholderTextColor={colors.placeholder}
+                accessibilityLabel="Qual é o seu ramo"
+                autoFocus
+              />
+            ) : null}
+          </View>
+        ) : null}
+
         <View style={styles.field}>
-          <Text style={styles.label}>Nome do Negócio</Text>
+          <Text style={styles.label}>
+            {isSetup ? 'Nome do negócio ' : 'Nome do Negócio'}
+            {isSetup ? <Text style={styles.optionalHint}>(opcional)</Text> : null}
+          </Text>
           <TextInput
-            style={[styles.input, showNameError && styles.inputError]}
+            style={styles.input}
             value={perfil.nome_negocio}
             onChangeText={(v) => updateField('nome_negocio', v)}
-            placeholder="Ex: Doces da Maria"
+            placeholder="Ex.: Doces da Maria"
             placeholderTextColor={colors.placeholder}
             accessibilityLabel="Nome do negócio"
-            accessibilityHint={showNameError ? 'Campo obrigatório' : undefined}
-          />
-          {showNameError ? (
-            <View style={styles.fieldErrorRow}>
-              <Feather name="alert-circle" size={12} color="#dc2626" style={{ marginRight: 4 }} />
-              <Text style={styles.fieldErrorText}>Nome do negócio é obrigatório para continuar.</Text>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Segmento {isSetup ? <Text style={{ color: '#dc2626' }}>*</Text> : null}</Text>
-          <TextInput
-            style={styles.input}
-            value={perfil.segmento}
-            onChangeText={(v) => updateField('segmento', v)}
-            placeholder="Ex: Confeitaria, Marmitas..."
-            placeholderTextColor={colors.placeholder}
           />
         </View>
 
-        <View style={styles.field}>
-          <Text style={styles.label}>Telefone / WhatsApp {isSetup ? <Text style={{ color: colors.textSecondary }}>(opcional)</Text> : null}</Text>
-          <TextInput
-            style={styles.input}
-            value={perfil.telefone}
-            onChangeText={(v) => updateField('telefone', v)}
-            placeholder="(00) 00000-0000"
-            placeholderTextColor={colors.placeholder}
-            keyboardType="phone-pad"
-          />
-        </View>
+        {!isSetup && (
+          <View style={styles.field}>
+            <Text style={styles.label}>Segmento</Text>
+            <TextInput
+              style={styles.input}
+              value={perfil.segmento}
+              onChangeText={(v) => updateField('segmento', v)}
+              placeholder="Ex: Confeitaria, Marmitas..."
+              placeholderTextColor={colors.placeholder}
+            />
+          </View>
+        )}
+
+        {/* Telefone fica fora do setup: o WhatsApp é pedido no Primeiro preço. */}
+        {!isSetup && (
+          <View style={styles.field}>
+            <Text style={styles.label}>Telefone / WhatsApp</Text>
+            <TextInput
+              style={styles.input}
+              value={perfil.telefone}
+              onChangeText={(v) => updateField('telefone', v)}
+              placeholder="(00) 00000-0000"
+              placeholderTextColor={colors.placeholder}
+              keyboardType="phone-pad"
+            />
+          </View>
+        )}
       </View>
 
       {/* TODO: hidden feature — reativar quando user pedir explicitamente.
@@ -361,16 +427,27 @@ export default function PerfilScreen({ navigation, route }) {
       {/* {!isSetup && !isMobile && <LojasSection userId={user?.id} />} */}
 
       {isSetup && (
-        <TouchableOpacity
-          style={styles.continueBtn}
-          activeOpacity={0.8}
-          onPress={onContinuePress}
-          accessibilityRole="button"
-          accessibilityLabel="Continuar para próxima etapa"
-        >
-          <Text style={styles.continueBtnText}>Continuar</Text>
-          <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
-        </TouchableOpacity>
+        <>
+          <TouchableOpacity
+            style={[styles.continueBtn, !segmentoEscolhido && styles.continueBtnApagado]}
+            activeOpacity={0.8}
+            onPress={onContinuePress}
+            accessibilityRole="button"
+            accessibilityLabel="Continuar"
+          >
+            <Text style={styles.continueBtnText}>Continuar</Text>
+            <Feather name="arrow-right" size={18} color="#fff" style={{ marginLeft: 8 }} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.skipBtn}
+            activeOpacity={0.7}
+            onPress={onPularPress}
+            accessibilityRole="button"
+            accessibilityLabel="Pular por agora"
+          >
+            <Text style={styles.skipBtnText}>Pular por agora</Text>
+          </TouchableOpacity>
+        </>
       )}
 
       <View style={{ height: 40 }} />
@@ -469,10 +546,26 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.sm, paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.sm, fontSize: fonts.regular, color: colors.text,
   },
-  // Audit P1: borda vermelha + ícone para feedback de validação acessível.
-  inputError: { borderColor: '#dc2626', borderWidth: 1.5 },
-  fieldErrorRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
-  fieldErrorText: { fontSize: fonts.tiny, color: '#dc2626', fontFamily: fontFamily.medium },
+  optionalHint: { color: colors.textSecondary, fontWeight: '400' },
+
+  // Setup (31/10/2026): "O que você vende?" com chips de segmento.
+  setupHeader: { paddingTop: spacing.md, paddingBottom: spacing.md },
+  setupTitle: {
+    fontSize: fonts.title, fontWeight: '800', fontFamily: fontFamily.bold,
+    color: colors.text, marginBottom: 4,
+  },
+  setupLead: { fontSize: fonts.small, color: colors.textSecondary, lineHeight: 19 },
+  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.inputBg,
+  },
+  chipAtivo: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { fontSize: fonts.small, color: colors.text, fontFamily: fontFamily.medium },
+  chipTextAtivo: { color: '#fff', fontFamily: fontFamily.semiBold },
+  continueBtnApagado: { opacity: 0.55 },
+  skipBtn: { alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 16, marginTop: spacing.xs },
+  skipBtnText: { fontSize: fonts.small, color: colors.textSecondary, fontFamily: fontFamily.medium, textDecorationLine: 'underline' },
   // Audit P0: banner de falha no load com borda lateral vermelha (acessibilidade daltonismo).
   errorBanner: {
     flexDirection: 'row', alignItems: 'center',

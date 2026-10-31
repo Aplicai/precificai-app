@@ -20,8 +20,8 @@ const D1: Record<Estagio, Texto> = {
   sem_perfil: {
     assunto: 'Falta 1 minuto para começar',
     paragrafos: [
-      'Vi que você criou sua conta no Precificaí, mas ainda não contou o nome do seu negócio.',
-      'Leva 1 minuto. Com isso, o app já abre com os ingredientes mais comuns do seu ramo, e você só coloca o preço que paga.',
+      'Vi que você criou sua conta no Precificaí, mas ainda não contou o que você vende.',
+      'Leva 1 minuto. Com isso, o app sugere a receita e o preço do seu produto, e você só confere.',
     ],
     cta: 'Continuar de onde parei',
   },

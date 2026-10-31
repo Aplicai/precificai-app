@@ -50,7 +50,7 @@ export default function TutorialHomeCard() {
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Precifique seu primeiro produto em {TUTORIAL_DURACAO}</Text>
           <Text style={styles.desc}>
-            Assista o passo a passo: contas do mês, primeiro ingrediente e o produto com o preço sugerido.
+            Veja como cadastrar o primeiro ingrediente e montar o produto com o preço sugerido.
           </Text>
           <Text style={styles.cta}>Assistir agora</Text>
         </View>

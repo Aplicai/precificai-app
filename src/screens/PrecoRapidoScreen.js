@@ -19,6 +19,12 @@
  * produto típico do segmento do perfil (src/utils/primeiroPreco.js), o
  * "Pular por agora" virou um link discreto no fim da página e, ao salvar, a
  * pessoa vê o "momento de valor" (PrimeiroPrecoScreen) em vez da Home.
+ *
+ * Nada preenchido além do nome (31/10/2026): os números começam vazios, com
+ * o exemplo só no placeholder; os chips são sugestão (nenhum vem marcado) e
+ * o cartão de resultado fica neutro até a pessoa pôr custo, rendimento e
+ * números do mês. Ao salvar, o Financeiro fica completo
+ * (precoRapidoService.garantirFinanceiro): sem aviso "pendente" depois.
  */
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
@@ -27,7 +33,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CommonActions } from '@react-navigation/native';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, buildPricingConfig } from '../utils/calculations';
-import { calcularPrecoRapido, parseValorBR, LUCRO_PADRAO } from '../utils/precoRapido';
+import { calcularPrecoRapido, parseValorBR, LUCRO_PADRAO, camposDoPrecoPreenchidos, TEXTO_RESULTADO_VAZIO } from '../utils/precoRapido';
 import { numerosDoMes, valorParaCampo, META_ESCADA } from '../utils/escadaPrecos';
 import { mensagemErroSalvar } from '../utils/planGate';
 import { normTexto } from '../utils/montarReceita';
@@ -39,7 +45,7 @@ import { clearQueryCache } from '../database/supabaseDb';
 import { notifyDataChanged } from '../utils/dataSync';
 import { trackEvent } from '../utils/marketing';
 import { CHAVE_PRECO_RAPIDO } from '../utils/initialRoute';
-import { SUGESTOES_PADRAO, sugestoesDeProduto, produtoDoSegmento } from '../utils/primeiroPreco';
+import { SUGESTOES_PADRAO, sugestoesDeProduto, produtoDoSegmento, chipMarcado } from '../utils/primeiroPreco';
 
 function Campo({ valor, onChange, placeholder, largura = 110, label }) {
   return (
@@ -84,6 +90,9 @@ export default function PrecoRapidoScreen({ navigation, route }) {
   const salvandoRef = useRef(false);
   // A pessoa já mexeu no nome: a sugestão do segmento (que chega depois) não sobrescreve.
   const nomeTocadoRef = useRef(false);
+  // Mesmo fato, como estado, para o chip: só marca o chip quando a pessoa
+  // escolheu (o nome sugerido pelo segmento não marca nenhum).
+  const [nomeEscolhido, setNomeEscolhido] = useState(false);
   // Modo próximo: 'carregando' | 'salvos' (linha "Usando seus gastos…") | 'perguntar'
   const [numerosMes, setNumerosMes] = useState(proximo ? 'carregando' : 'perguntar');
   // 2º produto em diante: lucro, taxas e margem de segurança do Financeiro da
@@ -144,6 +153,7 @@ export default function PrecoRapidoScreen({ navigation, route }) {
 
   function mudarNome(v) {
     nomeTocadoRef.current = true;
+    setNomeEscolhido(true);
     if (v.trim()) setAvisoMontar(null);
     // Trocou o produto depois de montar: a receita era do outro.
     if (montada && montada.nome && v.trim() && normTexto(v) !== normTexto(montada.nome)) {
@@ -209,7 +219,7 @@ export default function PrecoRapidoScreen({ navigation, route }) {
     () => calcularPrecoRapido({ custoReceita, rendimento, gastoMes, vendaMes, cobraHoje, ...contaCfg }),
     [custoReceita, rendimento, gastoMes, vendaMes, cobraHoje, contaCfg]
   );
-  const preenchido = custoReceita && rendimento && gastoMes !== '' && vendaMes;
+  const preenchido = camposDoPrecoPreenchidos({ custoReceita, rendimento, gastoMes, vendaMes });
   const nomeProduto = nome.trim() || 'seu produto';
   const lucroPct = String(Math.round(contaCfg.lucro * 1000) / 10).replace('.', ',');
 
@@ -256,7 +266,7 @@ export default function PrecoRapidoScreen({ navigation, route }) {
       notifyDataChanged('despesas_fixas');
       if (!proximo) {
         trackEvent('PrecoRapido', { content_name: montada ? 'receita_montada' : 'preco_rapido', value: res.preco, currency: 'BRL' });
-        // O aviso "Instale o app" agora é liberado na tabela de preços (3º preço).
+        // O aviso "Instale o app" é liberado pela Home ao ver o 1º produto com preço.
         await irParaApp(false, { nome: nome.trim(), preco: res.preco, lucro: contaCfg.lucro });
         return;
       }
@@ -305,12 +315,16 @@ export default function PrecoRapidoScreen({ navigation, route }) {
               placeholderTextColor={colors.placeholder}
               accessibilityLabel="Nome do produto"
             />
+            <Text style={styles.dica}>Ou toque numa sugestão:</Text>
             <View style={styles.chips}>
-              {sugestoes.map((s) => (
-                <TouchableOpacity key={s} style={[styles.chip, nome === s && styles.chipAtivo]} onPress={() => mudarNome(s)} accessibilityRole="button">
-                  <Text style={[styles.chipTexto, nome === s && { color: '#fff' }]}>{s}</Text>
-                </TouchableOpacity>
-              ))}
+              {sugestoes.map((s) => {
+                const marcado = chipMarcado({ nome, chip: s, escolhido: nomeEscolhido });
+                return (
+                  <TouchableOpacity key={s} style={[styles.chip, marcado && styles.chipAtivo]} onPress={() => mudarNome(s)} accessibilityRole="button" accessibilityState={{ selected: marcado }}>
+                    <Text style={[styles.chipTexto, marcado && { color: '#fff' }]}>{s}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
 
@@ -339,11 +353,11 @@ export default function PrecoRapidoScreen({ navigation, route }) {
             <Text style={[styles.dica, { marginTop: spacing.sm }]}>Ou, se você já sabe:</Text>
             <View style={styles.frase}>
               <Text style={styles.palavra}>A receita custa R$</Text>
-              <Campo valor={custoReceita} onChange={setCustoReceita} placeholder="40,00" label="Custo da receita" />
+              <Campo valor={custoReceita} onChange={setCustoReceita} placeholder="ex.: 40,00" label="Custo da receita" />
             </View>
             <View style={styles.frase}>
               <Text style={styles.palavra}>e rende</Text>
-              <Campo valor={rendimento} onChange={setRendimento} placeholder="20" largura={80} label="Quantas unidades a receita rende" />
+              <Campo valor={rendimento} onChange={setRendimento} placeholder="ex.: 20" largura={96} label="Quantas unidades a receita rende" />
               <Text style={styles.palavra}>unidades</Text>
             </View>
             <Text style={styles.dica}>Some ingredientes e embalagem de uma receita. Uma estimativa já serve.</Text>
@@ -363,12 +377,12 @@ export default function PrecoRapidoScreen({ navigation, route }) {
             <Text style={styles.pergunta}>3. Seus números do mês</Text>
             <View style={styles.frase}>
               <Text style={styles.palavra}>Gasto por mês R$</Text>
-              <Campo valor={gastoMes} onChange={setGastoMes} placeholder="2.000" label="Gasto por mês para funcionar" />
+              <Campo valor={gastoMes} onChange={setGastoMes} placeholder="ex.: 2.000" label="Gasto por mês para funcionar" />
             </View>
             <Text style={styles.dica}>Aluguel, luz, gás, internet e salários. Inclua quanto você quer tirar para você por mês. Sem os ingredientes.</Text>
             <View style={styles.frase}>
               <Text style={styles.palavra}>Vendo por mês R$</Text>
-              <Campo valor={vendaMes} onChange={setVendaMes} placeholder="8.000" label="Quanto vende por mês" />
+              <Campo valor={vendaMes} onChange={setVendaMes} placeholder="ex.: 8.000" label="Quanto vende por mês" />
             </View>
           </View>
           )}
@@ -377,7 +391,7 @@ export default function PrecoRapidoScreen({ navigation, route }) {
             <Text style={styles.pergunta}>{numerosMes === 'perguntar' ? '4' : '3'}. Quanto você cobra hoje? <Text style={styles.opcional}>(opcional)</Text></Text>
             <View style={styles.frase}>
               <Text style={styles.palavra}>R$</Text>
-              <Campo valor={cobraHoje} onChange={setCobraHoje} placeholder="3,50" label="Quanto cobra hoje" />
+              <Campo valor={cobraHoje} onChange={setCobraHoje} placeholder="ex.: 3,50" label="Quanto cobra hoje" />
               <Text style={styles.palavra}>por unidade</Text>
             </View>
           </View>
@@ -401,7 +415,13 @@ export default function PrecoRapidoScreen({ navigation, route }) {
             </View>
           ) : preenchido ? (
             <Text style={styles.erro}>{Object.values(r.erros)[0]}</Text>
-          ) : null}
+          ) : (
+            // Neutro até ter os quatro números: nem erro, nem preço inventado.
+            <View style={[styles.cartao, styles.resultadoVazio]}>
+              <Text style={styles.resultadoVazioLabel}>Preço certo: {nomeProduto}</Text>
+              <Text style={styles.resultadoVazioTexto}>{TEXTO_RESULTADO_VAZIO}</Text>
+            </View>
+          )}
 
           {erro ? <Text style={styles.erro} accessibilityLiveRegion="polite">{erro}</Text> : null}
           <TouchableOpacity style={[styles.botao, (!r.ok || salvando) && styles.botaoApagado]} onPress={salvar} disabled={salvando} accessibilityRole="button">
@@ -450,6 +470,9 @@ const styles = StyleSheet.create({
   chipAtivo: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipTexto: { fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.text },
   resultado: { backgroundColor: colors.primary, borderColor: colors.primary },
+  resultadoVazio: { backgroundColor: colors.surfaceTint, borderStyle: 'dashed' },
+  resultadoVazioLabel: { fontSize: fonts.small, fontFamily: fontFamily.medium, color: colors.textSecondary },
+  resultadoVazioTexto: { fontSize: fonts.regular, lineHeight: 22, fontFamily: fontFamily.medium, color: colors.textSecondary, marginTop: spacing.xs },
   resultadoLabel: { fontSize: fonts.small, fontFamily: fontFamily.medium, color: '#ffffffcc' },
   resultadoValor: { fontSize: 34, fontFamily: fontFamily.extraBold, color: '#fff', marginTop: 2, marginBottom: spacing.sm },
   resultadoUnidade: { fontSize: fonts.small, fontFamily: fontFamily.medium, color: '#ffffffcc' },
