@@ -221,3 +221,20 @@ test('aceite antigo (pcf_consent, só medição) não vale para o v2: o aviso vo
   assert.equal(scripts.length, 0);
   assert.equal(calls.length, 0);
 });
+
+test('aviso dentro do app pode subir acima da barra de abas', () => {
+  const { body, pcf } = boot();
+  pcf.askConsent({ bottom: 80 });
+  assert.match(body.children[0].style.cssText, /bottom:calc\(80px \+ env\(safe-area-inset-bottom/);
+});
+
+test('quem escuta a resposta do aviso é avisado (o app grava o aceite no perfil na hora)', () => {
+  const { pcf } = boot();
+  const recebidos = [];
+  const sair = pcf.onConsent((s) => recebidos.push(s));
+  pcf.onConsent(() => { throw new Error('ouvinte quebrado não derruba os outros'); });
+  pcf.setConsent('granted');
+  sair();
+  pcf.setConsent('denied');
+  assert.deepEqual(recebidos, ['granted']);
+});

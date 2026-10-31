@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import {
   isFreshSignup, sanitizeAttribution, registrationEventId, getAttribution,
-  trackEvent, syncMarketingForUser, JANELA_CADASTRO_NOVO_MS,
+  trackEvent, syncMarketingForUser, JANELA_CADASTRO_NOVO_MS, aoResponderCookies,
 } from '../src/utils/marketing.js';
 
 const AGORA = Date.parse('2026-10-13T12:00:00Z');
@@ -366,5 +366,19 @@ test('PrimeiroPreco: conta antiga ou sem aceite não dispara nem marca', async (
   assert.equal(w.enviados.length, 0);
   assert.equal(sb.functions.chamadas.length, 0);
   assert.deepEqual(w.store, {});
+  delete globalThis.window;
+});
+
+test('aoResponderCookies: repassa a resposta do aviso e sem script não quebra', () => {
+  delete globalThis.window;
+  assert.equal(typeof aoResponderCookies(() => {}), 'function');
+  let ouvinte = null;
+  globalThis.window = { pcf: { onConsent: (fn) => { ouvinte = fn; return () => { ouvinte = null; }; } } };
+  const recebidos = [];
+  const sair = aoResponderCookies((s) => recebidos.push(s));
+  ouvinte('granted');
+  sair();
+  assert.equal(ouvinte, null);
+  assert.deepEqual(recebidos, ['granted']);
   delete globalThis.window;
 });

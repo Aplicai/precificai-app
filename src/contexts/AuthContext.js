@@ -4,7 +4,7 @@ import { supabase } from '../config/supabase';
 import { isRecoveryIntent, clearRecoveryIntent } from '../utils/recoveryFlag';
 import { resetDatabase, getDatabase } from '../database/database';
 import { captureException, addBreadcrumb, setUser as reportSetUser } from '../utils/errorReporter';
-import { getAttribution, trackRegistrationOnce, syncMarketingForUser, checkActivation, checkPrimeiroPreco, trackEvent } from '../utils/marketing';
+import { getAttribution, trackRegistrationOnce, syncMarketingForUser, checkActivation, checkPrimeiroPreco, trackEvent, aoResponderCookies } from '../utils/marketing';
 import { subscribeDataChanged } from '../utils/dataSync';
 import { iniciarRegistroAberturas } from '../utils/aberturas';
 import { migrarRendimentoKit } from '../services/migracaoRendimentoKit';
@@ -132,6 +132,18 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (userId) syncMarketingForUser(user, supabase);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  // Respondeu o aviso de cookies já logado: grava o aceite no perfil na hora
+  // (a compra só chega ao Meta com aceite gravado; ver asaas-webhook).
+  useEffect(() => {
+    if (!userId) return undefined;
+    return aoResponderCookies(async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        if (data?.user) await syncMarketingForUser(data.user, supabase);
+      } catch {}
+    });
   }, [userId]);
 
   // Migração 19/10/2026: rendimento das receitas do Kit de Início (uma vez por

@@ -9,7 +9,7 @@
  *     para sobreviver ao salto landing (precificaiapp.com) → app (app.precificaiapp.com).
  *  2. Consentimento (LGPD): o Pixel só carrega depois de "Aceitar". Sem resposta,
  *     os eventos ficam em fila; com "Recusar", são descartados.
- *  3. Expõe `window.pcf`: track(), attribution(), consent(), askConsent().
+ *  3. Expõe `window.pcf`: track(), attribution(), consent(), askConsent(), onConsent().
  *
  * Na landing o aviso aparece sozinho (`data-banner="auto"` na tag <script>);
  * no app quem chama `askConsent()` são as telas de entrada/cadastro.
@@ -157,10 +157,21 @@
     if (queue.length < 20) queue.push([name, params, eventId]);
   }
 
+  // Quem quer saber da resposta (o app grava o aceite no perfil da conta).
+  var consentListeners = [];
+  function onConsent(fn) {
+    consentListeners.push(fn);
+    return function () {
+      consentListeners = consentListeners.filter(function (f) { return f !== fn; });
+    };
+  }
+
   function setConsent(state) {
     writeCookie(CONSENT_COOKIE, state, 180);
     hideBanner();
     if (state === 'granted') { loadPixel(); flush(); } else { queue = []; }
+    var list = consentListeners.slice();
+    for (var i = 0; i < list.length; i++) { try { list[i](state); } catch (e) {} }
   }
 
   // ---------- aviso ----------
@@ -187,12 +198,14 @@
   // Aviso compacto no RODAPÉ (o topo é do aviso "Instale o app"). Antes era um
   // cartão grande que cobria o cadastro no celular. Agora: uma pergunta curta,
   // com a finalidade e o link da política; respondeu, some e não volta (cookie 180 dias).
-  function askConsent() {
+  // opts.bottom: distância do rodapé em px (no app, acima da barra de abas).
+  function askConsent(opts) {
     if (consent() || bannerEl || !document.body) return;
+    var bottom = opts && typeof opts.bottom === 'number' && opts.bottom >= 0 ? opts.bottom : 8;
     var box = document.createElement('div');
     box.setAttribute('role', 'region');
     box.setAttribute('aria-label', 'Aviso de cookies');
-    box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom, 0px));' +
+    box.style.cssText = 'position:fixed;left:8px;right:8px;bottom:calc(' + bottom + 'px + env(safe-area-inset-bottom, 0px));' +
       'z-index:2147483000;max-width:520px;margin:0 auto;background:#fff;color:#1c2b29;' +
       'border:1px solid #d9e4e2;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.12);' +
       'padding:10px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;' +
@@ -232,6 +245,7 @@
     consent: consent,
     askConsent: askConsent,
     setConsent: setConsent,
+    onConsent: onConsent,
   };
 
   var self = document.currentScript;

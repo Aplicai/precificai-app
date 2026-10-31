@@ -10,6 +10,7 @@ import { formatCurrency, formatPercent, converterParaBase, calcDespesasFixasPerc
 import { calcSobraMes } from '../utils/breakeven';
 import { getFinanceiroStatus, montarStatusFinanceiro, textoPendenciaFinanceiro, publicarStatusFinanceiro, assinarStatusFinanceiro } from '../utils/financeiroStatus';
 import { liberarAvisoInstalar } from '../utils/avisoInstalar';
+import { askConsent } from '../utils/marketing';
 import { etapaEscada, mostrarInicioSimples, mostrarEscadaNoPainel, CHAVE_PAINEL_ESCOLHIDO, META_ESCADA, LINK_APP } from '../utils/escadaPrecos';
 import { ehIPhone } from '../utils/navegadorInterno';
 import { resolverMargemMeta, isMargemBaixa, classificarMargem } from '../utils/margemMeta';
@@ -293,6 +294,12 @@ const inicioStyles = StyleSheet.create({
 
 export default function HomeScreen({ navigation }) {
   const { isDesktop, isMobile, width } = useResponsiveLayout();
+  // Quem não respondeu o aviso de cookies no cadastro vê de novo aqui (some ao
+  // responder). No celular fica acima da barra de abas.
+  useEffect(() => {
+    if (Platform.OS === 'web') askConsent({ bottom: isDesktop ? 8 : 80 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Sessão polish — KPIs estouravam em 320pt por causa de minWidth: 150.
   // ≤360pt: 1 coluna (100%); demais mobile: 2 colunas (48%); desktop usa kpiCardDesktop.
   const kpiCardWidth = width <= 360 ? '100%' : '48%';

@@ -148,14 +148,39 @@ export function getAttribution() {
  * Mostra o aviso de cookies se a pessoa ainda não respondeu. O script carrega
  * assíncrono no boot, então a tela pode montar antes dele: tenta por alguns segundos.
  */
-export function askConsent(tentativas = 10) {
+export function askConsent(opts, tentativas = 10) {
   if (typeof window === 'undefined') return;
   const api = pcf();
   if (api) {
-    try { api.askConsent(); } catch {}
+    try { api.askConsent(opts); } catch {}
     return;
   }
-  if (tentativas > 0) setTimeout(() => askConsent(tentativas - 1), 500);
+  if (tentativas > 0) setTimeout(() => askConsent(opts, tentativas - 1), 500);
+}
+
+/**
+ * Chama `fn(estado)` quando a pessoa responde o aviso de cookies. Devolve a
+ * função que para de escutar. Sem script (nativo, bloqueador), não faz nada.
+ */
+export function aoResponderCookies(fn) {
+  if (typeof window === 'undefined') return () => {};
+  let sair = null;
+  let parado = false;
+  let timer = null;
+  const tentar = (n) => {
+    const api = pcf();
+    if (api?.onConsent) {
+      try { sair = api.onConsent(fn); } catch {}
+      return;
+    }
+    if (n > 0 && !parado) timer = setTimeout(() => tentar(n - 1), 500);
+  };
+  tentar(10);
+  return () => {
+    parado = true;
+    if (timer) clearTimeout(timer);
+    if (sair) sair();
+  };
 }
 
 export function trackEvent(name, params, eventId) {
