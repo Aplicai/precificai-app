@@ -44,6 +44,7 @@
 
 import { serve } from 'https://deno.land/std@0.192.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { ehCartao, silenciarAvisosCartao } from './avisosCartao.ts';
 
 // === Matriz de preços — fonte da verdade: src/config/plans.js, espelhada em
 // asaas-create-checkout/index.ts (PRICING). Mantida duplicada porque cada edge
@@ -478,6 +479,12 @@ serve(async (req) => {
 
     if (isGrant && paidValue !== null && payment?.id) {
       await sendMetaPurchase(supabase, { userId, paymentId: payment.id, value: paidValue, plano, ciclo });
+    }
+
+    // Cartão cobra sozinho: sem lembrete de vencimento do Asaas (avisosCartao.ts).
+    if (isGrant && payment?.customer && ehCartao(payment, ciclo)) {
+      const apiKey = (Deno.env.get('ASAAS_API_KEY') || '').trim().replace(/^["']|["']$/g, '');
+      if (apiKey) await silenciarAvisosCartao(asaasBaseUrl(apiKey), apiKey, String(payment.customer));
     }
 
     // Só depois de gravar o vínculo novo: o Asaas vai responder a esta remoção
