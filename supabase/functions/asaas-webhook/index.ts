@@ -45,6 +45,7 @@
 import { serve } from 'https://deno.land/std@0.192.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { ehCartao, silenciarAvisosCartao } from './avisosCartao.ts';
+import { sendMetaPurchase } from './metaCompra.ts';
 
 // === Matriz de preços — fonte da verdade: src/config/plans.js, espelhada em
 // asaas-create-checkout/index.ts (PRICING). Mantida duplicada porque cada edge
@@ -147,65 +148,6 @@ async function reconcilePayment(
 
 // Audit M5: comparação em tempo constante (hash SHA-256 dos dois lados,
 // tamanhos iguais → sem vazamento por timing do `!==`).
-async function sha256Hex(text: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-// Avisa o Meta (Conversions API) de uma compra, para o anúncio saber quem pagou.
-// O Pix confirma fora da página, então o Pixel do navegador nunca vê a compra:
-// este é o único caminho. Melhor esforço — nunca atrasa nem derruba a concessão.
-// Só envia para quem aceitou os cookies de medição (consentimento gravado no
-// cadastro em user_metadata.attribution).
-// Secrets: META_PIXEL_ID e META_CAPI_TOKEN. Sem eles, não faz nada.
-async function sendMetaPurchase(
-  // deno-lint-ignore no-explicit-any
-  supabase: any,
-  args: { userId: string; paymentId: string; value: number; plano: string; ciclo: string },
-): Promise<void> {
-  const pixelId = (Deno.env.get('META_PIXEL_ID') || '').trim();
-  const token = (Deno.env.get('META_CAPI_TOKEN') || '').trim();
-  if (!pixelId || !token) return;
-  try {
-    const { data, error } = await supabase.auth.admin.getUserById(args.userId);
-    if (error || !data?.user) return;
-    const attribution = data.user.user_metadata?.attribution;
-    if (!attribution || attribution.consent !== 'granted') return;
-
-    const userData: Record<string, unknown> = { external_id: [await sha256Hex(args.userId)] };
-    const email = (data.user.email || '').trim().toLowerCase();
-    if (email) userData.em = [await sha256Hex(email)];
-    if (typeof attribution.fbc === 'string') userData.fbc = attribution.fbc;
-    if (typeof attribution.fbp === 'string') userData.fbp = attribution.fbp;
-
-    const version = (Deno.env.get('META_GRAPH_VERSION') || 'v23.0').trim();
-    const res = await fetch(`https://graph.facebook.com/${version}/${pixelId}/events`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        data: [{
-          event_name: 'Purchase',
-          event_time: Math.floor(Date.now() / 1000),
-          event_id: args.paymentId, // um pagamento = um evento (Meta deduplica)
-          action_source: 'website',
-          event_source_url: 'https://app.precificaiapp.com/',
-          user_data: userData,
-          custom_data: {
-            currency: 'BRL',
-            value: args.value,
-            content_name: `${args.plano}_${args.ciclo}`,
-          },
-        }],
-      }),
-    });
-    if (!res.ok) {
-      console.warn('[asaas-webhook] Meta CAPI recusou Purchase:', res.status, (await res.text().catch(() => '')).slice(0, 300));
-    }
-  } catch (e) {
-    console.warn('[asaas-webhook] Meta CAPI falhou (ignorado):', e instanceof Error ? e.message : e);
-  }
-}
-
 async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();
   const [ha, hb] = await Promise.all([
