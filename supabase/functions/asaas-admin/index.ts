@@ -50,8 +50,9 @@ serve(async (req: Request) => {
   if (body.acao === 'reenviar-compra') {
     const paymentId = String(body.payment_id || '');
     if (!/^pay_[A-Za-z0-9]+$/.test(paymentId)) return resp(400, { ok: false, error: 'payment_id inválido' });
+    // asaas_events.payment_id guarda a chave do webhook: `${payment.id}:${event}`.
     const { data: ev } = await supabase.from('asaas_events').select('user_id, processed_at')
-      .eq('payment_id', paymentId).in('event', ['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED'])
+      .in('payment_id', [`${paymentId}:PAYMENT_CONFIRMED`, `${paymentId}:PAYMENT_RECEIVED`])
       .order('processed_at', { ascending: true }).limit(1).maybeSingle();
     if (!ev?.user_id) return resp(404, { ok: false, error: 'pagamento confirmado não encontrado' });
     const eventTime = Math.floor(new Date(ev.processed_at).getTime() / 1000);
