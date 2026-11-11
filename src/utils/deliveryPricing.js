@@ -365,4 +365,70 @@ export function calcTaxaMaximaPlataforma({ precoVenda, cmv, plat, contexto }) {
   return Math.max(0, (semTaxa.lucro / preco) * 100);
 }
 
+/**
+ * Linhas do "Comparativo Canal vs Delivery" (ComparativoCanaisScreen): balcão +
+ * cada plataforma, todas em lucro LÍQUIDO.
+ *   balcão:   preço − custo − preço×(fixos% + variáveis%)
+ *   delivery: calcLucroDeliveryLiquido no preço que repassa a taxa (calcPrecoBreakEven)
+ * Antes (até 2026-11-11) os dois canais eram lucro bruto (sem custos do mês,
+ * maquininha nem imposto).
+ *
+ * @param {object} params
+ * @param {object} params.item        - { precoVenda, custoUnitario, custoDelivery? }
+ * @param {Array}  params.plataformas - rows delivery_config ativas
+ * @param {object} params.contexto    - { fixoPerc, impostoPerc, variavelPerc } em decimal
+ * @returns {{ canais: Array, melhorIdx:number, piorIdx:number, temPrejuizo:boolean }}
+ */
+export function montarCanaisComparativo({ item, plataformas, contexto }) {
+  const safe = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const custo = safe(item?.custoUnitario);
+  // Plataformas usam o custo NO DELIVERY (ingredientes + embalagem de delivery).
+  const custoDeliveryCanal = safe(item?.custoDelivery ?? item?.custoUnitario);
+  const precoBalcao = safe(item?.precoVenda);
+
+  const canais = [];
+  const lucroBalcao = precoBalcao > 0
+    ? precoBalcao - custo - precoBalcao * (safe(contexto?.fixoPerc) + safe(contexto?.variavelPerc))
+    : 0;
+  canais.push({
+    key: 'balcao',
+    nome: 'Balcão',
+    icon: 'shopping-bag',
+    preco: precoBalcao,
+    lucro: lucroBalcao,
+    margem: precoBalcao > 0 ? (lucroBalcao / precoBalcao) * 100 : 0,
+    inviavel: precoBalcao <= 0,
+  });
+
+  for (const plat of plataformas || []) {
+    const precoSugerido = calcPrecoBreakEven(precoBalcao, plat);
+    const inviavelPreco = precoSugerido === null || !(precoSugerido > 0);
+    const preco = inviavelPreco ? 0 : precoSugerido;
+    const r = calcLucroDeliveryLiquido({ precoVenda: preco, cmv: custoDeliveryCanal, plat, contexto });
+    const inviavel = inviavelPreco || r.inviavel;
+    canais.push({
+      key: `plat-${plat.id}`,
+      nome: plat.plataforma,
+      icon: 'smartphone',
+      preco,
+      lucro: inviavel ? 0 : r.lucro,
+      margem: inviavel ? 0 : r.margem * 100,
+      inviavel,
+    });
+  }
+
+  // Melhor / pior margem (ignora inviáveis)
+  let melhorIdx = -1;
+  let piorIdx = -1;
+  let melhorMargem = -Infinity;
+  let piorMargem = Infinity;
+  canais.forEach((c, i) => {
+    if (c.inviavel) return;
+    if (c.margem > melhorMargem) { melhorMargem = c.margem; melhorIdx = i; }
+    if (c.margem < piorMargem) { piorMargem = c.margem; piorIdx = i; }
+  });
+  const temPrejuizo = canais.some(c => !c.inviavel && c.lucro < 0);
+  return { canais, melhorIdx, piorIdx, temPrejuizo };
+}
+
 export const compararDeliveryVsBalcao = _engCompara;

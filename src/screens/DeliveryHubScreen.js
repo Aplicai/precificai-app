@@ -931,7 +931,11 @@ export default function DeliveryHubScreen({ navigation }) {
                                 value={precoCustom}
                                 onChangeText={setPrecoCustom}
                                 keyboardType="numeric"
-                                placeholder={simResult.precoSugerido ? formatNumberBR(simResult.precoSugerido, 2) : '0,00'}
+                                // Bug 2026-11-11: placeholder = sugerido completo (com fixos + imposto)
+                                // exibido ao lado, não o legado por margem sem custos do mês.
+                                placeholder={simResult.sugCompleta?.validacao?.ok && simResult.sugCompleta.preco > 0
+                                  ? formatNumberBR(simResult.sugCompleta.preco, 2)
+                                  : '0,00'}
                                 placeholderTextColor={colors.placeholder}
                                 accessibilityLabel="Preço mínimo do produto em reais"
                               />

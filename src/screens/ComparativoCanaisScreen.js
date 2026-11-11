@@ -18,9 +18,9 @@ import {
 import usePersistedState from '../hooks/usePersistedState';
 import useResponsiveLayout from '../hooks/useResponsiveLayout';
 // Sprint 2 S3 — fórmula canônica única em src/utils/deliveryPricing.
-import { calcPrecoBreakEven, calcResultadoDelivery } from '../utils/deliveryPricing';
+import { montarCanaisComparativo } from '../utils/deliveryPricing';
 // Design embalagem-delivery-no-produto (2026-09-09): custoDelivery = cmv + embalagem de delivery.
-import { custoDelivery, embalagemDeliveryDoProduto, embalagemDeliveryDoCombo } from '../utils/deliveryAdapter';
+import { custoDelivery, embalagemDeliveryDoProduto, embalagemDeliveryDoCombo, buildContextoFinanceiro } from '../utils/deliveryAdapter';
 
 // Defesa contra NaN/Infinity em precificação. Retorna 0 quando não-finito.
 function parseNum(v) {
@@ -30,6 +30,8 @@ function parseNum(v) {
 
 export default function ComparativoCanaisScreen() {
   const [plataformas, setPlataformas] = useState([]);
+  // Custos do mês / variáveis / imposto — lucro líquido nos dois canais.
+  const [contextoFinanceiro, setContextoFinanceiro] = useState({ fixoPerc: 0, impostoPerc: 0, variavelPerc: 0 });
   const [items, setItems] = useState([]); // produtos + combos com custo unitário
   const [searchText, setSearchText] = usePersistedState('comparativoCanais.busca', '');
   const [expandedItems, setExpandedItems] = useState({});
@@ -52,7 +54,8 @@ export default function ComparativoCanaisScreen() {
 
       const [plats, prods, allIngs, allPreps, allEmbs,
              embalagensList, preparosList, materiasList, adicionaisList,
-             dProds, allDProdItens, combosList, allComboItens] = await Promise.all([
+             dProds, allDProdItens, combosList, allComboItens,
+             cfgRows, fixasRows, varsRows, fatRows] = await Promise.all([
         db.getAllAsync('SELECT * FROM delivery_config WHERE ativo = 1 ORDER BY id'),
         db.getAllAsync('SELECT * FROM produtos ORDER BY nome'),
         db.getAllAsync('SELECT pi.produto_id, pi.quantidade_utilizada, mp.preco_por_kg, mp.unidade_medida FROM produto_ingredientes pi JOIN materias_primas mp ON mp.id = pi.materia_prima_id'),
@@ -66,9 +69,15 @@ export default function ComparativoCanaisScreen() {
         db.getAllAsync('SELECT * FROM delivery_produto_itens'),
         db.getAllAsync('SELECT * FROM delivery_combos ORDER BY nome'),
         db.getAllAsync('SELECT * FROM delivery_combo_itens'),
+        db.getAllAsync('SELECT * FROM configuracao'),
+        db.getAllAsync('SELECT valor FROM despesas_fixas'),
+        db.getAllAsync('SELECT descricao, percentual FROM despesas_variaveis'),
+        db.getAllAsync('SELECT valor FROM faturamento_mensal WHERE valor > 0'),
       ]);
 
       setPlataformas(plats || []);
+      const ctx = buildContextoFinanceiro({ cfgRows, fixasRows, varsRows, fatRows });
+      setContextoFinanceiro({ fixoPerc: ctx.fixoPerc, impostoPerc: ctx.impostoPerc, variavelPerc: ctx.variavelPerc });
 
       // Mapas auxiliares
       const ingsByProd = {};
@@ -202,69 +211,11 @@ export default function ComparativoCanaisScreen() {
     setExpandedItems(prev => ({ ...prev, [id]: !prev[id] }));
   }
 
-  // Calcula linhas (canais) por item: balcão + cada plataforma ativa.
-  // Retorna { canais, melhorIdx, piorIdx, temPrejuizo }.
+  // Calcula linhas (canais) por item: balcão + cada plataforma ativa, em lucro
+  // LÍQUIDO (custos do mês, variáveis/imposto e taxas). Bug 2026-11-11: antes
+  // os dois canais eram lucro bruto. Conta em utils/deliveryPricing.
   function buildCanais(item) {
-    const custo = parseNum(item.custoUnitario);
-    // Design embalagem-delivery-no-produto (2026-09-09): plataformas de delivery
-    // usam o custo NO DELIVERY (ingredientes + embalagens de delivery), tanto em
-    // produto quanto em combo.
-    const custoDeliveryCanal = parseNum(item.custoDelivery ?? item.custoUnitario);
-    const precoBalcao = parseNum(item.precoVenda);
-
-    const canais = [];
-
-    // Balcão — sempre custoUnitario (sem embalagem de delivery)
-    const lucroBalcao = precoBalcao > 0 ? precoBalcao - custo : 0;
-    const margemBalcao = precoBalcao > 0 ? (lucroBalcao / precoBalcao) * 100 : 0;
-    canais.push({
-      key: 'balcao',
-      nome: 'Balcão',
-      icon: 'shopping-bag',
-      preco: precoBalcao,
-      lucro: lucroBalcao,
-      margem: margemBalcao,
-      inviavel: precoBalcao <= 0,
-    });
-
-    // Cada plataforma ativa — Sprint 2 S3: usa cálculo canônico (corrige bug onde
-    // comissao_app era subtraído como R$, mas no schema é %).
-    for (const plat of plataformas) {
-      const precoSugerido = calcPrecoBreakEven(precoBalcao, plat);
-      const inviavelPreco = precoSugerido === null || precoSugerido <= 0;
-      const preco = inviavelPreco ? 0 : precoSugerido;
-      const r = calcResultadoDelivery({ precoVenda: preco, custoUnit: custoDeliveryCanal, plat });
-      const inviavel = inviavelPreco || r.inviavel;
-      const taxaValor = r.valorComissao;
-      const desc = r.valorDesconto;
-      const lucro = inviavel ? 0 : r.lucro;
-      const margem = (!inviavel && preco > 0) ? r.margem * 100 : 0;
-
-      canais.push({
-        key: `plat-${plat.id}`,
-        nome: plat.plataforma,
-        icon: 'smartphone',
-        preco,
-        lucro,
-        margem,
-        inviavel,
-      });
-    }
-
-    // Melhor / pior margem (ignora inviáveis)
-    let melhorIdx = -1;
-    let piorIdx = -1;
-    let melhorMargem = -Infinity;
-    let piorMargem = Infinity;
-    canais.forEach((c, i) => {
-      if (c.inviavel) return;
-      if (c.margem > melhorMargem) { melhorMargem = c.margem; melhorIdx = i; }
-      if (c.margem < piorMargem) { piorMargem = c.margem; piorIdx = i; }
-    });
-
-    const temPrejuizo = canais.some(c => !c.inviavel && c.lucro < 0);
-
-    return { canais, melhorIdx, piorIdx, temPrejuizo };
+    return montarCanaisComparativo({ item, plataformas, contexto: contextoFinanceiro });
   }
 
   const filteredItems = useMemo(() => {
@@ -305,8 +256,8 @@ export default function ComparativoCanaisScreen() {
             title="Comparativo de canais"
             text="Para cada produto/combo, veja a margem em Balcão e em cada plataforma de delivery ativa. O badge verde marca o canal de maior margem; o vermelho, o de menor."
             examples={[
-              'Balcão: Lucro = Preço - Custo',
-              'Delivery: Lucro = Preço - Custo - Taxa - Comissão - Desconto',
+              'Balcão: Lucro = Preço − Custo − Custos do mês − Gastos por venda',
+              'Delivery: Lucro = Preço − Custo − Custos do mês − Imposto − Taxas − Cupom − Frete',
               'Custo no delivery = ingredientes + embalagem de delivery do produto.',
             ]}
           />

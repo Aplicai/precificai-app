@@ -98,3 +98,43 @@ test('DeliveryPrecosScreen usa o lucro líquido (com contexto financeiro), não 
   assert.ok(usos.length >= 2, `linha + resumo devem usar calcLucroDeliveryLiquido com contextoFinanceiro (achados: ${usos.length})`);
   assert.ok(/precoMinimo:/.test(src) && /taxaMaxima:/.test(src), 'modal de dicas deve receber precoMinimo/taxaMaxima calculados com o contexto');
 });
+
+// ── Comparativo Canal vs Delivery (ComparativoCanaisScreen) ──
+// Antes: balcão = preço − custo e delivery = calcResultadoDelivery — os dois
+// em lucro BRUTO, sem custos do mês, maquininha nem imposto.
+import { montarCanaisComparativo } from '../src/utils/deliveryPricing.js';
+
+test('Comparativo: balcão desconta fixos + variáveis; delivery desconta fixos + imposto + taxas', () => {
+  const item = { precoVenda: 30, custoUnitario: CMV_HB, custoDelivery: CMV_HB };
+  const { canais, temPrejuizo } = montarCanaisComparativo({ item, plataformas: [{ id: 1, ...IFOOD }], contexto: CTX_HB });
+  const [balcao, ifood] = canais;
+  // balcão: 30 − 16,0478 − 30×(0,25 + 0,09) = 3,7522 (o "lucro no balcão" do Short 23)
+  close(balcao.lucro, 30 - CMV_HB - 30 * 0.34);
+  close(balcao.margem, (balcao.lucro / 30) * 100);
+  // iFood no preço "repassa a taxa" (break-even legado) com a conta completa
+  close(ifood.lucro, calcLucroDeliveryLiquido({ precoVenda: ifood.preco, cmv: CMV_HB, plat: IFOOD, contexto: CTX_HB }).lucro);
+  // repassa a taxa: 30 / 0,73 = 41,10 → arredonda 41,50; lucro = 41,5 − 16,0478 − 41,5×0,58 = 1,38
+  // (antes a tela mostrava 41,5 − 16,05 − 11,21 = 14,25)
+  assert.equal(ifood.preco, 41.5);
+  close(ifood.lucro, 41.5 - CMV_HB - 41.5 * 0.58);
+  assert.equal(ifood.inviavel, false);
+  assert.equal(temPrejuizo, false);
+  // sem lucro no balcão vira prejuízo dos dois lados
+  const caro = montarCanaisComparativo({ item: { precoVenda: 22, custoUnitario: CMV_HB }, plataformas: [{ id: 1, ...IFOOD }], contexto: CTX_HB });
+  assert.ok(caro.canais[0].lucro < 0 && caro.canais[1].lucro < 0);
+  assert.equal(caro.temPrejuizo, true);
+});
+
+test('Comparativo: melhor/pior canal ignoram inviáveis; sem preço de balcão o balcão é inviável', () => {
+  const item = { precoVenda: 0, custoUnitario: 10 };
+  const r = montarCanaisComparativo({ item, plataformas: [{ id: 1, ...IFOOD }], contexto: CTX_HB });
+  assert.equal(r.canais[0].inviavel, true);
+  assert.equal(r.melhorIdx, -1);
+});
+
+test('ComparativoCanaisScreen usa montarCanaisComparativo com o contexto financeiro', () => {
+  const src = readFileSync(new URL('../src/screens/ComparativoCanaisScreen.js', import.meta.url), 'utf8');
+  assert.ok(!/calcResultadoDelivery\(/.test(src), 'tela ainda chama calcResultadoDelivery');
+  assert.ok(/montarCanaisComparativo\(\{[^}]*contexto: contextoFinanceiro/.test(src));
+  assert.ok(/buildContextoFinanceiro\(/.test(src));
+});
