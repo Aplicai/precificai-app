@@ -89,10 +89,18 @@ export default function InviabilidadeModal({ visible, onClose, info }) {
     precoDelivery,
     lucro,
     inviavel,
+    precoMinimo,
+    taxaMaxima,
   } = info;
 
-  const precoMin = calcPrecoMinimoViavel(custoUnitario, comissaoApp, taxaPct, descontoPct);
-  const taxaMax = calcTaxaMaximaViavel(custoUnitario, precoBalcao, comissaoApp, descontoPct);
+  // Quem chama pode mandar os valores já com custos do mês + imposto
+  // (DeliveryPrecosScreen); `undefined` cai na conta antiga só com taxas.
+  const precoMin = precoMinimo !== undefined
+    ? precoMinimo
+    : calcPrecoMinimoViavel(custoUnitario, comissaoApp, taxaPct, descontoPct);
+  const taxaMax = taxaMaxima !== undefined
+    ? taxaMaxima
+    : calcTaxaMaximaViavel(custoUnitario, precoBalcao, comissaoApp, descontoPct);
 
   const tituloDiagnostico = inviavel
     ? 'Preço sugerido inviável'

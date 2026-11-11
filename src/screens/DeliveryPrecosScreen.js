@@ -13,7 +13,7 @@ import InviabilidadeModal from '../components/InviabilidadeModal';
 import { colors, spacing, fonts, fontFamily, borderRadius } from '../utils/theme';
 import { formatCurrency, normalizeSearch, getDivisorRendimento, calcCustoIngrediente, calcCustoPreparo, calcMargem, safeNum, parseDecimalBR, formatPercentBR } from '../utils/calculations';
 // Sprint 2 S3 — fórmula canônica única em src/utils/deliveryPricing.js
-import { calcResultadoDelivery, calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
+import { calcLucroDeliveryLiquido, calcTaxaMaximaPlataforma, calcSugestaoDeliveryCompleta, calcPrecoMesmoLucroReais } from '../utils/deliveryPricing';
 // Auditoria 2026-09-09 [B2]: custo de 1 unidade NATIVA (kg/L/un/g) de item de
 // combo / produto delivery — mesma função do modal de combos.
 import { resolveCustoUnitarioItemCombo } from '../utils/comboPricing';
@@ -462,9 +462,9 @@ export default function DeliveryPrecosScreen() {
           negativos++;
           continue;
         }
-        // Sessão 28.9 — Auditoria P0-03: usar fonte canônica calcResultadoDelivery
-        // (antes essa tela tinha fórmula divergente — usava comissao_app como R$ quando é %).
-        const r = calcResultadoDelivery({ precoVenda: price, custoUnit: custoUn, plat });
+        // Bug 2026-11-11: lucro LÍQUIDO (desconta custos do mês e imposto),
+        // igual à Simulação no iFood. Antes: calcResultadoDelivery, sem fixos/imposto.
+        const r = calcLucroDeliveryLiquido({ precoVenda: price, cmv: custoUn, plat, contexto: contextoFinanceiro });
         if (Number.isFinite(r.lucro)) {
           totalLucro += r.lucro;
           if (r.lucro < 0) negativos++;
@@ -509,14 +509,18 @@ export default function DeliveryPrecosScreen() {
     const precoDeliveryRaw = getEffectivePrice(item.id, plat.id, precoSugerido);
     const inviavelInicial = precoDeliveryRaw === null || !Number.isFinite(precoDeliveryRaw) || precoDeliveryRaw <= 0;
     const precoDelivery = inviavelInicial ? 0 : precoDeliveryRaw;
-    // Sessão 28.9 — Auditoria P0-03: usar fonte canônica calcResultadoDelivery
-    // (antes essa tela computava manualmente: taxa%, comissao_app como R$ - errado, desconto%)
-    const r = calcResultadoDelivery({ precoVenda: precoDelivery, custoUnit: custoUn, plat });
+    // Bug 2026-11-11: lucro LÍQUIDO — preço − custo − custos do mês − imposto −
+    // comissão/taxas − cupom − frete. Mesma conta da Simulação no iFood e inversa
+    // exata do sugerido "mesmo lucro do balcão". Antes: calcResultadoDelivery,
+    // que não descontava fixos nem imposto (R$ 30 no iFood: +5,85 em vez de −3,45).
+    const r = calcLucroDeliveryLiquido({ precoVenda: precoDelivery, cmv: custoUn, plat, contexto: contextoFinanceiro });
     const taxaPct = safeNum(plat.taxa_plataforma);  // mantido para o badge "X%"
     const taxaPlatValor = r.valorComissao;
     const comissaoApp = 0; // legacy — já incluso em valorComissao
     const descontoPct = safeNum(plat.desconto_promocao);
-    const descontoValor = r.valorDesconto;
+    const descontoValor = r.cupomR;
+    const fixosValor = r.valorFixos;
+    const impostoValor = r.valorImposto;
     const lucro = Number.isFinite(r.lucro) ? r.lucro : 0;
     const margem = (!inviavelInicial && precoDelivery > 0) ? r.margem * 100 : 0;
     const inviavel = inviavelInicial || r.inviavel;
@@ -551,6 +555,16 @@ export default function DeliveryPrecosScreen() {
               precoDelivery,
               lucro,
               inviavel,
+              // Bug 2026-11-11: dicas com a conta completa (fixos + imposto), senão o
+              // "preço mínimo" ficava abaixo de um preço que já dá prejuízo.
+              precoMinimo: (() => {
+                const m = calcPrecoMesmoLucroReais({ cmv: custoUn, lucroAlvoReais: 0, plat, contexto: contextoFinanceiro });
+                return m.inviavel ? null : m.preco;
+              })(),
+              taxaMaxima: calcTaxaMaximaPlataforma({
+                precoVenda: precoDelivery > 0 ? precoDelivery : precoVenda,
+                cmv: custoUn, plat, contexto: contextoFinanceiro,
+              }),
             })}
             activeOpacity={0.7}
             accessibilityRole="button"
@@ -715,6 +729,16 @@ export default function DeliveryPrecosScreen() {
               <Text style={styles.breakdownChipText}>Com. {formatCurrency(comissaoApp)}</Text>
             </View>
           )}
+          {fixosValor > 0 && (
+            <View style={styles.breakdownChip}>
+              <Text style={styles.breakdownChipText}>Custos do mês {formatCurrency(fixosValor)}</Text>
+            </View>
+          )}
+          {impostoValor > 0 && (
+            <View style={styles.breakdownChip}>
+              <Text style={styles.breakdownChipText}>Imposto {formatCurrency(impostoValor)}</Text>
+            </View>
+          )}
           {descontoValor > 0 && (
             <View style={styles.breakdownChip}>
               <Feather name="tag" size={8} color={colors.textSecondary} style={{ marginRight: 2 }} />
@@ -803,7 +827,7 @@ export default function DeliveryPrecosScreen() {
             text="Para cada produto ou combo, veja o preço sugerido em cada plataforma ativa. Clique na categoria para expandir, depois no item para ver os detalhes por plataforma."
             examples={[
               'Sugerido = (Lucro líquido do balcão + CMV + cupom + frete) ÷ (1 − fixos% − imposto% − comissão% − outros%)',
-              'Lucro = Delivery - Custo - Taxa - Comissão - Desconto',
+              'Lucro = Delivery − Custo − Custos do mês − Imposto − Taxas − Cupom − Frete',
               'Verde = lucro positivo / Vermelho = prejuízo',
             ]}
           />
@@ -993,7 +1017,7 @@ export default function DeliveryPrecosScreen() {
           </View>
           <Text style={styles.legendFormula}>
             Sugerido = (Lucro líquido do balcão + CMV + cupom + frete) ÷ (1 − fixos% − imposto% − comissão% − outros%){'\n'}
-            Lucro = Delivery - Custo - Taxa - Comissão - Desconto{'\n'}
+            Lucro = Delivery − Custo − Custos do mês − Imposto − Taxas − Cupom − Frete{'\n'}
             Custo no delivery = ingredientes + embalagem de delivery do produto.
           </Text>
         </Card>

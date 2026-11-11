@@ -303,4 +303,66 @@ export function calcPrecoMesmoLucroReais({ cmv, lucroAlvoReais, plat, contexto }
   };
 }
 
+/**
+ * Lucro LÍQUIDO de vender `precoVenda` numa plataforma — a mesma conta da
+ * composição de "Simulação no <plataforma>" (SimulacaoProdutoScreen) e a
+ * inversa exata de calcPrecoMesmoLucroReais:
+ *
+ *   lucro = preco − cmv − preco×(fixo% + imposto% + comissão% + online% + outros%) − cupomR$ − freteR$
+ *
+ * Bug 2026-11-11: "Preços do Delivery" mostrava calcResultadoDelivery (sem
+ * custos do mês nem imposto) — hambúrguer a R$ 30 no iFood 27% aparecia com
+ * R$ 5,85 de lucro quando dava −R$ 3,45.
+ *
+ * @param {object} params
+ * @param {number} params.precoVenda
+ * @param {number} params.cmv        - custo no delivery (CMV + embalagem de delivery)
+ * @param {object} params.plat       - row delivery_config
+ * @param {object} params.contexto   - { fixoPerc, impostoPerc } em decimal
+ */
+export function calcLucroDeliveryLiquido({ precoVenda, cmv, plat, contexto }) {
+  const safe = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const preco = safe(precoVenda);
+  const custo = safe(cmv);
+  const fixoPerc = safe(contexto?.fixoPerc);
+  const impostoPerc = safe(contexto?.impostoPerc);
+  const comissaoPerc = (safe(plat?.taxa_plataforma) + safe(plat?.comissao_app) + safe(plat?.outros_perc)) / 100;
+  const cupomR = safe(plat?.desconto_promocao) + safe(plat?.embalagem_extra);
+  const freteR = safe(plat?.taxa_entrega);
+
+  if (!(preco > 0)) {
+    return {
+      preco: 0, cmv: custo, fixoPerc, impostoPerc, comissaoPerc, cupomR, freteR,
+      valorFixos: 0, valorImposto: 0, valorComissao: 0,
+      lucro: 0, margem: 0, inviavel: true,
+    };
+  }
+
+  const valorFixos = preco * fixoPerc;
+  const valorImposto = preco * impostoPerc;
+  const valorComissao = preco * comissaoPerc;
+  const lucro = preco - custo - valorFixos - valorImposto - valorComissao - cupomR - freteR;
+  return {
+    preco, cmv: custo, fixoPerc, impostoPerc, comissaoPerc, cupomR, freteR,
+    valorFixos, valorImposto, valorComissao,
+    lucro, margem: lucro / preco,
+    // Inviável = os % sobre o preço já comem 100% dele (nenhum preço resolve).
+    // Prejuízo comum (lucro < 0) NÃO é inviável — a tela mostra o valor em vermelho.
+    inviavel: fixoPerc + impostoPerc + comissaoPerc >= 1,
+  };
+}
+
+/**
+ * Maior comissão da plataforma (taxa_plataforma, em %) que ainda deixa lucro
+ * líquido >= 0 vendendo a `precoVenda` (mesma conta de calcLucroDeliveryLiquido).
+ * Usado na dica "Negocie a taxa". null se preço <= 0; 0 se nem com taxa 0 fecha.
+ */
+export function calcTaxaMaximaPlataforma({ precoVenda, cmv, plat, contexto }) {
+  const safe = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const preco = safe(precoVenda);
+  if (!(preco > 0)) return null;
+  const semTaxa = calcLucroDeliveryLiquido({ precoVenda: preco, cmv, plat: { ...plat, taxa_plataforma: 0 }, contexto });
+  return Math.max(0, (semTaxa.lucro / preco) * 100);
+}
+
 export const compararDeliveryVsBalcao = _engCompara;
